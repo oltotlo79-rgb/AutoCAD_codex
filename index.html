@@ -2943,7 +2943,9 @@
             if (element.type === "wire") {
               const p0 = element.points?.[0] || [0, 0];
               const p1 = element.points?.[element.points.length - 1] || [0, 0];
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: wireStyle(element).label + (element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "") });
+              const from = nearestElementName(page, p0[0], p0[1], element.id);
+              const to = nearestElementName(page, p1[0], p1[1], element.id);
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: wireStyle(element).label + "; from=" + from + "; to=" + to + (element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "") });
             } else if (element.type === "terminal") {
               rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: "single" + (element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "") });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
@@ -2983,6 +2985,22 @@
         if (element.type === "plcBlock") return "rows=" + (element.rows || "") + "; io=" + String(element.pinText || "").replace(/\r?\n/g, " / ") + note;
         if (element.type === "deviceBox") return "pins=" + (element.pins || "") + "; pinText=" + String(element.pinText || "").replace(/\r?\n/g, " / ") + note;
         return note.replace(/^; /, "");
+      }
+
+      function nearestElementName(page, x, y, selfId) {
+        let best = null;
+        page.elements.forEach(element => {
+          if (element.id === selfId || element.type === "wire" || element.type === "line") return;
+          const box = elementBounds(element);
+          if (!box) return;
+          const cx = Math.max(box.x, Math.min(x, box.x + box.w));
+          const cy = Math.max(box.y, Math.min(y, box.y + box.h));
+          const d = Math.hypot(cx - x, cy - y);
+          if (d <= 4 && (!best || d < best.d)) {
+            best = { d, name: element.label || element.text || element.wireNo || paletteLabel(element.type) };
+          }
+        });
+        return best?.name || "";
       }
 
       function exportReportCsv() {
