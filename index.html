@@ -4913,9 +4913,15 @@
       function showAudit() {
         const issues = auditProject();
         const body = issues.length
-          ? `<table class="report-table"><thead><tr><th>重要度</th><th>ページ</th><th>内容</th><th>対象</th></tr></thead><tbody>${issues.map(issue => `<tr><td>${issue.level}</td><td>${escapeHtml(issue.page)}</td><td>${escapeHtml(issue.message)}</td><td>${escapeHtml(issue.target)}</td></tr>`).join("")}</tbody></table>`
+          ? `<table class="report-table"><thead><tr><th>重要度</th><th>ページ</th><th>内容</th><th>対象</th><th>選択</th></tr></thead><tbody>${issues.map(issue => `<tr><td>${issue.level}</td><td>${escapeHtml(issue.page)}</td><td>${escapeHtml(issue.message)}</td><td>${escapeHtml(issue.target)}</td><td>${auditSelectionButton(issue)}</td></tr>`).join("")}</tbody></table>`
           : '<p class="muted">検出された問題はありません。</p>';
         openDialog("図面監査", body);
+        attachDialogSelection();
+      }
+
+      function auditSelectionButton(issue) {
+        if (!issue.elementId) return "";
+        return `<button type="button" data-select-page="${escapeAttr(issue.pageId || "")}" data-select-id="${escapeAttr(issue.elementId)}">選択</button>`;
       }
 
       function auditProject() {
@@ -4932,31 +4938,31 @@
           page.elements.forEach(element => {
             const label = componentTag(element) || element.text || element.wireNo || "";
             if (element.type === "wire") {
-              if (!element.wireNo) issues.push({ level: "警告", page: page.name, message: "線番が未入力です。", target: element.id });
+              if (!element.wireNo) issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "線番が未入力です。", target: element.id });
               if (element.wireNo) {
                 const current = wireNos.get(element.wireNo) || 0;
                 wireNos.set(element.wireNo, current + 1);
               }
             }
             if (["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "ground", "motor", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
-              issues.push({ level: "注意", page: page.name, message: "ラベルが未入力です。", target: element.type });
+              issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "ラベルが未入力です。", target: element.type });
             }
             const prefix = tagPrefix(element.type);
             if (prefix) {
               if (!element.tag) {
-                issues.push({ level: "注意", page: page.name, message: "部品タグが未採番です。", target: element.label || paletteLabel(element.type) });
+                issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "部品タグが未採番です。", target: element.label || paletteLabel(element.type) });
               } else {
                 const key = element.type + "::" + element.tag;
                 const list = componentTags.get(key) || [];
-                list.push({ page: page.name, type: paletteLabel(element.type), tag: element.tag });
+                list.push({ page: page.name, pageId: page.id, elementId: element.id, type: paletteLabel(element.type), tag: element.tag });
                 componentTags.set(key, list);
               }
               if (element.fixedTag && !element.tag) {
-                issues.push({ level: "警告", page: page.name, message: "部品タグ固定ですがタグが空です。", target: element.label || paletteLabel(element.type) });
+                issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "部品タグ固定ですがタグが空です。", target: element.label || paletteLabel(element.type) });
               }
             }
             if (["terminalStrip", "connector"].includes(element.type) && Number(element.count || 0) <= 0) {
-              issues.push({ level: "警告", page: page.name, message: "端子数が不正です。", target: element.label || element.id });
+              issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "端子数が不正です。", target: element.label || element.id });
             }
             if (["terminalStrip", "connector"].includes(element.type) && element.label) {
               const key = page.name + "::" + element.label;
@@ -4964,7 +4970,7 @@
             }
             if (element.type === "arrow") {
               if (!element.label) {
-                issues.push({ level: "警告", page: page.name, message: "信号矢印の参照名が未入力です。", target: element.id });
+                issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "信号矢印の参照名が未入力です。", target: element.id });
               } else {
                 const role = element.signalRole || "reference";
                 const group = arrows.get(element.label) || { source: [], destination: [], reference: [] };
@@ -4974,7 +4980,7 @@
             }
             const box = elementBounds(element);
             if (box && (box.x < 0 || box.y < 0 || box.x + box.w > size.w || box.y + box.h > size.h)) {
-              issues.push({ level: "注意", page: page.name, message: "用紙外にはみ出しています。", target: label || element.type });
+              issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "用紙外にはみ出しています。", target: label || element.type });
             }
           });
           wireNos.forEach((count, wireNo) => {
@@ -5003,7 +5009,7 @@
           if (items.length > 1) {
             const first = items[0];
             const pages = Array.from(new Set(items.map(item => item.page))).join(", ");
-            issues.push({ level: "注意", page: first.page, message: "同一部品種別で部品タグが重複しています。", target: first.type + " " + first.tag + " (" + pages + ")" });
+            issues.push({ level: "注意", page: first.page, pageId: first.pageId, elementId: first.elementId, message: "同一部品種別で部品タグが重複しています。", target: first.type + " " + first.tag + " (" + pages + ")" });
           }
         });
         return issues;
@@ -5028,6 +5034,8 @@
             issues.push({
               level: "注意",
               page: page.name,
+              pageId: page.id,
+              elementId: wire.id,
               message: "配線端点が未接続の可能性があります。",
               target: (wire.wireNo || wire.id) + " @ " + key
             });
