@@ -563,6 +563,8 @@
 
       <aside class="inspector">
         <div class="panel-title">ページ設定</div>
+        <label for="drawingStandard">標準</label>
+        <select id="drawingStandard"></select>
         <label for="pageName">ページ名</label>
         <input id="pageName" type="text">
         <div class="row">
@@ -650,6 +652,11 @@
         A3: { portrait: [297, 420], landscape: [420, 297] }
       };
 
+      const STANDARDS = [
+        { id: "general", label: "汎用", grid: 2.5, wireNumberFormat: "%S-%N", frameVariant: "detailed" },
+        { id: "toyota-draft", label: "トヨタ標準（仮）", grid: 2.5, wireNumberFormat: "%S-%N", frameVariant: "detailed" }
+      ];
+
       const PALETTE = [
         { type: "text", label: "文字", icon: "text" },
         { type: "wire", label: "配線", icon: "wire" },
@@ -684,7 +691,8 @@
           snap: true,
           stroke: "#111820",
           wireNumberFormat: "%S-%N",
-          currentWireType: "control"
+          currentWireType: "control",
+          standard: "general"
         },
         wireTypes: [
           { id: "control", label: "制御線", color: "#111820", width: .38, dash: "", noNumber: false },
@@ -1423,6 +1431,8 @@
       function syncInspector() {
         const page = currentPage();
         if (!page) return;
+        renderStandardSelect();
+        setValue("drawingStandard", state.settings.standard || "general");
         setValue("pageName", page.name);
         setValue("paperSize", page.size);
         setValue("paperOrientation", page.orientation);
@@ -1439,6 +1449,13 @@
         renderWireTypeSelect();
         setValue("currentWireType", state.settings.currentWireType || "control");
         renderSelectionPanel();
+      }
+
+      function renderStandardSelect() {
+        const select = qs("#drawingStandard");
+        if (!select) return;
+        const html = STANDARDS.map(standard => `<option value="${escapeAttr(standard.id)}">${escapeHtml(standard.label)}</option>`).join("");
+        if (select.innerHTML !== html) select.innerHTML = html;
       }
 
       function renderWireTypeSelect() {
@@ -1734,6 +1751,15 @@
         qsa("[data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === tool));
         renderPalette();
         setStatus(tool === "select" ? "選択ツールです。" : paletteLabel(tool) + "を配置できます。");
+      }
+
+      function applyStandard(id) {
+        const standard = STANDARDS.find(item => item.id === id) || STANDARDS[0];
+        state.settings.standard = standard.id;
+        state.settings.grid = standard.grid;
+        state.settings.wireNumberFormat = standard.wireNumberFormat;
+        const page = currentPage();
+        if (page && !page.frameVariant) page.frameVariant = standard.frameVariant;
       }
 
       function addPage() {
@@ -2631,6 +2657,11 @@
           render();
         });
         updatePageField("pageName", (page, value) => { page.name = value || page.name; });
+        qs("#drawingStandard").addEventListener("change", event => {
+          applyStandard(event.target.value);
+          commitHistory("標準設定を変更しました。");
+          render();
+        });
         updatePageField("paperSize", (page, value) => { page.size = value; });
         updatePageField("paperOrientation", (page, value) => { page.orientation = value; });
         updatePageField("frameVariant", (page, value) => { page.frameVariant = value; });
