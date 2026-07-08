@@ -615,6 +615,10 @@
             <button type="button" id="duplicatePageBtn">複製</button>
             <button type="button" id="deletePageBtn">削除</button>
           </div>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="sampleTerminalPageBtn">見本風</button>
+            <button type="button" id="indexPageBtn">目次</button>
+          </div>
         </div>
 
         <div class="section" id="selectionPanel"></div>
@@ -1700,6 +1704,122 @@
         render();
       }
 
+      function addSampleTerminalPage() {
+        const page = createPage({
+          name: "端子図" + (state.pages.length + 1),
+          size: "A4",
+          orientation: "landscape",
+          frameVariant: "side",
+          title: "端子接続図"
+        });
+        const startX = 42;
+        const startY = 50;
+        const stripW = 178;
+        const count = 20;
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: 18,
+          y: 28,
+          w: 70,
+          h: 8,
+          text: "端子接続図",
+          fontSize: 4,
+          rotation: 0,
+          stroke: state.settings.stroke
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "terminalStrip",
+          x: startX,
+          y: startY,
+          w: stripW,
+          h: 12,
+          count,
+          start: 1,
+          prefix: "",
+          label: "X1",
+          rotation: 0,
+          stroke: state.settings.stroke
+        });
+        for (let i = 0; i < count; i++) {
+          const pitch = stripW / count;
+          const x = startX + pitch * i + pitch / 2;
+          const y2 = i % 5 === 4 ? 142 : 156;
+          page.elements.push({
+            id: uid("el"),
+            type: "wire",
+            points: [[x, startY + 8], [x, y2]],
+            wireNo: "W" + String(i + 1).padStart(2, "0"),
+            wireType: state.settings.currentWireType,
+            stroke: state.settings.stroke
+          });
+          page.elements.push({
+            id: uid("el"),
+            type: "text",
+            x: x - 2,
+            y: startY - 9,
+            w: 24,
+            h: 5,
+            text: "信号" + String(i + 1).padStart(2, "0"),
+            fontSize: 2.4,
+            rotation: -90,
+            stroke: state.settings.stroke
+          });
+          page.elements.push({
+            id: uid("el"),
+            type: "terminal",
+            x,
+            y: y2,
+            w: 20,
+            h: 10,
+            label: String(i + 1).padStart(2, "0"),
+            rotation: 90,
+            stroke: state.settings.stroke
+          });
+        }
+        page.elements.push({
+          id: uid("el"),
+          type: "arrow",
+          points: [[18, 160], [238, 160]],
+          label: "次ページへ",
+          stroke: state.settings.stroke
+        });
+        state.pages.push(page);
+        state.activePageId = page.id;
+        selectedId = null;
+        commitHistory("見本風ページを追加しました。");
+        render();
+      }
+
+      function addIndexPage() {
+        const page = createPage({
+          name: "目次" + (state.pages.length + 1),
+          size: "A4",
+          orientation: "portrait",
+          frameVariant: "index",
+          title: "図面目次"
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "table",
+          x: 28,
+          y: 52,
+          w: 150,
+          h: 170,
+          rows: 16,
+          cols: 4,
+          label: "図面目次",
+          rotation: 0,
+          stroke: state.settings.stroke
+        });
+        state.pages.push(page);
+        state.activePageId = page.id;
+        selectedId = null;
+        commitHistory("目次ページを追加しました。");
+        render();
+      }
+
       function deleteSelected() {
         const page = currentPage();
         if (!page || !selectedId) return;
@@ -2244,6 +2364,8 @@
         qs("#addPageBtn").addEventListener("click", addPage);
         qs("#duplicatePageBtn").addEventListener("click", duplicatePage);
         qs("#deletePageBtn").addEventListener("click", deletePage);
+        qs("#sampleTerminalPageBtn").addEventListener("click", addSampleTerminalPage);
+        qs("#indexPageBtn").addEventListener("click", addIndexPage);
         qsa("[data-tool]").forEach(button => {
           button.addEventListener("click", () => setActiveTool(button.dataset.tool));
         });
