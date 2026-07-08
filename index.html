@@ -665,6 +665,16 @@
             <input id="drawDate" type="text">
           </div>
         </div>
+        <div class="row">
+          <div>
+            <label for="pageInstallation">設備コード</label>
+            <input id="pageInstallation" type="text">
+          </div>
+          <div>
+            <label for="pageLocation">場所コード</label>
+            <input id="pageLocation" type="text">
+          </div>
+        </div>
 
         <div class="section">
           <div class="inline">
@@ -886,6 +896,8 @@
             designer: options.designer || "",
             date: options.date || today,
             facility: options.facility || "",
+            installation: options.installation || "",
+            location: options.location || "",
             page: String(index),
             total: "1"
           },
@@ -1886,6 +1898,8 @@
         setValue("drawingTitle", page.title.title);
         setValue("designer", page.title.designer);
         setValue("drawDate", page.title.date);
+        setValue("pageInstallation", page.title.installation || "");
+        setValue("pageLocation", page.title.location || "");
         setValue("zoomRange", state.settings.zoom);
         setValue("gridSize", state.settings.grid);
         setValue("snapToggle", state.settings.snap ? "on" : "off");
@@ -3930,6 +3944,8 @@
           .replaceAll("%S", page.title?.page || String(pageIndex))
           .replaceAll("%P", page.name || String(pageIndex))
           .replaceAll("%D", page.title?.drawingNo || "")
+          .replaceAll("%I", page.title?.installation || "")
+          .replaceAll("%L", page.title?.location || "")
           .replaceAll("%N", String(number).padStart(2, "0"));
       }
 
@@ -5315,6 +5331,8 @@
         updatePageField("drawingTitle", (page, value) => { page.title.title = value; });
         updatePageField("designer", (page, value) => { page.title.designer = value; });
         updatePageField("drawDate", (page, value) => { page.title.date = value; });
+        updatePageField("pageInstallation", (page, value) => { page.title.installation = value; });
+        updatePageField("pageLocation", (page, value) => { page.title.location = value; });
 
         const svg = qs("#canvas");
         svg.addEventListener("dragover", event => {
