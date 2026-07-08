@@ -661,6 +661,8 @@
       const PALETTE = [
         { type: "text", label: "文字", icon: "text" },
         { type: "wire", label: "配線", icon: "wire" },
+        { type: "rect", label: "矩形", icon: "rect" },
+        { type: "circle", label: "円", icon: "circle" },
         { type: "terminal", label: "端子", icon: "terminal" },
         { type: "terminalStrip", label: "端子台", icon: "strip" },
         { type: "terminalSheet", label: "端子配線セット", icon: "sheet" },
@@ -932,6 +934,8 @@
         const map = {
           text: `<svg ${common}><path ${stroke} d="M18 14h44M40 14v22M30 36h20"/></svg>`,
           wire: `<svg ${common}><path ${stroke} d="M8 22h28v-10h36"/><circle cx="36" cy="22" r="3" fill="currentColor"/></svg>`,
+          rect: `<svg ${common}><rect x="18" y="11" width="44" height="24" ${stroke}/></svg>`,
+          circle: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
           terminal: `<svg ${common}><rect x="32" y="14" width="16" height="16" ${stroke}/><path ${stroke} d="M8 22h24M48 22h24"/></svg>`,
           strip: `<svg ${common}><path ${stroke} d="M10 24h60"/><circle cx="20" cy="24" r="6" ${thin}/><circle cx="35" cy="24" r="6" ${thin}/><circle cx="50" cy="24" r="6" ${thin}/><circle cx="65" cy="24" r="6" ${thin}/></svg>`,
           sheet: `<svg ${common}><path ${thin} d="M12 34h56M20 12v22M34 12v22M48 12v22M62 12v22"/><path ${stroke} d="M12 12h56"/></svg>`,
@@ -1179,6 +1183,8 @@
         const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
         if (element.type === "text") drawText(g, element);
         if (element.type === "wire") drawWire(g, element, stroke);
+        if (element.type === "rect") drawRectElement(g, element, stroke);
+        if (element.type === "circle") drawCircleElement(g, element, stroke);
         if (element.type === "terminal") drawTerminal(g, element, stroke);
         if (element.type === "terminalStrip") drawTerminalStrip(g, element, stroke);
         if (element.type === "contactNO") drawContact(g, element, false, stroke);
@@ -1226,6 +1232,36 @@
         if (element.wireNo) {
           g.appendChild(textEl(element.wireNo, mid.x + 1.6, mid.y - 1.8, { fontSize: 2.3 }));
         }
+      }
+
+      function drawRectElement(g, element, stroke) {
+        const w = Number(element.w || 30);
+        const h = Number(element.h || 18);
+        g.appendChild(svgEl("rect", {
+          x: 0,
+          y: 0,
+          width: w,
+          height: h,
+          class: "symbol-line",
+          stroke,
+          fill: element.fill || "none"
+        }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
+      }
+
+      function drawCircleElement(g, element, stroke) {
+        const w = Number(element.w || 18);
+        const h = Number(element.h || 18);
+        g.appendChild(svgEl("ellipse", {
+          cx: w / 2,
+          cy: h / 2,
+          rx: w / 2,
+          ry: h / 2,
+          class: "symbol-line",
+          stroke,
+          fill: element.fill || "none"
+        }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
       }
 
       function wireStyle(element) {
@@ -1601,6 +1637,24 @@
             ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
           </div>
           <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:12px">ユーザー部品に登録</button>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="copyElementBtn">コピー</button>
+            <button type="button" id="pasteElementBtn">貼付</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="duplicateElementBtn">複製</button>
+            <button type="button" id="deleteElementBtn">削除</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="bringForwardBtn">前面へ</button>
+            <button type="button" id="sendBackwardBtn">背面へ</button>
+          </div>
+          <div class="row-3" style="margin-top:8px">
+            <button type="button" data-nudge="-1,0">←</button>
+            <button type="button" data-nudge="0,-1">↑</button>
+            <button type="button" data-nudge="1,0">→</button>
+          </div>
+          <button type="button" data-nudge="0,1" style="width:100%;margin-top:8px">↓ 1mm移動</button>
         `;
         qsa("[data-bind]", panel).forEach(input => {
           input.addEventListener("change", () => updateSelectedFromInput(input));
@@ -1618,6 +1672,20 @@
           });
         });
         qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
+        qs("#copyElementBtn", panel)?.addEventListener("click", copySelected);
+        qs("#pasteElementBtn", panel)?.addEventListener("click", pasteClipboard);
+        qs("#duplicateElementBtn", panel)?.addEventListener("click", duplicateSelected);
+        qs("#deleteElementBtn", panel)?.addEventListener("click", deleteSelected);
+        qs("#bringForwardBtn", panel)?.addEventListener("click", bringSelectedForward);
+        qs("#sendBackwardBtn", panel)?.addEventListener("click", sendSelectedBackward);
+        qsa("[data-nudge]", panel).forEach(button => {
+          button.addEventListener("click", () => {
+            const [dx, dy] = button.dataset.nudge.split(",").map(Number);
+            moveSelected(dx, dy);
+            commitHistory("要素を移動しました。");
+            render();
+          });
+        });
       }
 
       function paletteLabel(type) {
@@ -1753,6 +1821,8 @@
         const base = { id: uid("el"), type, x, y, rotation: 0, stroke: state.settings.stroke };
         const defaults = {
           text: { ...base, w: 40, h: 8, text: "文字", fontSize: 3.5 },
+          rect: { ...base, w: 34, h: 22, label: "" },
+          circle: { ...base, w: 22, h: 22, label: "" },
           terminal: { ...base, w: 20, h: 10, label: "1" },
           terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", label: "X1" },
           contactNO: { ...base, w: 22, h: 14, label: "NO" },
@@ -2065,6 +2135,57 @@
         page.elements.push(copy);
         selectedId = copy.id;
         commitHistory("要素を複製しました。");
+        render();
+      }
+
+      function copySelected() {
+        const element = selectedElement();
+        if (!element) return;
+        clipboardElement = deepClone(element);
+        setStatus("選択中の要素をコピーしました。Ctrl+Vで貼り付けできます。");
+      }
+
+      function pasteClipboard() {
+        if (!clipboardElement) {
+          setStatus("貼り付ける要素がありません。");
+          return;
+        }
+        const page = currentPage();
+        if (!page) return;
+        const copy = deepClone(clipboardElement);
+        copy.id = uid("el");
+        if (copy.points) {
+          copy.points = copy.points.map(point => [point[0] + 6, point[1] + 6]);
+        } else {
+          copy.x = Number(copy.x || 0) + 6;
+          copy.y = Number(copy.y || 0) + 6;
+        }
+        page.elements.push(copy);
+        selectedId = copy.id;
+        clipboardElement = deepClone(copy);
+        commitHistory("貼り付けました。");
+        render();
+      }
+
+      function bringSelectedForward() {
+        const page = currentPage();
+        if (!page || !selectedId) return;
+        const index = page.elements.findIndex(element => element.id === selectedId);
+        if (index < 0 || index === page.elements.length - 1) return;
+        const [element] = page.elements.splice(index, 1);
+        page.elements.splice(index + 1, 0, element);
+        commitHistory("要素を前面へ移動しました。");
+        render();
+      }
+
+      function sendSelectedBackward() {
+        const page = currentPage();
+        if (!page || !selectedId) return;
+        const index = page.elements.findIndex(element => element.id === selectedId);
+        if (index <= 0) return;
+        const [element] = page.elements.splice(index, 1);
+        page.elements.splice(index - 1, 0, element);
+        commitHistory("要素を背面へ移動しました。");
         render();
       }
 
@@ -2637,6 +2758,24 @@
           dxfText(out, page, "TEXT", element.x || 0, element.y || 0, element.fontSize || 3.5, element.text || "");
           return;
         }
+        if (element.type === "rect") {
+          const w = Number(element.w || 34);
+          const h = Number(element.h || 22);
+          dxfRectLocal(out, page, "GEOMETRY", element, 0, 0, w, h);
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, h / 2, 2.6, element.label);
+          return;
+        }
+        if (element.type === "circle") {
+          const w = Number(element.w || 22);
+          const h = Number(element.h || 22);
+          if (Math.abs(w - h) < .01) {
+            dxfCircleLocal(out, page, "GEOMETRY", element, w / 2, h / 2, w / 2);
+          } else {
+            dxfEllipseApproxLocal(out, page, "GEOMETRY", element, w / 2, h / 2, w / 2, h / 2);
+          }
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, h / 2, 2.6, element.label);
+          return;
+        }
         if (element.type === "terminalStrip" || element.type === "connector") {
           const count = Math.max(1, Number(element.count || 8));
           const w = Number(element.w || count * 8);
@@ -2743,6 +2882,17 @@
         dxfLineLocal(out, page, layer, element, x + w, y, x + w, y + h);
         dxfLineLocal(out, page, layer, element, x + w, y + h, x, y + h);
         dxfLineLocal(out, page, layer, element, x, y + h, x, y);
+      }
+
+      function dxfEllipseApproxLocal(out, page, layer, element, cx, cy, rx, ry) {
+        const steps = 32;
+        let prev = null;
+        for (let i = 0; i <= steps; i++) {
+          const angle = Math.PI * 2 * i / steps;
+          const point = [cx + Math.cos(angle) * rx, cy + Math.sin(angle) * ry];
+          if (prev) dxfLineLocal(out, page, layer, element, prev[0], prev[1], point[0], point[1]);
+          prev = point;
+        }
       }
 
       function updatePageField(id, apply) {
@@ -2982,24 +3132,12 @@
           deleteSelected();
         }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
-          const element = selectedElement();
-          if (element) clipboardElement = deepClone(element);
+          event.preventDefault();
+          copySelected();
         }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") {
-          if (clipboardElement) {
-            const page = currentPage();
-            const copy = deepClone(clipboardElement);
-            copy.id = uid("el");
-            if (copy.points) copy.points = copy.points.map(point => [point[0] + 6, point[1] + 6]);
-            else {
-              copy.x = Number(copy.x || 0) + 6;
-              copy.y = Number(copy.y || 0) + 6;
-            }
-            page.elements.push(copy);
-            selectedId = copy.id;
-            commitHistory("貼り付けました。");
-            render();
-          }
+          event.preventDefault();
+          pasteClipboard();
         }
         const nudge = event.shiftKey ? 5 : 1;
         const arrows = { ArrowLeft: [-nudge, 0], ArrowRight: [nudge, 0], ArrowUp: [0, -nudge], ArrowDown: [0, nudge] };
