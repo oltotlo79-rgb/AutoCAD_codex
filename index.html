@@ -691,6 +691,7 @@
           { id: "safety", label: "安全線", color: "#0f6f63", width: .45, dash: "", noNumber: false },
           { id: "external", label: "盤外/参考線", color: "#5b626b", width: .35, dash: "3 2", noNumber: true }
         ],
+        customSymbols: [],
         pages: []
       };
 
@@ -874,7 +875,15 @@
       function renderPalette() {
         const grid = qs("#paletteGrid");
         grid.innerHTML = "";
-        PALETTE.forEach(item => {
+        const items = [
+          ...PALETTE,
+          ...(state.customSymbols || []).map(symbol => ({
+            type: "custom:" + symbol.id,
+            label: symbol.label,
+            icon: "box"
+          }))
+        ];
+        items.forEach(item => {
           const button = document.createElement("div");
           button.className = "palette-item" + (activeTool === item.type ? " active" : "");
           button.draggable = true;
@@ -1441,6 +1450,7 @@
           <div class="swatches" id="swatches">
             ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
           </div>
+          <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:12px">ユーザー部品に登録</button>
         `;
         qsa("[data-bind]", panel).forEach(input => {
           input.addEventListener("change", () => updateSelectedFromInput(input));
@@ -1457,9 +1467,14 @@
             render();
           });
         });
+        qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
       }
 
       function paletteLabel(type) {
+        if (String(type).startsWith("custom:")) {
+          const id = String(type).slice("custom:".length);
+          return (state.customSymbols || []).find(symbol => symbol.id === id)?.label || "ユーザー部品";
+        }
         return (PALETTE.find(item => item.type === type) || { label: type }).label;
       }
 
@@ -1612,6 +1627,10 @@
       function placeElement(type, x, y) {
         const page = currentPage();
         if (!page) return;
+        if (String(type).startsWith("custom:")) {
+          placeCustomSymbol(type.slice("custom:".length), x, y);
+          return;
+        }
         if (type === "terminalSheet") {
           addTerminalSheet(page, x, y);
           commitHistory("端子配線セットを配置しました。");
@@ -1622,6 +1641,25 @@
         page.elements.push(element);
         selectedId = element.id;
         commitHistory("要素を配置しました。");
+        setActiveTool("select");
+        render();
+      }
+
+      function placeCustomSymbol(id, x, y) {
+        const symbol = (state.customSymbols || []).find(item => item.id === id);
+        const page = currentPage();
+        if (!symbol || !page) return;
+        const element = deepClone(symbol.template);
+        element.id = uid("el");
+        if (element.points) {
+          element.points = element.points.map(point => [point[0] + x, point[1] + y]);
+        } else {
+          element.x = x;
+          element.y = y;
+        }
+        page.elements.push(element);
+        selectedId = element.id;
+        commitHistory("ユーザー部品を配置しました。");
         setActiveTool("select");
         render();
       }
@@ -1849,6 +1887,36 @@
         render();
       }
 
+      function registerSelectedAsSymbol() {
+        const element = selectedElement();
+        if (!element) {
+          setStatus("登録する要素を選択してください。");
+          return;
+        }
+        const defaultName = (element.label || element.text || paletteLabel(element.type) || "ユーザー部品").toString();
+        const label = prompt("ユーザー部品名", defaultName);
+        if (!label) return;
+        const template = deepClone(element);
+        delete template.id;
+        if (template.points) {
+          const xs = template.points.map(point => point[0]);
+          const ys = template.points.map(point => point[1]);
+          const minX = Math.min(...xs);
+          const minY = Math.min(...ys);
+          template.points = template.points.map(point => [point[0] - minX, point[1] - minY]);
+        } else {
+          template.x = 0;
+          template.y = 0;
+        }
+        state.customSymbols.push({
+          id: uid("sym"),
+          label,
+          template
+        });
+        commitHistory("ユーザー部品を登録しました。");
+        render();
+      }
+
       function moveSelected(dx, dy) {
         const element = selectedElement();
         if (!element) return;
@@ -1900,6 +1968,7 @@
             state.version = loaded.version || state.version;
             state.settings = { ...state.settings, ...(loaded.settings || {}) };
             state.wireTypes = loaded.wireTypes || state.wireTypes;
+            state.customSymbols = loaded.customSymbols || [];
             state.pages = loaded.pages;
             state.activePageId = loaded.activePageId || state.pages[0].id;
             pageCounter = state.pages.length + 1;
