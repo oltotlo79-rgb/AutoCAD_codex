@@ -665,12 +665,21 @@
         { type: "terminalSheet", label: "端子配線セット", icon: "sheet" },
         { type: "contactNO", label: "a接点", icon: "contactNO" },
         { type: "contactNC", label: "b接点", icon: "contactNC" },
+        { type: "pushButton", label: "押しボタン", icon: "pushButton" },
         { type: "coil", label: "コイル", icon: "coil" },
+        { type: "fuse", label: "ヒューズ", icon: "fuse" },
+        { type: "breaker", label: "遮断器", icon: "breaker" },
         { type: "lamp", label: "ランプ", icon: "lamp" },
         { type: "buzzer", label: "ブザー", icon: "buzzer" },
+        { type: "powerSupply", label: "電源", icon: "powerSupply" },
+        { type: "ground", label: "接地", icon: "ground" },
+        { type: "motor", label: "モータ", icon: "motor" },
+        { type: "resistor", label: "抵抗", icon: "resistor" },
+        { type: "diode", label: "ダイオード", icon: "diode" },
         { type: "deviceBox", label: "機器箱", icon: "box" },
         { type: "plcBlock", label: "PLC/I-O", icon: "plc" },
         { type: "connector", label: "コネクタ", icon: "connector" },
+        { type: "cableMarker", label: "ケーブル", icon: "cableMarker" },
         { type: "table", label: "表", icon: "table" },
         { type: "arrow", label: "信号矢印", icon: "arrow" },
         { type: "junction", label: "接続点", icon: "dot" }
@@ -922,12 +931,21 @@
           sheet: `<svg ${common}><path ${thin} d="M12 34h56M20 12v22M34 12v22M48 12v22M62 12v22"/><path ${stroke} d="M12 12h56"/></svg>`,
           contactNO: `<svg ${common}><path ${stroke} d="M10 22h18M52 22h18M28 12v20M52 12v20M31 30l18-16"/></svg>`,
           contactNC: `<svg ${common}><path ${stroke} d="M10 22h18M52 22h18M28 12v20M52 12v20M31 14l18 16M46 12l-12 20"/></svg>`,
+          pushButton: `<svg ${common}><path ${stroke} d="M10 25h18M52 25h18M28 15v20M52 15v20M33 31l14-12M40 9v10M32 9h16"/></svg>`,
           coil: `<svg ${common}><path ${stroke} d="M8 22h14M58 22h14M22 12c10 0 10 20 0 20M58 12c-10 0-10 20 0 20"/></svg>`,
+          fuse: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20"/><rect x="28" y="14" width="24" height="16" ${stroke}/></svg>`,
+          breaker: `<svg ${common}><path ${stroke} d="M8 25h22M52 25h20M31 32l18-16"/><rect x="26" y="12" width="28" height="24" ${thin}/></svg>`,
           lamp: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="40" cy="22" r="13" ${stroke}/><path ${thin} d="M31 13l18 18M49 13L31 31"/></svg>`,
           buzzer: `<svg ${common}><path ${stroke} d="M8 25h18l22-12v24L26 25"/><path ${thin} d="M56 16c6 4 6 14 0 18M64 11c10 8 10 25 0 32"/></svg>`,
+          powerSupply: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M28 18h10M33 13v10M46 18h10M46 28h10"/></svg>`,
+          ground: `<svg ${common}><path ${stroke} d="M40 8v14M26 22h28M31 29h18M36 36h8"/></svg>`,
+          motor: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="40" cy="22" r="14" ${stroke}/><path ${thin} d="M32 28V16l8 8 8-8v12"/></svg>`,
+          resistor: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><rect x="26" y="14" width="28" height="16" ${stroke}/></svg>`,
+          diode: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20M28 12l24 10-24 10V12M52 12v20"/></svg>`,
           box: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M8 18h10M8 28h10M62 18h10M62 28h10"/></svg>`,
           plc: `<svg ${common}><rect x="16" y="8" width="48" height="30" ${stroke}/><path ${thin} d="M24 8v30M16 16h48M16 24h48M16 32h48"/></svg>`,
           connector: `<svg ${common}><path ${stroke} d="M10 22h60"/><circle cx="22" cy="22" r="5" ${thin}/><circle cx="40" cy="22" r="5" ${thin}/><circle cx="58" cy="22" r="5" ${thin}/></svg>`,
+          cableMarker: `<svg ${common}><path ${stroke} d="M8 22h64"/><ellipse cx="40" cy="22" rx="16" ry="9" ${thin}/></svg>`,
           table: `<svg ${common}><rect x="12" y="10" width="56" height="26" ${stroke}/><path ${thin} d="M12 18h56M12 27h56M30 10v26M50 10v26"/></svg>`,
           arrow: `<svg ${common}><path ${stroke} d="M10 22h50M50 12l12 10-12 10"/></svg>`,
           dot: `<svg ${common}><path ${stroke} d="M8 22h64M40 8v28"/><circle cx="40" cy="22" r="5" fill="currentColor"/></svg>`
@@ -1159,12 +1177,21 @@
         if (element.type === "terminalStrip") drawTerminalStrip(g, element, stroke);
         if (element.type === "contactNO") drawContact(g, element, false, stroke);
         if (element.type === "contactNC") drawContact(g, element, true, stroke);
+        if (element.type === "pushButton") drawPushButton(g, element, stroke);
         if (element.type === "coil") drawCoil(g, element, stroke);
+        if (element.type === "fuse") drawFuse(g, element, stroke);
+        if (element.type === "breaker") drawBreaker(g, element, stroke);
         if (element.type === "lamp") drawLamp(g, element, stroke);
         if (element.type === "buzzer") drawBuzzer(g, element, stroke);
+        if (element.type === "powerSupply") drawPowerSupply(g, element, stroke);
+        if (element.type === "ground") drawGround(g, element, stroke);
+        if (element.type === "motor") drawMotor(g, element, stroke);
+        if (element.type === "resistor") drawResistor(g, element, stroke);
+        if (element.type === "diode") drawDiode(g, element, stroke);
         if (element.type === "deviceBox") drawDeviceBox(g, element, stroke);
         if (element.type === "plcBlock") drawPlcBlock(g, element, stroke);
         if (element.type === "connector") drawConnector(g, element, stroke);
+        if (element.type === "cableMarker") drawCableMarker(g, element, stroke);
         if (element.type === "table") drawTable(g, element, stroke);
         if (element.type === "arrow") drawArrow(g, element, stroke);
         if (element.type === "junction") drawJunction(g, element, stroke);
@@ -1255,6 +1282,32 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      function drawPushButton(g, element, stroke) {
+        drawContact(g, element, false, stroke);
+        const w = Number(element.w || 22);
+        g.appendChild(svgEl("line", { x1: w / 2, y1: -8, x2: w / 2, y2: 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: w / 2 - 6, y1: -8, x2: w / 2 + 6, y2: -8, class: "symbol-line", stroke }));
+      }
+
+      function drawFuse(g, element, stroke) {
+        const w = Number(element.w || 24);
+        const h = Number(element.h || 10);
+        g.appendChild(svgEl("line", { x1: -10, y1: h / 2, x2: 0, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: w, y1: h / 2, x2: w + 10, y2: h / 2, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawBreaker(g, element, stroke) {
+        const w = Number(element.w || 26);
+        const h = Number(element.h || 18);
+        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: -10, y1: h / 2, x2: 5, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: w - 5, y1: h / 2, x2: w + 10, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: 7, y1: h - 4, x2: w - 7, y2: 4, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
       function drawCoil(g, element, stroke) {
         const w = Number(element.w || 24);
         const h = Number(element.h || 14);
@@ -1262,6 +1315,51 @@
         g.appendChild(svgEl("line", { x1: w - 5, y1: h / 2, x2: w, y2: h / 2, class: "symbol-line", stroke }));
         g.appendChild(svgEl("path", { d: "M 6 2 C 14 2 14 " + (h - 2) + " 6 " + (h - 2), class: "symbol-line", stroke }));
         g.appendChild(svgEl("path", { d: "M " + (w - 6) + " 2 C " + (w - 14) + " 2 " + (w - 14) + " " + (h - 2) + " " + (w - 6) + " " + (h - 2), class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawPowerSupply(g, element, stroke) {
+        const w = Number(element.w || 34);
+        const h = Number(element.h || 24);
+        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
+        g.appendChild(textEl("+", w * .3, h * .4, { fontSize: 4, anchor: "middle" }));
+        g.appendChild(textEl("-", w * .7, h * .4, { fontSize: 4, anchor: "middle" }));
+        g.appendChild(textEl(element.label || "PS", w / 2, h - 5, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawGround(g, element, stroke) {
+        g.appendChild(svgEl("line", { x1: 0, y1: -10, x2: 0, y2: 0, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: -9, y1: 0, x2: 9, y2: 0, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: -6, y1: 4, x2: 6, y2: 4, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: -3, y1: 8, x2: 3, y2: 8, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, 0, 13, { fontSize: 2.3, anchor: "middle" }));
+      }
+
+      function drawMotor(g, element, stroke) {
+        const r = Number(element.r || 8);
+        g.appendChild(svgEl("line", { x1: -14, y1: 0, x2: -r, y2: 0, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: r, y1: 0, x2: 14, y2: 0, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx: 0, cy: 0, r, class: "symbol-fill", stroke }));
+        g.appendChild(textEl("M", 0, .3, { fontSize: 4, anchor: "middle" }));
+        if (element.label) g.appendChild(textEl(element.label, 0, -r - 4, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawResistor(g, element, stroke) {
+        const w = Number(element.w || 26);
+        const h = Number(element.h || 10);
+        g.appendChild(svgEl("line", { x1: -10, y1: h / 2, x2: 0, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: w, y1: h / 2, x2: w + 10, y2: h / 2, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawDiode(g, element, stroke) {
+        const w = Number(element.w || 24);
+        const h = Number(element.h || 16);
+        g.appendChild(svgEl("line", { x1: -10, y1: h / 2, x2: 0, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M 0 1 L " + (w - 6) + " " + h / 2 + " L 0 " + (h - 1) + " Z", class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: w - 5, y1: 1, x2: w - 5, y2: h - 1, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: w - 5, y1: h / 2, x2: w + 10, y2: h / 2, class: "symbol-line", stroke }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
@@ -1327,6 +1425,14 @@
           g.appendChild(textEl(String(i + 1), cx, h + 4, { fontSize: 2, anchor: "middle" }));
         }
         if (element.label) g.appendChild(textEl(element.label, 0, -3, { fontSize: 2.4 }));
+      }
+
+      function drawCableMarker(g, element, stroke) {
+        const w = Number(element.w || 28);
+        const h = Number(element.h || 12);
+        g.appendChild(svgEl("line", { x1: -12, y1: h / 2, x2: w + 12, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("ellipse", { cx: w / 2, cy: h / 2, rx: w / 2, ry: h / 2, class: "symbol-fill", stroke }));
+        g.appendChild(textEl(element.label || "C", w / 2, h / 2, { fontSize: 2.4, anchor: "middle" }));
       }
 
       function drawTable(g, element, stroke) {
@@ -1645,12 +1751,21 @@
           terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", label: "X1" },
           contactNO: { ...base, w: 22, h: 14, label: "NO" },
           contactNC: { ...base, w: 22, h: 14, label: "NC" },
+          pushButton: { ...base, w: 22, h: 14, label: "PB" },
           coil: { ...base, w: 24, h: 14, label: "CR" },
+          fuse: { ...base, w: 24, h: 10, label: "F" },
+          breaker: { ...base, w: 26, h: 18, label: "CB" },
           lamp: { ...base, w: 18, h: 18, r: 6, label: "PL" },
           buzzer: { ...base, w: 24, h: 16, label: "BZ" },
+          powerSupply: { ...base, w: 34, h: 24, label: "PS" },
+          ground: { ...base, w: 18, h: 18, label: "E" },
+          motor: { ...base, w: 18, h: 18, r: 8, label: "M" },
+          resistor: { ...base, w: 26, h: 10, label: "R" },
+          diode: { ...base, w: 24, h: 16, label: "D" },
           deviceBox: { ...base, w: 46, h: 30, label: "機器", pins: 4, pinText: "1\n2\n3\n4" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", label: "CN" },
+          cableMarker: { ...base, w: 28, h: 12, label: "C" },
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", stroke: state.settings.stroke },
@@ -2245,12 +2360,21 @@
         const map = {
           contactNO: "CR",
           contactNC: "CR",
+          pushButton: "PB",
           coil: "CR",
+          fuse: "F",
+          breaker: "CB",
           lamp: "PL",
           buzzer: "BZ",
+          powerSupply: "PS",
+          ground: "E",
+          motor: "M",
+          resistor: "R",
+          diode: "D",
           deviceBox: "DEV",
           plcBlock: "PLC",
           connector: "CN",
+          cableMarker: "C",
           arrow: "REF"
         };
         return map[type] || "";
@@ -2354,7 +2478,7 @@
                 wireNos.set(element.wireNo, current + 1);
               }
             }
-            if (["contactNO", "contactNC", "coil", "lamp", "buzzer", "deviceBox", "plcBlock"].includes(element.type) && !label) {
+            if (["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "ground", "motor", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
               issues.push({ level: "注意", page: page.name, message: "ラベルが未入力です。", target: element.type });
             }
             if (["terminalStrip", "connector"].includes(element.type) && Number(element.count || 0) <= 0) {
