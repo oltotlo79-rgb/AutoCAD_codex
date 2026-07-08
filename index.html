@@ -746,6 +746,17 @@
         date: "project.date"
       };
 
+      const ATTRIBUTE_DISPLAY_FIELDS = [
+        { key: "tag", prop: "showAttrTag", label: "タグ", prefix: "TAG" },
+        { key: "description", prop: "showAttrDescription", label: "説明", prefix: "DESC" },
+        { key: "installation", prop: "showAttrInstallation", label: "設備", prefix: "INST" },
+        { key: "location", prop: "showAttrLocation", label: "場所", prefix: "LOC" },
+        { key: "manufacturer", prop: "showAttrManufacturer", label: "メーカー", prefix: "MFG" },
+        { key: "catalog", prop: "showAttrCatalog", label: "品番", prefix: "CAT" },
+        { key: "rating", prop: "showAttrRating", label: "定格", prefix: "RATE" },
+        { key: "item", prop: "showAttrItem", label: "項目", prefix: "ITEM" }
+      ];
+
       const PALETTE = [
         { type: "text", label: "文字", icon: "text" },
         { type: "wire", label: "配線", icon: "wire" },
@@ -1359,7 +1370,37 @@
         if (element.type === "table") drawTable(g, element, stroke);
         if (element.type === "arrow") drawArrow(g, element, stroke);
         if (element.type === "junction") drawJunction(g, element, stroke);
+        drawVisibleAttributes(g, element);
         svg.appendChild(g);
+      }
+
+      function drawVisibleAttributes(g, element) {
+        if (!supportsElectricalAttributes(element)) return;
+        const lines = visibleAttributeLines(element);
+        if (!lines.length) return;
+        const w = Number(element.w || defaultElement(element.type).w || 18);
+        const h = Number(element.h || defaultElement(element.type).h || 10);
+        const fontSize = Number(element.attrFontSize || 2.2);
+        const x = Number(element.attrX ?? (w + 3));
+        const y = Number(element.attrY ?? (h + 3));
+        lines.forEach((line, index) => {
+          g.appendChild(textEl(line, x, y + index * fontSize * 1.35, { fontSize }));
+        });
+      }
+
+      function visibleAttributeLines(element) {
+        return ATTRIBUTE_DISPLAY_FIELDS
+          .filter(field => element[field.prop])
+          .map(field => {
+            const value = electricalAttributeValue(element, field.key);
+            return value ? field.prefix + ": " + value : "";
+          })
+          .filter(Boolean);
+      }
+
+      function electricalAttributeValue(element, key) {
+        if (key === "tag") return componentTag(element);
+        return element[key] || "";
       }
 
       function drawText(g, element) {
@@ -2149,8 +2190,38 @@
               <div><label>定格</label><input data-bind="rating" type="text" value="${escapeAttr(element.rating || "")}"></div>
               <div><label>項目</label><input data-bind="item" type="text" value="${escapeAttr(element.item || "")}"></div>
             </div>
+            ${attributeDisplayControls(element)}
           </details>
         `;
+      }
+
+      function attributeDisplayControls(element) {
+        const defaults = attributeDisplayDefaults(element);
+        const checkboxes = ATTRIBUTE_DISPLAY_FIELDS.map(field => `<label><input data-bind="${escapeAttr(field.prop)}" type="checkbox" ${element[field.prop] ? "checked" : ""} style="width:auto;min-height:auto"> ${escapeHtml(field.label)}</label>`);
+        const rows = [];
+        for (let i = 0; i < checkboxes.length; i += 2) {
+          rows.push(`<div class="row">${checkboxes.slice(i, i + 2).map(item => `<div>${item}</div>`).join("")}</div>`);
+        }
+        return `
+          <label>図面表示</label>
+          ${rows.join("")}
+          <div class="row">
+            <div><label>表示X</label><input data-bind="attrX" data-kind="number" type="number" step="0.5" value="${round(defaults.x)}"></div>
+            <div><label>表示Y</label><input data-bind="attrY" data-kind="number" type="number" step="0.5" value="${round(defaults.y)}"></div>
+          </div>
+          <label>表示文字サイズ mm</label>
+          <input data-bind="attrFontSize" data-kind="number" type="number" min="1" step="0.2" value="${round(defaults.fontSize)}">
+        `;
+      }
+
+      function attributeDisplayDefaults(element) {
+        const w = Number(element.w || defaultElement(element.type).w || 18);
+        const h = Number(element.h || defaultElement(element.type).h || 10);
+        return {
+          x: element.attrX ?? (w + 3),
+          y: element.attrY ?? (h + 3),
+          fontSize: element.attrFontSize || 2.2
+        };
       }
 
       function supportsElectricalAttributes(element) {
@@ -4662,6 +4733,7 @@
           const h = Number(element.h || 22);
           dxfRectLocal(out, page, "GEOMETRY", element, 0, 0, w, h);
           if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, h / 2, 2.6, element.label);
+          dxfVisibleAttributes(out, page, element);
           return;
         }
         if (element.type === "circle") {
@@ -4673,6 +4745,7 @@
             dxfEllipseApproxLocal(out, page, "GEOMETRY", element, w / 2, h / 2, w / 2, h / 2);
           }
           if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, h / 2, 2.6, element.label);
+          dxfVisibleAttributes(out, page, element);
           return;
         }
         if (element.type === "terminalStrip" || element.type === "connector") {
@@ -4687,6 +4760,7 @@
             dxfTextLocal(out, page, "TEXT", element, cx - 1.2, h / 2 + .8, 1.8, (element.prefix || "") + String(Number(element.start || 1) + i));
           }
           if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -3, 2.5, element.label);
+          dxfVisibleAttributes(out, page, element);
           return;
         }
         if (element.type === "table") {
@@ -4704,6 +4778,7 @@
             });
           });
           if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, -4, 2.5, element.label);
+          dxfVisibleAttributes(out, page, element);
           return;
         }
         const box = elementBounds(element);
@@ -4714,15 +4789,28 @@
             if (!line.trim()) return;
             dxfTextLocal(out, page, "TEXT", element, 2, 5 + index * 4, 2, line.trim());
           });
+          dxfVisibleAttributes(out, page, element);
           return;
         }
         if (element.type === "lamp" || element.type === "junction") {
           dxfCircleLocal(out, page, "SYMBOL", element, 0, 0, Number(element.r || 6));
           if (element.label) dxfTextLocal(out, page, "TEXT", element, -4, -8, 2.4, element.label);
+          dxfVisibleAttributes(out, page, element);
           return;
         }
         dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
         if (element.label) dxfTextLocal(out, page, "TEXT", element, 1, -3, 2.4, element.label);
+        dxfVisibleAttributes(out, page, element);
+      }
+
+      function dxfVisibleAttributes(out, page, element) {
+        if (!supportsElectricalAttributes(element)) return;
+        const lines = visibleAttributeLines(element);
+        if (!lines.length) return;
+        const defaults = attributeDisplayDefaults(element);
+        lines.forEach((line, index) => {
+          dxfTextLocal(out, page, "ATTR", element, defaults.x, defaults.y + index * defaults.fontSize * 1.35, defaults.fontSize, line);
+        });
       }
 
       function cadY(page, y) {
