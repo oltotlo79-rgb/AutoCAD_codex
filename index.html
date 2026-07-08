@@ -447,7 +447,8 @@
 
     #fileInput,
     #terminalCsvInput,
-    #plcCsvInput { display: none; }
+    #plcCsvInput,
+    #underlayInput { display: none; }
 
     @media print {
       @page { margin: 0; }
@@ -694,6 +695,7 @@
             <button type="button" id="layoutPageBtn">配置</button>
           </div>
           <button type="button" id="ladderPageBtn" style="width:100%;margin-top:8px">ラダー</button>
+          <button type="button" id="underlayImageBtn" style="width:100%;margin-top:8px">下絵画像</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="movePagePrevBtn">前へ</button>
             <button type="button" id="movePageNextBtn">後へ</button>
@@ -708,6 +710,7 @@
   <input id="fileInput" type="file" accept=".json,application/json">
   <input id="terminalCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
   <input id="plcCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
+  <input id="underlayInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
   <div id="printSheets" class="print-sheets"></div>
   <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
     <div class="dialog">
@@ -1198,10 +1201,12 @@
         svg.style.width = scaled ? (size.w * state.settings.zoom) + "px" : "100%";
         svg.style.height = scaled ? (size.h * state.settings.zoom) + "px" : "100%";
 
+        const visibleElements = page.elements.filter(isElementVisible);
         svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "#fff" }));
+        visibleElements.filter(element => element.type === "underlayImage").forEach(element => drawElement(svg, element));
         if (options.grid !== false) drawGrid(svg, size);
         if (isLayerVisible("frame")) drawFrame(svg, page, size);
-        page.elements.filter(isElementVisible).forEach(element => drawElement(svg, element));
+        visibleElements.filter(element => element.type !== "underlayImage").forEach(element => drawElement(svg, element));
         if (options.selection) drawSelection(svg);
       }
 
@@ -1393,6 +1398,7 @@
           g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")");
         }
         const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
+        if (element.type === "underlayImage") drawUnderlayImage(g, element);
         if (element.type === "text") drawText(g, element);
         if (element.type === "wire") drawWire(g, element, stroke);
         if (element.type === "line") drawLineElement(g, element, stroke);
@@ -1459,6 +1465,25 @@
           fontSize: element.fontSize || 3.5,
           anchor: element.align || "start"
         });
+      }
+
+      function drawUnderlayImage(g, element) {
+        const w = Number(element.w || 100);
+        const h = Number(element.h || 70);
+        if (element.imageData) {
+          g.appendChild(svgEl("image", {
+            href: element.imageData,
+            x: 0,
+            y: 0,
+            width: w,
+            height: h,
+            opacity: Number(element.opacity ?? .35),
+            preserveAspectRatio: "none"
+          }));
+        } else {
+          g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-line", stroke: "#9aa4b2", fill: "#f8fafc" }));
+          g.appendChild(textEl("下絵画像なし", w / 2, h / 2, { fontSize: 3, anchor: "middle" }));
+        }
       }
 
       function drawWire(g, element, stroke) {
@@ -2119,6 +2144,7 @@
           const id = String(type).slice("custom:".length);
           return (state.customSymbols || []).find(symbol => symbol.id === id)?.label || "ユーザー部品";
         }
+        if (type === "underlayImage") return "下絵画像";
         return (PALETTE.find(item => item.type === type) || { label: type }).label;
       }
 
@@ -2191,6 +2217,13 @@
       function specificFields(element) {
         if (element.type === "wire") {
           return `<button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>`;
+        }
+        if (element.type === "underlayImage") {
+          return `
+            <label>透明度</label>
+            <input data-bind="opacity" data-kind="number" type="number" min="0.05" max="1" step="0.05" value="${round(element.opacity ?? .35)}">
+            <p class="muted">下絵は初期状態でロックされます。位置やサイズを調整する場合はロック解除してください。</p>
+          `;
         }
         if (element.type === "installationBox" || element.type === "locationBox") {
           const target = element.type === "installationBox" ? "設備" : "場所";
@@ -2325,7 +2358,7 @@
 
       function supportsElectricalAttributes(element) {
         if (!element) return false;
-        return !["text", "wire", "line", "rect", "circle", "installationBox", "locationBox", "table", "arrow", "junction"].includes(element.type);
+        return !["text", "wire", "line", "rect", "circle", "underlayImage", "installationBox", "locationBox", "table", "arrow", "junction"].includes(element.type);
       }
 
       function updateSelectedFromInput(input, save = true) {
@@ -2364,6 +2397,7 @@
           line: { id: uid("el"), type: "line", points: [[x, y], [x + 30, y]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke, layer: defaultLayerFor("line") },
           rect: { ...base, w: 34, h: 22, label: "" },
           circle: { ...base, w: 22, h: 22, label: "" },
+          underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
           terminal: { ...base, w: 20, h: 10, label: "1" },
@@ -2396,14 +2430,14 @@
       function defaultLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
-        if (type === "rect" || type === "circle" || type === "line" || type === "installationBox" || type === "locationBox") return state.settings.currentLayer || "layout";
+        if (type === "rect" || type === "circle" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return state.settings.currentLayer || "layout";
         return state.settings.currentLayer || "symbols";
       }
 
       function inferredLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
-        if (type === "rect" || type === "circle" || type === "line" || type === "installationBox" || type === "locationBox") return "layout";
+        if (type === "rect" || type === "circle" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return "layout";
         return "symbols";
       }
 
@@ -3808,6 +3842,55 @@
         }
       }
 
+      function importUnderlayImageFile(file) {
+        if (!file || !String(file.type || "").startsWith("image/")) {
+          setStatus("PNG/JPEG/WebP/SVG画像を選択してください。");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = String(reader.result || "");
+          const image = new Image();
+          image.onload = () => addUnderlayImageElement(file.name, dataUrl, image.naturalWidth || image.width || 1, image.naturalHeight || image.height || 1);
+          image.onerror = () => addUnderlayImageElement(file.name, dataUrl, 16, 11);
+          image.src = dataUrl;
+        };
+        reader.onerror = () => setStatus("下絵画像を読み込めませんでした。");
+        reader.readAsDataURL(file);
+      }
+
+      function addUnderlayImageElement(name, dataUrl, imageWidth, imageHeight) {
+        const page = currentPage();
+        if (!page) return;
+        const size = pageSize(page);
+        const margin = 12;
+        let w = Math.max(20, size.w - margin * 2);
+        let h = w * (Number(imageHeight || 1) / Number(imageWidth || 1));
+        if (h > size.h - margin * 2) {
+          h = Math.max(20, size.h - margin * 2);
+          w = h * (Number(imageWidth || 1) / Number(imageHeight || 1));
+        }
+        const element = {
+          id: uid("el"),
+          type: "underlayImage",
+          x: round((size.w - w) / 2),
+          y: round((size.h - h) / 2),
+          w: round(w),
+          h: round(h),
+          label: name || "下絵",
+          imageData: dataUrl,
+          opacity: .35,
+          rotation: 0,
+          locked: true,
+          stroke: "#5b626b",
+          layer: "layout"
+        };
+        page.elements.unshift(element);
+        selectSingle(element.id);
+        commitHistory("下絵画像を挿入しました。");
+        render();
+      }
+
       function openProjectFile(file) {
         const reader = new FileReader();
         reader.onload = () => {
@@ -4306,6 +4389,7 @@
         state.pages.forEach((page, pageIndex) => {
           page.elements.forEach(element => {
             if (element.reportTable) return;
+            if (element.type === "underlayImage") return;
             const base = {
               pageId: page.id,
               page: page.name || "P" + (pageIndex + 1),
@@ -4884,7 +4968,7 @@
         if (element.type === "wire" && element.wireNo) entries.push({ kind: "線番", key: element.wireNo });
         if (element.type === "arrow" && element.label) entries.push({ kind: "信号", key: element.label });
         const tag = componentTag(element);
-        if (!["wire", "arrow", "text", "table", "rect", "circle", "line", "installationBox", "locationBox", "junction"].includes(element.type) && tag) {
+        if (!["wire", "arrow", "text", "table", "rect", "circle", "line", "underlayImage", "installationBox", "locationBox", "junction"].includes(element.type) && tag) {
           entries.push({ kind: "部品", key: tag });
         }
         return entries;
@@ -5357,6 +5441,12 @@
         qs("#plcCsvInput").addEventListener("change", event => {
           const file = event.target.files[0];
           if (file) importPlcCsvFile(file);
+          event.target.value = "";
+        });
+        qs("#underlayImageBtn").addEventListener("click", () => qs("#underlayInput").click());
+        qs("#underlayInput").addEventListener("change", event => {
+          const file = event.target.files[0];
+          if (file) importUnderlayImageFile(file);
           event.target.value = "";
         });
         qs("#saveBtn").addEventListener("click", saveProject);
