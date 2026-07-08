@@ -549,8 +549,12 @@
             <button type="button" id="tagComponentsBtn">部品タグ</button>
           </div>
           <div class="row" style="margin-top:8px">
+            <button type="button" id="crossRefBtn">クロス参照</button>
             <button type="button" id="auditBtn">監査</button>
+          </div>
+          <div class="row" style="margin-top:8px">
             <button type="button" id="reportCsvBtn">帳票CSV</button>
+            <button type="button" id="copyReportBtn">一覧表示</button>
           </div>
           <button type="button" id="exportDxfBtn" style="width:100%;margin-top:8px">DXF</button>
         </div>
@@ -2576,6 +2580,7 @@
         state.pages.forEach((page, pageIndex) => {
           page.elements.forEach(element => {
             const base = {
+              pageId: page.id,
               page: page.name || "P" + (pageIndex + 1),
               sheet: page.title?.page || String(pageIndex + 1),
               type: element.type,
@@ -2634,6 +2639,64 @@
         ].join("\r\n");
         download("electrical-report.csv", csv, "text/csv;charset=utf-8");
         setStatus("帳票CSVを書き出しました。");
+      }
+
+      function showReportTable() {
+        const rows = collectReportRows();
+        const html = `<table class="report-table"><thead><tr><th>種別</th><th>ページ</th><th>名称</th><th>詳細</th><th>選択</th></tr></thead><tbody>${rows.map(row => {
+          return `<tr><td>${escapeHtml(row.type)}</td><td>${escapeHtml(row.page)}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.detail)}</td><td><button type="button" data-select-page="${escapeAttr(row.pageId || "")}" data-select-id="${escapeAttr(row.id)}">選択</button></td></tr>`;
+        }).join("")}</tbody></table>`;
+        openDialog("図面要素一覧", html);
+        attachDialogSelection();
+      }
+
+      function showCrossReference() {
+        const groups = collectCrossReferences();
+        const html = groups.length
+          ? `<table class="report-table"><thead><tr><th>キー</th><th>分類</th><th>参照数</th><th>参照先</th></tr></thead><tbody>${groups.map(group => `<tr><td>${escapeHtml(group.key)}</td><td>${escapeHtml(group.kind)}</td><td>${group.items.length}</td><td>${group.items.map(item => `<button type="button" data-select-page="${item.pageId}" data-select-id="${item.id}" title="${escapeAttr(item.type)}">${escapeHtml(item.pageName)}:${escapeHtml(item.type)}</button>`).join(" ")}</td></tr>`).join("")}</tbody></table>`
+          : '<p class="muted">参照できる線番、部品タグ、信号矢印はありません。</p>';
+        openDialog("クロスリファレンス", html);
+        attachDialogSelection();
+      }
+
+      function collectCrossReferences() {
+        const map = new Map();
+        state.pages.forEach(page => {
+          page.elements.forEach(element => {
+            const entries = crossRefEntries(element);
+            entries.forEach(entry => {
+              const key = entry.kind + "::" + entry.key;
+              const list = map.get(key) || { key: entry.key, kind: entry.kind, items: [] };
+              list.items.push({ pageId: page.id, pageName: page.name, id: element.id, type: paletteLabel(element.type) });
+              map.set(key, list);
+            });
+          });
+        });
+        return Array.from(map.values()).sort((a, b) => a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key));
+      }
+
+      function crossRefEntries(element) {
+        const entries = [];
+        if (element.type === "wire" && element.wireNo) entries.push({ kind: "線番", key: element.wireNo });
+        if (element.type === "arrow" && element.label) entries.push({ kind: "信号", key: element.label });
+        if (!["wire", "arrow", "text", "table", "rect", "circle", "line", "junction"].includes(element.type) && element.label) {
+          entries.push({ kind: "部品", key: element.label });
+        }
+        return entries;
+      }
+
+      function attachDialogSelection() {
+        qsa("[data-select-id]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            const pageId = button.dataset.selectPage;
+            const elementId = button.dataset.selectId;
+            if (pageId) state.activePageId = pageId;
+            selectedId = elementId;
+            closeDialog();
+            render();
+            setStatus("一覧から要素を選択しました。");
+          });
+        });
       }
 
       function csvCell(value) {
@@ -2972,7 +3035,9 @@
         qs("#terminalNoBtn").addEventListener("click", renumberTerminals);
         qs("#terminalEditorBtn").addEventListener("click", showTerminalEditor);
         qs("#tagComponentsBtn").addEventListener("click", autoTagComponents);
+        qs("#crossRefBtn").addEventListener("click", showCrossReference);
         qs("#reportCsvBtn").addEventListener("click", exportReportCsv);
+        qs("#copyReportBtn").addEventListener("click", showReportTable);
         qs("#auditBtn").addEventListener("click", showAudit);
         qs("#exportDxfBtn").addEventListener("click", exportDxf);
         qs("#dialogClose").addEventListener("click", closeDialog);
