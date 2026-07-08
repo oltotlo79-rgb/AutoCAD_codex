@@ -1365,6 +1365,9 @@
           const mid = pathMid(a, b);
           g.appendChild(textEl(element.label, mid.x, mid.y - 3, { fontSize: 2.4, anchor: "middle" }));
         }
+        if ((element.signalRole || "reference") !== "reference") {
+          g.appendChild(textEl(signalRoleLabel(element.signalRole), b[0], b[1] + 4.5, { fontSize: 2.1, anchor: "middle" }));
+        }
       }
 
       function drawCircleElement(g, element, stroke) {
@@ -1982,6 +1985,17 @@
       }
 
       function specificFields(element) {
+        if (element.type === "arrow") {
+          const role = element.signalRole || "reference";
+          return `
+            <label>信号矢印種別</label>
+            <select data-bind="signalRole">
+              <option value="reference"${role === "reference" ? " selected" : ""}>参照</option>
+              <option value="source"${role === "source" ? " selected" : ""}>発信元</option>
+              <option value="destination"${role === "destination" ? " selected" : ""}>受信先</option>
+            </select>
+          `;
+        }
         if (["terminalStrip", "connector"].includes(element.type)) {
           return `
             <div class="row">
@@ -2027,6 +2041,11 @@
           `;
         }
         return "";
+      }
+
+      function signalRoleLabel(role) {
+        const labels = { source: "発信元", destination: "受信先", reference: "参照" };
+        return labels[role || "reference"] || labels.reference;
       }
 
       function electricalAttributeFields(element) {
@@ -2116,7 +2135,7 @@
           cableMarker: { ...base, w: 28, h: 12, label: "C" },
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
-          arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
+          arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
           wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
         };
         return deepClone(defaults[type] || defaults.deviceBox);
@@ -3767,6 +3786,7 @@
 
       function componentDetail(element) {
         const details = [electricalAttributeDetail(element), noteDetail(element)];
+        if (element.type === "arrow") details.unshift("role=" + signalRoleLabel(element.signalRole));
         if (element.type === "table") details.unshift("rows=" + (element.rows || ""), "cols=" + (element.cols || ""), "cells=" + String(element.cellText || "").replace(/\r?\n/g, " / "));
         if (element.type === "plcBlock") details.unshift("rows=" + (element.rows || ""), "io=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
         if (element.type === "deviceBox") details.unshift("pins=" + (element.pins || ""), "pinText=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
@@ -3913,6 +3933,7 @@
           element.type,
           element.tag,
           element.label,
+          element.type === "arrow" ? signalRoleLabel(element.signalRole) : "",
           element.description,
           element.installation,
           element.location,
@@ -3993,7 +4014,8 @@
             entries.forEach(entry => {
               const key = entry.kind + "::" + entry.key;
               const list = map.get(key) || { key: entry.key, kind: entry.kind, items: [] };
-              list.items.push({ pageId: page.id, pageName: page.name, id: element.id, type: paletteLabel(element.type) });
+              const type = element.type === "arrow" ? paletteLabel(element.type) + "/" + signalRoleLabel(element.signalRole) : paletteLabel(element.type);
+              list.items.push({ pageId: page.id, pageName: page.name, id: element.id, type });
               map.set(key, list);
             });
           });
@@ -4073,9 +4095,10 @@
               if (!element.label) {
                 issues.push({ level: "警告", page: page.name, message: "信号矢印の参照名が未入力です。", target: element.id });
               } else {
-                const list = arrows.get(element.label) || [];
-                list.push(page.name);
-                arrows.set(element.label, list);
+                const role = element.signalRole || "reference";
+                const group = arrows.get(element.label) || { source: [], destination: [], reference: [] };
+                (group[role] || group.reference).push(page.name);
+                arrows.set(element.label, group);
               }
             }
             const box = elementBounds(element);
@@ -4088,9 +4111,15 @@
           });
           auditFloatingWireEnds(page).forEach(item => issues.push(item));
         });
-        arrows.forEach((pages, label) => {
-          if (pages.length === 1) {
-            issues.push({ level: "注意", page: pages[0], message: "対応する信号矢印がありません。", target: label });
+        arrows.forEach((group, label) => {
+          if (group.source.length && !group.destination.length) {
+            issues.push({ level: "注意", page: group.source[0], message: "受信先の信号矢印がありません。", target: label });
+          }
+          if (group.destination.length && !group.source.length) {
+            issues.push({ level: "注意", page: group.destination[0], message: "発信元の信号矢印がありません。", target: label });
+          }
+          if (!group.source.length && !group.destination.length && group.reference.length === 1) {
+            issues.push({ level: "注意", page: group.reference[0], message: "対応する信号矢印がありません。", target: label });
           }
         });
         terminalNames.forEach((count, key) => {
