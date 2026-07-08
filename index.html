@@ -579,6 +579,7 @@
             <button type="button" id="terminalNoBtn">端子番号</button>
           </div>
           <button type="button" id="autoJunctionBtn" style="width:100%;margin-top:8px">接続点生成</button>
+          <button type="button" id="addRungBtn" style="width:100%;margin-top:8px">ラング追加</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="terminalEditorBtn">端子台</button>
             <button type="button" id="tagComponentsBtn">部品タグ</button>
@@ -670,6 +671,7 @@
             <button type="button" id="ioPageBtn">I/O</button>
             <button type="button" id="layoutPageBtn">配置</button>
           </div>
+          <button type="button" id="ladderPageBtn" style="width:100%;margin-top:8px">ラダー</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="movePagePrevBtn">前へ</button>
             <button type="button" id="movePageNextBtn">後へ</button>
@@ -2811,6 +2813,132 @@
         render();
       }
 
+      function addLadderPage() {
+        const page = createPage({
+          name: "ラダー" + (state.pages.length + 1),
+          size: "A4",
+          orientation: "portrait",
+          frameVariant: "detailed",
+          title: "ラダー回路図"
+        });
+        const cfg = ladderConfig(page);
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: 20,
+          y: 26,
+          w: 80,
+          h: 8,
+          text: "ラダー回路図",
+          fontSize: 4,
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "notes"
+        });
+        addLadderRails(page, cfg);
+        for (let i = 0; i < 10; i++) {
+          addLadderRungElements(page, cfg, cfg.startY + i * cfg.pitch, i + 1, i < 3);
+        }
+        state.pages.push(page);
+        state.activePageId = page.id;
+        setSelection([]);
+        commitHistory("ラダーページを追加しました。");
+        render();
+      }
+
+      function addRungToCurrentPage() {
+        const page = currentPage();
+        if (!page) return;
+        const cfg = ladderConfig(page);
+        ensureLadderRails(page, cfg);
+        const rungYs = collectLadderRungYs(page);
+        const nextIndex = rungYs.length + 1;
+        const y = rungYs.length ? Math.max(...rungYs) + cfg.pitch : cfg.startY;
+        if (y > cfg.endY) {
+          setStatus("このページにはラングを追加する余白がありません。");
+          return;
+        }
+        addLadderRungElements(page, cfg, y, nextIndex, false);
+        commitHistory("ラングを追加しました。");
+        render();
+      }
+
+      function ladderConfig(page) {
+        const size = pageSize(page);
+        const portrait = size.h >= size.w;
+        const leftRail = portrait ? 36 : 42;
+        const rightRail = size.w - (portrait ? 34 : 58);
+        const startY = portrait ? 54 : 46;
+        const endY = size.h - (portrait ? 62 : 34);
+        return { leftRail, rightRail, startY, endY, pitch: portrait ? 14 : 12 };
+      }
+
+      function ensureLadderRails(page, cfg) {
+        if (page.elements.some(element => element.ladderRail)) return;
+        addLadderRails(page, cfg);
+      }
+
+      function addLadderRails(page, cfg) {
+        page.elements.push(ladderWire([[cfg.leftRail, cfg.startY - 10], [cfg.leftRail, cfg.endY + 6]], "L", { ladderRail: "left" }));
+        page.elements.push(ladderWire([[cfg.rightRail, cfg.startY - 10], [cfg.rightRail, cfg.endY + 6]], "N", { ladderRail: "right" }));
+        page.elements.push(ladderText("L", cfg.leftRail - 2, cfg.startY - 17, 3, "middle"));
+        page.elements.push(ladderText("N", cfg.rightRail + 2, cfg.startY - 17, 3, "middle"));
+      }
+
+      function addLadderRungElements(page, cfg, y, index, sample) {
+        const rungNo = String(index).padStart(3, "0");
+        page.elements.push(ladderText(rungNo, cfg.leftRail - 18, y, 2.6, "end"));
+        page.elements.push(ladderWire([[cfg.leftRail, y], [cfg.rightRail, y]], "R" + rungNo, { ladderRung: true, rungNo }));
+        if (!sample) return;
+        const contact = defaultElement(index === 2 ? "contactNC" : "contactNO", cfg.leftRail + 20, y - 7);
+        contact.label = index === 1 ? "PB01" : (index === 2 ? "PB02" : "LS01");
+        contact.tag = contact.label;
+        contact.description = index === 1 ? "起動" : (index === 2 ? "停止" : "位置検出");
+        const coil = defaultElement(index === 3 ? "lamp" : "coil", cfg.rightRail - 40, y - 7);
+        coil.label = index === 3 ? "PL01" : "CR" + String(index).padStart(2, "0");
+        coil.tag = coil.label;
+        coil.description = index === 3 ? "運転表示" : "制御リレー";
+        page.elements.push(contact, coil);
+      }
+
+      function ladderWire(points, wireNo, extra = {}) {
+        return {
+          id: uid("el"),
+          type: "wire",
+          points,
+          wireNo,
+          wireType: state.settings.currentWireType,
+          stroke: state.settings.stroke,
+          layer: "wires",
+          ...extra
+        };
+      }
+
+      function ladderText(text, x, y, fontSize, anchor = "start") {
+        return {
+          id: uid("el"),
+          type: "text",
+          x,
+          y,
+          w: 24,
+          h: 5,
+          text,
+          fontSize,
+          align: anchor,
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "notes"
+        };
+      }
+
+      function collectLadderRungYs(page) {
+        return page.elements
+          .filter(element => element.ladderRung && element.points?.length)
+          .map(element => Number(element.points[0][1]))
+          .filter(value => Number.isFinite(value))
+          .sort((a, b) => a - b);
+      }
+
       function addLayoutPage() {
         const page = createPage({
           name: "配置" + (state.pages.length + 1),
@@ -4293,6 +4421,7 @@
         qs("#autoWireBtn").addEventListener("click", autoWireNumbers);
         qs("#terminalNoBtn").addEventListener("click", renumberTerminals);
         qs("#autoJunctionBtn").addEventListener("click", autoJunctions);
+        qs("#addRungBtn").addEventListener("click", addRungToCurrentPage);
         qs("#terminalEditorBtn").addEventListener("click", showTerminalEditor);
         qs("#tagComponentsBtn").addEventListener("click", autoTagComponents);
         qs("#crossRefBtn").addEventListener("click", showCrossReference);
@@ -4311,6 +4440,7 @@
         qs("#indexPageBtn").addEventListener("click", addIndexPage);
         qs("#ioPageBtn").addEventListener("click", addIoPage);
         qs("#layoutPageBtn").addEventListener("click", addLayoutPage);
+        qs("#ladderPageBtn").addEventListener("click", addLadderPage);
         qs("#movePagePrevBtn").addEventListener("click", () => movePage(-1));
         qs("#movePageNextBtn").addEventListener("click", () => movePage(1));
         qsa("[data-tool]").forEach(button => {
