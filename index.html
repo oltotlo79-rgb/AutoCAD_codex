@@ -1329,6 +1329,17 @@
           "stroke-dasharray": style.dash || null
         }));
         const mid = pathMid(points[0], points[points.length - 1]);
+        if (element.gapAtMid) {
+          const horizontal = Math.abs(points[0][1] - points[points.length - 1][1]) <= Math.abs(points[0][0] - points[points.length - 1][0]);
+          g.appendChild(svgEl("rect", {
+            x: mid.x - (horizontal ? 3.2 : 1.5),
+            y: mid.y - (horizontal ? 1.5 : 3.2),
+            width: horizontal ? 6.4 : 3,
+            height: horizontal ? 3 : 6.4,
+            fill: "#fff",
+            stroke: "none"
+          }));
+        }
         if (element.wireNo && !element.hideWireNo) {
           g.appendChild(textEl(element.wireNo, mid.x + 1.6, mid.y - 1.8, { fontSize: 2.3 }));
           if (element.fixedWireNo) {
@@ -1891,6 +1902,7 @@
         });
         qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
         qs("#toggleLockBtn", panel)?.addEventListener("click", toggleSelectedLock);
+        qs("#toggleWireGapBtn", panel)?.addEventListener("click", toggleSelectedWireGap);
         attachSelectionActionButtons(panel);
         qs("#rotateLeftBtn", panel)?.addEventListener("click", () => rotateSelected(-90));
         qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
@@ -1994,6 +2006,9 @@
       }
 
       function specificFields(element) {
+        if (element.type === "wire") {
+          return `<button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>`;
+        }
         if (element.type === "arrow") {
           const role = element.signalRole || "reference";
           return `
@@ -2145,7 +2160,7 @@
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
-          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", fixedWireNo: false, hideWireNo: false, wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
+          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", fixedWireNo: false, hideWireNo: false, gapAtMid: false, wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
         };
         return deepClone(defaults[type] || defaults.deviceBox);
       }
@@ -3145,6 +3160,18 @@
         render();
       }
 
+      function toggleSelectedWireGap() {
+        const element = selectedElement();
+        if (!element || element.type !== "wire") return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        element.gapAtMid = !element.gapAtMid;
+        commitHistory(element.gapAtMid ? "配線ギャップを追加しました。" : "配線ギャップを解除しました。");
+        render();
+      }
+
       function registerSelectedAsSymbol() {
         const selected = selectedElements();
         if (!selected.length) {
@@ -3772,7 +3799,7 @@
               const p1 = element.points?.[element.points.length - 1] || [0, 0];
               const from = nearestElementName(page, p0[0], p0[1], element.id);
               const to = nearestElementName(page, p1[0], p1[1], element.id);
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: joinDetails([wireStyle(element).label, "from=" + from, "to=" + to, element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", noteDetail(element)]) });
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: joinDetails([wireStyle(element).label, "from=" + from, "to=" + to, element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", element.gapAtMid ? "gap=true" : "", noteDetail(element)]) });
             } else if (element.type === "terminal") {
               rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: joinDetails(["single", electricalAttributeDetail(element), noteDetail(element)]) });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
