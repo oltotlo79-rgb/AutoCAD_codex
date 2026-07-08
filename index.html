@@ -579,7 +579,10 @@
             <button type="button" id="autoWireBtn">線番</button>
             <button type="button" id="terminalNoBtn">端子番号</button>
           </div>
-          <button type="button" id="autoJunctionBtn" style="width:100%;margin-top:8px">接続点生成</button>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="autoJunctionBtn">接続点生成</button>
+            <button type="button" id="wireSequenceBtn">配線順序</button>
+          </div>
           <button type="button" id="addRungBtn" style="width:100%;margin-top:8px">ラング追加</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="terminalEditorBtn">端子台</button>
@@ -2040,6 +2043,10 @@
             <input data-bind="wireNo" type="text" value="${escapeAttr(element.wireNo || "")}">
             <label><input data-bind="fixedWireNo" type="checkbox" ${element.fixedWireNo ? "checked" : ""} style="width:auto;min-height:auto"> 線番固定</label>
             <label><input data-bind="hideWireNo" type="checkbox" ${element.hideWireNo ? "checked" : ""} style="width:auto;min-height:auto"> 線番非表示</label>
+            <div class="row">
+              <div><label>FROM</label><input data-bind="fromOverride" type="text" value="${escapeAttr(element.fromOverride || "")}"></div>
+              <div><label>TO</label><input data-bind="toOverride" type="text" value="${escapeAttr(element.toOverride || "")}"></div>
+            </div>
           `;
         }
         if (element.type === "line") {
@@ -2209,7 +2216,7 @@
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
-          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", fixedWireNo: false, hideWireNo: false, gapAtMid: false, wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
+          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", fixedWireNo: false, hideWireNo: false, gapAtMid: false, fromOverride: "", toOverride: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
         };
         return deepClone(defaults[type] || defaults.deviceBox);
       }
@@ -3847,11 +3854,8 @@
               ...electricalAttributeColumns(element)
             };
             if (element.type === "wire") {
-              const p0 = element.points?.[0] || [0, 0];
-              const p1 = element.points?.[element.points.length - 1] || [0, 0];
-              const from = nearestElementName(page, p0[0], p0[1], element.id);
-              const to = nearestElementName(page, p1[0], p1[1], element.id);
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: joinDetails([wireStyle(element).label, "from=" + from, "to=" + to, element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", element.gapAtMid ? "gap=true" : "", noteDetail(element)]) });
+              const endpoints = wireEndpointNames(page, element);
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: endpoints.p0[0], y: endpoints.p0[1], x2: endpoints.p1[0], y2: endpoints.p1[1], detail: joinDetails([wireStyle(element).label, "from=" + endpoints.from, "to=" + endpoints.to, endpoints.manual ? "sequence=manual" : "", element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", element.gapAtMid ? "gap=true" : "", noteDetail(element)]) });
             } else if (element.type === "terminal") {
               rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: joinDetails(["single", electricalAttributeDetail(element), noteDetail(element)]) });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
@@ -3894,6 +3898,24 @@
         return joinDetails(details);
       }
 
+      function wireEndpointNames(page, element) {
+        const p0 = element.points?.[0] || [0, 0];
+        const p1 = element.points?.[element.points.length - 1] || [0, 0];
+        const autoFrom = nearestElementName(page, p0[0], p0[1], element.id);
+        const autoTo = nearestElementName(page, p1[0], p1[1], element.id);
+        const from = String(element.fromOverride || "").trim() || autoFrom;
+        const to = String(element.toOverride || "").trim() || autoTo;
+        return {
+          p0,
+          p1,
+          autoFrom,
+          autoTo,
+          from,
+          to,
+          manual: Boolean(String(element.fromOverride || "").trim() || String(element.toOverride || "").trim())
+        };
+      }
+
       function nearestElementName(page, x, y, selfId) {
         let best = null;
         page.elements.forEach(element => {
@@ -3908,6 +3930,45 @@
           }
         });
         return best?.name || "";
+      }
+
+      function showWireSequenceDialog() {
+        const page = currentPage();
+        const wires = (page?.elements || []).filter(element => element.type === "wire");
+        const html = wires.length
+          ? `<table class="report-table"><thead><tr><th>線番</th><th>自動FROM</th><th>FROM</th><th>自動TO</th><th>TO</th><th>選択</th></tr></thead><tbody>${wires.map(element => {
+              const endpoints = wireEndpointNames(page, element);
+              return `<tr data-wire-sequence-row data-id="${escapeAttr(element.id)}">
+                <td>${escapeHtml(element.wireNo || "")}</td>
+                <td>${escapeHtml(endpoints.autoFrom || "")}</td>
+                <td><input data-wire-sequence-field="fromOverride" value="${escapeAttr(element.fromOverride || "")}"></td>
+                <td>${escapeHtml(endpoints.autoTo || "")}</td>
+                <td><input data-wire-sequence-field="toOverride" value="${escapeAttr(element.toOverride || "")}"></td>
+                <td><button type="button" data-select-page="${escapeAttr(page.id)}" data-select-id="${escapeAttr(element.id)}">選択</button></td>
+              </tr>`;
+            }).join("")}</tbody></table>
+            <div class="inline" style="justify-content:flex-end;margin-top:12px">
+              <button type="button" id="applyWireSequenceBtn" class="primary">配線順序を更新</button>
+            </div>`
+          : '<p class="muted">現在ページに配線がありません。</p>';
+        openDialog("配線順序", html);
+        attachDialogSelection();
+        qs("#applyWireSequenceBtn")?.addEventListener("click", applyWireSequenceDialog);
+      }
+
+      function applyWireSequenceDialog() {
+        const page = currentPage();
+        if (!page) return;
+        qsa("[data-wire-sequence-row]", qs("#dialogBody")).forEach(row => {
+          const element = page.elements.find(item => item.id === row.dataset.id);
+          if (!element || element.type !== "wire") return;
+          qsa("[data-wire-sequence-field]", row).forEach(input => {
+            element[input.dataset.wireSequenceField] = input.value;
+          });
+        });
+        closeDialog();
+        commitHistory("配線順序を更新しました。");
+        render();
       }
 
       function exportReportCsv() {
@@ -4773,6 +4834,7 @@
         qs("#autoWireBtn").addEventListener("click", autoWireNumbers);
         qs("#terminalNoBtn").addEventListener("click", renumberTerminals);
         qs("#autoJunctionBtn").addEventListener("click", autoJunctions);
+        qs("#wireSequenceBtn").addEventListener("click", showWireSequenceDialog);
         qs("#addRungBtn").addEventListener("click", addRungToCurrentPage);
         qs("#terminalEditorBtn").addEventListener("click", showTerminalEditor);
         qs("#tagComponentsBtn").addEventListener("click", autoTagComponents);
