@@ -711,6 +711,38 @@
         { id: "toyota-draft", label: "トヨタ標準（仮）", grid: 2.5, wireNumberFormat: "%S-%N", frameVariant: "detailed" }
       ];
 
+      const TITLE_FIELDS = [
+        { key: "title", label: "図名" },
+        { key: "facility", label: "設備" },
+        { key: "drawingNo", label: "図番" },
+        { key: "revision", label: "改訂" },
+        { key: "designer", label: "作成" },
+        { key: "date", label: "日付" }
+      ];
+
+      const TITLE_SOURCE_OPTIONS = [
+        { value: "project.title", label: "プロジェクト: 図名" },
+        { value: "project.facility", label: "プロジェクト: 設備" },
+        { value: "project.drawingNo", label: "プロジェクト: 図番" },
+        { value: "project.revision", label: "プロジェクト: 改訂" },
+        { value: "project.designer", label: "プロジェクト: 作成" },
+        { value: "project.date", label: "プロジェクト: 日付" },
+        { value: "page.name", label: "ページ名" },
+        { value: "page.number", label: "シート番号" },
+        { value: "page.numberTotal", label: "シート/総数" },
+        { value: "empty", label: "空欄にする" },
+        { value: "keep", label: "既存値を保持" }
+      ];
+
+      const DEFAULT_TITLE_MAP = {
+        title: "project.title",
+        facility: "project.facility",
+        drawingNo: "project.drawingNo",
+        revision: "project.revision",
+        designer: "project.designer",
+        date: "project.date"
+      };
+
       const PALETTE = [
         { type: "text", label: "文字", icon: "text" },
         { type: "wire", label: "配線", icon: "wire" },
@@ -782,7 +814,8 @@
           revision: "",
           designer: "",
           date: today,
-          facility: ""
+          facility: "",
+          titleMap: { ...DEFAULT_TITLE_MAP }
         },
         pages: []
       };
@@ -838,7 +871,22 @@
         };
       }
 
+      function ensureProjectDefaults() {
+        state.project = {
+          title: "電気図面",
+          drawingNo: "",
+          revision: "",
+          designer: "",
+          date: today,
+          facility: "",
+          ...(state.project || {})
+        };
+        state.project.titleMap = { ...DEFAULT_TITLE_MAP, ...(state.project.titleMap || {}) };
+        return state.project;
+      }
+
       function initProject() {
+        ensureProjectDefaults();
         state.pages = [createPage({ name: "P1", frameVariant: "detailed", title: "電気図面" })];
         state.activePageId = state.pages[0].id;
         setSelection([]);
@@ -925,6 +973,7 @@
         if (index < 0 || index >= history.length) return;
         const restored = JSON.parse(history[index]);
         Object.assign(state, restored);
+        ensureProjectDefaults();
         historyIndex = index;
         setSelection([]);
         render();
@@ -3309,6 +3358,7 @@
       }
 
       function saveProject() {
+        ensureProjectDefaults();
         syncPageTotals();
         const name = "electrical-drawing-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
         download(name, JSON.stringify(state, null, 2), "application/json");
@@ -3332,6 +3382,7 @@
           const restored = JSON.parse(snapshot);
           if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
           Object.assign(state, restored);
+          ensureProjectDefaults();
           setSelection([]);
           pageCounter = state.pages.length + 1;
           resetHistory();
@@ -3355,6 +3406,7 @@
             state.wireTypes = loaded.wireTypes || state.wireTypes;
             state.customSymbols = loaded.customSymbols || [];
             state.project = { ...state.project, ...(loaded.project || {}) };
+            ensureProjectDefaults();
             state.pages = loaded.pages;
             state.activePageId = loaded.activePageId || state.pages[0].id;
             pageCounter = state.pages.length + 1;
@@ -4174,7 +4226,8 @@
       }
 
       function showTitleBatchDialog() {
-        const p = state.project || {};
+        const p = ensureProjectDefaults();
+        const map = p.titleMap || DEFAULT_TITLE_MAP;
         const html = `
           <div class="row">
             <div><label>図名</label><input id="batchTitle" value="${escapeAttr(p.title || "")}"></div>
@@ -4188,17 +4241,40 @@
             <div><label>作成</label><input id="batchDesigner" value="${escapeAttr(p.designer || "")}"></div>
             <div><label>日付</label><input id="batchDate" value="${escapeAttr(p.date || today)}"></div>
           </div>
+          <label style="margin-top:10px">表題欄マッピング</label>
+          <table class="report-table">
+            <thead><tr><th>表題欄</th><th>参照元</th></tr></thead>
+            <tbody>${titleMapRows(map)}</tbody>
+          </table>
           <label><input id="batchOnlyBlank" type="checkbox" style="width:auto;min-height:auto"> 空欄の項目だけ更新</label>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="applyTitleCurrentBtn">現在ページへ適用</button>
             <button type="button" id="applyTitleBatchBtn" class="primary">全ページへ適用</button>
           </div>
         `;
         openDialog("表題欄一括更新", html);
-        qs("#applyTitleBatchBtn").addEventListener("click", applyTitleBatch);
+        qs("#applyTitleCurrentBtn").addEventListener("click", () => applyTitleBatch("current"));
+        qs("#applyTitleBatchBtn").addEventListener("click", () => applyTitleBatch("all"));
       }
 
-      function applyTitleBatch() {
-        const values = {
+      function titleMapRows(map) {
+        return TITLE_FIELDS.map(field => `
+          <tr>
+            <td>${escapeHtml(field.label)}</td>
+            <td><select data-title-map="${escapeAttr(field.key)}">${titleSourceOptions(map[field.key] || DEFAULT_TITLE_MAP[field.key])}</select></td>
+          </tr>
+        `).join("");
+      }
+
+      function titleSourceOptions(current) {
+        return TITLE_SOURCE_OPTIONS.map(option => {
+          const selected = option.value === current ? " selected" : "";
+          return `<option value="${escapeAttr(option.value)}"${selected}>${escapeHtml(option.label)}</option>`;
+        }).join("");
+      }
+
+      function titleBatchValues() {
+        return {
           title: qs("#batchTitle").value,
           facility: qs("#batchFacility").value,
           drawingNo: qs("#batchDrawingNo").value,
@@ -4206,18 +4282,50 @@
           designer: qs("#batchDesigner").value,
           date: qs("#batchDate").value
         };
+      }
+
+      function titleMapValues() {
+        const map = { ...DEFAULT_TITLE_MAP };
+        qsa("[data-title-map]", qs("#dialogBody")).forEach(select => {
+          map[select.dataset.titleMap] = select.value;
+        });
+        return map;
+      }
+
+      function applyTitleBatch(scope = "all") {
+        const values = titleBatchValues();
+        const map = titleMapValues();
         const onlyBlank = qs("#batchOnlyBlank").checked;
-        state.project = { ...state.project, ...values };
-        state.pages.forEach(page => {
-          Object.entries(values).forEach(([key, value]) => {
-            if (!value) return;
-            if (onlyBlank && page.title?.[key]) return;
-            page.title[key] = value;
+        state.project = { ...ensureProjectDefaults(), ...values, titleMap: map };
+        const total = state.pages.length;
+        const targets = scope === "current" ? [currentPage()].filter(Boolean) : state.pages;
+        targets.forEach(page => {
+          if (!page.title) page.title = {};
+          const index = state.pages.indexOf(page);
+          TITLE_FIELDS.forEach(field => {
+            const resolved = resolveTitleSource(page, map[field.key], values, index, total);
+            if (!resolved.apply) return;
+            if (onlyBlank && page.title[field.key]) return;
+            page.title[field.key] = resolved.value;
           });
         });
         closeDialog();
-        commitHistory("表題欄を一括更新しました。");
+        commitHistory(scope === "current" ? "現在ページの表題欄を更新しました。" : "表題欄を一括更新しました。");
         render();
+      }
+
+      function resolveTitleSource(page, source, values, index, total) {
+        if (source === "keep") return { apply: false, value: "" };
+        if (source === "empty") return { apply: true, value: "" };
+        const projectKey = String(source || "").replace(/^project\./, "");
+        if (source?.startsWith("project.")) {
+          const value = values[projectKey] || "";
+          return { apply: value !== "", value };
+        }
+        if (source === "page.name") return { apply: true, value: page.name || "" };
+        if (source === "page.number") return { apply: true, value: String(index + 1) };
+        if (source === "page.numberTotal") return { apply: true, value: String(index + 1) + " / " + String(total) };
+        return { apply: false, value: "" };
       }
 
       function collectCrossReferences() {
