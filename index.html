@@ -1329,7 +1329,22 @@
           const x = w * i / cols;
           g.appendChild(svgEl("line", { x1: x, y1: 0, x2: x, y2: h, class: "symbol-line", stroke }));
         }
+        drawTableCells(g, element, rows, cols, w, h);
         if (element.label) g.appendChild(textEl(element.label, w / 2, -4, { fontSize: 2.5, anchor: "middle" }));
+      }
+
+      function drawTableCells(g, element, rows, cols, w, h) {
+        const text = String(element.cellText || "");
+        if (!text.trim()) return;
+        const rowData = text.split(/\r?\n/).slice(0, rows);
+        const cellW = w / cols;
+        const cellH = h / rows;
+        rowData.forEach((line, rowIndex) => {
+          const cells = line.includes("\t") ? line.split("\t") : line.split(",");
+          cells.slice(0, cols).forEach((cell, colIndex) => {
+            g.appendChild(textEl(cell.trim(), colIndex * cellW + 1.5, rowIndex * cellH + cellH / 2, { fontSize: 2.2 }));
+          });
+        });
       }
 
       function drawArrow(g, element, stroke) {
@@ -1550,6 +1565,8 @@
               <div><label>行</label><input data-bind="rows" data-kind="number" type="number" min="1" step="1" value="${Number(element.rows || 6)}"></div>
               <div><label>列</label><input data-bind="cols" data-kind="number" type="number" min="1" step="1" value="${Number(element.cols || 4)}"></div>
             </div>
+            <label>セル文字（タブ/カンマ区切り）</label>
+            <textarea data-bind="cellText">${escapeHtml(element.cellText || "")}</textarea>
           `;
         }
         if (element.type === "plcBlock") {
@@ -1601,7 +1618,7 @@
           deviceBox: { ...base, w: 46, h: 30, label: "機器", pins: 4 },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8 },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", label: "CN" },
-          table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表" },
+          table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", stroke: state.settings.stroke },
           wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke }
@@ -1851,6 +1868,7 @@
           rows: 16,
           cols: 4,
           label: "図面目次",
+          cellText: "No.\t図番\t図名\t備考\n1\t\t\t\n2\t\t\t\n3\t\t\t",
           rotation: 0,
           stroke: state.settings.stroke
         });
@@ -2187,7 +2205,7 @@
       }
 
       function componentDetail(element) {
-        if (element.type === "table") return "rows=" + (element.rows || "") + "; cols=" + (element.cols || "");
+        if (element.type === "table") return "rows=" + (element.rows || "") + "; cols=" + (element.cols || "") + "; cells=" + String(element.cellText || "").replace(/\r?\n/g, " / ");
         if (element.type === "plcBlock") return "rows=" + (element.rows || "");
         if (element.type === "deviceBox") return "pins=" + (element.pins || "");
         return "";
@@ -2359,6 +2377,12 @@
           dxfRectLocal(out, page, "TABLE", element, 0, 0, w, h);
           for (let i = 1; i < rows; i++) dxfLineLocal(out, page, "TABLE", element, 0, h * i / rows, w, h * i / rows);
           for (let i = 1; i < cols; i++) dxfLineLocal(out, page, "TABLE", element, w * i / cols, 0, w * i / cols, h);
+          String(element.cellText || "").split(/\r?\n/).slice(0, rows).forEach((line, rowIndex) => {
+            const cells = line.includes("\t") ? line.split("\t") : line.split(",");
+            cells.slice(0, cols).forEach((cell, colIndex) => {
+              dxfTextLocal(out, page, "TEXT", element, colIndex * (w / cols) + 1.5, rowIndex * (h / rows) + h / rows / 2, 2.2, cell.trim());
+            });
+          });
           if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, -4, 2.5, element.label);
           return;
         }
