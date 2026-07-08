@@ -429,7 +429,8 @@
 
     .print-sheets { display: none; }
 
-    #fileInput { display: none; }
+    #fileInput,
+    #terminalCsvInput { display: none; }
 
     @media print {
       @page { margin: 0; }
@@ -574,6 +575,7 @@
             <button type="button" id="reportCsvBtn">帳票CSV</button>
             <button type="button" id="copyReportBtn">一覧表示</button>
           </div>
+          <button type="button" id="terminalCsvBtn" style="width:100%;margin-top:8px">端子CSV取込</button>
           <button type="button" id="exportDxfBtn" style="width:100%;margin-top:8px">DXF</button>
         </div>
       </aside>
@@ -664,6 +666,7 @@
   </div>
 
   <input id="fileInput" type="file" accept=".json,application/json">
+  <input id="terminalCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
   <div id="printSheets" class="print-sheets"></div>
   <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
     <div class="dialog">
@@ -2375,6 +2378,280 @@
         render();
       }
 
+      function importTerminalCsvFile(file) {
+        const reader = new FileReader();
+        reader.addEventListener("load", () => {
+          try {
+            const text = decodeTextBuffer(reader.result);
+            const rows = parseDelimitedRows(text);
+            const terminals = normalizeTerminalCsvRows(rows);
+            if (!terminals.length) {
+              setStatus("端子CSVに有効な行がありません。");
+              return;
+            }
+            addTerminalCsvPages(terminals, file.name || "terminal.csv");
+          } catch (error) {
+            alert("端子CSVを読み込めませんでした。\n" + error.message);
+          }
+        });
+        reader.readAsArrayBuffer(file);
+      }
+
+      function decodeTextBuffer(buffer) {
+        const bytes = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).buffer;
+        const candidates = [];
+        try {
+          candidates.push(new TextDecoder("utf-8").decode(bytes));
+        } catch (_) {
+          // TextDecoder can fail on older browsers.
+        }
+        try {
+          candidates.push(new TextDecoder("shift_jis").decode(bytes));
+        } catch (_) {
+          // Shift_JIS is optional in some environments.
+        }
+        if (!candidates.length) return "";
+        return candidates.sort((a, b) => textDecodeScore(b) - textDecodeScore(a))[0].replace(/^\uFEFF/, "");
+      }
+
+      function textDecodeScore(text) {
+        const bad = (text.match(/\uFFFD/g) || []).length * 20;
+        const japanese = (text.match(/[ぁ-んァ-ン一-龠]/g) || []).length;
+        const ascii = (text.match(/[A-Za-z0-9,\t\r\n_-]/g) || []).length;
+        return japanese * 3 + ascii - bad;
+      }
+
+      function parseDelimitedRows(text) {
+        const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const sample = source.split("\n").slice(0, 5).join("\n");
+        const delimiter = (sample.match(/\t/g) || []).length > (sample.match(/,/g) || []).length ? "\t" : ",";
+        const rows = [];
+        let row = [];
+        let cell = "";
+        let quoted = false;
+        for (let i = 0; i < source.length; i++) {
+          const char = source[i];
+          const next = source[i + 1];
+          if (quoted) {
+            if (char === '"' && next === '"') {
+              cell += '"';
+              i++;
+            } else if (char === '"') {
+              quoted = false;
+            } else {
+              cell += char;
+            }
+            continue;
+          }
+          if (char === '"' && cell === "") {
+            quoted = true;
+          } else if (char === delimiter) {
+            row.push(cell);
+            cell = "";
+          } else if (char === "\n") {
+            row.push(cell);
+            rows.push(row);
+            row = [];
+            cell = "";
+          } else {
+            cell += char;
+          }
+        }
+        row.push(cell);
+        rows.push(row);
+        return rows.map(cells => cells.map(cell => cell.trim())).filter(cells => cells.some(Boolean));
+      }
+
+      function normalizeTerminalCsvRows(rows) {
+        if (!rows.length) return [];
+        const aliases = {
+          strip: ["strip", "terminalstrip", "tb", "端子台", "端子台名"],
+          terminal: ["terminal", "term", "terminalno", "no", "番号", "端子", "端子番号", "端子no", "端子名"],
+          wireNo: ["wireno", "wire", "wire_no", "wiring", "線番", "配線番号", "線番号"],
+          signal: ["signal", "name", "description", "信号", "信号名", "名称", "用途"],
+          dest: ["dest", "destination", "to", "device", "接続先", "行先", "相手先", "機器"],
+          note: ["note", "memo", "remarks", "備考", "メモ"]
+        };
+        const first = rows[0].map(normalizeHeader);
+        const indexes = Object.fromEntries(Object.keys(aliases).map(key => [key, findHeaderIndex(first, aliases[key])]));
+        const hasHeader = Object.values(indexes).some(index => index >= 0);
+        const body = hasHeader ? rows.slice(1) : rows;
+        return body.map((cells, index) => {
+          const value = key => {
+            const col = indexes[key];
+            return col >= 0 ? (cells[col] || "").trim() : "";
+          };
+          return {
+            strip: value("strip") || "X1",
+            terminal: value("terminal") || cells[0] || String(index + 1),
+            wireNo: value("wireNo") || cells[1] || "",
+            signal: value("signal") || cells[2] || "",
+            dest: value("dest") || cells[3] || "",
+            note: value("note") || cells[4] || ""
+          };
+        }).filter(row => row.terminal || row.wireNo || row.signal || row.dest || row.note);
+      }
+
+      function normalizeHeader(text) {
+        return String(text || "").toLowerCase().replace(/[()\[\]{} 　._\-\/\\:：]/g, "");
+      }
+
+      function findHeaderIndex(headers, aliases) {
+        const normalizedAliases = aliases.map(normalizeHeader);
+        return headers.findIndex(header => normalizedAliases.includes(header));
+      }
+
+      function addTerminalCsvPages(rows, fileName) {
+        const perPage = 20;
+        const created = [];
+        for (let offset = 0; offset < rows.length; offset += perPage) {
+          const chunk = rows.slice(offset, offset + perPage);
+          const pageNo = Math.floor(offset / perPage) + 1;
+          const totalPages = Math.ceil(rows.length / perPage);
+          const page = createPage({
+            name: "端子CSV" + (state.pages.length + pageNo),
+            size: "A4",
+            orientation: "landscape",
+            frameVariant: "side",
+            title: "端子接続図"
+          });
+          populateTerminalCsvPage(page, chunk, pageNo, totalPages, fileName, offset);
+          state.pages.push(page);
+          created.push(page);
+        }
+        state.activePageId = created[0].id;
+        setSelection([]);
+        commitHistory("端子CSVから" + created.length + "ページを追加しました。");
+        render();
+      }
+
+      function populateTerminalCsvPage(page, rows, pageNo, totalPages, fileName, offset) {
+        const startX = 38;
+        const startY = 58;
+        const stripW = 184;
+        const pitch = stripW / Math.max(1, rows.length);
+        const bottomY = 148;
+        const stripName = mostCommon(rows.map(row => row.strip).filter(Boolean)) || "X1";
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: 18,
+          y: 28,
+          w: 112,
+          h: 8,
+          text: "端子接続図 " + pageNo + "/" + totalPages,
+          fontSize: 4,
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "notes"
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: 18,
+          y: 36,
+          w: 140,
+          h: 6,
+          text: "取込元: " + fileName,
+          fontSize: 2.4,
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "notes"
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "terminalStrip",
+          x: startX,
+          y: startY,
+          w: stripW,
+          h: 12,
+          count: rows.length,
+          start: 1 + offset,
+          prefix: "",
+          label: stripName,
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "symbols"
+        });
+        rows.forEach((row, index) => {
+          const x = startX + pitch * index + pitch / 2;
+          const terminal = row.terminal || String(offset + index + 1);
+          page.elements.push({
+            id: uid("el"),
+            type: "wire",
+            points: [[x, startY + 8], [x, bottomY]],
+            wireNo: row.wireNo || "",
+            wireType: state.settings.currentWireType,
+            stroke: state.settings.stroke,
+            layer: "wires"
+          });
+          page.elements.push({
+            id: uid("el"),
+            type: "terminal",
+            x,
+            y: bottomY,
+            w: 20,
+            h: 10,
+            label: terminal,
+            rotation: 90,
+            stroke: state.settings.stroke,
+            layer: "symbols",
+            note: row.note || ""
+          });
+          if (row.signal) {
+            page.elements.push({
+              id: uid("el"),
+              type: "text",
+              x: x - 2,
+              y: startY - 10,
+              w: 34,
+              h: 5,
+              text: row.signal,
+              fontSize: 2.25,
+              rotation: -90,
+              stroke: state.settings.stroke,
+              layer: "notes"
+            });
+          }
+          if (row.dest) {
+            page.elements.push({
+              id: uid("el"),
+              type: "text",
+              x: x - 2,
+              y: bottomY + 34,
+              w: 42,
+              h: 5,
+              text: row.dest,
+              fontSize: 2.25,
+              rotation: -90,
+              stroke: state.settings.stroke,
+              layer: "notes"
+            });
+          }
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "table",
+          x: 18,
+          y: 168,
+          w: 222,
+          h: 24,
+          rows: Math.min(rows.length + 1, 6),
+          cols: 4,
+          label: "端子一覧",
+          cellText: ["端子\t線番\t信号\t接続先", ...rows.slice(0, 5).map(row => [row.terminal, row.wireNo, row.signal, row.dest].join("\t"))].join("\n"),
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "notes"
+        });
+      }
+
+      function mostCommon(values) {
+        const counts = new Map();
+        values.forEach(value => counts.set(value, (counts.get(value) || 0) + 1));
+        return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+      }
+
       function addIndexPage() {
         const page = createPage({
           name: "目次" + (state.pages.length + 1),
@@ -3816,6 +4093,12 @@
         qs("#fileInput").addEventListener("change", event => {
           const file = event.target.files[0];
           if (file) openProjectFile(file);
+          event.target.value = "";
+        });
+        qs("#terminalCsvBtn").addEventListener("click", () => qs("#terminalCsvInput").click());
+        qs("#terminalCsvInput").addEventListener("change", event => {
+          const file = event.target.files[0];
+          if (file) importTerminalCsvFile(file);
           event.target.value = "";
         });
         qs("#saveBtn").addEventListener("click", saveProject);
