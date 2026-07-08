@@ -1,0 +1,1974 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Electrical Drawing Studio</title>
+  <style>
+    :root {
+      --bg: #eef1f4;
+      --panel: #ffffff;
+      --panel-2: #f7f9fb;
+      --line: #d6dde5;
+      --line-dark: #aab5c1;
+      --text: #17202a;
+      --muted: #667483;
+      --accent: #0f6f63;
+      --accent-2: #d96332;
+      --danger: #b42318;
+      --shadow: 0 14px 36px rgba(20, 31, 44, .16);
+      --mono: "Consolas", "Yu Gothic UI", monospace;
+      --ui: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      color: var(--text);
+      font-family: var(--ui);
+      background: var(--bg);
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 6px 9px;
+      cursor: pointer;
+      min-height: 32px;
+    }
+
+    button:hover { border-color: var(--line-dark); background: #f9fbfc; }
+    button:active { transform: translateY(1px); }
+
+    button.primary {
+      color: #fff;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    button.icon {
+      width: 34px;
+      padding: 0;
+      display: inline-grid;
+      place-items: center;
+      font-weight: 700;
+      font-family: var(--mono);
+    }
+
+    button.active {
+      border-color: var(--accent);
+      background: #e6f4f1;
+      color: #064e45;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 6px 8px;
+      min-height: 32px;
+    }
+
+    textarea {
+      min-height: 72px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 9px 0 4px;
+    }
+
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-rows: 48px 40px minmax(0, 1fr);
+    }
+
+    .topbar,
+    .tabbar {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      min-width: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 210px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .brand-mark {
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      background: var(--accent);
+    }
+
+    .brand-mark::before { width: 12px; height: 2px; left: 4px; top: 10px; }
+    .brand-mark::after { width: 2px; height: 12px; left: 10px; top: 4px; }
+
+    .top-actions,
+    .tool-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .spacer { flex: 1; }
+
+    .status {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 38vw;
+    }
+
+    .tabbar {
+      padding: 5px 10px;
+      overflow-x: auto;
+      gap: 6px;
+    }
+
+    .page-tab {
+      min-width: 92px;
+      max-width: 190px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 6px 9px;
+      white-space: nowrap;
+    }
+
+    .page-tab.active {
+      border-color: var(--accent);
+      background: #e6f4f1;
+      color: #064e45;
+    }
+
+    .shell {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr) 304px;
+    }
+
+    .palette,
+    .inspector {
+      min-height: 0;
+      overflow: auto;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 12px;
+    }
+
+    .inspector {
+      border-right: 0;
+      border-left: 1px solid var(--line);
+    }
+
+    .panel-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #334150;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin: 6px 0 10px;
+    }
+
+    .palette-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .palette-item {
+      min-height: 66px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      display: grid;
+      grid-template-rows: 30px auto;
+      align-items: center;
+      justify-items: center;
+      padding: 7px 6px;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .palette-item:hover,
+    .palette-item.active {
+      border-color: var(--accent);
+      background: #f1fbf8;
+    }
+
+    .palette-icon {
+      width: 50px;
+      height: 28px;
+      color: #14202c;
+    }
+
+    .palette-label {
+      font-size: 12px;
+      text-align: center;
+      line-height: 1.2;
+    }
+
+    .section {
+      border-top: 1px solid var(--line);
+      margin-top: 14px;
+      padding-top: 12px;
+    }
+
+    .workspace {
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      position: relative;
+      background:
+        linear-gradient(90deg, rgba(40, 54, 70, .06) 1px, transparent 1px),
+        linear-gradient(rgba(40, 54, 70, .06) 1px, transparent 1px),
+        var(--bg);
+      background-size: 20px 20px;
+    }
+
+    .stage {
+      min-width: max-content;
+      min-height: max-content;
+      padding: 34px;
+      display: grid;
+      place-items: start center;
+    }
+
+    .drawing-page {
+      background: #fff;
+      box-shadow: var(--shadow);
+      touch-action: none;
+      user-select: none;
+      overflow: visible;
+    }
+
+    .svg-text {
+      font-family: "Yu Gothic UI", "Meiryo", sans-serif;
+      fill: #101820;
+    }
+
+    .frame-line { stroke: #141a20; stroke-width: .25; fill: none; vector-effect: non-scaling-stroke; }
+    .frame-thick { stroke: #141a20; stroke-width: .45; fill: none; vector-effect: non-scaling-stroke; }
+    .frame-light { stroke: #5e6872; stroke-width: .18; fill: none; vector-effect: non-scaling-stroke; }
+    .wire-line { stroke: #111820; stroke-width: .38; fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; }
+    .dash-line { stroke-dasharray: 3 2; }
+    .symbol-fill { fill: #fff; stroke: #111820; stroke-width: .32; vector-effect: non-scaling-stroke; }
+    .symbol-line { stroke: #111820; stroke-width: .32; fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; stroke-linejoin: round; }
+    .terminal-dot { fill: #fff; stroke: #111820; stroke-width: .32; vector-effect: non-scaling-stroke; }
+
+    .element:hover .symbol-line,
+    .element:hover .wire-line,
+    .element:hover .symbol-fill {
+      stroke: var(--accent-2);
+    }
+
+    .selection-box {
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: .5;
+      stroke-dasharray: 2 1.2;
+      vector-effect: non-scaling-stroke;
+      pointer-events: none;
+    }
+
+    .selection-handle {
+      fill: #fff;
+      stroke: var(--accent);
+      stroke-width: .45;
+      vector-effect: non-scaling-stroke;
+      pointer-events: none;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .inline {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .danger { color: var(--danger); }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+      margin-top: 7px;
+    }
+
+    .swatch {
+      height: 28px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      cursor: pointer;
+    }
+
+    .swatch.active {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    .print-sheets { display: none; }
+
+    #fileInput { display: none; }
+
+    @media print {
+      @page { margin: 0; }
+      @page a4p { size: 210mm 297mm; margin: 0; }
+      @page a4l { size: 297mm 210mm; margin: 0; }
+      @page a3p { size: 297mm 420mm; margin: 0; }
+      @page a3l { size: 420mm 297mm; margin: 0; }
+
+      html,
+      body {
+        width: auto;
+        height: auto;
+        overflow: visible;
+        background: #fff;
+      }
+
+      .app { display: none; }
+      .print-sheets { display: block; }
+
+      .print-sheet {
+        display: block;
+        page-break-after: always;
+        break-after: page;
+        margin: 0;
+      }
+
+      .print-sheet.page-a4-portrait { page: a4p; }
+      .print-sheet.page-a4-landscape { page: a4l; }
+      .print-sheet.page-a3-portrait { page: a3p; }
+      .print-sheet.page-a3-landscape { page: a3l; }
+
+      .print-sheet:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+
+      .print-sheet svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Electrical Drawing Studio</span>
+      </div>
+      <div class="top-actions">
+        <button type="button" id="newProjectBtn" title="新規プロジェクト">新規</button>
+        <button type="button" id="openBtn" title="JSONを開く">開く</button>
+        <button type="button" id="saveBtn" class="primary" title="JSONで保存">保存</button>
+        <button type="button" id="printBtn" title="全ページをPDF印刷">PDF印刷</button>
+        <button type="button" id="exportSvgBtn" title="現在ページをSVG出力">SVG</button>
+        <button type="button" id="exportPngBtn" title="現在ページをPNG出力">PNG</button>
+      </div>
+      <div class="spacer"></div>
+      <div class="tool-actions" role="toolbar" aria-label="作図ツール">
+        <button type="button" class="icon active" data-tool="select" title="選択/移動">S</button>
+        <button type="button" class="icon" data-tool="wire" title="直交配線">W</button>
+        <button type="button" class="icon" data-tool="text" title="文字">T</button>
+        <button type="button" class="icon" id="undoBtn" title="元に戻す">U</button>
+        <button type="button" class="icon" id="redoBtn" title="やり直し">R</button>
+        <button type="button" class="icon" id="deleteBtn" title="削除">X</button>
+      </div>
+      <div class="status" id="status">A4縦の図枠付きページを作成しました。</div>
+    </header>
+
+    <nav class="tabbar" id="tabbar" aria-label="ページタブ"></nav>
+
+    <main class="shell">
+      <aside class="palette">
+        <div class="panel-title">部品パレット</div>
+        <div class="palette-grid" id="paletteGrid"></div>
+
+        <div class="section">
+          <div class="panel-title">表示</div>
+          <label for="zoomRange">ズーム</label>
+          <input id="zoomRange" type="range" min="1.6" max="5.2" step=".1" value="3.2">
+          <div class="row">
+            <div>
+              <label for="gridSize">グリッド mm</label>
+              <input id="gridSize" type="number" min="1" step="0.5" value="2.5">
+            </div>
+            <div>
+              <label for="snapToggle">スナップ</label>
+              <select id="snapToggle">
+                <option value="on">ON</option>
+                <option value="off">OFF</option>
+              </select>
+            </div>
+          </div>
+          <p class="muted">左の部品をドラッグして用紙に配置します。配線は W ツールでドラッグ、部品は選択後に移動できます。</p>
+        </div>
+      </aside>
+
+      <section class="workspace" id="workspace">
+        <div class="stage">
+          <svg id="canvas" class="drawing-page" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="図面キャンバス"></svg>
+        </div>
+      </section>
+
+      <aside class="inspector">
+        <div class="panel-title">ページ設定</div>
+        <label for="pageName">ページ名</label>
+        <input id="pageName" type="text">
+        <div class="row">
+          <div>
+            <label for="paperSize">用紙</label>
+            <select id="paperSize">
+              <option value="A4">A4</option>
+              <option value="A3">A3</option>
+            </select>
+          </div>
+          <div>
+            <label for="paperOrientation">向き</label>
+            <select id="paperOrientation">
+              <option value="portrait">縦</option>
+              <option value="landscape">横</option>
+            </select>
+          </div>
+        </div>
+        <label for="frameVariant">図枠/表題欄</label>
+        <select id="frameVariant">
+          <option value="compact">基本: 右下表題欄</option>
+          <option value="detailed">詳細: 右下+改訂欄</option>
+          <option value="side">見本風: 側面表題欄</option>
+          <option value="index">目次/表紙: 大型表欄</option>
+          <option value="blank">枠線のみ</option>
+        </select>
+
+        <div class="row">
+          <div>
+            <label for="drawingNo">図番</label>
+            <input id="drawingNo" type="text">
+          </div>
+          <div>
+            <label for="revision">改訂</label>
+            <input id="revision" type="text">
+          </div>
+        </div>
+        <label for="drawingTitle">図名</label>
+        <input id="drawingTitle" type="text">
+        <div class="row">
+          <div>
+            <label for="designer">作成</label>
+            <input id="designer" type="text">
+          </div>
+          <div>
+            <label for="drawDate">日付</label>
+            <input id="drawDate" type="text">
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="inline">
+            <button type="button" id="addPageBtn">ページ追加</button>
+            <button type="button" id="duplicatePageBtn">複製</button>
+            <button type="button" id="deletePageBtn">削除</button>
+          </div>
+        </div>
+
+        <div class="section" id="selectionPanel"></div>
+      </aside>
+    </main>
+  </div>
+
+  <input id="fileInput" type="file" accept=".json,application/json">
+  <div id="printSheets" class="print-sheets"></div>
+
+  <script>
+    (() => {
+      const PAPER = {
+        A4: { portrait: [210, 297], landscape: [297, 210] },
+        A3: { portrait: [297, 420], landscape: [420, 297] }
+      };
+
+      const PALETTE = [
+        { type: "text", label: "文字", icon: "text" },
+        { type: "wire", label: "配線", icon: "wire" },
+        { type: "terminal", label: "端子", icon: "terminal" },
+        { type: "terminalStrip", label: "端子台", icon: "strip" },
+        { type: "terminalSheet", label: "端子配線セット", icon: "sheet" },
+        { type: "contactNO", label: "a接点", icon: "contactNO" },
+        { type: "contactNC", label: "b接点", icon: "contactNC" },
+        { type: "coil", label: "コイル", icon: "coil" },
+        { type: "lamp", label: "ランプ", icon: "lamp" },
+        { type: "buzzer", label: "ブザー", icon: "buzzer" },
+        { type: "deviceBox", label: "機器箱", icon: "box" },
+        { type: "plcBlock", label: "PLC/I-O", icon: "plc" },
+        { type: "connector", label: "コネクタ", icon: "connector" },
+        { type: "table", label: "表", icon: "table" },
+        { type: "arrow", label: "信号矢印", icon: "arrow" },
+        { type: "junction", label: "接続点", icon: "dot" }
+      ];
+
+      const qs = (selector, root = document) => root.querySelector(selector);
+      const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+      const svgNS = "http://www.w3.org/2000/svg";
+      const today = new Date().toISOString().slice(0, 10);
+
+      const state = {
+        app: "Electrical Drawing Studio",
+        version: "0.1.0",
+        activePageId: "",
+        settings: {
+          zoom: 3.2,
+          grid: 2.5,
+          snap: true,
+          stroke: "#111820"
+        },
+        pages: []
+      };
+
+      let selectedId = null;
+      let activeTool = "select";
+      let dragState = null;
+      let clipboardElement = null;
+      let history = [];
+      let historyIndex = -1;
+      let pageCounter = 1;
+
+      function uid(prefix = "id") {
+        return prefix + "-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+      }
+
+      function deepClone(value) {
+        return JSON.parse(JSON.stringify(value));
+      }
+
+      function currentPage() {
+        return state.pages.find(page => page.id === state.activePageId) || state.pages[0];
+      }
+
+      function pageSize(page) {
+        const paper = PAPER[page.size] || PAPER.A4;
+        const pair = paper[page.orientation] || paper.portrait;
+        return { w: pair[0], h: pair[1] };
+      }
+
+      function createPage(options = {}) {
+        const id = uid("page");
+        const index = pageCounter++;
+        return {
+          id,
+          name: options.name || "P" + index,
+          size: options.size || "A4",
+          orientation: options.orientation || "portrait",
+          frameVariant: options.frameVariant || "detailed",
+          title: {
+            drawingNo: options.drawingNo || "",
+            title: options.title || "電気図面",
+            revision: options.revision || "",
+            designer: options.designer || "",
+            date: options.date || today,
+            facility: options.facility || "",
+            page: String(index),
+            total: "1"
+          },
+          elements: options.elements ? deepClone(options.elements) : []
+        };
+      }
+
+      function initProject() {
+        state.pages = [createPage({ name: "P1", frameVariant: "detailed", title: "電気図面" })];
+        state.activePageId = state.pages[0].id;
+        selectedId = null;
+        pageCounter = 2;
+        addStarterContent(state.pages[0]);
+        syncPageTotals();
+        resetHistory();
+        render();
+      }
+
+      function addStarterContent(page) {
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: 20,
+          y: 24,
+          w: 65,
+          h: 8,
+          text: "タイトルを入力",
+          fontSize: 4,
+          rotation: 0,
+          stroke: state.settings.stroke
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "terminalStrip",
+          x: 42,
+          y: 64,
+          w: 126,
+          h: 12,
+          count: 12,
+          start: 1,
+          prefix: "",
+          label: "X1",
+          rotation: 0,
+          stroke: state.settings.stroke
+        });
+        for (let i = 0; i < 6; i++) {
+          const x = 48 + i * 10;
+          page.elements.push({
+            id: uid("el"),
+            type: "wire",
+            points: [[x, 76], [x, 132]],
+            wireNo: "W" + String(i + 1).padStart(2, "0"),
+            stroke: state.settings.stroke
+          });
+        }
+      }
+
+      function syncPageTotals() {
+        const total = String(state.pages.length);
+        state.pages.forEach((page, index) => {
+          page.title.page = String(index + 1);
+          page.title.total = total;
+        });
+      }
+
+      function resetHistory() {
+        history = [];
+        historyIndex = -1;
+        commitHistory("初期化");
+      }
+
+      function commitHistory(reason = "") {
+        syncPageTotals();
+        const snapshot = JSON.stringify(state);
+        if (history[historyIndex] === snapshot) return;
+        history = history.slice(0, historyIndex + 1);
+        history.push(snapshot);
+        historyIndex = history.length - 1;
+        setStatus(reason || "変更を記録しました。");
+      }
+
+      function restoreHistory(index) {
+        if (index < 0 || index >= history.length) return;
+        const restored = JSON.parse(history[index]);
+        Object.assign(state, restored);
+        historyIndex = index;
+        selectedId = null;
+        render();
+      }
+
+      function setStatus(message) {
+        qs("#status").textContent = message;
+      }
+
+      function svgEl(tag, attrs = {}, children = []) {
+        const el = document.createElementNS(svgNS, tag);
+        Object.entries(attrs).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) el.setAttribute(key, String(value));
+        });
+        children.forEach(child => el.appendChild(child));
+        return el;
+      }
+
+      function textEl(text, x, y, attrs = {}) {
+        return svgEl("text", {
+          x,
+          y,
+          class: "svg-text",
+          "font-size": attrs.fontSize || 3,
+          "text-anchor": attrs.anchor || "start",
+          "dominant-baseline": attrs.baseline || "middle",
+          transform: attrs.transform || null
+        }, [document.createTextNode(text || "")]);
+      }
+
+      function multilineText(parent, text, x, y, lineHeight, attrs = {}) {
+        const lines = String(text || "").split("\n");
+        const group = svgEl("text", {
+          x,
+          y,
+          class: "svg-text",
+          "font-size": attrs.fontSize || 3,
+          "text-anchor": attrs.anchor || "start",
+          "dominant-baseline": "middle",
+          transform: attrs.transform || null
+        });
+        lines.forEach((line, index) => {
+          const tspan = svgEl("tspan", { x, dy: index === 0 ? 0 : lineHeight });
+          tspan.textContent = line;
+          group.appendChild(tspan);
+        });
+        parent.appendChild(group);
+      }
+
+      function renderPalette() {
+        const grid = qs("#paletteGrid");
+        grid.innerHTML = "";
+        PALETTE.forEach(item => {
+          const button = document.createElement("div");
+          button.className = "palette-item" + (activeTool === item.type ? " active" : "");
+          button.draggable = true;
+          button.dataset.type = item.type;
+          button.title = item.label + "を配置";
+          button.innerHTML = iconSvg(item.icon) + '<div class="palette-label">' + item.label + "</div>";
+          button.addEventListener("dragstart", event => {
+            event.dataTransfer.setData("text/plain", item.type);
+            event.dataTransfer.effectAllowed = "copy";
+          });
+          button.addEventListener("click", () => {
+            setActiveTool(item.type);
+          });
+          grid.appendChild(button);
+        });
+      }
+
+      function iconSvg(name) {
+        const common = 'class="palette-icon" viewBox="0 0 80 44" fill="none" xmlns="http://www.w3.org/2000/svg"';
+        const stroke = 'stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"';
+        const thin = 'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"';
+        const map = {
+          text: `<svg ${common}><path ${stroke} d="M18 14h44M40 14v22M30 36h20"/></svg>`,
+          wire: `<svg ${common}><path ${stroke} d="M8 22h28v-10h36"/><circle cx="36" cy="22" r="3" fill="currentColor"/></svg>`,
+          terminal: `<svg ${common}><rect x="32" y="14" width="16" height="16" ${stroke}/><path ${stroke} d="M8 22h24M48 22h24"/></svg>`,
+          strip: `<svg ${common}><path ${stroke} d="M10 24h60"/><circle cx="20" cy="24" r="6" ${thin}/><circle cx="35" cy="24" r="6" ${thin}/><circle cx="50" cy="24" r="6" ${thin}/><circle cx="65" cy="24" r="6" ${thin}/></svg>`,
+          sheet: `<svg ${common}><path ${thin} d="M12 34h56M20 12v22M34 12v22M48 12v22M62 12v22"/><path ${stroke} d="M12 12h56"/></svg>`,
+          contactNO: `<svg ${common}><path ${stroke} d="M10 22h18M52 22h18M28 12v20M52 12v20M31 30l18-16"/></svg>`,
+          contactNC: `<svg ${common}><path ${stroke} d="M10 22h18M52 22h18M28 12v20M52 12v20M31 14l18 16M46 12l-12 20"/></svg>`,
+          coil: `<svg ${common}><path ${stroke} d="M8 22h14M58 22h14M22 12c10 0 10 20 0 20M58 12c-10 0-10 20 0 20"/></svg>`,
+          lamp: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="40" cy="22" r="13" ${stroke}/><path ${thin} d="M31 13l18 18M49 13L31 31"/></svg>`,
+          buzzer: `<svg ${common}><path ${stroke} d="M8 25h18l22-12v24L26 25"/><path ${thin} d="M56 16c6 4 6 14 0 18M64 11c10 8 10 25 0 32"/></svg>`,
+          box: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M8 18h10M8 28h10M62 18h10M62 28h10"/></svg>`,
+          plc: `<svg ${common}><rect x="16" y="8" width="48" height="30" ${stroke}/><path ${thin} d="M24 8v30M16 16h48M16 24h48M16 32h48"/></svg>`,
+          connector: `<svg ${common}><path ${stroke} d="M10 22h60"/><circle cx="22" cy="22" r="5" ${thin}/><circle cx="40" cy="22" r="5" ${thin}/><circle cx="58" cy="22" r="5" ${thin}/></svg>`,
+          table: `<svg ${common}><rect x="12" y="10" width="56" height="26" ${stroke}/><path ${thin} d="M12 18h56M12 27h56M30 10v26M50 10v26"/></svg>`,
+          arrow: `<svg ${common}><path ${stroke} d="M10 22h50M50 12l12 10-12 10"/></svg>`,
+          dot: `<svg ${common}><path ${stroke} d="M8 22h64M40 8v28"/><circle cx="40" cy="22" r="5" fill="currentColor"/></svg>`
+        };
+        return map[name] || map.box;
+      }
+
+      function renderTabs() {
+        const tabbar = qs("#tabbar");
+        tabbar.innerHTML = "";
+        state.pages.forEach((page, index) => {
+          const tab = document.createElement("button");
+          tab.type = "button";
+          tab.className = "page-tab" + (page.id === state.activePageId ? " active" : "");
+          tab.textContent = page.name || "P" + (index + 1);
+          tab.title = "ページ " + (index + 1);
+          tab.addEventListener("click", () => {
+            state.activePageId = page.id;
+            selectedId = null;
+            render();
+          });
+          tabbar.appendChild(tab);
+        });
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "page-tab";
+        add.textContent = "+ ページ";
+        add.addEventListener("click", addPage);
+        tabbar.appendChild(add);
+      }
+
+      function render() {
+        renderPalette();
+        renderTabs();
+        const page = currentPage();
+        if (!page) return;
+        const svg = qs("#canvas");
+        drawPageSvg(svg, page, { selection: true, scaled: true });
+        syncInspector();
+        syncPrintSheets();
+      }
+
+      function drawPageSvg(svg, page, options = {}) {
+        const size = pageSize(page);
+        const scaled = options.scaled !== false;
+        svg.innerHTML = "";
+        svg.setAttribute("viewBox", "0 0 " + size.w + " " + size.h);
+        svg.setAttribute("width", size.w + "mm");
+        svg.setAttribute("height", size.h + "mm");
+        svg.style.width = scaled ? (size.w * state.settings.zoom) + "px" : "100%";
+        svg.style.height = scaled ? (size.h * state.settings.zoom) + "px" : "100%";
+
+        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "#fff" }));
+        drawGrid(svg, size);
+        drawFrame(svg, page, size);
+        page.elements.forEach(element => drawElement(svg, element));
+        if (options.selection) drawSelection(svg);
+      }
+
+      function drawGrid(svg, size) {
+        const step = state.settings.grid || 2.5;
+        const defs = svgEl("defs");
+        const pattern = svgEl("pattern", {
+          id: "gridPattern",
+          width: step,
+          height: step,
+          patternUnits: "userSpaceOnUse"
+        });
+        pattern.appendChild(svgEl("path", {
+          d: "M " + step + " 0 L 0 0 0 " + step,
+          fill: "none",
+          stroke: "#e4e9ee",
+          "stroke-width": .13
+        }));
+        defs.appendChild(pattern);
+        svg.appendChild(defs);
+        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#gridPattern)", opacity: .62 }));
+      }
+
+      function drawFrame(svg, page, size) {
+        const margin = frameMargin(size);
+        const frame = svgEl("g", { class: "frame" });
+        frame.appendChild(svgEl("rect", { x: margin, y: margin, width: size.w - margin * 2, height: size.h - margin * 2, class: "frame-thick" }));
+        frame.appendChild(svgEl("rect", { x: margin + 4, y: margin + 4, width: size.w - (margin + 4) * 2, height: size.h - (margin + 4) * 2, class: "frame-line" }));
+        drawCoordinateNumbers(frame, size, margin);
+        if (page.frameVariant === "compact") drawCompactTitle(frame, page, size, margin);
+        if (page.frameVariant === "detailed") drawDetailedTitle(frame, page, size, margin);
+        if (page.frameVariant === "side") drawSideTitle(frame, page, size, margin);
+        if (page.frameVariant === "index") drawIndexFrame(frame, page, size, margin);
+        svg.appendChild(frame);
+      }
+
+      function frameMargin(size) {
+        return Math.min(size.w, size.h) >= 297 ? 10 : 8;
+      }
+
+      function drawCoordinateNumbers(frame, size, margin) {
+        const left = margin + 5;
+        const bottom = size.h - margin - 5;
+        const top = margin + 5;
+        const usableW = size.w - margin * 2 - 10;
+        const usableH = size.h - margin * 2 - 10;
+        const count = 20;
+        for (let i = 0; i <= count; i++) {
+          const x = left + usableW * i / count;
+          frame.appendChild(svgEl("line", { x1: x, y1: bottom - 1.7, x2: x, y2: bottom + 1.7, class: "frame-light" }));
+          frame.appendChild(textEl(String(i).padStart(2, "0"), x, bottom + 4.2, { fontSize: 2, anchor: "middle" }));
+        }
+        for (let i = 0; i <= count; i++) {
+          const y = bottom - usableH * i / count;
+          frame.appendChild(svgEl("line", { x1: left - 1.7, y1: y, x2: left + 1.7, y2: y, class: "frame-light" }));
+          frame.appendChild(textEl(String(i).padStart(2, "0"), left - 4.2, y, { fontSize: 2, anchor: "middle", transform: "rotate(-90 " + (left - 4.2) + " " + y + ")" }));
+        }
+      }
+
+      function drawCompactTitle(frame, page, size, margin) {
+        const w = Math.min(94, size.w - margin * 2 - 18);
+        const h = 32;
+        const x = size.w - margin - w;
+        const y = size.h - margin - h;
+        frame.appendChild(svgEl("rect", { x, y, width: w, height: h, class: "frame-thick" }));
+        drawRows(frame, x, y, w, h, [8, 8, 8, 8]);
+        drawCols(frame, x, y, w, h, [18, 46, 18, w - 82]);
+        frame.appendChild(textEl("図名", x + 2, y + 4, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.title, x + 20, y + 4, { fontSize: 2.7 }));
+        frame.appendChild(textEl("図番", x + 2, y + 12, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.drawingNo, x + 20, y + 12, { fontSize: 2.5 }));
+        frame.appendChild(textEl("作成", x + 2, y + 20, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.designer, x + 20, y + 20, { fontSize: 2.5 }));
+        frame.appendChild(textEl("日付", x + 52, y + 20, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.date, x + 70, y + 20, { fontSize: 2.5 }));
+        frame.appendChild(textEl("SHEET", x + 2, y + 28, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.page + " / " + page.title.total, x + 20, y + 28, { fontSize: 2.5 }));
+      }
+
+      function drawDetailedTitle(frame, page, size, margin) {
+        const w = Math.min(124, size.w - margin * 2 - 12);
+        const h = 48;
+        const x = size.w - margin - w;
+        const y = size.h - margin - h;
+        frame.appendChild(svgEl("rect", { x, y, width: w, height: h, class: "frame-thick" }));
+        drawRows(frame, x, y, w, h, [8, 8, 8, 8, 8, 8]);
+        drawCols(frame, x, y, w, h, [18, 44, 16, 24, 22]);
+        const revX = x + w - 28;
+        frame.appendChild(svgEl("line", { x1: revX, y1: y, x2: revX, y2: y + h, class: "frame-line" }));
+        frame.appendChild(textEl("REV", revX + 14, y + 4, { fontSize: 2.1, anchor: "middle" }));
+        for (let i = 1; i < 6; i++) frame.appendChild(svgEl("line", { x1: revX, y1: y + 8 * i, x2: x + w, y2: y + 8 * i, class: "frame-light" }));
+        frame.appendChild(textEl(page.title.revision || "", revX + 14, y + 12, { fontSize: 2.4, anchor: "middle" }));
+        frame.appendChild(textEl("図名", x + 2, y + 4, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.title, x + 20, y + 4, { fontSize: 2.7 }));
+        frame.appendChild(textEl("設備", x + 2, y + 12, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.facility || "", x + 20, y + 12, { fontSize: 2.5 }));
+        frame.appendChild(textEl("図番", x + 2, y + 20, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.drawingNo, x + 20, y + 20, { fontSize: 2.5 }));
+        frame.appendChild(textEl("作成", x + 2, y + 28, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.designer, x + 20, y + 28, { fontSize: 2.5 }));
+        frame.appendChild(textEl("日付", x + 64, y + 28, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.date, x + 82, y + 28, { fontSize: 2.5 }));
+        frame.appendChild(textEl("SHEET", x + 2, y + 44, { fontSize: 2.2 }));
+        frame.appendChild(textEl(page.title.page + " / " + page.title.total, x + 20, y + 44, { fontSize: 2.5 }));
+      }
+
+      function drawSideTitle(frame, page, size, margin) {
+        const w = Math.min(44, Math.max(34, size.w * .15));
+        const x = size.w - margin - w;
+        const y = margin + 4;
+        const h = size.h - margin * 2 - 8;
+        frame.appendChild(svgEl("line", { x1: x, y1: y, x2: x, y2: y + h, class: "frame-thick" }));
+        frame.appendChild(svgEl("rect", { x, y: y + h - 88, width: w, height: 88, class: "frame-thick" }));
+        drawRows(frame, x, y + h - 88, w, 88, [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]);
+        drawCols(frame, x, y + h - 88, w, 88, [12, 18, w - 30]);
+        frame.appendChild(textEl("図名", x + 2, y + h - 84, { fontSize: 2 }));
+        frame.appendChild(textEl(page.title.title, x + 14, y + h - 84, { fontSize: 2.4 }));
+        frame.appendChild(textEl("図番", x + 2, y + h - 76, { fontSize: 2 }));
+        frame.appendChild(textEl(page.title.drawingNo, x + 14, y + h - 76, { fontSize: 2.3 }));
+        frame.appendChild(textEl("REV", x + 2, y + h - 68, { fontSize: 2 }));
+        frame.appendChild(textEl(page.title.revision, x + 14, y + h - 68, { fontSize: 2.3 }));
+        frame.appendChild(textEl("SHEET", x + 2, y + h - 12, { fontSize: 2 }));
+        frame.appendChild(textEl(page.title.page + "/" + page.title.total, x + 18, y + h - 12, { fontSize: 2.5 }));
+        const revY = y + 8;
+        frame.appendChild(svgEl("rect", { x, y: revY, width: w, height: 58, class: "frame-line" }));
+        for (let i = 1; i < 8; i++) frame.appendChild(svgEl("line", { x1: x, y1: revY + i * 7, x2: x + w, y2: revY + i * 7, class: "frame-light" }));
+        frame.appendChild(textEl("改訂履歴", x + w / 2, revY + 4, { fontSize: 2.2, anchor: "middle" }));
+      }
+
+      function drawIndexFrame(frame, page, size, margin) {
+        drawCompactTitle(frame, page, size, margin);
+        const x = margin + 18;
+        const y = margin + 22;
+        const w = Math.min(size.w - margin * 2 - 36, 150);
+        const h = Math.min(size.h - margin * 2 - 76, 170);
+        frame.appendChild(textEl("図面目次", x + w / 2, y - 8, { fontSize: 4, anchor: "middle" }));
+        frame.appendChild(svgEl("rect", { x, y, width: w, height: h, class: "frame-thick" }));
+        const rows = 16;
+        for (let i = 1; i < rows; i++) {
+          frame.appendChild(svgEl("line", { x1: x, y1: y + h * i / rows, x2: x + w, y2: y + h * i / rows, class: "frame-light" }));
+        }
+        [18, 48, 118].forEach(dx => frame.appendChild(svgEl("line", { x1: x + dx, y1: y, x2: x + dx, y2: y + h, class: "frame-light" })));
+        frame.appendChild(textEl("No.", x + 9, y + h / rows / 2, { fontSize: 2.5, anchor: "middle" }));
+        frame.appendChild(textEl("図番", x + 33, y + h / rows / 2, { fontSize: 2.5, anchor: "middle" }));
+        frame.appendChild(textEl("図名", x + 83, y + h / rows / 2, { fontSize: 2.5, anchor: "middle" }));
+      }
+
+      function drawRows(parent, x, y, w, h, rowHeights) {
+        let yy = y;
+        rowHeights.slice(0, -1).forEach(row => {
+          yy += row;
+          parent.appendChild(svgEl("line", { x1: x, y1: yy, x2: x + w, y2: yy, class: "frame-light" }));
+        });
+      }
+
+      function drawCols(parent, x, y, w, h, colWidths) {
+        let xx = x;
+        colWidths.slice(0, -1).forEach(col => {
+          xx += col;
+          parent.appendChild(svgEl("line", { x1: xx, y1: y, x2: xx, y2: y + h, class: "frame-light" }));
+        });
+      }
+
+      function drawElement(svg, element) {
+        const g = svgEl("g", { class: "element", "data-id": element.id, cursor: "move" });
+        if (element.type !== "wire" && element.type !== "arrow") {
+          g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")");
+        }
+        const stroke = element.stroke || state.settings.stroke;
+        if (element.type === "text") drawText(g, element);
+        if (element.type === "wire") drawWire(g, element, stroke);
+        if (element.type === "terminal") drawTerminal(g, element, stroke);
+        if (element.type === "terminalStrip") drawTerminalStrip(g, element, stroke);
+        if (element.type === "contactNO") drawContact(g, element, false, stroke);
+        if (element.type === "contactNC") drawContact(g, element, true, stroke);
+        if (element.type === "coil") drawCoil(g, element, stroke);
+        if (element.type === "lamp") drawLamp(g, element, stroke);
+        if (element.type === "buzzer") drawBuzzer(g, element, stroke);
+        if (element.type === "deviceBox") drawDeviceBox(g, element, stroke);
+        if (element.type === "plcBlock") drawPlcBlock(g, element, stroke);
+        if (element.type === "connector") drawConnector(g, element, stroke);
+        if (element.type === "table") drawTable(g, element, stroke);
+        if (element.type === "arrow") drawArrow(g, element, stroke);
+        if (element.type === "junction") drawJunction(g, element, stroke);
+        svg.appendChild(g);
+      }
+
+      function drawText(g, element) {
+        multilineText(g, element.text || "文字", 0, 0, (element.fontSize || 3.5) * 1.25, {
+          fontSize: element.fontSize || 3.5,
+          anchor: element.align || "start"
+        });
+      }
+
+      function drawWire(g, element, stroke) {
+        const points = element.points || [[0, 0], [20, 0]];
+        const path = orthogonalPath(points[0], points[points.length - 1]);
+        g.appendChild(svgEl("path", { d: path, class: "wire-line", stroke }));
+        const mid = pathMid(points[0], points[points.length - 1]);
+        if (element.wireNo) {
+          g.appendChild(textEl(element.wireNo, mid.x + 1.6, mid.y - 1.8, { fontSize: 2.3 }));
+        }
+      }
+
+      function orthogonalPath(a, b) {
+        if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
+          return "M " + a[0] + " " + a[1] + " L " + b[0] + " " + b[1];
+        }
+        return "M " + a[0] + " " + a[1] + " L " + a[0] + " " + b[1] + " L " + b[0] + " " + b[1];
+      }
+
+      function pathMid(a, b) {
+        return { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 };
+      }
+
+      function drawTerminal(g, element, stroke) {
+        const label = element.label || "1";
+        g.appendChild(svgEl("line", { x1: -10, y1: 0, x2: -3, y2: 0, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: 3, y1: 0, x2: 10, y2: 0, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("rect", { x: -3, y: -3, width: 6, height: 6, class: "symbol-fill", stroke }));
+        g.appendChild(textEl(label, 0, -5.6, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawTerminalStrip(g, element, stroke) {
+        const count = Math.max(1, Number(element.count || 8));
+        const w = Number(element.w || count * 8);
+        const h = Number(element.h || 12);
+        const pitch = w / count;
+        g.appendChild(svgEl("path", { d: "M 0 " + h / 2 + " H " + w, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M 0 " + h / 2 + " c 2 -3 2 3 4 0", class: "symbol-line", stroke }));
+        for (let i = 0; i < count; i++) {
+          const cx = pitch * i + pitch / 2;
+          g.appendChild(svgEl("circle", { cx, cy: h / 2, r: Math.min(3.1, pitch * .35), class: "terminal-dot", stroke }));
+          const number = (element.prefix || "") + String((Number(element.start || 1) + i));
+          g.appendChild(textEl(number, cx, h / 2, { fontSize: 2.1, anchor: "middle" }));
+        }
+        if (element.label) g.appendChild(textEl(element.label, 0, -3.2, { fontSize: 2.5 }));
+      }
+
+      function drawContact(g, element, closed, stroke) {
+        const w = Number(element.w || 22);
+        const h = Number(element.h || 14);
+        g.appendChild(svgEl("line", { x1: 0, y1: h / 2, x2: 6, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: w - 6, y1: h / 2, x2: w, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: 6, y1: 2, x2: 6, y2: h - 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: w - 6, y1: 2, x2: w - 6, y2: h - 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: 8, y1: h - 3, x2: w - 8, y2: 3, class: "symbol-line", stroke }));
+        if (closed) {
+          g.appendChild(svgEl("line", { x1: w - 10, y1: 2, x2: 9, y2: h - 2, class: "symbol-line", stroke }));
+        }
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawCoil(g, element, stroke) {
+        const w = Number(element.w || 24);
+        const h = Number(element.h || 14);
+        g.appendChild(svgEl("line", { x1: 0, y1: h / 2, x2: 5, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: w - 5, y1: h / 2, x2: w, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M 6 2 C 14 2 14 " + (h - 2) + " 6 " + (h - 2), class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + (w - 6) + " 2 C " + (w - 14) + " 2 " + (w - 14) + " " + (h - 2) + " " + (w - 6) + " " + (h - 2), class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawLamp(g, element, stroke) {
+        const r = Number(element.r || 6);
+        g.appendChild(svgEl("line", { x1: -12, y1: 0, x2: -r, y2: 0, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: r, y1: 0, x2: 12, y2: 0, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx: 0, cy: 0, r, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: -r * .62, y1: -r * .62, x2: r * .62, y2: r * .62, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: r * .62, y1: -r * .62, x2: -r * .62, y2: r * .62, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, 0, -r - 4, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawBuzzer(g, element, stroke) {
+        const w = Number(element.w || 22);
+        const h = Number(element.h || 16);
+        g.appendChild(svgEl("path", { d: "M 0 " + h / 2 + " H 6 L " + (w - 6) + " 2 V " + (h - 2) + " L 6 " + h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + (w - 2) + " 4 C " + (w + 5) + " 8 " + (w + 5) + " " + (h - 4) + " " + (w - 2) + " " + (h - 4), class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawDeviceBox(g, element, stroke) {
+        const w = Number(element.w || 42);
+        const h = Number(element.h || 28);
+        const pins = Math.max(0, Number(element.pins || 4));
+        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
+        multilineText(g, element.label || "機器", w / 2, h / 2 - 2, 3.8, { fontSize: 2.6, anchor: "middle" });
+        for (let i = 0; i < pins; i++) {
+          const y = h * (i + 1) / (pins + 1);
+          g.appendChild(svgEl("line", { x1: -7, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 7, y2: y, class: "symbol-line", stroke }));
+        }
+      }
+
+      function drawPlcBlock(g, element, stroke) {
+        const w = Number(element.w || 48);
+        const rows = Math.max(2, Number(element.rows || 8));
+        const h = Number(element.h || rows * 6 + 10);
+        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
+        g.appendChild(textEl(element.label || "PLC", w / 2, 5, { fontSize: 2.5, anchor: "middle" }));
+        for (let i = 1; i <= rows; i++) {
+          const y = 8 + i * ((h - 10) / rows);
+          g.appendChild(svgEl("line", { x1: 0, y1: y, x2: w, y2: y, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: -8, y1: y - 3, x2: 0, y2: y - 3, class: "symbol-line", stroke }));
+          g.appendChild(textEl(String(i).padStart(2, "0"), 3, y - 3, { fontSize: 2 }));
+        }
+      }
+
+      function drawConnector(g, element, stroke) {
+        const count = Math.max(1, Number(element.count || 8));
+        const w = Number(element.w || count * 7);
+        const h = Number(element.h || 10);
+        const pitch = w / count;
+        g.appendChild(svgEl("line", { x1: 0, y1: h / 2, x2: w, y2: h / 2, class: "symbol-line", stroke }));
+        for (let i = 0; i < count; i++) {
+          const cx = pitch * i + pitch / 2;
+          g.appendChild(svgEl("circle", { cx, cy: h / 2, r: Math.min(2.7, pitch * .33), class: "terminal-dot", stroke }));
+          g.appendChild(textEl(String(i + 1), cx, h + 4, { fontSize: 2, anchor: "middle" }));
+        }
+        if (element.label) g.appendChild(textEl(element.label, 0, -3, { fontSize: 2.4 }));
+      }
+
+      function drawTable(g, element, stroke) {
+        const rows = Math.max(1, Number(element.rows || 6));
+        const cols = Math.max(1, Number(element.cols || 4));
+        const w = Number(element.w || 78);
+        const h = Number(element.h || 44);
+        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
+        for (let i = 1; i < rows; i++) {
+          const y = h * i / rows;
+          g.appendChild(svgEl("line", { x1: 0, y1: y, x2: w, y2: y, class: "symbol-line", stroke }));
+        }
+        for (let i = 1; i < cols; i++) {
+          const x = w * i / cols;
+          g.appendChild(svgEl("line", { x1: x, y1: 0, x2: x, y2: h, class: "symbol-line", stroke }));
+        }
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -4, { fontSize: 2.5, anchor: "middle" }));
+      }
+
+      function drawArrow(g, element, stroke) {
+        const points = element.points || [[element.x || 0, element.y || 0], [(element.x || 0) + 30, element.y || 0]];
+        const a = points[0];
+        const b = points[points.length - 1];
+        g.appendChild(svgEl("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: "symbol-line", stroke }));
+        const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+        const len = 4;
+        const p1 = [b[0] - len * Math.cos(angle - .6), b[1] - len * Math.sin(angle - .6)];
+        const p2 = [b[0] - len * Math.cos(angle + .6), b[1] - len * Math.sin(angle + .6)];
+        g.appendChild(svgEl("path", { d: "M " + p1[0] + " " + p1[1] + " L " + b[0] + " " + b[1] + " L " + p2[0] + " " + p2[1], class: "symbol-line", stroke }));
+        if (element.label) {
+          const mid = pathMid(a, b);
+          g.appendChild(textEl(element.label, mid.x, mid.y - 3, { fontSize: 2.4, anchor: "middle" }));
+        }
+      }
+
+      function drawJunction(g, element, stroke) {
+        g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: Number(element.r || 1.45), fill: stroke }));
+      }
+
+      function drawSelection(svg) {
+        const element = selectedElement();
+        if (!element) return;
+        const box = elementBounds(element);
+        if (!box) return;
+        svg.appendChild(svgEl("rect", {
+          x: box.x - 2,
+          y: box.y - 2,
+          width: box.w + 4,
+          height: box.h + 4,
+          class: "selection-box"
+        }));
+        const handles = [
+          [box.x - 2, box.y - 2],
+          [box.x + box.w + 2, box.y - 2],
+          [box.x - 2, box.y + box.h + 2],
+          [box.x + box.w + 2, box.y + box.h + 2]
+        ];
+        handles.forEach(([x, y]) => {
+          svg.appendChild(svgEl("rect", { x: x - 1.5, y: y - 1.5, width: 3, height: 3, class: "selection-handle" }));
+        });
+      }
+
+      function elementBounds(element) {
+        if (element.type === "wire" || element.type === "arrow") {
+          const points = element.points || [[0, 0], [0, 0]];
+          const xs = points.map(p => p[0]);
+          const ys = points.map(p => p[1]);
+          const minX = Math.min(...xs);
+          const minY = Math.min(...ys);
+          return { x: minX, y: minY, w: Math.max(1, Math.max(...xs) - minX), h: Math.max(1, Math.max(...ys) - minY) };
+        }
+        if (element.type === "junction") {
+          const r = Number(element.r || 1.45);
+          return { x: element.x - r, y: element.y - r, w: r * 2, h: r * 2 };
+        }
+        const w = Number(element.w || defaultElement(element.type).w || 20);
+        const h = Number(element.h || defaultElement(element.type).h || 10);
+        return { x: Number(element.x || 0), y: Number(element.y || 0), w, h };
+      }
+
+      function selectedElement() {
+        const page = currentPage();
+        if (!page || !selectedId) return null;
+        return page.elements.find(element => element.id === selectedId) || null;
+      }
+
+      function syncInspector() {
+        const page = currentPage();
+        if (!page) return;
+        setValue("pageName", page.name);
+        setValue("paperSize", page.size);
+        setValue("paperOrientation", page.orientation);
+        setValue("frameVariant", page.frameVariant);
+        setValue("drawingNo", page.title.drawingNo);
+        setValue("revision", page.title.revision);
+        setValue("drawingTitle", page.title.title);
+        setValue("designer", page.title.designer);
+        setValue("drawDate", page.title.date);
+        setValue("zoomRange", state.settings.zoom);
+        setValue("gridSize", state.settings.grid);
+        setValue("snapToggle", state.settings.snap ? "on" : "off");
+        renderSelectionPanel();
+      }
+
+      function setValue(id, value) {
+        const el = qs("#" + id);
+        if (el && el.value !== String(value ?? "")) el.value = value ?? "";
+      }
+
+      function renderSelectionPanel() {
+        const panel = qs("#selectionPanel");
+        const element = selectedElement();
+        if (!element) {
+          panel.innerHTML = '<div class="panel-title">選択中の要素</div><p class="muted">図形を選択すると、位置・寸法・記号名・線番を編集できます。</p>';
+          return;
+        }
+        const typeName = paletteLabel(element.type);
+        const isWireLike = element.type === "wire" || element.type === "arrow";
+        panel.innerHTML = `
+          <div class="panel-title">選択中: ${typeName}</div>
+          ${isWireLike ? wireFields(element) : normalFields(element)}
+          ${labelFields(element)}
+          ${specificFields(element)}
+          <label for="selStroke">線色</label>
+          <div class="swatches" id="swatches">
+            ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
+          </div>
+        `;
+        qsa("[data-bind]", panel).forEach(input => {
+          input.addEventListener("change", () => updateSelectedFromInput(input));
+          input.addEventListener("input", () => {
+            if (input.tagName === "TEXTAREA" || input.dataset.live === "true") updateSelectedFromInput(input, false);
+          });
+        });
+        qsa(".swatch", panel).forEach(button => {
+          button.addEventListener("click", () => {
+            const selected = selectedElement();
+            if (!selected) return;
+            selected.stroke = button.dataset.color;
+            commitHistory("線色を変更しました。");
+            render();
+          });
+        });
+      }
+
+      function paletteLabel(type) {
+        return (PALETTE.find(item => item.type === type) || { label: type }).label;
+      }
+
+      function normalFields(element) {
+        return `
+          <div class="row">
+            <div><label>X mm</label><input data-bind="x" data-kind="number" type="number" step="0.5" value="${round(element.x || 0)}"></div>
+            <div><label>Y mm</label><input data-bind="y" data-kind="number" type="number" step="0.5" value="${round(element.y || 0)}"></div>
+          </div>
+          <div class="row">
+            <div><label>幅 mm</label><input data-bind="w" data-kind="number" type="number" step="0.5" value="${round(element.w || defaultElement(element.type).w || 20)}"></div>
+            <div><label>高さ mm</label><input data-bind="h" data-kind="number" type="number" step="0.5" value="${round(element.h || defaultElement(element.type).h || 10)}"></div>
+          </div>
+          <label>回転 deg</label>
+          <input data-bind="rotation" data-kind="number" type="number" step="90" value="${round(element.rotation || 0)}">
+        `;
+      }
+
+      function wireFields(element) {
+        const points = element.points || [[0, 0], [20, 0]];
+        const a = points[0];
+        const b = points[points.length - 1];
+        return `
+          <div class="row">
+            <div><label>始点 X</label><input data-bind="p0x" data-kind="number" type="number" step="0.5" value="${round(a[0])}"></div>
+            <div><label>始点 Y</label><input data-bind="p0y" data-kind="number" type="number" step="0.5" value="${round(a[1])}"></div>
+          </div>
+          <div class="row">
+            <div><label>終点 X</label><input data-bind="p1x" data-kind="number" type="number" step="0.5" value="${round(b[0])}"></div>
+            <div><label>終点 Y</label><input data-bind="p1y" data-kind="number" type="number" step="0.5" value="${round(b[1])}"></div>
+          </div>
+        `;
+      }
+
+      function labelFields(element) {
+        if (element.type === "text") {
+          return `
+            <label>文字</label>
+            <textarea data-bind="text">${escapeHtml(element.text || "")}</textarea>
+            <label>文字サイズ mm</label>
+            <input data-bind="fontSize" data-kind="number" type="number" step="0.2" value="${round(element.fontSize || 3.5)}">
+          `;
+        }
+        if (element.type === "wire") {
+          return `
+            <label>線番</label>
+            <input data-bind="wireNo" type="text" value="${escapeAttr(element.wireNo || "")}">
+          `;
+        }
+        return `
+          <label>ラベル</label>
+          <input data-bind="label" type="text" value="${escapeAttr(element.label || "")}">
+        `;
+      }
+
+      function specificFields(element) {
+        if (["terminalStrip", "connector"].includes(element.type)) {
+          return `
+            <div class="row">
+              <div><label>端子数</label><input data-bind="count" data-kind="number" type="number" min="1" step="1" value="${Number(element.count || 8)}"></div>
+              <div><label>開始番号</label><input data-bind="start" data-kind="number" type="number" step="1" value="${Number(element.start || 1)}"></div>
+            </div>
+            <label>接頭辞</label>
+            <input data-bind="prefix" type="text" value="${escapeAttr(element.prefix || "")}">
+          `;
+        }
+        if (element.type === "table") {
+          return `
+            <div class="row">
+              <div><label>行</label><input data-bind="rows" data-kind="number" type="number" min="1" step="1" value="${Number(element.rows || 6)}"></div>
+              <div><label>列</label><input data-bind="cols" data-kind="number" type="number" min="1" step="1" value="${Number(element.cols || 4)}"></div>
+            </div>
+          `;
+        }
+        if (element.type === "plcBlock") {
+          return `<label>I/O行数</label><input data-bind="rows" data-kind="number" type="number" min="2" step="1" value="${Number(element.rows || 8)}">`;
+        }
+        if (element.type === "deviceBox") {
+          return `<label>左右ピン数</label><input data-bind="pins" data-kind="number" type="number" min="0" step="1" value="${Number(element.pins || 4)}">`;
+        }
+        return "";
+      }
+
+      function updateSelectedFromInput(input, save = true) {
+        const element = selectedElement();
+        if (!element) return;
+        const key = input.dataset.bind;
+        const value = input.dataset.kind === "number" ? Number(input.value) : input.value;
+        if (key === "p0x") element.points[0][0] = value;
+        else if (key === "p0y") element.points[0][1] = value;
+        else if (key === "p1x") element.points[element.points.length - 1][0] = value;
+        else if (key === "p1y") element.points[element.points.length - 1][1] = value;
+        else element[key] = value;
+        if (save) commitHistory("要素を更新しました。");
+        render();
+      }
+
+      function escapeHtml(text) {
+        return String(text).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+      }
+
+      function escapeAttr(text) {
+        return escapeHtml(text).replace(/\n/g, " ");
+      }
+
+      function round(value) {
+        return Math.round(Number(value || 0) * 100) / 100;
+      }
+
+      function defaultElement(type, x = 30, y = 30) {
+        const base = { id: uid("el"), type, x, y, rotation: 0, stroke: state.settings.stroke };
+        const defaults = {
+          text: { ...base, w: 40, h: 8, text: "文字", fontSize: 3.5 },
+          terminal: { ...base, w: 20, h: 10, label: "1" },
+          terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", label: "X1" },
+          contactNO: { ...base, w: 22, h: 14, label: "NO" },
+          contactNC: { ...base, w: 22, h: 14, label: "NC" },
+          coil: { ...base, w: 24, h: 14, label: "CR" },
+          lamp: { ...base, w: 18, h: 18, r: 6, label: "PL" },
+          buzzer: { ...base, w: 24, h: 16, label: "BZ" },
+          deviceBox: { ...base, w: 46, h: 30, label: "機器", pins: 4 },
+          plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8 },
+          connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", label: "CN" },
+          table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表" },
+          junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
+          arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", stroke: state.settings.stroke },
+          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", stroke: state.settings.stroke }
+        };
+        return deepClone(defaults[type] || defaults.deviceBox);
+      }
+
+      function canvasPoint(event) {
+        const svg = qs("#canvas");
+        const point = svg.createSVGPoint();
+        point.x = event.clientX;
+        point.y = event.clientY;
+        const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
+        return { x: snap(transformed.x), y: snap(transformed.y) };
+      }
+
+      function snap(value) {
+        if (!state.settings.snap) return value;
+        const grid = Number(state.settings.grid || 2.5);
+        return Math.round(value / grid) * grid;
+      }
+
+      function placeElement(type, x, y) {
+        const page = currentPage();
+        if (!page) return;
+        if (type === "terminalSheet") {
+          addTerminalSheet(page, x, y);
+          commitHistory("端子配線セットを配置しました。");
+          render();
+          return;
+        }
+        const element = defaultElement(type, x, y);
+        page.elements.push(element);
+        selectedId = element.id;
+        commitHistory("要素を配置しました。");
+        setActiveTool("select");
+        render();
+      }
+
+      function addTerminalSheet(page, x, y) {
+        const strip = defaultElement("terminalStrip", x, y);
+        strip.w = 138;
+        strip.count = 16;
+        strip.label = "X1";
+        page.elements.push(strip);
+        for (let i = 0; i < strip.count; i++) {
+          const px = x + (strip.w / strip.count) * i + (strip.w / strip.count) / 2;
+          page.elements.push({
+            id: uid("el"),
+            type: "wire",
+            points: [[px, y + 7], [px, y + 72]],
+            wireNo: "W" + String(i + 1).padStart(2, "0"),
+            stroke: state.settings.stroke
+          });
+          page.elements.push({
+            id: uid("el"),
+            type: "text",
+            x: px - 3,
+            y: y + 79,
+            w: 12,
+            h: 5,
+            text: String(i + 1).padStart(2, "0"),
+            fontSize: 2.5,
+            rotation: -90,
+            stroke: state.settings.stroke
+          });
+        }
+        selectedId = strip.id;
+      }
+
+      function setActiveTool(tool) {
+        activeTool = tool;
+        qsa("[data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === tool));
+        renderPalette();
+        setStatus(tool === "select" ? "選択ツールです。" : paletteLabel(tool) + "を配置できます。");
+      }
+
+      function addPage() {
+        const base = currentPage();
+        const page = createPage({
+          name: "P" + (state.pages.length + 1),
+          size: base?.size || "A4",
+          orientation: base?.orientation || "portrait",
+          frameVariant: base?.frameVariant || "detailed"
+        });
+        state.pages.push(page);
+        state.activePageId = page.id;
+        selectedId = null;
+        commitHistory("ページを追加しました。");
+        render();
+      }
+
+      function duplicatePage() {
+        const page = currentPage();
+        if (!page) return;
+        const copy = deepClone(page);
+        copy.id = uid("page");
+        copy.name = page.name + " copy";
+        copy.elements = copy.elements.map(element => ({ ...element, id: uid("el") }));
+        state.pages.push(copy);
+        state.activePageId = copy.id;
+        selectedId = null;
+        commitHistory("ページを複製しました。");
+        render();
+      }
+
+      function deletePage() {
+        if (state.pages.length <= 1) {
+          setStatus("最後の1ページは削除できません。");
+          return;
+        }
+        const index = state.pages.findIndex(page => page.id === state.activePageId);
+        state.pages.splice(index, 1);
+        state.activePageId = state.pages[Math.max(0, index - 1)].id;
+        selectedId = null;
+        commitHistory("ページを削除しました。");
+        render();
+      }
+
+      function deleteSelected() {
+        const page = currentPage();
+        if (!page || !selectedId) return;
+        page.elements = page.elements.filter(element => element.id !== selectedId);
+        selectedId = null;
+        commitHistory("要素を削除しました。");
+        render();
+      }
+
+      function duplicateSelected() {
+        const element = selectedElement();
+        const page = currentPage();
+        if (!element || !page) return;
+        const copy = deepClone(element);
+        copy.id = uid("el");
+        if (copy.points) copy.points = copy.points.map(point => [point[0] + 6, point[1] + 6]);
+        else {
+          copy.x = Number(copy.x || 0) + 6;
+          copy.y = Number(copy.y || 0) + 6;
+        }
+        page.elements.push(copy);
+        selectedId = copy.id;
+        commitHistory("要素を複製しました。");
+        render();
+      }
+
+      function moveSelected(dx, dy) {
+        const element = selectedElement();
+        if (!element) return;
+        if (element.points) {
+          element.points = element.points.map(point => [point[0] + dx, point[1] + dy]);
+        } else {
+          element.x = Number(element.x || 0) + dx;
+          element.y = Number(element.y || 0) + dy;
+        }
+      }
+
+      function serializeActiveSvg() {
+        const page = currentPage();
+        const size = pageSize(page);
+        const clone = qs("#canvas").cloneNode(true);
+        clone.setAttribute("xmlns", svgNS);
+        clone.setAttribute("width", size.w + "mm");
+        clone.setAttribute("height", size.h + "mm");
+        clone.querySelectorAll(".selection-box,.selection-handle").forEach(node => node.remove());
+        return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone);
+      }
+
+      function download(filename, content, type) {
+        const blob = new Blob([content], { type });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function saveProject() {
+        syncPageTotals();
+        const name = "electrical-drawing-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
+        download(name, JSON.stringify(state, null, 2), "application/json");
+        setStatus("JSONを保存しました。");
+      }
+
+      function openProjectFile(file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const loaded = JSON.parse(reader.result);
+            if (!loaded.pages || !Array.isArray(loaded.pages)) throw new Error("pages が見つかりません。");
+            state.app = loaded.app || state.app;
+            state.version = loaded.version || state.version;
+            state.settings = { ...state.settings, ...(loaded.settings || {}) };
+            state.pages = loaded.pages;
+            state.activePageId = loaded.activePageId || state.pages[0].id;
+            pageCounter = state.pages.length + 1;
+            selectedId = null;
+            resetHistory();
+            render();
+            setStatus("JSONを読み込みました。");
+          } catch (error) {
+            setStatus("読み込みに失敗しました: " + error.message);
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      function exportSvg() {
+        download((currentPage().name || "page") + ".svg", serializeActiveSvg(), "image/svg+xml");
+        setStatus("SVGを書き出しました。");
+      }
+
+      function exportPng() {
+        const svg = serializeActiveSvg();
+        const page = currentPage();
+        const size = pageSize(page);
+        const scale = 4;
+        const image = new Image();
+        const blob = new Blob([svg], { type: "image/svg+xml" });
+        const url = URL.createObjectURL(blob);
+        image.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(size.w * scale);
+          canvas.height = Math.round(size.h * scale);
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          canvas.toBlob(pngBlob => {
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(pngBlob);
+            link.download = (page.name || "page") + ".png";
+            link.click();
+            URL.revokeObjectURL(link.href);
+          }, "image/png");
+        };
+        image.src = url;
+        setStatus("PNGを書き出しました。");
+      }
+
+      function syncPrintSheets() {
+        const container = qs("#printSheets");
+        container.innerHTML = "";
+        state.pages.forEach(page => {
+          const size = pageSize(page);
+          const sheet = document.createElement("div");
+          sheet.className = "print-sheet page-" + String(page.size || "A4").toLowerCase() + "-" + String(page.orientation || "portrait");
+          sheet.style.width = size.w + "mm";
+          sheet.style.height = size.h + "mm";
+          const svg = svgEl("svg", { xmlns: svgNS, role: "img", "aria-label": page.name || "page" });
+          drawPageSvg(svg, page, { selection: false, scaled: false });
+          sheet.appendChild(svg);
+          container.appendChild(sheet);
+        });
+      }
+
+      function renderPrintSheets() {
+        syncPrintSheets();
+      }
+
+      function printProject() {
+        renderPrintSheets();
+        setStatus("印刷ダイアログでPDF保存を選択してください。");
+        window.print();
+      }
+
+      function updatePageField(id, apply) {
+        qs("#" + id).addEventListener("change", event => {
+          const page = currentPage();
+          if (!page) return;
+          apply(page, event.target.value);
+          commitHistory("ページ設定を更新しました。");
+          render();
+        });
+      }
+
+      function attachEvents() {
+        qs("#newProjectBtn").addEventListener("click", () => {
+          if (confirm("現在の内容を破棄して新規作成しますか？")) initProject();
+        });
+        qs("#openBtn").addEventListener("click", () => qs("#fileInput").click());
+        qs("#fileInput").addEventListener("change", event => {
+          const file = event.target.files[0];
+          if (file) openProjectFile(file);
+          event.target.value = "";
+        });
+        qs("#saveBtn").addEventListener("click", saveProject);
+        qs("#printBtn").addEventListener("click", printProject);
+        qs("#exportSvgBtn").addEventListener("click", exportSvg);
+        qs("#exportPngBtn").addEventListener("click", exportPng);
+        qs("#undoBtn").addEventListener("click", () => restoreHistory(historyIndex - 1));
+        qs("#redoBtn").addEventListener("click", () => restoreHistory(historyIndex + 1));
+        qs("#deleteBtn").addEventListener("click", deleteSelected);
+        qs("#addPageBtn").addEventListener("click", addPage);
+        qs("#duplicatePageBtn").addEventListener("click", duplicatePage);
+        qs("#deletePageBtn").addEventListener("click", deletePage);
+        qsa("[data-tool]").forEach(button => {
+          button.addEventListener("click", () => setActiveTool(button.dataset.tool));
+        });
+        qs("#zoomRange").addEventListener("input", event => {
+          state.settings.zoom = Number(event.target.value);
+          render();
+        });
+        qs("#zoomRange").addEventListener("change", () => commitHistory("ズームを変更しました。"));
+        qs("#gridSize").addEventListener("change", event => {
+          state.settings.grid = Number(event.target.value || 2.5);
+          commitHistory("グリッドを変更しました。");
+          render();
+        });
+        qs("#snapToggle").addEventListener("change", event => {
+          state.settings.snap = event.target.value === "on";
+          commitHistory("スナップを変更しました。");
+          render();
+        });
+        updatePageField("pageName", (page, value) => { page.name = value || page.name; });
+        updatePageField("paperSize", (page, value) => { page.size = value; });
+        updatePageField("paperOrientation", (page, value) => { page.orientation = value; });
+        updatePageField("frameVariant", (page, value) => { page.frameVariant = value; });
+        updatePageField("drawingNo", (page, value) => { page.title.drawingNo = value; });
+        updatePageField("revision", (page, value) => { page.title.revision = value; });
+        updatePageField("drawingTitle", (page, value) => { page.title.title = value; });
+        updatePageField("designer", (page, value) => { page.title.designer = value; });
+        updatePageField("drawDate", (page, value) => { page.title.date = value; });
+
+        const svg = qs("#canvas");
+        svg.addEventListener("dragover", event => {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        });
+        svg.addEventListener("drop", event => {
+          event.preventDefault();
+          const type = event.dataTransfer.getData("text/plain");
+          const point = canvasPoint(event);
+          if (type) placeElement(type, point.x, point.y);
+        });
+        svg.addEventListener("pointerdown", onCanvasPointerDown);
+        svg.addEventListener("pointermove", onCanvasPointerMove);
+        svg.addEventListener("pointerup", onCanvasPointerUp);
+        svg.addEventListener("pointercancel", onCanvasPointerUp);
+        svg.addEventListener("dblclick", onCanvasDoubleClick);
+
+        window.addEventListener("keydown", onKeyDown);
+      }
+
+      function onCanvasPointerDown(event) {
+        const svg = qs("#canvas");
+        const point = canvasPoint(event);
+        const targetElement = event.target.closest("[data-id]");
+        if (activeTool === "wire" || activeTool === "arrow") {
+          const element = defaultElement(activeTool, point.x, point.y);
+          element.points = [[point.x, point.y], [point.x, point.y]];
+          currentPage().elements.push(element);
+          selectedId = element.id;
+          dragState = { mode: "draw", elementId: element.id, start: point };
+          svg.setPointerCapture(event.pointerId);
+          render();
+          return;
+        }
+        if (activeTool !== "select" && activeTool !== "wire" && activeTool !== "arrow") {
+          placeElement(activeTool, point.x, point.y);
+          return;
+        }
+        if (targetElement) {
+          selectedId = targetElement.dataset.id;
+          const element = selectedElement();
+          dragState = {
+            mode: "move",
+            elementId: selectedId,
+            start: point,
+            original: deepClone(element)
+          };
+          svg.setPointerCapture(event.pointerId);
+          render();
+        } else {
+          selectedId = null;
+          render();
+        }
+      }
+
+      function onCanvasPointerMove(event) {
+        if (!dragState) return;
+        const point = canvasPoint(event);
+        const element = selectedElement();
+        if (!element) return;
+        if (dragState.mode === "draw") {
+          element.points[element.points.length - 1] = [point.x, point.y];
+          render();
+          return;
+        }
+        if (dragState.mode === "move") {
+          const dx = point.x - dragState.start.x;
+          const dy = point.y - dragState.start.y;
+          if (element.points) {
+            element.points = dragState.original.points.map(p => [p[0] + dx, p[1] + dy]);
+          } else {
+            element.x = Number(dragState.original.x || 0) + dx;
+            element.y = Number(dragState.original.y || 0) + dy;
+          }
+          render();
+        }
+      }
+
+      function onCanvasPointerUp(event) {
+        if (!dragState) return;
+        try {
+          qs("#canvas").releasePointerCapture(event.pointerId);
+        } catch (_) {
+          // The pointer may already be released by the browser.
+        }
+        const element = selectedElement();
+        if (element && element.points) {
+          const a = element.points[0];
+          const b = element.points[element.points.length - 1];
+          if (Math.abs(a[0] - b[0]) < .5 && Math.abs(a[1] - b[1]) < .5) {
+            currentPage().elements = currentPage().elements.filter(item => item.id !== element.id);
+            selectedId = null;
+          }
+        }
+        dragState = null;
+        commitHistory("作図を更新しました。");
+        render();
+      }
+
+      function onCanvasDoubleClick(event) {
+        const targetElement = event.target.closest("[data-id]");
+        if (!targetElement) return;
+        selectedId = targetElement.dataset.id;
+        const element = selectedElement();
+        if (!element) return;
+        if (element.type === "text") {
+          const text = prompt("文字を入力", element.text || "");
+          if (text !== null) {
+            element.text = text;
+            commitHistory("文字を更新しました。");
+            render();
+          }
+        } else if (element.type === "wire") {
+          const text = prompt("線番を入力", element.wireNo || "");
+          if (text !== null) {
+            element.wireNo = text;
+            commitHistory("線番を更新しました。");
+            render();
+          }
+        } else {
+          const text = prompt("ラベルを入力", element.label || "");
+          if (text !== null) {
+            element.label = text;
+            commitHistory("ラベルを更新しました。");
+            render();
+          }
+        }
+      }
+
+      function onKeyDown(event) {
+        const tag = document.activeElement?.tagName;
+        const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+          event.preventDefault();
+          saveProject();
+          return;
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+          event.preventDefault();
+          restoreHistory(historyIndex - 1);
+          return;
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+          event.preventDefault();
+          restoreHistory(historyIndex + 1);
+          return;
+        }
+        if (editing) return;
+        if (event.key === "Delete" || event.key === "Backspace") {
+          event.preventDefault();
+          deleteSelected();
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
+          const element = selectedElement();
+          if (element) clipboardElement = deepClone(element);
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") {
+          if (clipboardElement) {
+            const page = currentPage();
+            const copy = deepClone(clipboardElement);
+            copy.id = uid("el");
+            if (copy.points) copy.points = copy.points.map(point => [point[0] + 6, point[1] + 6]);
+            else {
+              copy.x = Number(copy.x || 0) + 6;
+              copy.y = Number(copy.y || 0) + 6;
+            }
+            page.elements.push(copy);
+            selectedId = copy.id;
+            commitHistory("貼り付けました。");
+            render();
+          }
+        }
+        const nudge = event.shiftKey ? 5 : 1;
+        const arrows = { ArrowLeft: [-nudge, 0], ArrowRight: [nudge, 0], ArrowUp: [0, -nudge], ArrowDown: [0, nudge] };
+        if (arrows[event.key] && selectedElement()) {
+          event.preventDefault();
+          moveSelected(arrows[event.key][0], arrows[event.key][1]);
+          commitHistory("要素を移動しました。");
+          render();
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+          event.preventDefault();
+          duplicateSelected();
+        }
+      }
+
+      attachEvents();
+      initProject();
+    })();
+  </script>
+</body>
+</html>
