@@ -1707,6 +1707,10 @@
             <button type="button" id="bringForwardBtn">前面へ</button>
             <button type="button" id="sendBackwardBtn">背面へ</button>
           </div>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="rotateLeftBtn">左90°</button>
+            <button type="button" id="rotateRightBtn">右90°</button>
+          </div>
           <div class="row-3" style="margin-top:8px">
             <button type="button" data-nudge="-1,0">←</button>
             <button type="button" data-nudge="0,-1">↑</button>
@@ -1736,6 +1740,8 @@
         qs("#deleteElementBtn", panel)?.addEventListener("click", deleteSelected);
         qs("#bringForwardBtn", panel)?.addEventListener("click", bringSelectedForward);
         qs("#sendBackwardBtn", panel)?.addEventListener("click", sendSelectedBackward);
+        qs("#rotateLeftBtn", panel)?.addEventListener("click", () => rotateSelected(-90));
+        qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
         qsa("[data-nudge]", panel).forEach(button => {
           button.addEventListener("click", () => {
             const [dx, dy] = button.dataset.nudge.split(",").map(Number);
@@ -2435,6 +2441,29 @@
         const [element] = page.elements.splice(index, 1);
         page.elements.splice(index - 1, 0, element);
         commitHistory("要素を背面へ移動しました。");
+        render();
+      }
+
+      function rotateSelected(degrees) {
+        const element = selectedElement();
+        if (!element) return;
+        if (element.points) {
+          const box = elementBounds(element);
+          const cx = box.x + box.w / 2;
+          const cy = box.y + box.h / 2;
+          const angle = degrees * Math.PI / 180;
+          element.points = element.points.map(point => {
+            const dx = point[0] - cx;
+            const dy = point[1] - cy;
+            return [
+              round(cx + dx * Math.cos(angle) - dy * Math.sin(angle)),
+              round(cy + dx * Math.sin(angle) + dy * Math.cos(angle))
+            ];
+          });
+        } else {
+          element.rotation = ((Number(element.rotation || 0) + degrees) % 360 + 360) % 360;
+        }
+        commitHistory("要素を回転しました。");
         render();
       }
 
