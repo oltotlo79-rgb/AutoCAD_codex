@@ -531,6 +531,11 @@
               </select>
             </div>
           </div>
+          <label for="objectSnapToggle">端点スナップ</label>
+          <select id="objectSnapToggle">
+            <option value="on">ON</option>
+            <option value="off">OFF</option>
+          </select>
           <p class="muted">左の部品をドラッグして用紙に配置します。配線は W ツールでドラッグ、部品は選択後に移動できます。</p>
         </div>
 
@@ -719,6 +724,7 @@
           zoom: 3.2,
           grid: 2.5,
           snap: true,
+          objectSnap: true,
           stroke: "#111820",
           wireNumberFormat: "%S-%N",
           currentWireType: "control",
@@ -1642,6 +1648,7 @@
         setValue("zoomRange", state.settings.zoom);
         setValue("gridSize", state.settings.grid);
         setValue("snapToggle", state.settings.snap ? "on" : "off");
+        setValue("objectSnapToggle", state.settings.objectSnap ? "on" : "off");
         setValue("wireNumberFormat", state.settings.wireNumberFormat || "%S-%N");
         renderWireTypeSelect();
         setValue("currentWireType", state.settings.currentWireType || "control");
@@ -1921,13 +1928,67 @@
         point.x = event.clientX;
         point.y = event.clientY;
         const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
-        return { x: snap(transformed.x), y: snap(transformed.y) };
+        return snapPoint(transformed.x, transformed.y);
       }
 
       function snap(value) {
         if (!state.settings.snap) return value;
         const grid = Number(state.settings.grid || 2.5);
         return Math.round(value / grid) * grid;
+      }
+
+      function snapPoint(x, y) {
+        const gridPoint = { x: snap(x), y: snap(y) };
+        if (!state.settings.objectSnap) return gridPoint;
+        const anchors = collectSnapAnchors(currentPage());
+        let best = null;
+        anchors.forEach(anchor => {
+          const d = Math.hypot(anchor.x - x, anchor.y - y);
+          if (d <= 3 && (!best || d < best.d)) best = { ...anchor, d };
+        });
+        return best ? { x: best.x, y: best.y } : gridPoint;
+      }
+
+      function collectSnapAnchors(page) {
+        if (!page) return [];
+        const anchors = [];
+        page.elements.forEach(element => {
+          if (element.id === selectedId) return;
+          if (element.type === "wire" || element.type === "line" || element.type === "arrow") {
+            (element.points || []).forEach(point => anchors.push({ x: point[0], y: point[1] }));
+            return;
+          }
+          if (element.type === "junction") {
+            anchors.push({ x: element.x || 0, y: element.y || 0 });
+            return;
+          }
+          if (element.type === "terminalStrip" || element.type === "connector") {
+            const count = Math.max(1, Number(element.count || 1));
+            const w = Number(element.w || count * 8);
+            const h = Number(element.h || 12);
+            const pitch = w / count;
+            for (let i = 0; i < count; i++) {
+              anchors.push(localAnchor(element, pitch * i + pitch / 2, h / 2));
+            }
+            return;
+          }
+          const box = elementBounds(element);
+          if (!box) return;
+          anchors.push({ x: box.x, y: box.y });
+          anchors.push({ x: box.x + box.w, y: box.y });
+          anchors.push({ x: box.x, y: box.y + box.h });
+          anchors.push({ x: box.x + box.w, y: box.y + box.h });
+          anchors.push({ x: box.x + box.w / 2, y: box.y + box.h / 2 });
+        });
+        return anchors;
+      }
+
+      function localAnchor(element, x, y) {
+        const angle = Number(element.rotation || 0) * Math.PI / 180;
+        return {
+          x: Number(element.x || 0) + x * Math.cos(angle) - y * Math.sin(angle),
+          y: Number(element.y || 0) + x * Math.sin(angle) + y * Math.cos(angle)
+        };
       }
 
       function placeElement(type, x, y) {
@@ -3522,6 +3583,11 @@
         qs("#snapToggle").addEventListener("change", event => {
           state.settings.snap = event.target.value === "on";
           commitHistory("スナップを変更しました。");
+          render();
+        });
+        qs("#objectSnapToggle").addEventListener("change", event => {
+          state.settings.objectSnap = event.target.value === "on";
+          commitHistory("端点スナップを変更しました。");
           render();
         });
         qs("#wireNumberFormat").addEventListener("change", event => {
