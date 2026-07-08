@@ -466,7 +466,7 @@
         break-after: auto;
       }
 
-      .print-sheet svg {
+      .print-sheet > svg {
         display: block;
         width: 100%;
         height: 100%;
@@ -489,6 +489,7 @@
         <button type="button" id="saveBtn" class="primary" title="JSONで保存">保存</button>
         <button type="button" id="titleBatchBtn" title="全ページの表題欄を一括更新">表題欄</button>
         <button type="button" id="printBtn" title="全ページをPDF印刷">PDF印刷</button>
+        <button type="button" id="printTwoUpBtn" title="A3縦に2ページずつ面付けして印刷">A3面付</button>
         <button type="button" id="exportSvgBtn" title="現在ページをSVG出力">SVG</button>
         <button type="button" id="exportPngBtn" title="現在ページをPNG出力">PNG</button>
       </div>
@@ -741,6 +742,7 @@
       let history = [];
       let historyIndex = -1;
       let pageCounter = 1;
+      let printMode = "single";
 
       function uid(prefix = "id") {
         return prefix + "-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -2502,6 +2504,10 @@
       function syncPrintSheets() {
         const container = qs("#printSheets");
         container.innerHTML = "";
+        if (printMode === "two-up") {
+          syncPrintSheetsTwoUp(container);
+          return;
+        }
         state.pages.forEach(page => {
           const size = pageSize(page);
           const sheet = document.createElement("div");
@@ -2515,14 +2521,60 @@
         });
       }
 
+      function syncPrintSheetsTwoUp(container) {
+        for (let i = 0; i < state.pages.length; i += 2) {
+          const sheet = document.createElement("div");
+          sheet.className = "print-sheet page-a3-portrait";
+          sheet.style.width = "297mm";
+          sheet.style.height = "420mm";
+          const svg = svgEl("svg", { xmlns: svgNS, viewBox: "0 0 297 420", width: "297mm", height: "420mm", role: "img", "aria-label": "A3 two-up" });
+          svg.appendChild(svgEl("rect", { x: 0, y: 0, width: 297, height: 420, fill: "#fff" }));
+          addTwoUpPageSvg(svg, state.pages[i], 10, 10, 277, 195);
+          if (state.pages[i + 1]) addTwoUpPageSvg(svg, state.pages[i + 1], 10, 215, 277, 195);
+          sheet.appendChild(svg);
+          container.appendChild(sheet);
+        }
+      }
+
+      function addTwoUpPageSvg(parent, page, x, y, w, h) {
+        const size = pageSize(page);
+        const scale = Math.min(w / size.w, h / size.h);
+        const drawW = size.w * scale;
+        const drawH = size.h * scale;
+        const nested = svgEl("svg", {
+          x: x + (w - drawW) / 2,
+          y: y + (h - drawH) / 2,
+          width: drawW,
+          height: drawH,
+          viewBox: "0 0 " + size.w + " " + size.h
+        });
+        drawPageSvg(nested, page, { selection: false, scaled: false });
+        nested.style.width = null;
+        nested.style.height = null;
+        nested.setAttribute("x", x + (w - drawW) / 2);
+        nested.setAttribute("y", y + (h - drawH) / 2);
+        nested.setAttribute("width", drawW);
+        nested.setAttribute("height", drawH);
+        parent.appendChild(nested);
+      }
+
       function renderPrintSheets() {
         syncPrintSheets();
       }
 
       function printProject() {
+        printMode = "single";
         renderPrintSheets();
         setStatus("印刷ダイアログでPDF保存を選択してください。");
         window.print();
+      }
+
+      function printProjectTwoUp() {
+        printMode = "two-up";
+        renderPrintSheets();
+        setStatus("A3縦2面付けで印刷します。印刷ダイアログでPDF保存を選択してください。");
+        window.print();
+        printMode = "single";
       }
 
       function autoWireNumbers() {
@@ -3189,6 +3241,7 @@
         qs("#saveBtn").addEventListener("click", saveProject);
         qs("#titleBatchBtn").addEventListener("click", showTitleBatchDialog);
         qs("#printBtn").addEventListener("click", printProject);
+        qs("#printTwoUpBtn").addEventListener("click", printProjectTwoUp);
         qs("#exportSvgBtn").addEventListener("click", exportSvg);
         qs("#exportPngBtn").addEventListener("click", exportPng);
         qs("#autoWireBtn").addEventListener("click", autoWireNumbers);
