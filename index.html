@@ -4317,6 +4317,10 @@
             <div><label for="insertReportRows">最大行数</label><input id="insertReportRows" type="number" min="3" max="30" step="1" value="12"></div>
             <div><label for="insertReportTitle">表題</label><input id="insertReportTitle" value="帳票"></div>
           </div>
+          <div class="row">
+            <div><label for="insertReportInstallation">設備フィルタ</label><input id="insertReportInstallation" placeholder="例: 盤内"></div>
+            <div><label for="insertReportLocation">場所フィルタ</label><input id="insertReportLocation" placeholder="例: LOC-A"></div>
+          </div>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="runInsertReportBtn" class="primary">現在ページへ挿入</button>
           </div>
@@ -4331,7 +4335,11 @@
         const kind = qs("#insertReportKind").value;
         const maxRows = Math.max(3, Math.min(30, Number(qs("#insertReportRows").value || 12)));
         const title = qs("#insertReportTitle").value || "帳票";
-        const rows = filterReportRows(kind).slice(0, maxRows);
+        const filters = {
+          installation: qs("#insertReportInstallation").value.trim(),
+          location: qs("#insertReportLocation").value.trim()
+        };
+        const rows = filterReportRows(kind, filters).slice(0, maxRows);
         if (!rows.length) {
           setStatus("挿入できる帳票行がありません。");
           return;
@@ -4344,10 +4352,12 @@
         render();
       }
 
-      function filterReportRows(kind) {
-        const rows = collectReportRows();
-        if (kind === "all") return rows;
-        return rows.filter(row => row.record === kind);
+      function filterReportRows(kind, filters = {}) {
+        let rows = collectReportRows();
+        if (kind !== "all") rows = rows.filter(row => row.record === kind);
+        if (filters.installation) rows = rows.filter(row => String(row.installation || "") === filters.installation);
+        if (filters.location) rows = rows.filter(row => String(row.location || "") === filters.location);
+        return rows;
       }
 
       function buildReportTableElement(page, kind, title, rows) {
