@@ -593,6 +593,7 @@
             <button type="button" id="reportCsvBtn">帳票CSV</button>
             <button type="button" id="copyReportBtn">一覧表示</button>
           </div>
+          <button type="button" id="insertReportTableBtn" style="width:100%;margin-top:8px">帳票表挿入</button>
           <button type="button" id="terminalCsvBtn" style="width:100%;margin-top:8px">端子CSV取込</button>
           <button type="button" id="exportDxfBtn" style="width:100%;margin-top:8px">DXF</button>
         </div>
@@ -3751,6 +3752,7 @@
         const rows = [];
         state.pages.forEach((page, pageIndex) => {
           page.elements.forEach(element => {
+            if (element.reportTable) return;
             const base = {
               pageId: page.id,
               page: page.name || "P" + (pageIndex + 1),
@@ -3841,6 +3843,105 @@
         }).join("")}</tbody></table>`;
         openDialog("図面要素一覧", html);
         attachDialogSelection();
+      }
+
+      function showInsertReportDialog() {
+        const html = `
+          <label for="insertReportKind">帳票種別</label>
+          <select id="insertReportKind">
+            <option value="all">全要素</option>
+            <option value="component">部品</option>
+            <option value="wire">配線</option>
+            <option value="terminal">端子</option>
+          </select>
+          <div class="row">
+            <div><label for="insertReportRows">最大行数</label><input id="insertReportRows" type="number" min="3" max="30" step="1" value="12"></div>
+            <div><label for="insertReportTitle">表題</label><input id="insertReportTitle" value="帳票"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="runInsertReportBtn" class="primary">現在ページへ挿入</button>
+          </div>
+        `;
+        openDialog("帳票表挿入", html);
+        qs("#runInsertReportBtn").addEventListener("click", insertReportTableFromDialog);
+      }
+
+      function insertReportTableFromDialog() {
+        const page = currentPage();
+        if (!page) return;
+        const kind = qs("#insertReportKind").value;
+        const maxRows = Math.max(3, Math.min(30, Number(qs("#insertReportRows").value || 12)));
+        const title = qs("#insertReportTitle").value || "帳票";
+        const rows = filterReportRows(kind).slice(0, maxRows);
+        if (!rows.length) {
+          setStatus("挿入できる帳票行がありません。");
+          return;
+        }
+        const table = buildReportTableElement(page, kind, title, rows);
+        page.elements.push(table);
+        selectSingle(table.id);
+        closeDialog();
+        commitHistory("帳票表を挿入しました。");
+        render();
+      }
+
+      function filterReportRows(kind) {
+        const rows = collectReportRows();
+        if (kind === "all") return rows;
+        return rows.filter(row => row.record === kind);
+      }
+
+      function buildReportTableElement(page, kind, title, rows) {
+        const headers = reportHeaders(kind);
+        const body = rows.map(row => headers.map(header => reportCellValue(row, header)).join("\t"));
+        const size = pageSize(page);
+        const rowCount = rows.length + 1;
+        return {
+          id: uid("el"),
+          type: "table",
+          x: 22,
+          y: 42,
+          w: Math.min(size.w - 44, 180),
+          h: Math.min(size.h - 86, Math.max(28, rowCount * 7)),
+          rows: rowCount,
+          cols: headers.length,
+          label: title,
+          cellText: [headers.join("\t"), ...body].join("\n"),
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "notes",
+          reportTable: true
+        };
+      }
+
+      function reportHeaders(kind) {
+        if (kind === "wire") return ["ページ", "線番", "FROM", "TO"];
+        if (kind === "terminal") return ["ページ", "端子", "種別", "詳細"];
+        if (kind === "component") return ["ページ", "タグ/名称", "説明", "品番"];
+        return ["種別", "ページ", "タグ/名称", "詳細"];
+      }
+
+      function reportCellValue(row, header) {
+        const from = detailValue(row.detail, "from");
+        const to = detailValue(row.detail, "to");
+        const map = {
+          "種別": row.record || row.type || "",
+          "ページ": row.page || "",
+          "タグ/名称": row.tag || row.name || "",
+          "説明": row.description || "",
+          "品番": row.catalog || "",
+          "線番": row.name || "",
+          "FROM": from,
+          "TO": to,
+          "端子": row.name || "",
+          "詳細": row.detail || ""
+        };
+        return String(map[header] || "").replace(/\t/g, " ").replace(/\r?\n/g, " / ");
+      }
+
+      function detailValue(detail, key) {
+        const match = String(detail || "").match(new RegExp(key + "=([^;]*)"));
+        return match ? match[1].trim() : "";
       }
 
       function showSearchDialog() {
@@ -4537,6 +4638,7 @@
         qs("#crossRefBtn").addEventListener("click", showCrossReference);
         qs("#reportCsvBtn").addEventListener("click", exportReportCsv);
         qs("#copyReportBtn").addEventListener("click", showReportTable);
+        qs("#insertReportTableBtn").addEventListener("click", showInsertReportDialog);
         qs("#auditBtn").addEventListener("click", showAudit);
         qs("#exportDxfBtn").addEventListener("click", exportDxf);
         qs("#dialogClose").addEventListener("click", closeDialog);
