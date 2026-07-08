@@ -1279,12 +1279,16 @@
         const w = Number(element.w || 42);
         const h = Number(element.h || 28);
         const pins = Math.max(0, Number(element.pins || 4));
+        const labels = String(element.pinText || "").split(/\r?\n/);
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
         multilineText(g, element.label || "機器", w / 2, h / 2 - 2, 3.8, { fontSize: 2.6, anchor: "middle" });
         for (let i = 0; i < pins; i++) {
           const y = h * (i + 1) / (pins + 1);
           g.appendChild(svgEl("line", { x1: -7, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
           g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 7, y2: y, class: "symbol-line", stroke }));
+          if (labels[i]) {
+            g.appendChild(textEl(labels[i], 2, y, { fontSize: 2.1 }));
+          }
         }
       }
 
@@ -1294,11 +1298,12 @@
         const h = Number(element.h || rows * 6 + 10);
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
         g.appendChild(textEl(element.label || "PLC", w / 2, 5, { fontSize: 2.5, anchor: "middle" }));
+        const labels = String(element.pinText || "").split(/\r?\n/);
         for (let i = 1; i <= rows; i++) {
           const y = 8 + i * ((h - 10) / rows);
           g.appendChild(svgEl("line", { x1: 0, y1: y, x2: w, y2: y, class: "symbol-line", stroke }));
           g.appendChild(svgEl("line", { x1: -8, y1: y - 3, x2: 0, y2: y - 3, class: "symbol-line", stroke }));
-          g.appendChild(textEl(String(i).padStart(2, "0"), 3, y - 3, { fontSize: 2 }));
+          g.appendChild(textEl(labels[i - 1] || String(i).padStart(2, "0"), 3, y - 3, { fontSize: 2 }));
         }
       }
 
@@ -1571,10 +1576,20 @@
           `;
         }
         if (element.type === "plcBlock") {
-          return `<label>I/O行数</label><input data-bind="rows" data-kind="number" type="number" min="2" step="1" value="${Number(element.rows || 8)}">`;
+          return `
+            <label>I/O行数</label>
+            <input data-bind="rows" data-kind="number" type="number" min="2" step="1" value="${Number(element.rows || 8)}">
+            <label>I/O名（1行1点）</label>
+            <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
+          `;
         }
         if (element.type === "deviceBox") {
-          return `<label>左右ピン数</label><input data-bind="pins" data-kind="number" type="number" min="0" step="1" value="${Number(element.pins || 4)}">`;
+          return `
+            <label>左右ピン数</label>
+            <input data-bind="pins" data-kind="number" type="number" min="0" step="1" value="${Number(element.pins || 4)}">
+            <label>ピン名（1行1点）</label>
+            <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
+          `;
         }
         return "";
       }
@@ -1616,8 +1631,8 @@
           coil: { ...base, w: 24, h: 14, label: "CR" },
           lamp: { ...base, w: 18, h: 18, r: 6, label: "PL" },
           buzzer: { ...base, w: 24, h: 16, label: "BZ" },
-          deviceBox: { ...base, w: 46, h: 30, label: "機器", pins: 4 },
-          plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8 },
+          deviceBox: { ...base, w: 46, h: 30, label: "機器", pins: 4, pinText: "1\n2\n3\n4" },
+          plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", label: "CN" },
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
@@ -2264,8 +2279,8 @@
 
       function componentDetail(element) {
         if (element.type === "table") return "rows=" + (element.rows || "") + "; cols=" + (element.cols || "") + "; cells=" + String(element.cellText || "").replace(/\r?\n/g, " / ");
-        if (element.type === "plcBlock") return "rows=" + (element.rows || "");
-        if (element.type === "deviceBox") return "pins=" + (element.pins || "");
+        if (element.type === "plcBlock") return "rows=" + (element.rows || "") + "; io=" + String(element.pinText || "").replace(/\r?\n/g, " / ");
+        if (element.type === "deviceBox") return "pins=" + (element.pins || "") + "; pinText=" + String(element.pinText || "").replace(/\r?\n/g, " / ");
         return "";
       }
 
@@ -2474,6 +2489,10 @@
         if (["deviceBox", "plcBlock"].includes(element.type)) {
           dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
           dxfTextLocal(out, page, "TEXT", element, box.w / 2 - 6, box.h / 2, 2.5, element.label || element.type);
+          String(element.pinText || "").split(/\r?\n/).forEach((line, index) => {
+            if (!line.trim()) return;
+            dxfTextLocal(out, page, "TEXT", element, 2, 5 + index * 4, 2, line.trim());
+          });
           return;
         }
         if (element.type === "lamp" || element.type === "junction") {
