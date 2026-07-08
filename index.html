@@ -485,6 +485,7 @@
       <div class="top-actions">
         <button type="button" id="newProjectBtn" title="新規プロジェクト">新規</button>
         <button type="button" id="openBtn" title="JSONを開く">開く</button>
+        <button type="button" id="restoreBackupBtn" title="ブラウザ内の自動保存を復元">復元</button>
         <button type="button" id="saveBtn" class="primary" title="JSONで保存">保存</button>
         <button type="button" id="printBtn" title="全ページをPDF印刷">PDF印刷</button>
         <button type="button" id="exportSvgBtn" title="現在ページをSVG出力">SVG</button>
@@ -834,6 +835,11 @@
         history = history.slice(0, historyIndex + 1);
         history.push(snapshot);
         historyIndex = history.length - 1;
+        try {
+          localStorage.setItem("electricalDrawingStudio.backup", snapshot);
+        } catch (_) {
+          // Local backup can fail in restrictive browser modes.
+        }
         setStatus(reason || "変更を記録しました。");
       }
 
@@ -2133,6 +2139,33 @@
         setStatus("JSONを保存しました。");
       }
 
+      function restoreLocalBackup() {
+        let snapshot = "";
+        try {
+          snapshot = localStorage.getItem("electricalDrawingStudio.backup") || "";
+        } catch (_) {
+          setStatus("ブラウザ内バックアップを読めません。");
+          return;
+        }
+        if (!snapshot) {
+          setStatus("復元できるバックアップがありません。");
+          return;
+        }
+        if (!confirm("ブラウザ内の自動保存データを復元しますか？\n現在の画面内容は置き換わります。")) return;
+        try {
+          const restored = JSON.parse(snapshot);
+          if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
+          Object.assign(state, restored);
+          selectedId = null;
+          pageCounter = state.pages.length + 1;
+          resetHistory();
+          render();
+          setStatus("ブラウザ内バックアップを復元しました。");
+        } catch (error) {
+          setStatus("復元に失敗しました: " + error.message);
+        }
+      }
+
       function openProjectFile(file) {
         const reader = new FileReader();
         reader.onload = () => {
@@ -2727,6 +2760,7 @@
           if (confirm("現在の内容を破棄して新規作成しますか？")) initProject();
         });
         qs("#openBtn").addEventListener("click", () => qs("#fileInput").click());
+        qs("#restoreBackupBtn").addEventListener("click", restoreLocalBackup);
         qs("#fileInput").addEventListener("change", event => {
           const file = event.target.files[0];
           if (file) openProjectFile(file);
