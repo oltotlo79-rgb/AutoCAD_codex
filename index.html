@@ -1797,6 +1797,7 @@
               <button type="button" id="bringForwardBtn">前面へ</button>
               <button type="button" id="sendBackwardBtn">背面へ</button>
             </div>
+            <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:8px">回路として登録</button>
             <div class="row-3" style="margin-top:8px">
               <button type="button" data-align="left">左揃え</button>
               <button type="button" data-align="hcenter">中揃え</button>
@@ -1819,6 +1820,7 @@
             <button type="button" data-nudge="0,1" style="width:100%;margin-top:8px">↓ 1mm移動</button>
           `;
           attachSelectionActionButtons(panel);
+          qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
           return;
         }
         const element = selectedElement();
@@ -2251,17 +2253,22 @@
         const symbol = (state.customSymbols || []).find(item => item.id === id);
         const page = currentPage();
         if (!symbol || !page) return;
-        const element = deepClone(symbol.template);
-        element.id = uid("el");
-        if (element.points) {
-          element.points = element.points.map(point => [point[0] + x, point[1] + y]);
-        } else {
-          element.x = x;
-          element.y = y;
-        }
-        page.elements.push(element);
-        selectSingle(element.id);
-        commitHistory("ユーザー部品を配置しました。");
+        const templates = (symbol.templates || [symbol.template]).filter(Boolean);
+        const placed = templates.map(template => {
+          const element = deepClone(template);
+          element.id = uid("el");
+          element.locked = false;
+          if (element.points) {
+            element.points = element.points.map(point => [point[0] + x, point[1] + y]);
+          } else {
+            element.x = Number(element.x || 0) + x;
+            element.y = Number(element.y || 0) + y;
+          }
+          return element;
+        });
+        page.elements.push(...placed);
+        setSelection(placed.map(element => element.id));
+        commitHistory(placed.length > 1 ? "ユーザー回路を配置しました。" : "ユーザー部品を配置しました。");
         setActiveTool("select");
         render();
       }
@@ -3132,34 +3139,40 @@
       }
 
       function registerSelectedAsSymbol() {
-        const element = selectedElement();
-        if (!element) {
+        const selected = selectedElements();
+        if (!selected.length) {
           setStatus("登録する要素を選択してください。");
           return;
         }
-        const defaultName = (element.label || element.text || paletteLabel(element.type) || "ユーザー部品").toString();
+        const defaultName = selected.length === 1
+          ? (selected[0].label || selected[0].text || paletteLabel(selected[0].type) || "ユーザー部品").toString()
+          : "ユーザー回路" + selected.length + "要素";
         const label = prompt("ユーザー部品名", defaultName);
         if (!label) return;
+        const boxes = selected.map(elementBounds).filter(Boolean);
+        const origin = unionBounds(boxes);
+        const templates = selected.map(element => normalizeSymbolTemplate(element, origin.x, origin.y));
+        state.customSymbols.push({
+          id: uid("sym"),
+          label,
+          template: deepClone(templates[0]),
+          templates
+        });
+        commitHistory(selected.length > 1 ? "ユーザー回路を登録しました。" : "ユーザー部品を登録しました。");
+        render();
+      }
+
+      function normalizeSymbolTemplate(element, originX, originY) {
         const template = deepClone(element);
         delete template.id;
         delete template.locked;
         if (template.points) {
-          const xs = template.points.map(point => point[0]);
-          const ys = template.points.map(point => point[1]);
-          const minX = Math.min(...xs);
-          const minY = Math.min(...ys);
-          template.points = template.points.map(point => [point[0] - minX, point[1] - minY]);
+          template.points = template.points.map(point => [round(point[0] - originX), round(point[1] - originY)]);
         } else {
-          template.x = 0;
-          template.y = 0;
+          template.x = round(Number(template.x || 0) - originX);
+          template.y = round(Number(template.y || 0) - originY);
         }
-        state.customSymbols.push({
-          id: uid("sym"),
-          label,
-          template
-        });
-        commitHistory("ユーザー部品を登録しました。");
-        render();
+        return template;
       }
 
       function moveSelected(dx, dy) {
@@ -3877,7 +3890,7 @@
       function showSymbolManager() {
         const symbols = state.customSymbols || [];
         const html = symbols.length
-          ? `<table class="report-table"><thead><tr><th>部品名</th><th>元要素</th><th>操作</th></tr></thead><tbody>${symbols.map(symbol => `<tr><td>${escapeHtml(symbol.label)}</td><td>${escapeHtml(paletteLabel(symbol.template?.type || ""))}</td><td><button type="button" data-delete-symbol="${escapeAttr(symbol.id)}">削除</button></td></tr>`).join("")}</tbody></table>`
+          ? `<table class="report-table"><thead><tr><th>部品名</th><th>内容</th><th>操作</th></tr></thead><tbody>${symbols.map(symbol => `<tr><td>${escapeHtml(symbol.label)}</td><td>${escapeHtml(symbolSummary(symbol))}</td><td><button type="button" data-delete-symbol="${escapeAttr(symbol.id)}">削除</button></td></tr>`).join("")}</tbody></table>`
           : '<p class="muted">登録済みのユーザー部品はありません。図形を選択して「ユーザー部品に登録」を押すと追加できます。</p>';
         openDialog("ユーザー部品管理", html);
         qsa("[data-delete-symbol]", qs("#dialogBody")).forEach(button => {
@@ -3889,6 +3902,12 @@
             renderPalette();
           });
         });
+      }
+
+      function symbolSummary(symbol) {
+        const templates = (symbol.templates || [symbol.template]).filter(Boolean);
+        if (templates.length > 1) return templates.length + "要素の回路";
+        return paletteLabel(templates[0]?.type || "");
       }
 
       function showLayerManager() {
