@@ -446,7 +446,8 @@
     .print-sheets { display: none; }
 
     #fileInput,
-    #terminalCsvInput { display: none; }
+    #terminalCsvInput,
+    #plcCsvInput { display: none; }
 
     @media print {
       @page { margin: 0; }
@@ -597,7 +598,10 @@
             <button type="button" id="copyReportBtn">一覧表示</button>
           </div>
           <button type="button" id="insertReportTableBtn" style="width:100%;margin-top:8px">帳票表挿入</button>
-          <button type="button" id="terminalCsvBtn" style="width:100%;margin-top:8px">端子CSV取込</button>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="terminalCsvBtn">端子CSV</button>
+            <button type="button" id="plcCsvBtn">PLC CSV</button>
+          </div>
           <button type="button" id="exportDxfBtn" style="width:100%;margin-top:8px">DXF</button>
         </div>
       </aside>
@@ -690,6 +694,7 @@
 
   <input id="fileInput" type="file" accept=".json,application/json">
   <input id="terminalCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
+  <input id="plcCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
   <div id="printSheets" class="print-sheets"></div>
   <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
     <div class="dialog">
@@ -2644,6 +2649,25 @@
         reader.readAsArrayBuffer(file);
       }
 
+      function importPlcCsvFile(file) {
+        const reader = new FileReader();
+        reader.addEventListener("load", () => {
+          try {
+            const text = decodeTextBuffer(reader.result);
+            const rows = parseDelimitedRows(text);
+            const ioRows = normalizePlcCsvRows(rows);
+            if (!ioRows.length) {
+              setStatus("PLC CSVに有効なI/O行がありません。");
+              return;
+            }
+            addPlcCsvPages(ioRows, file.name || "plc.csv");
+          } catch (error) {
+            alert("PLC CSVを読み込めませんでした。\n" + error.message);
+          }
+        });
+        reader.readAsArrayBuffer(file);
+      }
+
       function decodeTextBuffer(buffer) {
         const bytes = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).buffer;
         const candidates = [];
@@ -2737,6 +2761,41 @@
             note: value("note") || cells[4] || ""
           };
         }).filter(row => row.terminal || row.wireNo || row.signal || row.dest || row.note);
+      }
+
+      function normalizePlcCsvRows(rows) {
+        if (!rows.length) return [];
+        const aliases = {
+          address: ["address", "addr", "io", "i/o", "point", "plc", "アドレス", "io番号", "入出力番号", "点数"],
+          direction: ["direction", "type", "iotype", "io_type", "inout", "入出力", "種別", "方向"],
+          signal: ["signal", "name", "description", "信号", "信号名", "名称", "用途"],
+          wireNo: ["wireno", "wire", "wire_no", "線番", "配線番号", "線番号"],
+          device: ["device", "dest", "destination", "to", "from", "接続先", "機器", "相手先"],
+          note: ["note", "memo", "remarks", "備考", "メモ"]
+        };
+        const first = rows[0].map(normalizeHeader);
+        const indexes = Object.fromEntries(Object.keys(aliases).map(key => [key, findHeaderIndex(first, aliases[key])]));
+        const hasHeader = Object.values(indexes).some(index => index >= 0);
+        const body = hasHeader ? rows.slice(1) : rows;
+        return body.map((cells, index) => {
+          const value = key => {
+            const col = indexes[key];
+            return col >= 0 ? (cells[col] || "").trim() : "";
+          };
+          const address = value("address") || cells[0] || "";
+          const signal = value("signal") || cells[1] || "";
+          const wireNo = value("wireNo") || cells[2] || "";
+          const device = value("device") || cells[3] || "";
+          const note = value("note") || cells[4] || "";
+          const direction = normalizeIoDirection(value("direction") || address);
+          return { address: address || (direction === "output" ? "O" : "I") + String(index).padStart(2, "0"), direction, signal, wireNo, device, note };
+        }).filter(row => row.address || row.signal || row.wireNo || row.device || row.note);
+      }
+
+      function normalizeIoDirection(text) {
+        const value = normalizeHeader(text);
+        if (value.startsWith("o") || value.includes("out") || value.includes("出力")) return "output";
+        return "input";
       }
 
       function normalizeHeader(text) {
@@ -2887,6 +2946,116 @@
           cols: 4,
           label: "端子一覧",
           cellText: ["端子\t線番\t信号\t接続先", ...rows.slice(0, 5).map(row => [row.terminal, row.wireNo, row.signal, row.dest].join("\t"))].join("\n"),
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "notes"
+        });
+      }
+
+      function addPlcCsvPages(rows, fileName) {
+        const perPage = 30;
+        const created = [];
+        for (let offset = 0; offset < rows.length; offset += perPage) {
+          const chunk = rows.slice(offset, offset + perPage);
+          const pageNo = Math.floor(offset / perPage) + 1;
+          const totalPages = Math.ceil(rows.length / perPage);
+          const page = createPage({
+            name: "PLC CSV" + (state.pages.length + pageNo),
+            size: "A4",
+            orientation: "landscape",
+            frameVariant: "side",
+            title: "PLC I/O 接続図"
+          });
+          populatePlcCsvPage(page, chunk, pageNo, totalPages, fileName);
+          state.pages.push(page);
+          created.push(page);
+        }
+        state.activePageId = created[0].id;
+        setSelection([]);
+        commitHistory("PLC CSVから" + created.length + "ページを追加しました。");
+        render();
+      }
+
+      function populatePlcCsvPage(page, rows, pageNo, totalPages, fileName) {
+        const leftRows = rows.filter(row => row.direction !== "output");
+        const rightRows = rows.filter(row => row.direction === "output");
+        const maxRows = Math.max(2, leftRows.length, rightRows.length);
+        const plcX = 118;
+        const plcY = 46;
+        const plcW = 58;
+        const plcH = Math.max(62, Math.min(132, 14 + maxRows * 5.8));
+        const pitch = (plcH - 16) / maxRows;
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: 18,
+          y: 26,
+          w: 110,
+          h: 8,
+          text: "PLC I/O 接続図 " + pageNo + "/" + totalPages,
+          fontSize: 4,
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "notes"
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: 18,
+          y: 36,
+          w: 140,
+          h: 6,
+          text: "取込元: " + fileName,
+          fontSize: 2.4,
+          rotation: 0,
+          stroke: state.settings.stroke,
+          layer: "notes"
+        });
+        const plc = defaultElement("plcBlock", plcX, plcY);
+        plc.w = plcW;
+        plc.h = plcH;
+        plc.rows = maxRows;
+        plc.label = "PLC-CSV";
+        plc.tag = "PLC-CSV";
+        plc.description = "CSV取込I/O";
+        plc.pinText = Array.from({ length: maxRows }, (_, index) => {
+          const left = leftRows[index]?.address || "";
+          const right = rightRows[index]?.address || "";
+          return [left, right].filter(Boolean).join(" / ");
+        }).join("\n");
+        page.elements.push(plc);
+        leftRows.forEach((row, index) => addPlcCsvIoRow(page, row, index, "input", plc, pitch));
+        rightRows.forEach((row, index) => addPlcCsvIoRow(page, row, index, "output", plc, pitch));
+      }
+
+      function addPlcCsvIoRow(page, row, index, side, plc, pitch) {
+        const y = Number(plc.y || 0) + 8 + (index + .5) * pitch;
+        const left = side === "input";
+        const plcName = (plc.label || "PLC") + ":" + row.address;
+        const deviceName = row.device || row.signal || "";
+        const x1 = left ? 30 : Number(plc.x || 0) + Number(plc.w || 58);
+        const x2 = left ? Number(plc.x || 0) : 248;
+        page.elements.push({
+          id: uid("el"),
+          type: "wire",
+          points: [[x1, y], [x2, y]],
+          wireNo: row.wireNo || row.address,
+          fromOverride: left ? deviceName : plcName,
+          toOverride: left ? plcName : deviceName,
+          wireType: state.settings.currentWireType,
+          stroke: state.settings.stroke,
+          layer: "wires",
+          note: row.note || ""
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: left ? 18 : 252,
+          y: y - 1.8,
+          w: 54,
+          h: 5,
+          text: [row.address, row.signal].filter(Boolean).join("  "),
+          fontSize: 2.3,
           rotation: 0,
           stroke: state.settings.stroke,
           layer: "notes"
@@ -4910,6 +5079,12 @@
         qs("#terminalCsvInput").addEventListener("change", event => {
           const file = event.target.files[0];
           if (file) importTerminalCsvFile(file);
+          event.target.value = "";
+        });
+        qs("#plcCsvBtn").addEventListener("click", () => qs("#plcCsvInput").click());
+        qs("#plcCsvInput").addEventListener("change", event => {
+          const file = event.target.files[0];
+          if (file) importPlcCsvFile(file);
           event.target.value = "";
         });
         qs("#saveBtn").addEventListener("click", saveProject);
