@@ -530,6 +530,12 @@
         </div>
 
         <div class="section">
+          <div class="panel-title">配線設定</div>
+          <label for="currentWireType">配線種別</label>
+          <select id="currentWireType"></select>
+        </div>
+
+        <div class="section">
           <div class="panel-title">自動処理</div>
           <label for="wireNumberFormat">線番書式</label>
           <input id="wireNumberFormat" type="text" value="%S-%N">
@@ -669,8 +675,15 @@
           grid: 2.5,
           snap: true,
           stroke: "#111820",
-          wireNumberFormat: "%S-%N"
+          wireNumberFormat: "%S-%N",
+          currentWireType: "control"
         },
+        wireTypes: [
+          { id: "control", label: "制御線", color: "#111820", width: .38, dash: "", noNumber: false },
+          { id: "power", label: "動力線", color: "#b42318", width: .5, dash: "", noNumber: false },
+          { id: "safety", label: "安全線", color: "#0f6f63", width: .45, dash: "", noNumber: false },
+          { id: "external", label: "盤外/参考線", color: "#5b626b", width: .35, dash: "3 2", noNumber: true }
+        ],
         pages: []
       };
 
@@ -768,6 +781,7 @@
             type: "wire",
             points: [[x, 76], [x, 132]],
             wireNo: "W" + String(i + 1).padStart(2, "0"),
+            wireType: state.settings.currentWireType,
             stroke: state.settings.stroke
           });
         }
@@ -1113,7 +1127,7 @@
         if (element.type !== "wire" && element.type !== "arrow") {
           g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")");
         }
-        const stroke = element.stroke || state.settings.stroke;
+        const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
         if (element.type === "text") drawText(g, element);
         if (element.type === "wire") drawWire(g, element, stroke);
         if (element.type === "terminal") drawTerminal(g, element, stroke);
@@ -1142,11 +1156,29 @@
       function drawWire(g, element, stroke) {
         const points = element.points || [[0, 0], [20, 0]];
         const path = orthogonalPath(points[0], points[points.length - 1]);
-        g.appendChild(svgEl("path", { d: path, class: "wire-line", stroke }));
+        const style = wireStyle(element);
+        g.appendChild(svgEl("path", {
+          d: path,
+          class: "wire-line",
+          stroke: style.color,
+          "stroke-width": style.width,
+          "stroke-dasharray": style.dash || null
+        }));
         const mid = pathMid(points[0], points[points.length - 1]);
         if (element.wireNo) {
           g.appendChild(textEl(element.wireNo, mid.x + 1.6, mid.y - 1.8, { fontSize: 2.3 }));
         }
+      }
+
+      function wireStyle(element) {
+        const type = (state.wireTypes || []).find(item => item.id === element.wireType) || (state.wireTypes || [])[0];
+        return {
+          color: type?.color || element.stroke || state.settings.stroke,
+          width: type?.width || .38,
+          dash: type?.dash || "",
+          label: type?.label || "",
+          noNumber: Boolean(type?.noNumber)
+        };
       }
 
       function orthogonalPath(a, b) {
@@ -1367,7 +1399,16 @@
         setValue("gridSize", state.settings.grid);
         setValue("snapToggle", state.settings.snap ? "on" : "off");
         setValue("wireNumberFormat", state.settings.wireNumberFormat || "%S-%N");
+        renderWireTypeSelect();
+        setValue("currentWireType", state.settings.currentWireType || "control");
         renderSelectionPanel();
+      }
+
+      function renderWireTypeSelect() {
+        const select = qs("#currentWireType");
+        if (!select) return;
+        const html = (state.wireTypes || []).map(type => `<option value="${escapeAttr(type.id)}">${escapeHtml(type.label)}</option>`).join("");
+        if (select.innerHTML !== html) select.innerHTML = html;
       }
 
       function setValue(id, value) {
@@ -1434,7 +1475,10 @@
         const points = element.points || [[0, 0], [20, 0]];
         const a = points[0];
         const b = points[points.length - 1];
+        const options = (state.wireTypes || []).map(type => `<option value="${escapeAttr(type.id)}"${element.wireType === type.id ? " selected" : ""}>${escapeHtml(type.label)}</option>`).join("");
         return `
+          <label>配線種別</label>
+          <select data-bind="wireType">${options}</select>
           <div class="row">
             <div><label>始点 X</label><input data-bind="p0x" data-kind="number" type="number" step="0.5" value="${round(a[0])}"></div>
             <div><label>始点 Y</label><input data-bind="p0y" data-kind="number" type="number" step="0.5" value="${round(a[1])}"></div>
@@ -1538,7 +1582,7 @@
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", stroke: state.settings.stroke },
-          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", stroke: state.settings.stroke }
+          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke }
         };
         return deepClone(defaults[type] || defaults.deviceBox);
       }
@@ -1588,6 +1632,7 @@
             type: "wire",
             points: [[px, y + 7], [px, y + 72]],
             wireNo: "W" + String(i + 1).padStart(2, "0"),
+            wireType: state.settings.currentWireType,
             stroke: state.settings.stroke
           });
           page.elements.push({
@@ -1731,6 +1776,7 @@
             state.app = loaded.app || state.app;
             state.version = loaded.version || state.version;
             state.settings = { ...state.settings, ...(loaded.settings || {}) };
+            state.wireTypes = loaded.wireTypes || state.wireTypes;
             state.pages = loaded.pages;
             state.activePageId = loaded.activePageId || state.pages[0].id;
             pageCounter = state.pages.length + 1;
@@ -1818,6 +1864,7 @@
           page.elements
             .filter(element => element.type === "wire")
             .forEach(element => {
+              if (wireStyle(element).noNumber) return;
               if (!overwrite && element.wireNo) return;
               element.wireNo = formatWireNumber(format, page, next);
               next += 1;
@@ -1878,7 +1925,7 @@
             if (element.type === "wire") {
               const p0 = element.points?.[0] || [0, 0];
               const p1 = element.points?.[element.points.length - 1] || [0, 0];
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: "" });
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: wireStyle(element).label });
             } else if (element.type === "terminal") {
               rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: "single" });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
@@ -2035,14 +2082,15 @@
 
       function dxfElement(out, page, element) {
         if (element.type === "wire") {
+          const layer = "WIRE_" + String(element.wireType || "control").toUpperCase();
           const points = element.points || [[0, 0], [20, 0]];
           const a = points[0];
           const b = points[points.length - 1];
           if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
-            dxfLine(out, page, "WIRE", a[0], a[1], b[0], b[1]);
+            dxfLine(out, page, layer, a[0], a[1], b[0], b[1]);
           } else {
-            dxfLine(out, page, "WIRE", a[0], a[1], a[0], b[1]);
-            dxfLine(out, page, "WIRE", a[0], b[1], b[0], b[1]);
+            dxfLine(out, page, layer, a[0], a[1], a[0], b[1]);
+            dxfLine(out, page, layer, a[0], b[1], b[0], b[1]);
           }
           if (element.wireNo) {
             const mid = pathMid(a, b);
@@ -2217,6 +2265,11 @@
         qs("#wireNumberFormat").addEventListener("change", event => {
           state.settings.wireNumberFormat = event.target.value || "%S-%N";
           commitHistory("線番書式を変更しました。");
+          render();
+        });
+        qs("#currentWireType").addEventListener("change", event => {
+          state.settings.currentWireType = event.target.value || "control";
+          commitHistory("配線種別を変更しました。");
           render();
         });
         updatePageField("pageName", (page, value) => { page.name = value || page.name; });
