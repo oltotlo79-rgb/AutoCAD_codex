@@ -768,6 +768,8 @@
         { type: "line", label: "直線", icon: "line" },
         { type: "rect", label: "矩形", icon: "rect" },
         { type: "circle", label: "円", icon: "circle" },
+        { type: "installationBox", label: "設備枠", icon: "area" },
+        { type: "locationBox", label: "場所枠", icon: "area" },
         { type: "terminal", label: "端子", icon: "terminal" },
         { type: "terminalStrip", label: "端子台", icon: "strip" },
         { type: "terminalSheet", label: "端子配線セット", icon: "sheet" },
@@ -1081,6 +1083,7 @@
           line: `<svg ${common}><path ${stroke} d="M12 32L68 12"/></svg>`,
           rect: `<svg ${common}><rect x="18" y="11" width="44" height="24" ${stroke}/></svg>`,
           circle: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
+          area: `<svg ${common}><rect x="12" y="8" width="56" height="30" ${thin} stroke-dasharray="5 4"/><path ${thin} d="M12 17h56"/><path ${stroke} d="M20 13h18"/></svg>`,
           terminal: `<svg ${common}><rect x="32" y="14" width="16" height="16" ${stroke}/><path ${stroke} d="M8 22h24M48 22h24"/></svg>`,
           strip: `<svg ${common}><path ${stroke} d="M10 24h60"/><circle cx="20" cy="24" r="6" ${thin}/><circle cx="35" cy="24" r="6" ${thin}/><circle cx="50" cy="24" r="6" ${thin}/><circle cx="65" cy="24" r="6" ${thin}/></svg>`,
           sheet: `<svg ${common}><path ${thin} d="M12 34h56M20 12v22M34 12v22M48 12v22M62 12v22"/><path ${stroke} d="M12 12h56"/></svg>`,
@@ -1353,6 +1356,7 @@
         if (element.type === "line") drawLineElement(g, element, stroke);
         if (element.type === "rect") drawRectElement(g, element, stroke);
         if (element.type === "circle") drawCircleElement(g, element, stroke);
+        if (element.type === "installationBox" || element.type === "locationBox") drawAreaBox(g, element, stroke);
         if (element.type === "terminal") drawTerminal(g, element, stroke);
         if (element.type === "terminalStrip") drawTerminalStrip(g, element, stroke);
         if (element.type === "contactNO") drawContact(g, element, false, stroke);
@@ -1497,6 +1501,33 @@
           fill: element.fill || "none"
         }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
+      }
+
+      function drawAreaBox(g, element, stroke) {
+        const w = Number(element.w || 90);
+        const h = Number(element.h || 60);
+        const prefix = element.type === "installationBox" ? "INST" : "LOC";
+        const label = element.label || (element.type === "installationBox" ? "設備" : "場所");
+        g.appendChild(svgEl("rect", {
+          x: 0,
+          y: 0,
+          width: w,
+          height: h,
+          class: "symbol-line",
+          stroke,
+          fill: "none",
+          "stroke-dasharray": element.dash || "4 2"
+        }));
+        g.appendChild(svgEl("rect", {
+          x: 0,
+          y: 0,
+          width: Math.min(w, Math.max(24, String(label).length * 3.1 + 14)),
+          height: 7,
+          fill: "#fff",
+          stroke,
+          "stroke-width": .25
+        }));
+        g.appendChild(textEl(prefix + ": " + label, 2, 4.8, { fontSize: 2.5 }));
       }
 
       function wireStyle(element) {
@@ -2001,6 +2032,7 @@
         qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
         qs("#toggleLockBtn", panel)?.addEventListener("click", toggleSelectedLock);
         qs("#toggleWireGapBtn", panel)?.addEventListener("click", toggleSelectedWireGap);
+        qs("#applyAreaAttributesBtn", panel)?.addEventListener("click", applySelectedAreaAttributes);
         attachSelectionActionButtons(panel);
         qs("#rotateLeftBtn", panel)?.addEventListener("click", () => rotateSelected(-90));
         qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
@@ -2110,6 +2142,14 @@
       function specificFields(element) {
         if (element.type === "wire") {
           return `<button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>`;
+        }
+        if (element.type === "installationBox" || element.type === "locationBox") {
+          const target = element.type === "installationBox" ? "設備" : "場所";
+          return `
+            <label>枠線破線</label>
+            <input data-bind="dash" type="text" value="${escapeAttr(element.dash || "4 2")}" placeholder="4 2">
+            <button type="button" id="applyAreaAttributesBtn" style="width:100%;margin-top:8px">枠内へ${target}属性を適用</button>
+          `;
         }
         if (element.type === "arrow") {
           const role = element.signalRole || "reference";
@@ -2231,7 +2271,7 @@
 
       function supportsElectricalAttributes(element) {
         if (!element) return false;
-        return !["text", "wire", "line", "rect", "circle", "table", "arrow", "junction"].includes(element.type);
+        return !["text", "wire", "line", "rect", "circle", "installationBox", "locationBox", "table", "arrow", "junction"].includes(element.type);
       }
 
       function updateSelectedFromInput(input, save = true) {
@@ -2270,6 +2310,8 @@
           line: { id: uid("el"), type: "line", points: [[x, y], [x + 30, y]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke, layer: defaultLayerFor("line") },
           rect: { ...base, w: 34, h: 22, label: "" },
           circle: { ...base, w: 22, h: 22, label: "" },
+          installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
+          locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
           terminal: { ...base, w: 20, h: 10, label: "1" },
           terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", label: "X1" },
           contactNO: { ...base, w: 22, h: 14, label: "NO" },
@@ -2300,14 +2342,14 @@
       function defaultLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
-        if (type === "rect" || type === "circle" || type === "line") return state.settings.currentLayer || "layout";
+        if (type === "rect" || type === "circle" || type === "line" || type === "installationBox" || type === "locationBox") return state.settings.currentLayer || "layout";
         return state.settings.currentLayer || "symbols";
       }
 
       function inferredLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
-        if (type === "rect" || type === "circle" || type === "line") return "layout";
+        if (type === "rect" || type === "circle" || type === "line" || type === "installationBox" || type === "locationBox") return "layout";
         return "symbols";
       }
 
@@ -3303,7 +3345,7 @@
           rotation: 0,
           stroke: state.settings.stroke
         });
-        page.elements.push({ id: uid("el"), type: "rect", x: 28, y: 46, w: 154, h: 190, label: "盤内", rotation: 0, stroke: state.settings.stroke });
+        page.elements.push({ id: uid("el"), type: "installationBox", x: 28, y: 46, w: 154, h: 190, label: "盤内", dash: "4 2", rotation: 0, stroke: state.settings.stroke, layer: "layout" });
         const items = [
           ["PLC", 42, 62, 46, 32],
           ["端子台 X1", 102, 62, 58, 18],
@@ -3465,6 +3507,36 @@
         }
         element.gapAtMid = !element.gapAtMid;
         commitHistory(element.gapAtMid ? "配線ギャップを追加しました。" : "配線ギャップを解除しました。");
+        render();
+      }
+
+      function applySelectedAreaAttributes() {
+        const area = selectedElement();
+        if (!area || !["installationBox", "locationBox"].includes(area.type)) return;
+        if (isElementLocked(area)) {
+          setStatus("ロックされた枠は変更できません。");
+          return;
+        }
+        const value = String(area.label || "").trim();
+        if (!value) {
+          setStatus("枠のラベルを入力してください。");
+          return;
+        }
+        const key = area.type === "installationBox" ? "installation" : "location";
+        const box = elementBounds(area);
+        const page = currentPage();
+        let count = 0;
+        page.elements.forEach(element => {
+          if (element.id === area.id || !supportsElectricalAttributes(element) || isElementLocked(element)) return;
+          const bounds = elementBounds(element);
+          if (!bounds) return;
+          const cx = bounds.x + bounds.w / 2;
+          const cy = bounds.y + bounds.h / 2;
+          if (cx < box.x || cx > box.x + box.w || cy < box.y || cy > box.y + box.h) return;
+          element[key] = value;
+          count += 1;
+        });
+        commitHistory(count + "個の部品へ" + (key === "installation" ? "設備" : "場所") + "属性を適用しました。");
         render();
       }
 
@@ -4135,6 +4207,7 @@
         if (element.type === "table") details.unshift("rows=" + (element.rows || ""), "cols=" + (element.cols || ""), "cells=" + String(element.cellText || "").replace(/\r?\n/g, " / "));
         if (element.type === "plcBlock") details.unshift("rows=" + (element.rows || ""), "io=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
         if (element.type === "deviceBox") details.unshift("pins=" + (element.pins || ""), "pinText=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
+        if (["installationBox", "locationBox"].includes(element.type)) details.unshift("area=" + (element.type === "installationBox" ? "installation" : "location"), "value=" + (element.label || ""));
         return joinDetails(details);
       }
 
@@ -4651,7 +4724,7 @@
         if (element.type === "wire" && element.wireNo) entries.push({ kind: "線番", key: element.wireNo });
         if (element.type === "arrow" && element.label) entries.push({ kind: "信号", key: element.label });
         const tag = componentTag(element);
-        if (!["wire", "arrow", "text", "table", "rect", "circle", "line", "junction"].includes(element.type) && tag) {
+        if (!["wire", "arrow", "text", "table", "rect", "circle", "line", "installationBox", "locationBox", "junction"].includes(element.type) && tag) {
           entries.push({ kind: "部品", key: tag });
         }
         return entries;
@@ -4895,6 +4968,15 @@
         }
         if (element.type === "text") {
           dxfText(out, page, "TEXT", element.x || 0, element.y || 0, element.fontSize || 3.5, element.text || "");
+          return;
+        }
+        if (element.type === "installationBox" || element.type === "locationBox") {
+          const w = Number(element.w || 120);
+          const h = Number(element.h || 80);
+          const prefix = element.type === "installationBox" ? "INST" : "LOC";
+          dxfRectLocal(out, page, "AREA", element, 0, 0, w, h);
+          dxfLineLocal(out, page, "AREA", element, 0, 7, Math.min(w, Math.max(24, String(element.label || "").length * 3.1 + 14)), 7);
+          dxfTextLocal(out, page, "AREA", element, 2, 4.8, 2.5, prefix + ": " + (element.label || ""));
           return;
         }
         if (element.type === "rect") {
