@@ -487,6 +487,7 @@
         <button type="button" id="openBtn" title="JSONを開く">開く</button>
         <button type="button" id="restoreBackupBtn" title="ブラウザ内の自動保存を復元">復元</button>
         <button type="button" id="saveBtn" class="primary" title="JSONで保存">保存</button>
+        <button type="button" id="searchBtn" title="線番・タグ・文字を検索">検索</button>
         <button type="button" id="titleBatchBtn" title="全ページの表題欄を一括更新">表題欄</button>
         <button type="button" id="printBtn" title="全ページをPDF印刷">PDF印刷</button>
         <button type="button" id="printTwoUpBtn" title="A3縦に2ページずつ面付けして印刷">A3面付</button>
@@ -2814,6 +2815,63 @@
         attachDialogSelection();
       }
 
+      function showSearchDialog() {
+        const html = `
+          <label for="searchQuery">検索語</label>
+          <div class="inline">
+            <input id="searchQuery" placeholder="線番、タグ、文字、端子名">
+            <button type="button" id="runSearchBtn" class="primary">検索</button>
+          </div>
+          <div id="searchResults" style="margin-top:12px"></div>
+        `;
+        openDialog("図面検索", html);
+        qs("#runSearchBtn").addEventListener("click", runSearch);
+        qs("#searchQuery").addEventListener("keydown", event => {
+          if (event.key === "Enter") runSearch();
+        });
+      }
+
+      function runSearch() {
+        const query = qs("#searchQuery").value.trim().toLowerCase();
+        const results = query ? findElements(query) : [];
+        const body = qs("#searchResults");
+        body.innerHTML = results.length
+          ? `<table class="report-table"><thead><tr><th>ページ</th><th>種別</th><th>内容</th><th>選択</th></tr></thead><tbody>${results.map(result => `<tr><td>${escapeHtml(result.pageName)}</td><td>${escapeHtml(result.type)}</td><td>${escapeHtml(result.text)}</td><td><button type="button" data-select-page="${result.pageId}" data-select-id="${result.id}">選択</button></td></tr>`).join("")}</tbody></table>`
+          : '<p class="muted">該当する要素はありません。</p>';
+        attachDialogSelection();
+      }
+
+      function findElements(query) {
+        const results = [];
+        state.pages.forEach(page => {
+          page.elements.forEach(element => {
+            const text = elementSearchText(element);
+            if (text.toLowerCase().includes(query)) {
+              results.push({
+                pageId: page.id,
+                pageName: page.name,
+                id: element.id,
+                type: paletteLabel(element.type),
+                text
+              });
+            }
+          });
+        });
+        return results;
+      }
+
+      function elementSearchText(element) {
+        return [
+          element.type,
+          element.label,
+          element.text,
+          element.wireNo,
+          element.prefix,
+          element.cellText,
+          element.pinText
+        ].filter(Boolean).join(" ");
+      }
+
       function showCrossReference() {
         const groups = collectCrossReferences();
         const html = groups.length
@@ -3239,6 +3297,7 @@
           event.target.value = "";
         });
         qs("#saveBtn").addEventListener("click", saveProject);
+        qs("#searchBtn").addEventListener("click", showSearchDialog);
         qs("#titleBatchBtn").addEventListener("click", showTitleBatchDialog);
         qs("#printBtn").addEventListener("click", printProject);
         qs("#printTwoUpBtn").addEventListener("click", printProjectTwoUp);
