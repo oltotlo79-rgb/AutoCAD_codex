@@ -1507,7 +1507,7 @@
 
       function drawWire(g, element, stroke) {
         const points = element.points || [[0, 0], [20, 0]];
-        const path = orthogonalPath(points[0], points[points.length - 1]);
+        const path = wirePath(points);
         const style = wireStyle(element);
         g.appendChild(svgEl("path", {
           d: path,
@@ -1516,9 +1516,10 @@
           "stroke-width": style.width,
           "stroke-dasharray": style.dash || null
         }));
-        const mid = pathMid(points[0], points[points.length - 1]);
+        const mid = wireLabelPoint(points);
         if (element.gapAtMid) {
-          const horizontal = Math.abs(points[0][1] - points[points.length - 1][1]) <= Math.abs(points[0][0] - points[points.length - 1][0]);
+          const segment = wireMidSegment(points);
+          const horizontal = Math.abs(segment[1] - segment[3]) <= Math.abs(segment[0] - segment[2]);
           g.appendChild(svgEl("rect", {
             x: mid.x - (horizontal ? 3.2 : 1.5),
             y: mid.y - (horizontal ? 1.5 : 3.2),
@@ -1636,6 +1637,30 @@
 
       function pathMid(a, b) {
         return { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 };
+      }
+
+      function wirePath(points) {
+        if (!points || points.length < 2) return "M 0 0 L 20 0";
+        if (points.length === 2) return orthogonalPath(points[0], points[1]);
+        return points.map((point, index) => (index ? "L " : "M ") + point[0] + " " + point[1]).join(" ");
+      }
+
+      function wireLabelPoint(points) {
+        const segment = wireMidSegment(points);
+        return pathMid([segment[0], segment[1]], [segment[2], segment[3]]);
+      }
+
+      function wireMidSegment(points) {
+        const segments = wireSegments({ points });
+        if (!segments.length) return [0, 0, 20, 0];
+        const lengths = segments.map(segment => Math.hypot(segment[2] - segment[0], segment[3] - segment[1]));
+        const total = lengths.reduce((sum, length) => sum + length, 0);
+        let walked = 0;
+        for (let i = 0; i < segments.length; i += 1) {
+          if (walked + lengths[i] >= total / 2) return segments[i];
+          walked += lengths[i];
+        }
+        return segments[segments.length - 1];
       }
 
       function drawTerminal(g, element, stroke) {
@@ -2149,6 +2174,8 @@
         qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
         qs("#toggleLockBtn", panel)?.addEventListener("click", toggleSelectedLock);
         qs("#toggleWireGapBtn", panel)?.addEventListener("click", toggleSelectedWireGap);
+        qs("#addWirePointBtn", panel)?.addEventListener("click", addSelectedWirePoint);
+        qs("#removeWirePointBtn", panel)?.addEventListener("click", removeSelectedWirePoint);
         qs("#applyAreaAttributesBtn", panel)?.addEventListener("click", applySelectedAreaAttributes);
         qs("#copyInstallLocationBtn", panel)?.addEventListener("click", copySelectedInstallLocation);
         qs("#pasteInstallLocationBtn", panel)?.addEventListener("click", pasteInstallLocationToSelection);
@@ -2210,19 +2237,19 @@
 
       function wireFields(element) {
         const points = element.points || [[0, 0], [20, 0]];
-        const a = points[0];
-        const b = points[points.length - 1];
         const options = (state.wireTypes || []).map(type => `<option value="${escapeAttr(type.id)}"${element.wireType === type.id ? " selected" : ""}>${escapeHtml(type.label)}</option>`).join("");
+        const pointRows = points.map((point, index) => {
+          const label = index === 0 ? "始点" : (index === points.length - 1 ? "終点" : "中間" + index);
+          return `
+            <div class="row">
+              <div><label>${label} X</label><input data-bind="p${index}x" data-kind="number" type="number" step="0.5" value="${round(point[0])}"></div>
+              <div><label>${label} Y</label><input data-bind="p${index}y" data-kind="number" type="number" step="0.5" value="${round(point[1])}"></div>
+            </div>
+          `;
+        }).join("");
         return `
           ${element.type === "wire" ? `<label>配線種別</label><select data-bind="wireType">${options}</select>` : ""}
-          <div class="row">
-            <div><label>始点 X</label><input data-bind="p0x" data-kind="number" type="number" step="0.5" value="${round(a[0])}"></div>
-            <div><label>始点 Y</label><input data-bind="p0y" data-kind="number" type="number" step="0.5" value="${round(a[1])}"></div>
-          </div>
-          <div class="row">
-            <div><label>終点 X</label><input data-bind="p1x" data-kind="number" type="number" step="0.5" value="${round(b[0])}"></div>
-            <div><label>終点 Y</label><input data-bind="p1y" data-kind="number" type="number" step="0.5" value="${round(b[1])}"></div>
-          </div>
+          ${pointRows}
         `;
       }
 
@@ -2261,7 +2288,14 @@
 
       function specificFields(element) {
         if (element.type === "wire") {
-          return `<button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>`;
+          const pointCount = element.points?.length || 2;
+          return `
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="addWirePointBtn">中間点追加</button>
+              <button type="button" id="removeWirePointBtn" ${pointCount <= 2 ? "disabled" : ""}>中間点削除</button>
+            </div>
+            <button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>
+          `;
         }
         if (element.type === "underlayImage") {
           const crop = element.cropPreset || "full";
@@ -2426,11 +2460,10 @@
         if (!element) return;
         const key = input.dataset.bind;
         const value = input.type === "checkbox" ? input.checked : (input.dataset.kind === "number" ? Number(input.value) : input.value);
-        if (key === "p0x") element.points[0][0] = value;
-        else if (key === "p0y") element.points[0][1] = value;
-        else if (key === "p1x") element.points[element.points.length - 1][0] = value;
-        else if (key === "p1y") element.points[element.points.length - 1][1] = value;
-        else {
+        const pointMatch = key.match(/^p(\d+)(x|y)$/);
+        if (pointMatch && element.points?.[Number(pointMatch[1])]) {
+          element.points[Number(pointMatch[1])][pointMatch[2] === "x" ? 0 : 1] = value;
+        } else {
           element[key] = value;
           if (key === "tag" && supportsElectricalAttributes(element) && !element.label) element.label = value;
           if (["orientation", "count"].includes(key) && ["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
@@ -3673,6 +3706,38 @@
         render();
       }
 
+      function addSelectedWirePoint() {
+        const element = selectedElement();
+        if (!element || element.type !== "wire") return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        const points = element.points || [[0, 0], [20, 0]];
+        const insertAt = Math.max(1, points.length - 1);
+        const a = points[insertAt - 1];
+        const b = points[insertAt];
+        const point = points.length === 2 && Math.abs(a[0] - b[0]) > .001 && Math.abs(a[1] - b[1]) > .001
+          ? [round(a[0]), round(b[1])]
+          : [round((a[0] + b[0]) / 2), round((a[1] + b[1]) / 2)];
+        points.splice(insertAt, 0, point);
+        element.points = points;
+        commitHistory("配線の中間点を追加しました。");
+        render();
+      }
+
+      function removeSelectedWirePoint() {
+        const element = selectedElement();
+        if (!element || element.type !== "wire" || !element.points || element.points.length <= 2) return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        element.points.splice(element.points.length - 2, 1);
+        commitHistory("配線の中間点を削除しました。");
+        render();
+      }
+
       function applySelectedAreaAttributes() {
         const area = selectedElement();
         if (!area || !["installationBox", "locationBox"].includes(area.type)) return;
@@ -4226,6 +4291,13 @@
 
       function wireSegments(wire) {
         const points = wire.points || [[0, 0], [20, 0]];
+        if (points.length > 2) {
+          const segments = [];
+          for (let i = 1; i < points.length; i += 1) {
+            segments.push([points[i - 1][0], points[i - 1][1], points[i][0], points[i][1]]);
+          }
+          return segments;
+        }
         const a = points[0];
         const b = points[points.length - 1];
         if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
@@ -5287,16 +5359,9 @@
         if (element.type === "wire") {
           const layer = "WIRE_" + String(element.wireType || "control").toUpperCase();
           const points = element.points || [[0, 0], [20, 0]];
-          const a = points[0];
-          const b = points[points.length - 1];
-          if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
-            dxfLine(out, page, layer, a[0], a[1], b[0], b[1]);
-          } else {
-            dxfLine(out, page, layer, a[0], a[1], a[0], b[1]);
-            dxfLine(out, page, layer, a[0], b[1], b[0], b[1]);
-          }
+          wireSegments(element).forEach(segment => dxfLine(out, page, layer, segment[0], segment[1], segment[2], segment[3]));
           if (element.wireNo) {
-            const mid = pathMid(a, b);
+            const mid = wireLabelPoint(points);
             dxfText(out, page, "WIRENO", mid.x + 1.5, mid.y - 1.8, 2.4, element.wireNo);
           }
           return;
