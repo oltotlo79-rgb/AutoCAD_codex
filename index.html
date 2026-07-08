@@ -591,6 +591,7 @@
             <button type="button" id="terminalEditorBtn">端子台</button>
             <button type="button" id="tagComponentsBtn">部品タグ</button>
           </div>
+          <button type="button" id="componentTagRulesBtn" style="width:100%;margin-top:8px">部品タグ規則</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="crossRefBtn">クロス参照</button>
             <button type="button" id="auditBtn">監査</button>
@@ -807,6 +808,27 @@
         { type: "junction", label: "接続点", icon: "dot" }
       ];
 
+      const DEFAULT_TAG_PREFIXES = {
+        contactNO: "CR",
+        contactNC: "CR",
+        pushButton: "PB",
+        coil: "CR",
+        fuse: "F",
+        breaker: "CB",
+        lamp: "PL",
+        buzzer: "BZ",
+        powerSupply: "PS",
+        ground: "E",
+        motor: "M",
+        resistor: "R",
+        diode: "D",
+        deviceBox: "DEV",
+        plcBlock: "PLC",
+        connector: "CN",
+        cableMarker: "C",
+        arrow: "REF"
+      };
+
       const qs = (selector, root = document) => root.querySelector(selector);
       const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
       const svgNS = "http://www.w3.org/2000/svg";
@@ -824,6 +846,7 @@
           stroke: "#111820",
           wireNumberFormat: "%S-%N",
           componentTagFormat: "%F%N",
+          componentTagPrefixes: {},
           currentWireType: "control",
           standard: "general",
           currentLayer: "symbols"
@@ -911,6 +934,7 @@
       function ensureProjectDefaults() {
         state.settings = state.settings || {};
         if (!state.settings.componentTagFormat) state.settings.componentTagFormat = "%F%N";
+        if (!state.settings.componentTagPrefixes || typeof state.settings.componentTagPrefixes !== "object") state.settings.componentTagPrefixes = {};
         state.project = {
           title: "電気図面",
           drawingNo: "",
@@ -2544,6 +2568,7 @@
         state.settings.grid = standard.grid;
         state.settings.wireNumberFormat = standard.wireNumberFormat;
         state.settings.componentTagFormat = standard.componentTagFormat || "%F%N";
+        if (standard.componentTagPrefixes) state.settings.componentTagPrefixes = { ...standard.componentTagPrefixes };
         const page = currentPage();
         if (page && !page.frameVariant) page.frameVariant = standard.frameVariant;
       }
@@ -4141,6 +4166,10 @@
         const format = state.settings.componentTagFormat || "%F%N";
         const allPages = confirm("全ページの部品タグを付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
         const overwrite = confirm("既存タグ/ラベルも上書きしますか？\nOK: 上書き / キャンセル: 未入力のみ");
+        const startInput = prompt("開始番号", "1");
+        if (startInput === null) return;
+        const parsedStart = Number(startInput || 1);
+        const startNumber = Number.isFinite(parsedStart) && parsedStart > 0 ? Math.floor(parsedStart) : 1;
         const pages = allPages ? state.pages : [currentPage()];
         const counters = {};
         let count = 0;
@@ -4150,7 +4179,7 @@
             if (!prefix) return;
             if (element.fixedTag) return;
             if (!overwrite && (element.tag || element.label)) return;
-            counters[prefix] = (counters[prefix] || 0) + 1;
+            counters[prefix] = (counters[prefix] || (startNumber - 1)) + 1;
             const tag = formatComponentTag(format, page, element, prefix, counters[prefix]);
             element.tag = tag;
             element.label = tag;
@@ -4163,7 +4192,9 @@
 
       function formatComponentTag(format, page, element, prefix, number) {
         const pageIndex = state.pages.findIndex(item => item.id === page.id) + 1;
-        return String(format || "%F%N")
+        const raw = String(format || "%F%N");
+        const pattern = raw.includes("%N") ? raw : raw + "%N";
+        return pattern
           .replaceAll("%F", prefix || tagPrefix(element.type))
           .replaceAll("%S", page.title?.page || String(pageIndex))
           .replaceAll("%P", page.name || String(pageIndex))
@@ -4174,27 +4205,58 @@
       }
 
       function tagPrefix(type) {
-        const map = {
-          contactNO: "CR",
-          contactNC: "CR",
-          pushButton: "PB",
-          coil: "CR",
-          fuse: "F",
-          breaker: "CB",
-          lamp: "PL",
-          buzzer: "BZ",
-          powerSupply: "PS",
-          ground: "E",
-          motor: "M",
-          resistor: "R",
-          diode: "D",
-          deviceBox: "DEV",
-          plcBlock: "PLC",
-          connector: "CN",
-          cableMarker: "C",
-          arrow: "REF"
-        };
-        return map[type] || "";
+        const custom = state.settings.componentTagPrefixes || {};
+        if (Object.prototype.hasOwnProperty.call(custom, type)) return custom[type] || "";
+        return DEFAULT_TAG_PREFIXES[type] || "";
+      }
+
+      function showComponentTagRulesDialog() {
+        const custom = state.settings.componentTagPrefixes || {};
+        const rows = Object.keys(DEFAULT_TAG_PREFIXES).map(type => {
+          const hasCustom = Object.prototype.hasOwnProperty.call(custom, type);
+          const value = hasCustom ? custom[type] : DEFAULT_TAG_PREFIXES[type];
+          return `
+            <tr>
+              <td>${escapeHtml(paletteLabel(type))}</td>
+              <td>${escapeHtml(DEFAULT_TAG_PREFIXES[type])}</td>
+              <td><input data-tag-prefix-type="${escapeAttr(type)}" value="${escapeAttr(value)}"></td>
+            </tr>
+          `;
+        }).join("");
+        const html = `
+          <p class="muted">部品タグ書式の %F に入るファミリ接頭辞を編集します。空欄にした種別は自動タグ対象外になります。</p>
+          <table class="report-table">
+            <thead><tr><th>部品種別</th><th>既定</th><th>接頭辞</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="resetComponentTagRulesBtn">既定に戻す</button>
+            <button type="button" id="applyComponentTagRulesBtn" class="primary">適用</button>
+          </div>
+        `;
+        openDialog("部品タグ規則", html);
+        qs("#resetComponentTagRulesBtn").addEventListener("click", resetComponentTagRules);
+        qs("#applyComponentTagRulesBtn").addEventListener("click", applyComponentTagRules);
+      }
+
+      function applyComponentTagRules() {
+        const prefixes = {};
+        qsa("[data-tag-prefix-type]", qs("#dialogBody")).forEach(input => {
+          const type = input.dataset.tagPrefixType;
+          const value = String(input.value || "").trim();
+          if (value !== DEFAULT_TAG_PREFIXES[type]) prefixes[type] = value;
+        });
+        state.settings.componentTagPrefixes = prefixes;
+        closeDialog();
+        commitHistory("部品タグ規則を更新しました。");
+        render();
+      }
+
+      function resetComponentTagRules() {
+        state.settings.componentTagPrefixes = {};
+        closeDialog();
+        commitHistory("部品タグ規則を既定に戻しました。");
+        render();
       }
 
       function componentTag(element) {
@@ -5281,6 +5343,7 @@
         qs("#addRungBtn").addEventListener("click", addRungToCurrentPage);
         qs("#terminalEditorBtn").addEventListener("click", showTerminalEditor);
         qs("#tagComponentsBtn").addEventListener("click", autoTagComponents);
+        qs("#componentTagRulesBtn").addEventListener("click", showComponentTagRulesDialog);
         qs("#crossRefBtn").addEventListener("click", showCrossReference);
         qs("#reportCsvBtn").addEventListener("click", exportReportCsv);
         qs("#copyReportBtn").addEventListener("click", showReportTable);
