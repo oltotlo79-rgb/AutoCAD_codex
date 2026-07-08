@@ -4922,6 +4922,7 @@
         const issues = [];
         const arrows = new Map();
         const terminalNames = new Map();
+        const componentTags = new Map();
         state.pages.forEach(page => {
           const size = pageSize(page);
           const wireNos = new Map();
@@ -4939,6 +4940,20 @@
             }
             if (["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "ground", "motor", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
               issues.push({ level: "注意", page: page.name, message: "ラベルが未入力です。", target: element.type });
+            }
+            const prefix = tagPrefix(element.type);
+            if (prefix) {
+              if (!element.tag) {
+                issues.push({ level: "注意", page: page.name, message: "部品タグが未採番です。", target: element.label || paletteLabel(element.type) });
+              } else {
+                const key = element.type + "::" + element.tag;
+                const list = componentTags.get(key) || [];
+                list.push({ page: page.name, type: paletteLabel(element.type), tag: element.tag });
+                componentTags.set(key, list);
+              }
+              if (element.fixedTag && !element.tag) {
+                issues.push({ level: "警告", page: page.name, message: "部品タグ固定ですがタグが空です。", target: element.label || paletteLabel(element.type) });
+              }
             }
             if (["terminalStrip", "connector"].includes(element.type) && Number(element.count || 0) <= 0) {
               issues.push({ level: "警告", page: page.name, message: "端子数が不正です。", target: element.label || element.id });
@@ -4982,6 +4997,13 @@
           if (count > 1) {
             const [page, name] = key.split("::");
             issues.push({ level: "注意", page, message: "同一ページ内で端子台名称が重複しています。", target: name });
+          }
+        });
+        componentTags.forEach(items => {
+          if (items.length > 1) {
+            const first = items[0];
+            const pages = Array.from(new Set(items.map(item => item.page))).join(", ");
+            issues.push({ level: "注意", page: first.page, message: "同一部品種別で部品タグが重複しています。", target: first.type + " " + first.tag + " (" + pages + ")" });
           }
         });
         return issues;
