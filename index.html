@@ -547,6 +547,13 @@
         </div>
 
         <div class="section">
+          <div class="panel-title">レイヤ</div>
+          <label for="currentLayer">作図レイヤ</label>
+          <select id="currentLayer"></select>
+          <button type="button" id="layerManagerBtn" style="width:100%;margin-top:8px">レイヤ管理</button>
+        </div>
+
+        <div class="section">
           <div class="panel-title">自動処理</div>
           <label for="wireNumberFormat">線番書式</label>
           <input id="wireNumberFormat" type="text" value="%S-%N">
@@ -729,8 +736,16 @@
           stroke: "#111820",
           wireNumberFormat: "%S-%N",
           currentWireType: "control",
-          standard: "general"
+          standard: "general",
+          currentLayer: "symbols"
         },
+        layers: [
+          { id: "frame", label: "図枠", visible: true, locked: true, color: "#141a20" },
+          { id: "wires", label: "配線", visible: true, locked: false, color: "#111820" },
+          { id: "symbols", label: "記号", visible: true, locked: false, color: "#111820" },
+          { id: "notes", label: "注記", visible: true, locked: false, color: "#111820" },
+          { id: "layout", label: "配置", visible: true, locked: false, color: "#5b626b" }
+        ],
         wireTypes: [
           { id: "control", label: "制御線", color: "#111820", width: .38, dash: "", noNumber: false },
           { id: "power", label: "動力線", color: "#b42318", width: .5, dash: "", noNumber: false },
@@ -822,7 +837,8 @@
           text: "タイトルを入力",
           fontSize: 4,
           rotation: 0,
-          stroke: state.settings.stroke
+          stroke: state.settings.stroke,
+          layer: "notes"
         });
         page.elements.push({
           id: uid("el"),
@@ -836,7 +852,8 @@
           prefix: "",
           label: "X1",
           rotation: 0,
-          stroke: state.settings.stroke
+          stroke: state.settings.stroke,
+          layer: "symbols"
         });
         for (let i = 0; i < 6; i++) {
           const x = 48 + i * 10;
@@ -846,7 +863,8 @@
             points: [[x, 76], [x, 132]],
             wireNo: "W" + String(i + 1).padStart(2, "0"),
             wireType: state.settings.currentWireType,
-            stroke: state.settings.stroke
+            stroke: state.settings.stroke,
+            layer: "wires"
           });
         }
       }
@@ -1046,9 +1064,31 @@
 
         svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "#fff" }));
         if (options.grid !== false) drawGrid(svg, size);
-        drawFrame(svg, page, size);
-        page.elements.forEach(element => drawElement(svg, element));
+        if (isLayerVisible("frame")) drawFrame(svg, page, size);
+        page.elements.filter(isElementVisible).forEach(element => drawElement(svg, element));
         if (options.selection) drawSelection(svg);
+      }
+
+      function layerFor(id) {
+        return (state.layers || []).find(layer => layer.id === id) || null;
+      }
+
+      function isLayerVisible(id) {
+        const layer = layerFor(id || "symbols");
+        return layer ? layer.visible !== false : true;
+      }
+
+      function isLayerLocked(id) {
+        const layer = layerFor(id || "symbols");
+        return layer ? layer.locked === true : false;
+      }
+
+      function isElementVisible(element) {
+        return isLayerVisible(element.layer || inferredLayerFor(element.type));
+      }
+
+      function isElementLocked(element) {
+        return Boolean(element.locked || isLayerLocked(element.layer || inferredLayerFor(element.type)));
       }
 
       function drawGrid(svg, size) {
@@ -1683,6 +1723,8 @@
         setValue("wireNumberFormat", state.settings.wireNumberFormat || "%S-%N");
         renderWireTypeSelect();
         setValue("currentWireType", state.settings.currentWireType || "control");
+        renderLayerSelect();
+        setValue("currentLayer", state.settings.currentLayer || "symbols");
         renderSelectionPanel();
       }
 
@@ -1697,6 +1739,13 @@
         const select = qs("#currentWireType");
         if (!select) return;
         const html = (state.wireTypes || []).map(type => `<option value="${escapeAttr(type.id)}">${escapeHtml(type.label)}</option>`).join("");
+        if (select.innerHTML !== html) select.innerHTML = html;
+      }
+
+      function renderLayerSelect() {
+        const select = qs("#currentLayer");
+        if (!select) return;
+        const html = (state.layers || []).map(layer => `<option value="${escapeAttr(layer.id)}">${escapeHtml(layer.label)}</option>`).join("");
         if (select.innerHTML !== html) select.innerHTML = html;
       }
 
@@ -1746,6 +1795,8 @@
           ${isWireLike ? wireFields(element) : normalFields(element)}
           ${labelFields(element)}
           ${specificFields(element)}
+          <label>所属レイヤ</label>
+          <select data-bind="layer">${layerOptions(element.layer || inferredLayerFor(element.type))}</select>
           <label>属性メモ</label>
           <textarea data-bind="note">${escapeHtml(element.note || "")}</textarea>
           <label for="selStroke">線色</label>
@@ -1753,7 +1804,7 @@
             ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
           </div>
           <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:12px">ユーザー部品に登録</button>
-          <button type="button" id="toggleLockBtn" style="width:100%;margin-top:8px">${element.locked ? "ロック解除" : "ロック"}</button>
+          <button type="button" id="toggleLockBtn" style="width:100%;margin-top:8px" ${isLayerLocked(element.layer || inferredLayerFor(element.type)) ? "disabled" : ""}>${isLayerLocked(element.layer || inferredLayerFor(element.type)) ? "レイヤロック中" : (element.locked ? "ロック解除" : "ロック")}</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="copyElementBtn">コピー</button>
             <button type="button" id="pasteElementBtn">貼付</button>
@@ -1814,6 +1865,10 @@
             render();
           });
         });
+      }
+
+      function layerOptions(current) {
+        return (state.layers || []).map(layer => `<option value="${escapeAttr(layer.id)}"${current === layer.id ? " selected" : ""}>${escapeHtml(layer.label)}</option>`).join("");
       }
 
       function paletteLabel(type) {
@@ -1959,10 +2014,10 @@
       }
 
       function defaultElement(type, x = 30, y = 30) {
-        const base = { id: uid("el"), type, x, y, rotation: 0, stroke: state.settings.stroke };
+        const base = { id: uid("el"), type, x, y, rotation: 0, stroke: state.settings.stroke, layer: defaultLayerFor(type) };
         const defaults = {
           text: { ...base, w: 40, h: 8, text: "文字", fontSize: 3.5 },
-          line: { id: uid("el"), type: "line", points: [[x, y], [x + 30, y]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke },
+          line: { id: uid("el"), type: "line", points: [[x, y], [x + 30, y]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke, layer: defaultLayerFor("line") },
           rect: { ...base, w: 34, h: 22, label: "" },
           circle: { ...base, w: 22, h: 22, label: "" },
           terminal: { ...base, w: 20, h: 10, label: "1" },
@@ -1986,10 +2041,24 @@
           cableMarker: { ...base, w: 28, h: 12, label: "C" },
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
-          arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", stroke: state.settings.stroke },
-          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke }
+          arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
+          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
         };
         return deepClone(defaults[type] || defaults.deviceBox);
+      }
+
+      function defaultLayerFor(type) {
+        if (type === "wire") return "wires";
+        if (type === "text" || type === "table") return "notes";
+        if (type === "rect" || type === "circle" || type === "line") return state.settings.currentLayer || "layout";
+        return state.settings.currentLayer || "symbols";
+      }
+
+      function inferredLayerFor(type) {
+        if (type === "wire") return "wires";
+        if (type === "text" || type === "table") return "notes";
+        if (type === "rect" || type === "circle" || type === "line") return "layout";
+        return "symbols";
       }
 
       function canvasPoint(event) {
@@ -2025,6 +2094,7 @@
         const activeIds = new Set(selectedIds.length ? selectedIds : (selectedId ? [selectedId] : []));
         page.elements.forEach(element => {
           if (activeIds.has(element.id)) return;
+          if (!isElementVisible(element)) return;
           if (element.type === "wire" || element.type === "line" || element.type === "arrow") {
             (element.points || []).forEach(point => anchors.push({ x: point[0], y: point[1] }));
             return;
@@ -2436,7 +2506,7 @@
         const page = currentPage();
         const selected = selectedElements();
         if (!page || !selected.length) return;
-        const locked = selected.filter(element => element.locked);
+        const locked = selected.filter(isElementLocked);
         if (locked.length) {
           setStatus("ロックされた要素は削除できません。");
           return;
@@ -2535,7 +2605,7 @@
       function rotateSelected(degrees) {
         const element = selectedElement();
         if (!element) return;
-        if (element.locked) {
+        if (isElementLocked(element)) {
           setStatus("ロックされた要素は回転できません。");
           return;
         }
@@ -2601,7 +2671,7 @@
       function moveSelected(dx, dy) {
         const selected = selectedElements();
         if (!selected.length) return;
-        if (selected.some(element => element.locked)) {
+        if (selected.some(isElementLocked)) {
           setStatus("ロックされた要素は移動できません。");
           return;
         }
@@ -2682,6 +2752,7 @@
             state.app = loaded.app || state.app;
             state.version = loaded.version || state.version;
             state.settings = { ...state.settings, ...(loaded.settings || {}) };
+            state.layers = loaded.layers || state.layers;
             state.wireTypes = loaded.wireTypes || state.wireTypes;
             state.customSymbols = loaded.customSymbols || [];
             state.project = { ...state.project, ...(loaded.project || {}) };
@@ -3222,6 +3293,43 @@
         });
       }
 
+      function showLayerManager() {
+        const html = `
+          <table class="report-table">
+            <thead><tr><th>表示</th><th>ロック</th><th>レイヤ名</th><th>色</th></tr></thead>
+            <tbody>
+              ${(state.layers || []).map(layer => `
+                <tr data-layer-row="${escapeAttr(layer.id)}">
+                  <td><input data-layer-field="visible" type="checkbox" ${layer.visible !== false ? "checked" : ""} style="width:auto;min-height:auto"></td>
+                  <td><input data-layer-field="locked" type="checkbox" ${layer.locked ? "checked" : ""} style="width:auto;min-height:auto"></td>
+                  <td><input data-layer-field="label" value="${escapeAttr(layer.label)}"></td>
+                  <td><input data-layer-field="color" type="color" value="${escapeAttr(layer.color || "#111820")}"></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="applyLayerManagerBtn" class="primary">適用</button>
+          </div>
+        `;
+        openDialog("レイヤ管理", html);
+        qs("#applyLayerManagerBtn").addEventListener("click", applyLayerManager);
+      }
+
+      function applyLayerManager() {
+        qsa("[data-layer-row]", qs("#dialogBody")).forEach(row => {
+          const layer = layerFor(row.dataset.layerRow);
+          if (!layer) return;
+          qsa("[data-layer-field]", row).forEach(input => {
+            const key = input.dataset.layerField;
+            layer[key] = input.type === "checkbox" ? input.checked : input.value;
+          });
+        });
+        closeDialog();
+        commitHistory("レイヤ設定を更新しました。");
+        render();
+      }
+
       function elementSearchText(element) {
         return [
           element.type,
@@ -3702,6 +3810,7 @@
           if (confirm("現在の内容を破棄して新規作成しますか？")) initProject();
         });
         qs("#symbolManagerBtn").addEventListener("click", showSymbolManager);
+        qs("#layerManagerBtn").addEventListener("click", showLayerManager);
         qs("#openBtn").addEventListener("click", () => qs("#fileInput").click());
         qs("#restoreBackupBtn").addEventListener("click", restoreLocalBackup);
         qs("#fileInput").addEventListener("change", event => {
@@ -3773,6 +3882,11 @@
           commitHistory("配線種別を変更しました。");
           render();
         });
+        qs("#currentLayer").addEventListener("change", event => {
+          state.settings.currentLayer = event.target.value || "symbols";
+          commitHistory("作図レイヤを変更しました。");
+          render();
+        });
         updatePageField("pageName", (page, value) => { page.name = value || page.name; });
         qs("#drawingStandard").addEventListener("change", event => {
           applyStandard(event.target.value);
@@ -3835,12 +3949,12 @@
           }
           if (!selectedIds.includes(targetId)) selectSingle(targetId);
           const element = selectedElement();
-          if (element?.locked) {
+          if (isElementLocked(element)) {
             setStatus("ロックされた要素です。ロック解除すると移動できます。");
             render();
             return;
           }
-          if (selectedElements().some(item => item.locked)) {
+          if (selectedElements().some(isElementLocked)) {
             setStatus("ロックされた要素が含まれています。ロック解除すると移動できます。");
             render();
             return;
