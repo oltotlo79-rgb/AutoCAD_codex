@@ -1,4 +1,5 @@
 .codex_tmp/
+.vscode/
 *.tmp
 *.bak
 *.log
