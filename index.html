@@ -100,6 +100,22 @@
       margin: 9px 0 4px;
     }
 
+    details.attr-panel {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      padding: 8px;
+    }
+
+    details.attr-panel summary {
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      list-style-position: inside;
+    }
+
     .app {
       height: 100%;
       display: grid;
@@ -1812,6 +1828,7 @@
           ${isWireLike ? wireFields(element) : normalFields(element)}
           ${labelFields(element)}
           ${specificFields(element)}
+          ${electricalAttributeFields(element)}
           <label>所属レイヤ</label>
           <select data-bind="layer">${layerOptions(element.layer || inferredLayerFor(element.type))}</select>
           <label>属性メモ</label>
@@ -2010,6 +2027,36 @@
         return "";
       }
 
+      function electricalAttributeFields(element) {
+        if (!supportsElectricalAttributes(element)) return "";
+        return `
+          <details class="attr-panel" open>
+            <summary>電気属性</summary>
+            <label>タグ</label>
+            <input data-bind="tag" type="text" value="${escapeAttr(element.tag || "")}">
+            <label>説明</label>
+            <textarea data-bind="description">${escapeHtml(element.description || "")}</textarea>
+            <div class="row">
+              <div><label>設備</label><input data-bind="installation" type="text" value="${escapeAttr(element.installation || "")}"></div>
+              <div><label>場所</label><input data-bind="location" type="text" value="${escapeAttr(element.location || "")}"></div>
+            </div>
+            <div class="row">
+              <div><label>メーカー</label><input data-bind="manufacturer" type="text" value="${escapeAttr(element.manufacturer || "")}"></div>
+              <div><label>品番</label><input data-bind="catalog" type="text" value="${escapeAttr(element.catalog || "")}"></div>
+            </div>
+            <div class="row">
+              <div><label>定格</label><input data-bind="rating" type="text" value="${escapeAttr(element.rating || "")}"></div>
+              <div><label>項目</label><input data-bind="item" type="text" value="${escapeAttr(element.item || "")}"></div>
+            </div>
+          </details>
+        `;
+      }
+
+      function supportsElectricalAttributes(element) {
+        if (!element) return false;
+        return !["text", "wire", "line", "rect", "circle", "table", "arrow", "junction"].includes(element.type);
+      }
+
       function updateSelectedFromInput(input, save = true) {
         const element = selectedElement();
         if (!element) return;
@@ -2019,7 +2066,10 @@
         else if (key === "p0y") element.points[0][1] = value;
         else if (key === "p1x") element.points[element.points.length - 1][0] = value;
         else if (key === "p1y") element.points[element.points.length - 1][1] = value;
-        else element[key] = value;
+        else {
+          element[key] = value;
+          if (key === "tag" && supportsElectricalAttributes(element) && !element.label) element.label = value;
+        }
         if (save) commitHistory("要素を更新しました。");
         render();
       }
@@ -3450,7 +3500,7 @@
 
       function autoTagComponents() {
         const allPages = confirm("全ページの部品タグを付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
-        const overwrite = confirm("既存ラベルも上書きしますか？\nOK: 上書き / キャンセル: 未入力のみ");
+        const overwrite = confirm("既存タグ/ラベルも上書きしますか？\nOK: 上書き / キャンセル: 未入力のみ");
         const pages = allPages ? state.pages : [currentPage()];
         const counters = {};
         let count = 0;
@@ -3458,9 +3508,11 @@
           page.elements.forEach(element => {
             const prefix = tagPrefix(element.type);
             if (!prefix) return;
-            if (!overwrite && element.label) return;
+            if (!overwrite && (element.tag || element.label)) return;
             counters[prefix] = (counters[prefix] || 0) + 1;
-            element.label = prefix + String(counters[prefix]).padStart(2, "0");
+            const tag = prefix + String(counters[prefix]).padStart(2, "0");
+            element.tag = tag;
+            element.label = tag;
             count += 1;
           });
         });
@@ -3492,6 +3544,48 @@
         return map[type] || "";
       }
 
+      function componentTag(element) {
+        return element.tag || element.label || "";
+      }
+
+      function electricalAttributeColumns(element) {
+        return {
+          tag: element.tag || "",
+          description: element.description || "",
+          installation: element.installation || "",
+          location: element.location || "",
+          manufacturer: element.manufacturer || "",
+          catalog: element.catalog || "",
+          rating: element.rating || "",
+          item: element.item || ""
+        };
+      }
+
+      function electricalAttributeDetail(element) {
+        const labels = {
+          tag: "tag",
+          description: "description",
+          installation: "installation",
+          location: "location",
+          manufacturer: "manufacturer",
+          catalog: "catalog",
+          rating: "rating",
+          item: "item"
+        };
+        return Object.entries(electricalAttributeColumns(element))
+          .filter(([, value]) => String(value || "").trim())
+          .map(([key, value]) => labels[key] + "=" + String(value).replace(/\r?\n/g, " / "))
+          .join("; ");
+      }
+
+      function noteDetail(element) {
+        return element.note ? "note=" + String(element.note).replace(/\r?\n/g, " / ") : "";
+      }
+
+      function joinDetails(parts) {
+        return parts.filter(part => String(part || "").trim()).join("; ");
+      }
+
       function collectReportRows() {
         const rows = [];
         state.pages.forEach((page, pageIndex) => {
@@ -3501,16 +3595,17 @@
               page: page.name || "P" + (pageIndex + 1),
               sheet: page.title?.page || String(pageIndex + 1),
               type: element.type,
-              id: element.id
+              id: element.id,
+              ...electricalAttributeColumns(element)
             };
             if (element.type === "wire") {
               const p0 = element.points?.[0] || [0, 0];
               const p1 = element.points?.[element.points.length - 1] || [0, 0];
               const from = nearestElementName(page, p0[0], p0[1], element.id);
               const to = nearestElementName(page, p1[0], p1[1], element.id);
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: wireStyle(element).label + "; from=" + from + "; to=" + to + (element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "") });
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: joinDetails([wireStyle(element).label, "from=" + from, "to=" + to, noteDetail(element)]) });
             } else if (element.type === "terminal") {
-              rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: "single" + (element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "") });
+              rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: joinDetails(["single", electricalAttributeDetail(element), noteDetail(element)]) });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
               const count = Number(element.count || 1);
               for (let i = 0; i < count; i++) {
@@ -3522,14 +3617,14 @@
                   y: Number(element.y || 0),
                   x2: "",
                   y2: "",
-                  detail: (element.label || element.type) + (element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "")
+                  detail: joinDetails([element.label || element.type, electricalAttributeDetail(element), noteDetail(element)])
                 });
               }
             } else {
               rows.push({
                 record: "component",
                 ...base,
-                name: element.label || element.text || "",
+                name: componentTag(element) || element.text || "",
                 x: element.x || "",
                 y: element.y || "",
                 x2: "",
@@ -3543,11 +3638,11 @@
       }
 
       function componentDetail(element) {
-        const note = element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "";
-        if (element.type === "table") return "rows=" + (element.rows || "") + "; cols=" + (element.cols || "") + "; cells=" + String(element.cellText || "").replace(/\r?\n/g, " / ") + note;
-        if (element.type === "plcBlock") return "rows=" + (element.rows || "") + "; io=" + String(element.pinText || "").replace(/\r?\n/g, " / ") + note;
-        if (element.type === "deviceBox") return "pins=" + (element.pins || "") + "; pinText=" + String(element.pinText || "").replace(/\r?\n/g, " / ") + note;
-        return note.replace(/^; /, "");
+        const details = [electricalAttributeDetail(element), noteDetail(element)];
+        if (element.type === "table") details.unshift("rows=" + (element.rows || ""), "cols=" + (element.cols || ""), "cells=" + String(element.cellText || "").replace(/\r?\n/g, " / "));
+        if (element.type === "plcBlock") details.unshift("rows=" + (element.rows || ""), "io=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
+        if (element.type === "deviceBox") details.unshift("pins=" + (element.pins || ""), "pinText=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
+        return joinDetails(details);
       }
 
       function nearestElementName(page, x, y, selfId) {
@@ -3560,14 +3655,14 @@
           const cy = Math.max(box.y, Math.min(y, box.y + box.h));
           const d = Math.hypot(cx - x, cy - y);
           if (d <= 4 && (!best || d < best.d)) {
-            best = { d, name: element.label || element.text || element.wireNo || paletteLabel(element.type) };
+            best = { d, name: componentTag(element) || element.text || element.wireNo || paletteLabel(element.type) };
           }
         });
         return best?.name || "";
       }
 
       function exportReportCsv() {
-        const headers = ["record", "page", "sheet", "type", "id", "name", "x", "y", "x2", "y2", "detail"];
+        const headers = ["record", "page", "sheet", "type", "id", "tag", "name", "description", "installation", "location", "manufacturer", "catalog", "rating", "item", "x", "y", "x2", "y2", "detail"];
         const rows = collectReportRows();
         const csv = [
           headers.join(","),
@@ -3590,7 +3685,7 @@
         const html = `
           <label for="searchQuery">検索語</label>
           <div class="inline">
-            <input id="searchQuery" placeholder="線番、タグ、文字、端子名">
+            <input id="searchQuery" placeholder="線番、タグ、説明、品番、端子名">
             <button type="button" id="runSearchBtn" class="primary">検索</button>
           </div>
           <div id="searchResults" style="margin-top:12px"></div>
@@ -3688,7 +3783,15 @@
       function elementSearchText(element) {
         return [
           element.type,
+          element.tag,
           element.label,
+          element.description,
+          element.installation,
+          element.location,
+          element.manufacturer,
+          element.catalog,
+          element.rating,
+          element.item,
           element.text,
           element.wireNo,
           element.prefix,
@@ -3774,8 +3877,9 @@
         const entries = [];
         if (element.type === "wire" && element.wireNo) entries.push({ kind: "線番", key: element.wireNo });
         if (element.type === "arrow" && element.label) entries.push({ kind: "信号", key: element.label });
-        if (!["wire", "arrow", "text", "table", "rect", "circle", "line", "junction"].includes(element.type) && element.label) {
-          entries.push({ kind: "部品", key: element.label });
+        const tag = componentTag(element);
+        if (!["wire", "arrow", "text", "table", "rect", "circle", "line", "junction"].includes(element.type) && tag) {
+          entries.push({ kind: "部品", key: tag });
         }
         return entries;
       }
@@ -3819,7 +3923,7 @@
             issues.push({ level: "注意", page: page.name, message: "図名が未入力です。", target: "表題欄" });
           }
           page.elements.forEach(element => {
-            const label = element.label || element.text || element.wireNo || "";
+            const label = componentTag(element) || element.text || element.wireNo || "";
             if (element.type === "wire") {
               if (!element.wireNo) issues.push({ level: "警告", page: page.name, message: "線番が未入力です。", target: element.id });
               if (element.wireNo) {
