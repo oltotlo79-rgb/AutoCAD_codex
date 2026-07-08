@@ -1676,6 +1676,8 @@
           ${isWireLike ? wireFields(element) : normalFields(element)}
           ${labelFields(element)}
           ${specificFields(element)}
+          <label>属性メモ</label>
+          <textarea data-bind="note">${escapeHtml(element.note || "")}</textarea>
           <label for="selStroke">線色</label>
           <div class="swatches" id="swatches">
             ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
@@ -2850,9 +2852,9 @@
             if (element.type === "wire") {
               const p0 = element.points?.[0] || [0, 0];
               const p1 = element.points?.[element.points.length - 1] || [0, 0];
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: wireStyle(element).label });
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: wireStyle(element).label + (element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "") });
             } else if (element.type === "terminal") {
-              rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: "single" });
+              rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: "single" + (element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "") });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
               const count = Number(element.count || 1);
               for (let i = 0; i < count; i++) {
@@ -2864,7 +2866,7 @@
                   y: Number(element.y || 0),
                   x2: "",
                   y2: "",
-                  detail: element.label || element.type
+                  detail: (element.label || element.type) + (element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "")
                 });
               }
             } else {
@@ -2885,10 +2887,11 @@
       }
 
       function componentDetail(element) {
-        if (element.type === "table") return "rows=" + (element.rows || "") + "; cols=" + (element.cols || "") + "; cells=" + String(element.cellText || "").replace(/\r?\n/g, " / ");
-        if (element.type === "plcBlock") return "rows=" + (element.rows || "") + "; io=" + String(element.pinText || "").replace(/\r?\n/g, " / ");
-        if (element.type === "deviceBox") return "pins=" + (element.pins || "") + "; pinText=" + String(element.pinText || "").replace(/\r?\n/g, " / ");
-        return "";
+        const note = element.note ? "; note=" + String(element.note).replace(/\r?\n/g, " / ") : "";
+        if (element.type === "table") return "rows=" + (element.rows || "") + "; cols=" + (element.cols || "") + "; cells=" + String(element.cellText || "").replace(/\r?\n/g, " / ") + note;
+        if (element.type === "plcBlock") return "rows=" + (element.rows || "") + "; io=" + String(element.pinText || "").replace(/\r?\n/g, " / ") + note;
+        if (element.type === "deviceBox") return "pins=" + (element.pins || "") + "; pinText=" + String(element.pinText || "").replace(/\r?\n/g, " / ") + note;
+        return note.replace(/^; /, "");
       }
 
       function exportReportCsv() {
@@ -2964,7 +2967,8 @@
           element.wireNo,
           element.prefix,
           element.cellText,
-          element.pinText
+          element.pinText,
+          element.note
         ].filter(Boolean).join(" ");
       }
 
