@@ -1027,7 +1027,7 @@
         const page = currentPage();
         if (!page) return;
         const svg = qs("#canvas");
-        drawPageSvg(svg, page, { selection: true, scaled: true });
+        drawPageSvg(svg, page, { selection: true, scaled: true, grid: true });
         syncInspector();
         syncPrintSheets();
       }
@@ -1043,7 +1043,7 @@
         svg.style.height = scaled ? (size.h * state.settings.zoom) + "px" : "100%";
 
         svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "#fff" }));
-        drawGrid(svg, size);
+        if (options.grid !== false) drawGrid(svg, size);
         drawFrame(svg, page, size);
         page.elements.forEach(element => drawElement(svg, element));
         if (options.selection) drawSelection(svg);
@@ -2511,12 +2511,13 @@
       function serializeActiveSvg() {
         const page = currentPage();
         const size = pageSize(page);
-        const clone = qs("#canvas").cloneNode(true);
-        clone.setAttribute("xmlns", svgNS);
-        clone.setAttribute("width", size.w + "mm");
-        clone.setAttribute("height", size.h + "mm");
-        clone.querySelectorAll(".selection-box,.selection-handle").forEach(node => node.remove());
-        return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone);
+        const svg = svgEl("svg", { xmlns: svgNS, viewBox: "0 0 " + size.w + " " + size.h, width: size.w + "mm", height: size.h + "mm" });
+        drawPageSvg(svg, page, { selection: false, scaled: false, grid: false });
+        svg.style.width = null;
+        svg.style.height = null;
+        svg.setAttribute("width", size.w + "mm");
+        svg.setAttribute("height", size.h + "mm");
+        return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(svg);
       }
 
       function download(filename, content, type) {
@@ -2639,7 +2640,7 @@
           sheet.style.width = size.w + "mm";
           sheet.style.height = size.h + "mm";
           const svg = svgEl("svg", { xmlns: svgNS, role: "img", "aria-label": page.name || "page" });
-          drawPageSvg(svg, page, { selection: false, scaled: false });
+          drawPageSvg(svg, page, { selection: false, scaled: false, grid: false });
           sheet.appendChild(svg);
           container.appendChild(sheet);
         });
@@ -2672,7 +2673,7 @@
           height: drawH,
           viewBox: "0 0 " + size.w + " " + size.h
         });
-        drawPageSvg(nested, page, { selection: false, scaled: false });
+        drawPageSvg(nested, page, { selection: false, scaled: false, grid: false });
         nested.style.width = null;
         nested.style.height = null;
         nested.setAttribute("x", x + (w - drawW) / 2);
