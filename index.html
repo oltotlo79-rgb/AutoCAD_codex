@@ -639,6 +639,10 @@
             <button type="button" id="ioPageBtn">I/O</button>
             <button type="button" id="layoutPageBtn">配置</button>
           </div>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="movePagePrevBtn">前へ</button>
+            <button type="button" id="movePageNextBtn">後へ</button>
+          </div>
         </div>
 
         <div class="section" id="selectionPanel"></div>
@@ -2068,6 +2072,19 @@
         render();
       }
 
+      function movePage(delta) {
+        const index = state.pages.findIndex(page => page.id === state.activePageId);
+        const next = index + delta;
+        if (index < 0 || next < 0 || next >= state.pages.length) {
+          setStatus("これ以上ページを移動できません。");
+          return;
+        }
+        const [page] = state.pages.splice(index, 1);
+        state.pages.splice(next, 0, page);
+        commitHistory("ページ順を変更しました。");
+        render();
+      }
+
       function addSampleTerminalPage() {
         const page = createPage({
           name: "端子図" + (state.pages.length + 1),
@@ -3486,6 +3503,8 @@
         qs("#indexPageBtn").addEventListener("click", addIndexPage);
         qs("#ioPageBtn").addEventListener("click", addIoPage);
         qs("#layoutPageBtn").addEventListener("click", addLayoutPage);
+        qs("#movePagePrevBtn").addEventListener("click", () => movePage(-1));
+        qs("#movePageNextBtn").addEventListener("click", () => movePage(1));
         qsa("[data-tool]").forEach(button => {
           button.addEventListener("click", () => setActiveTool(button.dataset.tool));
         });
