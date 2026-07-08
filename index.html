@@ -517,6 +517,7 @@
           <div class="panel-title">表示</div>
           <label for="zoomRange">ズーム</label>
           <input id="zoomRange" type="range" min="1.6" max="5.2" step=".1" value="3.2">
+          <button type="button" id="fitPageBtn" style="width:100%;margin-top:8px">全体表示</button>
           <div class="row">
             <div>
               <label for="gridSize">グリッド mm</label>
@@ -2013,6 +2014,18 @@
         if (page && !page.frameVariant) page.frameVariant = standard.frameVariant;
       }
 
+      function fitPageToWorkspace() {
+        const page = currentPage();
+        if (!page) return;
+        const size = pageSize(page);
+        const workspace = qs("#workspace");
+        const w = Math.max(240, workspace.clientWidth - 90);
+        const h = Math.max(240, workspace.clientHeight - 90);
+        state.settings.zoom = Math.max(1.2, Math.min(5.2, Math.min(w / size.w, h / size.h)));
+        commitHistory("用紙全体を表示しました。");
+        render();
+      }
+
       function addPage() {
         const base = currentPage();
         const page = createPage({
@@ -3481,6 +3494,7 @@
           render();
         });
         qs("#zoomRange").addEventListener("change", () => commitHistory("ズームを変更しました。"));
+        qs("#fitPageBtn").addEventListener("click", fitPageToWorkspace);
         qs("#gridSize").addEventListener("change", event => {
           state.settings.grid = Number(event.target.value || 2.5);
           commitHistory("グリッドを変更しました。");
