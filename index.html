@@ -487,6 +487,7 @@
         <button type="button" id="openBtn" title="JSONを開く">開く</button>
         <button type="button" id="restoreBackupBtn" title="ブラウザ内の自動保存を復元">復元</button>
         <button type="button" id="saveBtn" class="primary" title="JSONで保存">保存</button>
+        <button type="button" id="titleBatchBtn" title="全ページの表題欄を一括更新">表題欄</button>
         <button type="button" id="printBtn" title="全ページをPDF印刷">PDF印刷</button>
         <button type="button" id="exportSvgBtn" title="現在ページをSVG出力">SVG</button>
         <button type="button" id="exportPngBtn" title="現在ページをPNG出力">PNG</button>
@@ -718,6 +719,14 @@
           { id: "external", label: "盤外/参考線", color: "#5b626b", width: .35, dash: "3 2", noNumber: true }
         ],
         customSymbols: [],
+        project: {
+          title: "電気図面",
+          drawingNo: "",
+          revision: "",
+          designer: "",
+          date: today,
+          facility: ""
+        },
         pages: []
       };
 
@@ -2339,6 +2348,7 @@
             state.settings = { ...state.settings, ...(loaded.settings || {}) };
             state.wireTypes = loaded.wireTypes || state.wireTypes;
             state.customSymbols = loaded.customSymbols || [];
+            state.project = { ...state.project, ...(loaded.project || {}) };
             state.pages = loaded.pages;
             state.activePageId = loaded.activePageId || state.pages[0].id;
             pageCounter = state.pages.length + 1;
@@ -2657,6 +2667,53 @@
           : '<p class="muted">参照できる線番、部品タグ、信号矢印はありません。</p>';
         openDialog("クロスリファレンス", html);
         attachDialogSelection();
+      }
+
+      function showTitleBatchDialog() {
+        const p = state.project || {};
+        const html = `
+          <div class="row">
+            <div><label>図名</label><input id="batchTitle" value="${escapeAttr(p.title || "")}"></div>
+            <div><label>設備</label><input id="batchFacility" value="${escapeAttr(p.facility || "")}"></div>
+          </div>
+          <div class="row">
+            <div><label>図番</label><input id="batchDrawingNo" value="${escapeAttr(p.drawingNo || "")}"></div>
+            <div><label>改訂</label><input id="batchRevision" value="${escapeAttr(p.revision || "")}"></div>
+          </div>
+          <div class="row">
+            <div><label>作成</label><input id="batchDesigner" value="${escapeAttr(p.designer || "")}"></div>
+            <div><label>日付</label><input id="batchDate" value="${escapeAttr(p.date || today)}"></div>
+          </div>
+          <label><input id="batchOnlyBlank" type="checkbox" style="width:auto;min-height:auto"> 空欄の項目だけ更新</label>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="applyTitleBatchBtn" class="primary">全ページへ適用</button>
+          </div>
+        `;
+        openDialog("表題欄一括更新", html);
+        qs("#applyTitleBatchBtn").addEventListener("click", applyTitleBatch);
+      }
+
+      function applyTitleBatch() {
+        const values = {
+          title: qs("#batchTitle").value,
+          facility: qs("#batchFacility").value,
+          drawingNo: qs("#batchDrawingNo").value,
+          revision: qs("#batchRevision").value,
+          designer: qs("#batchDesigner").value,
+          date: qs("#batchDate").value
+        };
+        const onlyBlank = qs("#batchOnlyBlank").checked;
+        state.project = { ...state.project, ...values };
+        state.pages.forEach(page => {
+          Object.entries(values).forEach(([key, value]) => {
+            if (!value) return;
+            if (onlyBlank && page.title?.[key]) return;
+            page.title[key] = value;
+          });
+        });
+        closeDialog();
+        commitHistory("表題欄を一括更新しました。");
+        render();
       }
 
       function collectCrossReferences() {
@@ -3028,6 +3085,7 @@
           event.target.value = "";
         });
         qs("#saveBtn").addEventListener("click", saveProject);
+        qs("#titleBatchBtn").addEventListener("click", showTitleBatchDialog);
         qs("#printBtn").addEventListener("click", printProject);
         qs("#exportSvgBtn").addEventListener("click", exportSvg);
         qs("#exportPngBtn").addEventListener("click", exportPng);
