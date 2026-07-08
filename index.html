@@ -1696,6 +1696,7 @@
             ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
           </div>
           <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:12px">ユーザー部品に登録</button>
+          <button type="button" id="toggleLockBtn" style="width:100%;margin-top:8px">${element.locked ? "ロック解除" : "ロック"}</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="copyElementBtn">コピー</button>
             <button type="button" id="pasteElementBtn">貼付</button>
@@ -1735,6 +1736,7 @@
           });
         });
         qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
+        qs("#toggleLockBtn", panel)?.addEventListener("click", toggleSelectedLock);
         qs("#copyElementBtn", panel)?.addEventListener("click", copySelected);
         qs("#pasteElementBtn", panel)?.addEventListener("click", pasteClipboard);
         qs("#duplicateElementBtn", panel)?.addEventListener("click", duplicateSelected);
@@ -2371,6 +2373,11 @@
       function deleteSelected() {
         const page = currentPage();
         if (!page || !selectedId) return;
+        const selected = selectedElement();
+        if (selected?.locked) {
+          setStatus("ロックされた要素は削除できません。");
+          return;
+        }
         page.elements = page.elements.filter(element => element.id !== selectedId);
         selectedId = null;
         commitHistory("要素を削除しました。");
@@ -2383,6 +2390,7 @@
         if (!element || !page) return;
         const copy = deepClone(element);
         copy.id = uid("el");
+        copy.locked = false;
         if (copy.points) copy.points = copy.points.map(point => [point[0] + 6, point[1] + 6]);
         else {
           copy.x = Number(copy.x || 0) + 6;
@@ -2410,6 +2418,7 @@
         if (!page) return;
         const copy = deepClone(clipboardElement);
         copy.id = uid("el");
+        copy.locked = false;
         if (copy.points) {
           copy.points = copy.points.map(point => [point[0] + 6, point[1] + 6]);
         } else {
@@ -2448,6 +2457,10 @@
       function rotateSelected(degrees) {
         const element = selectedElement();
         if (!element) return;
+        if (element.locked) {
+          setStatus("ロックされた要素は回転できません。");
+          return;
+        }
         if (element.points) {
           const box = elementBounds(element);
           const cx = box.x + box.w / 2;
@@ -2468,6 +2481,14 @@
         render();
       }
 
+      function toggleSelectedLock() {
+        const element = selectedElement();
+        if (!element) return;
+        element.locked = !element.locked;
+        commitHistory(element.locked ? "要素をロックしました。" : "要素のロックを解除しました。");
+        render();
+      }
+
       function registerSelectedAsSymbol() {
         const element = selectedElement();
         if (!element) {
@@ -2479,6 +2500,7 @@
         if (!label) return;
         const template = deepClone(element);
         delete template.id;
+        delete template.locked;
         if (template.points) {
           const xs = template.points.map(point => point[0]);
           const ys = template.points.map(point => point[1]);
@@ -2501,6 +2523,10 @@
       function moveSelected(dx, dy) {
         const element = selectedElement();
         if (!element) return;
+        if (element.locked) {
+          setStatus("ロックされた要素は移動できません。");
+          return;
+        }
         if (element.points) {
           element.points = element.points.map(point => [point[0] + dx, point[1] + dy]);
         } else {
@@ -3723,6 +3749,11 @@
         if (targetElement) {
           selectedId = targetElement.dataset.id;
           const element = selectedElement();
+          if (element?.locked) {
+            setStatus("ロックされた要素です。ロック解除すると移動できます。");
+            render();
+            return;
+          }
           dragState = {
             mode: "move",
             elementId: selectedId,
