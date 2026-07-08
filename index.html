@@ -576,6 +576,8 @@
           <div class="panel-title">自動処理</div>
           <label for="wireNumberFormat">線番書式</label>
           <input id="wireNumberFormat" type="text" value="%S-%N">
+          <label for="componentTagFormat">部品タグ書式</label>
+          <input id="componentTagFormat" type="text" value="%F%N">
           <div class="row" style="margin-top:8px">
             <button type="button" id="autoWireBtn">線番</button>
             <button type="button" id="terminalNoBtn">端子番号</button>
@@ -725,8 +727,8 @@
       };
 
       const STANDARDS = [
-        { id: "general", label: "汎用", grid: 2.5, wireNumberFormat: "%S-%N", frameVariant: "detailed" },
-        { id: "toyota-draft", label: "トヨタ標準（仮）", grid: 2.5, wireNumberFormat: "%S-%N", frameVariant: "detailed" }
+        { id: "general", label: "汎用", grid: 2.5, wireNumberFormat: "%S-%N", componentTagFormat: "%F%N", frameVariant: "detailed" },
+        { id: "toyota-draft", label: "トヨタ標準（仮）", grid: 2.5, wireNumberFormat: "%S-%N", componentTagFormat: "%F%N", frameVariant: "detailed" }
       ];
 
       const TITLE_FIELDS = [
@@ -821,6 +823,7 @@
           objectSnap: true,
           stroke: "#111820",
           wireNumberFormat: "%S-%N",
+          componentTagFormat: "%F%N",
           currentWireType: "control",
           standard: "general",
           currentLayer: "symbols"
@@ -906,6 +909,8 @@
       }
 
       function ensureProjectDefaults() {
+        state.settings = state.settings || {};
+        if (!state.settings.componentTagFormat) state.settings.componentTagFormat = "%F%N";
         state.project = {
           title: "電気図面",
           drawingNo: "",
@@ -1905,6 +1910,7 @@
         setValue("snapToggle", state.settings.snap ? "on" : "off");
         setValue("objectSnapToggle", state.settings.objectSnap ? "on" : "off");
         setValue("wireNumberFormat", state.settings.wireNumberFormat || "%S-%N");
+        setValue("componentTagFormat", state.settings.componentTagFormat || "%F%N");
         renderWireTypeSelect();
         setValue("currentWireType", state.settings.currentWireType || "control");
         renderLayerSelect();
@@ -2240,6 +2246,7 @@
             <summary>電気属性</summary>
             <label>タグ</label>
             <input data-bind="tag" type="text" value="${escapeAttr(element.tag || "")}">
+            <label><input data-bind="fixedTag" type="checkbox" ${element.fixedTag ? "checked" : ""} style="width:auto;min-height:auto"> 部品タグ固定</label>
             <label>説明</label>
             <textarea data-bind="description">${escapeHtml(element.description || "")}</textarea>
             <div class="row">
@@ -2536,6 +2543,7 @@
         state.settings.standard = standard.id;
         state.settings.grid = standard.grid;
         state.settings.wireNumberFormat = standard.wireNumberFormat;
+        state.settings.componentTagFormat = standard.componentTagFormat || "%F%N";
         const page = currentPage();
         if (page && !page.frameVariant) page.frameVariant = standard.frameVariant;
       }
@@ -4130,6 +4138,7 @@
       }
 
       function autoTagComponents() {
+        const format = state.settings.componentTagFormat || "%F%N";
         const allPages = confirm("全ページの部品タグを付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
         const overwrite = confirm("既存タグ/ラベルも上書きしますか？\nOK: 上書き / キャンセル: 未入力のみ");
         const pages = allPages ? state.pages : [currentPage()];
@@ -4139,9 +4148,10 @@
           page.elements.forEach(element => {
             const prefix = tagPrefix(element.type);
             if (!prefix) return;
+            if (element.fixedTag) return;
             if (!overwrite && (element.tag || element.label)) return;
             counters[prefix] = (counters[prefix] || 0) + 1;
-            const tag = prefix + String(counters[prefix]).padStart(2, "0");
+            const tag = formatComponentTag(format, page, element, prefix, counters[prefix]);
             element.tag = tag;
             element.label = tag;
             count += 1;
@@ -4149,6 +4159,18 @@
         });
         commitHistory(count + "個の部品タグを付与しました。");
         render();
+      }
+
+      function formatComponentTag(format, page, element, prefix, number) {
+        const pageIndex = state.pages.findIndex(item => item.id === page.id) + 1;
+        return String(format || "%F%N")
+          .replaceAll("%F", prefix || tagPrefix(element.type))
+          .replaceAll("%S", page.title?.page || String(pageIndex))
+          .replaceAll("%P", page.name || String(pageIndex))
+          .replaceAll("%D", page.title?.drawingNo || "")
+          .replaceAll("%I", page.title?.installation || element.installation || "")
+          .replaceAll("%L", page.title?.location || element.location || "")
+          .replaceAll("%N", String(number).padStart(2, "0"));
       }
 
       function tagPrefix(type) {
@@ -4268,6 +4290,7 @@
 
       function componentDetail(element) {
         const details = [electricalAttributeDetail(element), noteDetail(element)];
+        if (element.fixedTag) details.unshift("fixedTag=true");
         if (element.type === "arrow") details.unshift("role=" + signalRoleLabel(element.signalRole));
         if (element.type === "table") details.unshift("rows=" + (element.rows || ""), "cols=" + (element.cols || ""), "cells=" + String(element.cellText || "").replace(/\r?\n/g, " / "));
         if (element.type === "plcBlock") details.unshift("rows=" + (element.rows || ""), "io=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
@@ -5305,6 +5328,11 @@
         qs("#wireNumberFormat").addEventListener("change", event => {
           state.settings.wireNumberFormat = event.target.value || "%S-%N";
           commitHistory("線番書式を変更しました。");
+          render();
+        });
+        qs("#componentTagFormat").addEventListener("change", event => {
+          state.settings.componentTagFormat = event.target.value || "%F%N";
+          commitHistory("部品タグ書式を変更しました。");
           render();
         });
         qs("#currentWireType").addEventListener("change", event => {
