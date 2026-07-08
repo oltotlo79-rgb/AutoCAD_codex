@@ -544,10 +544,13 @@
             <button type="button" id="terminalNoBtn">端子番号</button>
           </div>
           <div class="row" style="margin-top:8px">
-            <button type="button" id="reportCsvBtn">帳票CSV</button>
+            <button type="button" id="tagComponentsBtn">部品タグ</button>
             <button type="button" id="auditBtn">監査</button>
           </div>
-          <button type="button" id="exportDxfBtn" style="width:100%;margin-top:8px">DXF出力</button>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="reportCsvBtn">帳票CSV</button>
+            <button type="button" id="exportDxfBtn">DXF</button>
+          </div>
         </div>
       </aside>
 
@@ -2032,6 +2035,41 @@
         render();
       }
 
+      function autoTagComponents() {
+        const allPages = confirm("全ページの部品タグを付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
+        const overwrite = confirm("既存ラベルも上書きしますか？\nOK: 上書き / キャンセル: 未入力のみ");
+        const pages = allPages ? state.pages : [currentPage()];
+        const counters = {};
+        let count = 0;
+        pages.forEach(page => {
+          page.elements.forEach(element => {
+            const prefix = tagPrefix(element.type);
+            if (!prefix) return;
+            if (!overwrite && element.label) return;
+            counters[prefix] = (counters[prefix] || 0) + 1;
+            element.label = prefix + String(counters[prefix]).padStart(2, "0");
+            count += 1;
+          });
+        });
+        commitHistory(count + "個の部品タグを付与しました。");
+        render();
+      }
+
+      function tagPrefix(type) {
+        const map = {
+          contactNO: "CR",
+          contactNC: "CR",
+          coil: "CR",
+          lamp: "PL",
+          buzzer: "BZ",
+          deviceBox: "DEV",
+          plcBlock: "PLC",
+          connector: "CN",
+          arrow: "REF"
+        };
+        return map[type] || "";
+      }
+
       function collectReportRows() {
         const rows = [];
         state.pages.forEach((page, pageIndex) => {
@@ -2354,6 +2392,7 @@
         qs("#exportPngBtn").addEventListener("click", exportPng);
         qs("#autoWireBtn").addEventListener("click", autoWireNumbers);
         qs("#terminalNoBtn").addEventListener("click", renumberTerminals);
+        qs("#tagComponentsBtn").addEventListener("click", autoTagComponents);
         qs("#reportCsvBtn").addEventListener("click", exportReportCsv);
         qs("#auditBtn").addEventListener("click", showAudit);
         qs("#exportDxfBtn").addEventListener("click", exportDxf);
