@@ -352,6 +352,62 @@
 
     .danger { color: var(--danger); }
 
+    .dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(20, 31, 44, .42);
+      z-index: 10;
+    }
+
+    .dialog-backdrop.hidden { display: none; }
+
+    .dialog {
+      width: min(760px, calc(100vw - 48px));
+      max-height: min(720px, calc(100vh - 48px));
+      overflow: auto;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .dialog-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+    }
+
+    .dialog-title {
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    .report-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .report-table th,
+    .report-table td {
+      border: 1px solid var(--line);
+      padding: 6px 7px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .report-table th {
+      background: var(--panel-2);
+      color: #334150;
+      font-weight: 700;
+    }
+
     .swatches {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
@@ -472,6 +528,21 @@
           </div>
           <p class="muted">左の部品をドラッグして用紙に配置します。配線は W ツールでドラッグ、部品は選択後に移動できます。</p>
         </div>
+
+        <div class="section">
+          <div class="panel-title">自動処理</div>
+          <label for="wireNumberFormat">線番書式</label>
+          <input id="wireNumberFormat" type="text" value="%S-%N">
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="autoWireBtn">線番</button>
+            <button type="button" id="terminalNoBtn">端子番号</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="reportCsvBtn">帳票CSV</button>
+            <button type="button" id="auditBtn">監査</button>
+          </div>
+          <button type="button" id="exportDxfBtn" style="width:100%;margin-top:8px">DXF出力</button>
+        </div>
       </aside>
 
       <section class="workspace" id="workspace">
@@ -547,6 +618,16 @@
 
   <input id="fileInput" type="file" accept=".json,application/json">
   <div id="printSheets" class="print-sheets"></div>
+  <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="dialog">
+      <div class="dialog-header">
+        <div class="dialog-title" id="dialogTitle">結果</div>
+        <div class="spacer"></div>
+        <button type="button" id="dialogClose">閉じる</button>
+      </div>
+      <div id="dialogBody"></div>
+    </div>
+  </div>
 
   <script>
     (() => {
@@ -587,7 +668,8 @@
           zoom: 3.2,
           grid: 2.5,
           snap: true,
-          stroke: "#111820"
+          stroke: "#111820",
+          wireNumberFormat: "%S-%N"
         },
         pages: []
       };
@@ -1284,6 +1366,7 @@
         setValue("zoomRange", state.settings.zoom);
         setValue("gridSize", state.settings.grid);
         setValue("snapToggle", state.settings.snap ? "on" : "off");
+        setValue("wireNumberFormat", state.settings.wireNumberFormat || "%S-%N");
         renderSelectionPanel();
       }
 
@@ -1722,6 +1805,361 @@
         window.print();
       }
 
+      function autoWireNumbers() {
+        const format = state.settings.wireNumberFormat || "%S-%N";
+        const allPages = confirm("全ページに線番を付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
+        const overwrite = confirm("既存の線番も上書きしますか？\nOK: 上書き / キャンセル: 未採番のみ");
+        const startInput = prompt("開始番号", "1");
+        if (startInput === null) return;
+        let next = Number(startInput || 1);
+        const pages = allPages ? state.pages : [currentPage()];
+        let count = 0;
+        pages.forEach(page => {
+          page.elements
+            .filter(element => element.type === "wire")
+            .forEach(element => {
+              if (!overwrite && element.wireNo) return;
+              element.wireNo = formatWireNumber(format, page, next);
+              next += 1;
+              count += 1;
+            });
+        });
+        commitHistory(count + "本の配線に線番を付与しました。");
+        render();
+      }
+
+      function formatWireNumber(format, page, number) {
+        const pageIndex = state.pages.findIndex(item => item.id === page.id) + 1;
+        return String(format || "%S-%N")
+          .replaceAll("%S", page.title?.page || String(pageIndex))
+          .replaceAll("%P", page.name || String(pageIndex))
+          .replaceAll("%D", page.title?.drawingNo || "")
+          .replaceAll("%N", String(number).padStart(2, "0"));
+      }
+
+      function renumberTerminals() {
+        const page = currentPage();
+        const selected = selectedElement();
+        const target = selected && ["terminal", "terminalStrip", "connector"].includes(selected.type)
+          ? [selected]
+          : page.elements.filter(element => ["terminal", "terminalStrip", "connector"].includes(element.type));
+        if (!target.length) {
+          setStatus("端子または端子台がありません。");
+          return;
+        }
+        const startInput = prompt("端子開始番号", "1");
+        if (startInput === null) return;
+        const prefix = prompt("端子接頭辞", target[0].prefix || "") ?? "";
+        let next = Number(startInput || 1);
+        target.forEach(element => {
+          if (element.type === "terminal") {
+            element.label = prefix + String(next);
+            next += 1;
+          } else {
+            element.prefix = prefix;
+            element.start = next;
+            next += Number(element.count || 1);
+          }
+        });
+        commitHistory("端子番号を更新しました。");
+        render();
+      }
+
+      function collectReportRows() {
+        const rows = [];
+        state.pages.forEach((page, pageIndex) => {
+          page.elements.forEach(element => {
+            const base = {
+              page: page.name || "P" + (pageIndex + 1),
+              sheet: page.title?.page || String(pageIndex + 1),
+              type: element.type,
+              id: element.id
+            };
+            if (element.type === "wire") {
+              const p0 = element.points?.[0] || [0, 0];
+              const p1 = element.points?.[element.points.length - 1] || [0, 0];
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: "" });
+            } else if (element.type === "terminal") {
+              rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: "single" });
+            } else if (["terminalStrip", "connector"].includes(element.type)) {
+              const count = Number(element.count || 1);
+              for (let i = 0; i < count; i++) {
+                rows.push({
+                  record: "terminal",
+                  ...base,
+                  name: (element.prefix || "") + String(Number(element.start || 1) + i),
+                  x: Number(element.x || 0),
+                  y: Number(element.y || 0),
+                  x2: "",
+                  y2: "",
+                  detail: element.label || element.type
+                });
+              }
+            } else {
+              rows.push({
+                record: "component",
+                ...base,
+                name: element.label || element.text || "",
+                x: element.x || "",
+                y: element.y || "",
+                x2: "",
+                y2: "",
+                detail: componentDetail(element)
+              });
+            }
+          });
+        });
+        return rows;
+      }
+
+      function componentDetail(element) {
+        if (element.type === "table") return "rows=" + (element.rows || "") + "; cols=" + (element.cols || "");
+        if (element.type === "plcBlock") return "rows=" + (element.rows || "");
+        if (element.type === "deviceBox") return "pins=" + (element.pins || "");
+        return "";
+      }
+
+      function exportReportCsv() {
+        const headers = ["record", "page", "sheet", "type", "id", "name", "x", "y", "x2", "y2", "detail"];
+        const rows = collectReportRows();
+        const csv = [
+          headers.join(","),
+          ...rows.map(row => headers.map(header => csvCell(row[header])).join(","))
+        ].join("\r\n");
+        download("electrical-report.csv", csv, "text/csv;charset=utf-8");
+        setStatus("帳票CSVを書き出しました。");
+      }
+
+      function csvCell(value) {
+        const text = String(value ?? "");
+        if (/[",\r\n]/.test(text)) return '"' + text.replaceAll('"', '""') + '"';
+        return text;
+      }
+
+      function showAudit() {
+        const issues = auditProject();
+        const body = issues.length
+          ? `<table class="report-table"><thead><tr><th>重要度</th><th>ページ</th><th>内容</th><th>対象</th></tr></thead><tbody>${issues.map(issue => `<tr><td>${issue.level}</td><td>${escapeHtml(issue.page)}</td><td>${escapeHtml(issue.message)}</td><td>${escapeHtml(issue.target)}</td></tr>`).join("")}</tbody></table>`
+          : '<p class="muted">検出された問題はありません。</p>';
+        openDialog("図面監査", body);
+      }
+
+      function auditProject() {
+        const issues = [];
+        state.pages.forEach(page => {
+          const size = pageSize(page);
+          const wireNos = new Map();
+          if (!page.title?.title) {
+            issues.push({ level: "注意", page: page.name, message: "図名が未入力です。", target: "表題欄" });
+          }
+          page.elements.forEach(element => {
+            const label = element.label || element.text || element.wireNo || "";
+            if (element.type === "wire") {
+              if (!element.wireNo) issues.push({ level: "警告", page: page.name, message: "線番が未入力です。", target: element.id });
+              if (element.wireNo) {
+                const current = wireNos.get(element.wireNo) || 0;
+                wireNos.set(element.wireNo, current + 1);
+              }
+            }
+            if (["contactNO", "contactNC", "coil", "lamp", "buzzer", "deviceBox", "plcBlock"].includes(element.type) && !label) {
+              issues.push({ level: "注意", page: page.name, message: "ラベルが未入力です。", target: element.type });
+            }
+            if (["terminalStrip", "connector"].includes(element.type) && Number(element.count || 0) <= 0) {
+              issues.push({ level: "警告", page: page.name, message: "端子数が不正です。", target: element.label || element.id });
+            }
+            const box = elementBounds(element);
+            if (box && (box.x < 0 || box.y < 0 || box.x + box.w > size.w || box.y + box.h > size.h)) {
+              issues.push({ level: "注意", page: page.name, message: "用紙外にはみ出しています。", target: label || element.type });
+            }
+          });
+          wireNos.forEach((count, wireNo) => {
+            if (count > 1) issues.push({ level: "情報", page: page.name, message: "同じ線番が複数あります。", target: wireNo });
+          });
+        });
+        return issues;
+      }
+
+      function openDialog(title, html) {
+        qs("#dialogTitle").textContent = title;
+        qs("#dialogBody").innerHTML = html;
+        qs("#dialogBackdrop").classList.remove("hidden");
+      }
+
+      function closeDialog() {
+        qs("#dialogBackdrop").classList.add("hidden");
+      }
+
+      function exportDxf() {
+        const page = currentPage();
+        const dxf = buildDxf(page);
+        download((page.name || "page") + ".dxf", dxf, "application/dxf");
+        setStatus("DXFを書き出しました。");
+      }
+
+      function buildDxf(page) {
+        const out = [];
+        dxfHeader(out);
+        dxfFrame(out, page);
+        page.elements.forEach(element => dxfElement(out, page, element));
+        out.push("0", "ENDSEC", "0", "EOF");
+        return out.join("\n") + "\n";
+      }
+
+      function dxfHeader(out) {
+        out.push(
+          "0", "SECTION",
+          "2", "HEADER",
+          "9", "$INSUNITS",
+          "70", "4",
+          "0", "ENDSEC",
+          "0", "SECTION",
+          "2", "ENTITIES"
+        );
+      }
+
+      function dxfFrame(out, page) {
+        const size = pageSize(page);
+        const margin = frameMargin(size);
+        dxfRect(out, page, "FRAME", margin, margin, size.w - margin * 2, size.h - margin * 2);
+        dxfRect(out, page, "FRAME", margin + 4, margin + 4, size.w - (margin + 4) * 2, size.h - (margin + 4) * 2);
+        if (page.frameVariant !== "blank") {
+          const titleW = page.frameVariant === "side" ? Math.min(44, Math.max(34, size.w * .15)) : Math.min(124, size.w - margin * 2 - 12);
+          const titleH = page.frameVariant === "side" ? 88 : 48;
+          const x = size.w - margin - titleW;
+          const y = size.h - margin - titleH;
+          dxfRect(out, page, "TITLE", x, y, titleW, titleH);
+          dxfText(out, page, "TITLE", x + 3, y + 8, 2.8, page.title?.title || "");
+          dxfText(out, page, "TITLE", x + 3, y + 16, 2.4, page.title?.drawingNo || "");
+        }
+      }
+
+      function dxfElement(out, page, element) {
+        if (element.type === "wire") {
+          const points = element.points || [[0, 0], [20, 0]];
+          const a = points[0];
+          const b = points[points.length - 1];
+          if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
+            dxfLine(out, page, "WIRE", a[0], a[1], b[0], b[1]);
+          } else {
+            dxfLine(out, page, "WIRE", a[0], a[1], a[0], b[1]);
+            dxfLine(out, page, "WIRE", a[0], b[1], b[0], b[1]);
+          }
+          if (element.wireNo) {
+            const mid = pathMid(a, b);
+            dxfText(out, page, "WIRENO", mid.x + 1.5, mid.y - 1.8, 2.4, element.wireNo);
+          }
+          return;
+        }
+        if (element.type === "arrow") {
+          const points = element.points || [[0, 0], [20, 0]];
+          const a = points[0];
+          const b = points[points.length - 1];
+          dxfLine(out, page, "SYMBOL", a[0], a[1], b[0], b[1]);
+          if (element.label) dxfText(out, page, "TEXT", (a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 3, 2.4, element.label);
+          return;
+        }
+        if (element.type === "text") {
+          dxfText(out, page, "TEXT", element.x || 0, element.y || 0, element.fontSize || 3.5, element.text || "");
+          return;
+        }
+        if (element.type === "terminalStrip" || element.type === "connector") {
+          const count = Math.max(1, Number(element.count || 8));
+          const w = Number(element.w || count * 8);
+          const h = Number(element.h || 12);
+          const pitch = w / count;
+          dxfLineLocal(out, page, "SYMBOL", element, 0, h / 2, w, h / 2);
+          for (let i = 0; i < count; i++) {
+            const cx = pitch * i + pitch / 2;
+            dxfCircleLocal(out, page, "SYMBOL", element, cx, h / 2, Math.min(3.1, pitch * .35));
+            dxfTextLocal(out, page, "TEXT", element, cx - 1.2, h / 2 + .8, 1.8, (element.prefix || "") + String(Number(element.start || 1) + i));
+          }
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -3, 2.5, element.label);
+          return;
+        }
+        if (element.type === "table") {
+          const rows = Math.max(1, Number(element.rows || 6));
+          const cols = Math.max(1, Number(element.cols || 4));
+          const w = Number(element.w || 78);
+          const h = Number(element.h || 44);
+          dxfRectLocal(out, page, "TABLE", element, 0, 0, w, h);
+          for (let i = 1; i < rows; i++) dxfLineLocal(out, page, "TABLE", element, 0, h * i / rows, w, h * i / rows);
+          for (let i = 1; i < cols; i++) dxfLineLocal(out, page, "TABLE", element, w * i / cols, 0, w * i / cols, h);
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, -4, 2.5, element.label);
+          return;
+        }
+        const box = elementBounds(element);
+        if (["deviceBox", "plcBlock"].includes(element.type)) {
+          dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
+          dxfTextLocal(out, page, "TEXT", element, box.w / 2 - 6, box.h / 2, 2.5, element.label || element.type);
+          return;
+        }
+        if (element.type === "lamp" || element.type === "junction") {
+          dxfCircleLocal(out, page, "SYMBOL", element, 0, 0, Number(element.r || 6));
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, -4, -8, 2.4, element.label);
+          return;
+        }
+        dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, 1, -3, 2.4, element.label);
+      }
+
+      function cadY(page, y) {
+        return pageSize(page).h - y;
+      }
+
+      function dxfLine(out, page, layer, x1, y1, x2, y2) {
+        out.push("0", "LINE", "8", layer, "10", round(x1), "20", round(cadY(page, y1)), "11", round(x2), "21", round(cadY(page, y2)));
+      }
+
+      function dxfText(out, page, layer, x, y, size, text) {
+        String(text || "").split("\n").forEach((line, index) => {
+          out.push("0", "TEXT", "8", layer, "10", round(x), "20", round(cadY(page, y + index * size * 1.25)), "40", round(size), "1", line);
+        });
+      }
+
+      function dxfCircle(out, page, layer, x, y, r) {
+        out.push("0", "CIRCLE", "8", layer, "10", round(x), "20", round(cadY(page, y)), "40", round(r));
+      }
+
+      function dxfRect(out, page, layer, x, y, w, h) {
+        dxfLine(out, page, layer, x, y, x + w, y);
+        dxfLine(out, page, layer, x + w, y, x + w, y + h);
+        dxfLine(out, page, layer, x + w, y + h, x, y + h);
+        dxfLine(out, page, layer, x, y + h, x, y);
+      }
+
+      function localPoint(element, x, y) {
+        const angle = Number(element.rotation || 0) * Math.PI / 180;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        return [
+          Number(element.x || 0) + x * cos - y * sin,
+          Number(element.y || 0) + x * sin + y * cos
+        ];
+      }
+
+      function dxfLineLocal(out, page, layer, element, x1, y1, x2, y2) {
+        const a = localPoint(element, x1, y1);
+        const b = localPoint(element, x2, y2);
+        dxfLine(out, page, layer, a[0], a[1], b[0], b[1]);
+      }
+
+      function dxfTextLocal(out, page, layer, element, x, y, size, text) {
+        const p = localPoint(element, x, y);
+        dxfText(out, page, layer, p[0], p[1], size, text);
+      }
+
+      function dxfCircleLocal(out, page, layer, element, x, y, r) {
+        const p = localPoint(element, x, y);
+        dxfCircle(out, page, layer, p[0], p[1], r);
+      }
+
+      function dxfRectLocal(out, page, layer, element, x, y, w, h) {
+        dxfLineLocal(out, page, layer, element, x, y, x + w, y);
+        dxfLineLocal(out, page, layer, element, x + w, y, x + w, y + h);
+        dxfLineLocal(out, page, layer, element, x + w, y + h, x, y + h);
+        dxfLineLocal(out, page, layer, element, x, y + h, x, y);
+      }
+
       function updatePageField(id, apply) {
         qs("#" + id).addEventListener("change", event => {
           const page = currentPage();
@@ -1746,6 +2184,12 @@
         qs("#printBtn").addEventListener("click", printProject);
         qs("#exportSvgBtn").addEventListener("click", exportSvg);
         qs("#exportPngBtn").addEventListener("click", exportPng);
+        qs("#autoWireBtn").addEventListener("click", autoWireNumbers);
+        qs("#terminalNoBtn").addEventListener("click", renumberTerminals);
+        qs("#reportCsvBtn").addEventListener("click", exportReportCsv);
+        qs("#auditBtn").addEventListener("click", showAudit);
+        qs("#exportDxfBtn").addEventListener("click", exportDxf);
+        qs("#dialogClose").addEventListener("click", closeDialog);
         qs("#undoBtn").addEventListener("click", () => restoreHistory(historyIndex - 1));
         qs("#redoBtn").addEventListener("click", () => restoreHistory(historyIndex + 1));
         qs("#deleteBtn").addEventListener("click", deleteSelected);
@@ -1768,6 +2212,11 @@
         qs("#snapToggle").addEventListener("change", event => {
           state.settings.snap = event.target.value === "on";
           commitHistory("スナップを変更しました。");
+          render();
+        });
+        qs("#wireNumberFormat").addEventListener("change", event => {
+          state.settings.wireNumberFormat = event.target.value || "%S-%N";
+          commitHistory("線番書式を変更しました。");
           render();
         });
         updatePageField("pageName", (page, value) => { page.name = value || page.name; });
