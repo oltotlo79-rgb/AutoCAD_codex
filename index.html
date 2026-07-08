@@ -846,6 +846,7 @@
       let activeTool = "select";
       let dragState = null;
       let clipboardElement = null;
+      let installLocationClipboard = null;
       let history = [];
       let historyIndex = -1;
       let pageCounter = 1;
@@ -1938,6 +1939,7 @@
               <button type="button" id="duplicateElementBtn">複製</button>
               <button type="button" id="deleteElementBtn">削除</button>
             </div>
+            <button type="button" id="pasteInstallLocationBtn" style="width:100%;margin-top:8px" ${installLocationClipboard ? "" : "disabled"}>設備/場所貼付</button>
             <div class="row" style="margin-top:8px">
               <button type="button" id="bringForwardBtn">前面へ</button>
               <button type="button" id="sendBackwardBtn">背面へ</button>
@@ -1965,6 +1967,7 @@
             <button type="button" data-nudge="0,1" style="width:100%;margin-top:8px">↓ 1mm移動</button>
           `;
           attachSelectionActionButtons(panel);
+          qs("#pasteInstallLocationBtn", panel)?.addEventListener("click", pasteInstallLocationToSelection);
           qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
           return;
         }
@@ -2033,6 +2036,8 @@
         qs("#toggleLockBtn", panel)?.addEventListener("click", toggleSelectedLock);
         qs("#toggleWireGapBtn", panel)?.addEventListener("click", toggleSelectedWireGap);
         qs("#applyAreaAttributesBtn", panel)?.addEventListener("click", applySelectedAreaAttributes);
+        qs("#copyInstallLocationBtn", panel)?.addEventListener("click", copySelectedInstallLocation);
+        qs("#pasteInstallLocationBtn", panel)?.addEventListener("click", pasteInstallLocationToSelection);
         attachSelectionActionButtons(panel);
         qs("#rotateLeftBtn", panel)?.addEventListener("click", () => rotateSelected(-90));
         qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
@@ -2226,6 +2231,10 @@
             <div class="row">
               <div><label>設備</label><input data-bind="installation" type="text" value="${escapeAttr(element.installation || "")}"></div>
               <div><label>場所</label><input data-bind="location" type="text" value="${escapeAttr(element.location || "")}"></div>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="copyInstallLocationBtn">設備/場所コピー</button>
+              <button type="button" id="pasteInstallLocationBtn" ${installLocationClipboard ? "" : "disabled"}>設備/場所貼付</button>
             </div>
             <div class="row">
               <div><label>メーカー</label><input data-bind="manufacturer" type="text" value="${escapeAttr(element.manufacturer || "")}"></div>
@@ -3537,6 +3546,46 @@
           count += 1;
         });
         commitHistory(count + "個の部品へ" + (key === "installation" ? "設備" : "場所") + "属性を適用しました。");
+        render();
+      }
+
+      function copySelectedInstallLocation() {
+        const element = selectedElement();
+        if (!element || !supportsElectricalAttributes(element)) return;
+        const data = {};
+        if (String(element.installation || "").trim()) data.installation = String(element.installation).trim();
+        if (String(element.location || "").trim()) data.location = String(element.location).trim();
+        if (!Object.keys(data).length) {
+          setStatus("コピーできる設備/場所属性がありません。");
+          return;
+        }
+        installLocationClipboard = data;
+        setStatus("設備/場所属性をコピーしました。");
+        render();
+      }
+
+      function pasteInstallLocationToSelection() {
+        if (!installLocationClipboard) {
+          setStatus("貼り付ける設備/場所属性がありません。");
+          return;
+        }
+        const selected = selectedElements().filter(element => supportsElectricalAttributes(element) && !isElementLocked(element));
+        let count = 0;
+        selected.forEach(element => {
+          let changed = false;
+          Object.entries(installLocationClipboard).forEach(([key, value]) => {
+            if (element[key] !== value) {
+              element[key] = value;
+              changed = true;
+            }
+          });
+          if (changed) count += 1;
+        });
+        if (!count) {
+          setStatus("設備/場所属性を貼り付ける対象がありません。");
+          return;
+        }
+        commitHistory(count + "個の部品へ設備/場所属性を貼り付けました。");
         render();
       }
 
