@@ -1777,6 +1777,20 @@
               <button type="button" id="sendBackwardBtn">背面へ</button>
             </div>
             <div class="row-3" style="margin-top:8px">
+              <button type="button" data-align="left">左揃え</button>
+              <button type="button" data-align="hcenter">中揃え</button>
+              <button type="button" data-align="right">右揃え</button>
+            </div>
+            <div class="row-3" style="margin-top:8px">
+              <button type="button" data-align="top">上揃え</button>
+              <button type="button" data-align="vcenter">中央</button>
+              <button type="button" data-align="bottom">下揃え</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button type="button" data-distribute="x">横均等</button>
+              <button type="button" data-distribute="y">縦均等</button>
+            </div>
+            <div class="row-3" style="margin-top:8px">
               <button type="button" data-nudge="-1,0">←</button>
               <button type="button" data-nudge="0,-1">↑</button>
               <button type="button" data-nudge="1,0">→</button>
@@ -1860,6 +1874,12 @@
         qs("#deleteElementBtn", panel)?.addEventListener("click", deleteSelected);
         qs("#bringForwardBtn", panel)?.addEventListener("click", bringSelectedForward);
         qs("#sendBackwardBtn", panel)?.addEventListener("click", sendSelectedBackward);
+        qsa("[data-align]", panel).forEach(button => {
+          button.addEventListener("click", () => alignSelected(button.dataset.align));
+        });
+        qsa("[data-distribute]", panel).forEach(button => {
+          button.addEventListener("click", () => distributeSelected(button.dataset.distribute));
+        });
         qsa("[data-nudge]", panel).forEach(button => {
           button.addEventListener("click", () => {
             const [dx, dy] = button.dataset.nudge.split(",").map(Number);
@@ -2952,14 +2972,72 @@
           setStatus("ロックされた要素は移動できません。");
           return;
         }
-        selected.forEach(element => {
-          if (element.points) {
-            element.points = element.points.map(point => [point[0] + dx, point[1] + dy]);
-          } else {
-            element.x = Number(element.x || 0) + dx;
-            element.y = Number(element.y || 0) + dy;
-          }
+        selected.forEach(element => translateElement(element, dx, dy));
+      }
+
+      function translateElement(element, dx, dy) {
+        if (element.points) {
+          element.points = element.points.map(point => [round(point[0] + dx), round(point[1] + dy)]);
+        } else {
+          element.x = round(Number(element.x || 0) + dx);
+          element.y = round(Number(element.y || 0) + dy);
+        }
+      }
+
+      function alignSelected(mode) {
+        const selected = selectedElements();
+        if (selected.length < 2) {
+          setStatus("整列するには2つ以上の要素を選択してください。");
+          return;
+        }
+        if (selected.some(isElementLocked)) {
+          setStatus("ロックされた要素は整列できません。");
+          return;
+        }
+        const items = selected.map(element => ({ element, box: elementBounds(element) })).filter(item => item.box);
+        const target = unionBounds(items.map(item => item.box));
+        items.forEach(item => {
+          let dx = 0;
+          let dy = 0;
+          if (mode === "left") dx = target.x - item.box.x;
+          if (mode === "hcenter") dx = target.x + target.w / 2 - (item.box.x + item.box.w / 2);
+          if (mode === "right") dx = target.x + target.w - (item.box.x + item.box.w);
+          if (mode === "top") dy = target.y - item.box.y;
+          if (mode === "vcenter") dy = target.y + target.h / 2 - (item.box.y + item.box.h / 2);
+          if (mode === "bottom") dy = target.y + target.h - (item.box.y + item.box.h);
+          translateElement(item.element, dx, dy);
         });
+        commitHistory("要素を整列しました。");
+        render();
+      }
+
+      function distributeSelected(axis) {
+        const selected = selectedElements();
+        if (selected.length < 3) {
+          setStatus("均等配置するには3つ以上の要素を選択してください。");
+          return;
+        }
+        if (selected.some(isElementLocked)) {
+          setStatus("ロックされた要素は均等配置できません。");
+          return;
+        }
+        const items = selected
+          .map(element => ({ element, box: elementBounds(element) }))
+          .filter(item => item.box)
+          .sort((a, b) => centerOfBox(a.box, axis) - centerOfBox(b.box, axis));
+        const first = centerOfBox(items[0].box, axis);
+        const last = centerOfBox(items[items.length - 1].box, axis);
+        const step = (last - first) / (items.length - 1);
+        items.forEach((item, index) => {
+          const delta = first + step * index - centerOfBox(item.box, axis);
+          translateElement(item.element, axis === "x" ? delta : 0, axis === "y" ? delta : 0);
+        });
+        commitHistory("要素を均等配置しました。");
+        render();
+      }
+
+      function centerOfBox(box, axis) {
+        return axis === "x" ? box.x + box.w / 2 : box.y + box.h / 2;
       }
 
       function serializeActiveSvg() {
