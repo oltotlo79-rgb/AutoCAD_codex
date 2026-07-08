@@ -512,6 +512,7 @@
       <aside class="palette">
         <div class="panel-title">部品パレット</div>
         <div class="palette-grid" id="paletteGrid"></div>
+        <button type="button" id="symbolManagerBtn" style="width:100%;margin-top:10px">ユーザー部品管理</button>
 
         <div class="section">
           <div class="panel-title">表示</div>
@@ -3098,6 +3099,23 @@
         return results;
       }
 
+      function showSymbolManager() {
+        const symbols = state.customSymbols || [];
+        const html = symbols.length
+          ? `<table class="report-table"><thead><tr><th>部品名</th><th>元要素</th><th>操作</th></tr></thead><tbody>${symbols.map(symbol => `<tr><td>${escapeHtml(symbol.label)}</td><td>${escapeHtml(paletteLabel(symbol.template?.type || ""))}</td><td><button type="button" data-delete-symbol="${escapeAttr(symbol.id)}">削除</button></td></tr>`).join("")}</tbody></table>`
+          : '<p class="muted">登録済みのユーザー部品はありません。図形を選択して「ユーザー部品に登録」を押すと追加できます。</p>';
+        openDialog("ユーザー部品管理", html);
+        qsa("[data-delete-symbol]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            const id = button.dataset.deleteSymbol;
+            state.customSymbols = (state.customSymbols || []).filter(symbol => symbol.id !== id);
+            commitHistory("ユーザー部品を削除しました。");
+            showSymbolManager();
+            renderPalette();
+          });
+        });
+      }
+
       function elementSearchText(element) {
         return [
           element.type,
@@ -3577,6 +3595,7 @@
         qs("#newProjectBtn").addEventListener("click", () => {
           if (confirm("現在の内容を破棄して新規作成しますか？")) initProject();
         });
+        qs("#symbolManagerBtn").addEventListener("click", showSymbolManager);
         qs("#openBtn").addEventListener("click", () => qs("#fileInput").click());
         qs("#restoreBackupBtn").addEventListener("click", restoreLocalBackup);
         qs("#fileInput").addEventListener("change", event => {
