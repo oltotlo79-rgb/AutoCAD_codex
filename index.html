@@ -1329,8 +1329,11 @@
           "stroke-dasharray": style.dash || null
         }));
         const mid = pathMid(points[0], points[points.length - 1]);
-        if (element.wireNo) {
+        if (element.wireNo && !element.hideWireNo) {
           g.appendChild(textEl(element.wireNo, mid.x + 1.6, mid.y - 1.8, { fontSize: 2.3 }));
+          if (element.fixedWireNo) {
+            g.appendChild(textEl("FIX", mid.x + 1.6, mid.y + 2.2, { fontSize: 1.6 }));
+          }
         }
       }
 
@@ -1974,6 +1977,8 @@
           return `
             <label>線番</label>
             <input data-bind="wireNo" type="text" value="${escapeAttr(element.wireNo || "")}">
+            <label><input data-bind="fixedWireNo" type="checkbox" ${element.fixedWireNo ? "checked" : ""} style="width:auto;min-height:auto"> 線番固定</label>
+            <label><input data-bind="hideWireNo" type="checkbox" ${element.hideWireNo ? "checked" : ""} style="width:auto;min-height:auto"> 線番非表示</label>
           `;
         }
         if (element.type === "line") {
@@ -2086,7 +2091,7 @@
         const element = selectedElement();
         if (!element) return;
         const key = input.dataset.bind;
-        const value = input.dataset.kind === "number" ? Number(input.value) : input.value;
+        const value = input.type === "checkbox" ? input.checked : (input.dataset.kind === "number" ? Number(input.value) : input.value);
         if (key === "p0x") element.points[0][0] = value;
         else if (key === "p0y") element.points[0][1] = value;
         else if (key === "p1x") element.points[element.points.length - 1][0] = value;
@@ -2140,7 +2145,7 @@
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
-          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
+          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", fixedWireNo: false, hideWireNo: false, wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
         };
         return deepClone(defaults[type] || defaults.deviceBox);
       }
@@ -3461,6 +3466,7 @@
             .filter(element => element.type === "wire")
             .forEach(element => {
               if (wireStyle(element).noNumber) return;
+              if (element.fixedWireNo) return;
               if (!overwrite && element.wireNo) return;
               element.wireNo = formatWireNumber(format, page, next);
               next += 1;
@@ -3766,7 +3772,7 @@
               const p1 = element.points?.[element.points.length - 1] || [0, 0];
               const from = nearestElementName(page, p0[0], p0[1], element.id);
               const to = nearestElementName(page, p1[0], p1[1], element.id);
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: joinDetails([wireStyle(element).label, "from=" + from, "to=" + to, noteDetail(element)]) });
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: p0[0], y: p0[1], x2: p1[0], y2: p1[1], detail: joinDetails([wireStyle(element).label, "from=" + from, "to=" + to, element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", noteDetail(element)]) });
             } else if (element.type === "terminal") {
               rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: joinDetails(["single", electricalAttributeDetail(element), noteDetail(element)]) });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
