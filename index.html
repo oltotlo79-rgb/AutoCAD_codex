@@ -561,6 +561,7 @@
           <div class="panel-title">配線設定</div>
           <label for="currentWireType">配線種別</label>
           <select id="currentWireType"></select>
+          <button type="button" id="wireTypeManagerBtn" style="width:100%;margin-top:8px">配線種別管理</button>
         </div>
 
         <div class="section">
@@ -3910,6 +3911,66 @@
         return paletteLabel(templates[0]?.type || "");
       }
 
+      function showWireTypeManager() {
+        const html = `
+          <table class="report-table">
+            <thead><tr><th>名称</th><th>色</th><th>線幅</th><th>破線</th><th>採番外</th></tr></thead>
+            <tbody>
+              ${(state.wireTypes || []).map(type => `
+                <tr data-wire-type-row="${escapeAttr(type.id)}">
+                  <td><input data-wire-type-field="label" value="${escapeAttr(type.label || type.id)}"></td>
+                  <td><input data-wire-type-field="color" type="color" value="${escapeAttr(type.color || "#111820")}"></td>
+                  <td><input data-wire-type-field="width" type="number" min="0.1" step="0.05" value="${Number(type.width || .38)}"></td>
+                  <td><input data-wire-type-field="dash" value="${escapeAttr(type.dash || "")}" placeholder="3 2"></td>
+                  <td><input data-wire-type-field="noNumber" type="checkbox" ${type.noNumber ? "checked" : ""} style="width:auto;min-height:auto"></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="addWireTypeBtn">種別追加</button>
+            <button type="button" id="applyWireTypeBtn" class="primary">適用</button>
+          </div>
+        `;
+        openDialog("配線種別管理", html);
+        qs("#addWireTypeBtn").addEventListener("click", addWireTypeFromDialog);
+        qs("#applyWireTypeBtn").addEventListener("click", applyWireTypeManager);
+      }
+
+      function addWireTypeFromDialog() {
+        const id = prompt("配線種別ID（半角英数字）", "wire" + ((state.wireTypes || []).length + 1));
+        if (!id) return;
+        const normalized = id.trim().replace(/[^A-Za-z0-9_-]/g, "");
+        if (!normalized) {
+          setStatus("配線種別IDが不正です。");
+          return;
+        }
+        if ((state.wireTypes || []).some(type => type.id === normalized)) {
+          setStatus("同じIDの配線種別があります。");
+          return;
+        }
+        const label = prompt("配線種別名", normalized) || normalized;
+        state.wireTypes.push({ id: normalized, label, color: "#111820", width: .38, dash: "", noNumber: false });
+        commitHistory("配線種別を追加しました。");
+        showWireTypeManager();
+        render();
+      }
+
+      function applyWireTypeManager() {
+        qsa("[data-wire-type-row]", qs("#dialogBody")).forEach(row => {
+          const type = (state.wireTypes || []).find(item => item.id === row.dataset.wireTypeRow);
+          if (!type) return;
+          qsa("[data-wire-type-field]", row).forEach(input => {
+            const key = input.dataset.wireTypeField;
+            if (key === "width") type[key] = Number(input.value || .38);
+            else type[key] = input.type === "checkbox" ? input.checked : input.value;
+          });
+        });
+        closeDialog();
+        commitHistory("配線種別を更新しました。");
+        render();
+      }
+
       function showLayerManager() {
         const html = `
           <table class="report-table">
@@ -4445,6 +4506,7 @@
           if (confirm("現在の内容を破棄して新規作成しますか？")) initProject();
         });
         qs("#symbolManagerBtn").addEventListener("click", showSymbolManager);
+        qs("#wireTypeManagerBtn").addEventListener("click", showWireTypeManager);
         qs("#layerManagerBtn").addEventListener("click", showLayerManager);
         qs("#openBtn").addEventListener("click", () => qs("#fileInput").click());
         qs("#restoreBackupBtn").addEventListener("click", restoreLocalBackup);
