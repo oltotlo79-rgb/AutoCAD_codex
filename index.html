@@ -1471,19 +1471,38 @@
         const w = Number(element.w || 100);
         const h = Number(element.h || 70);
         if (element.imageData) {
-          g.appendChild(svgEl("image", {
+          const crop = underlayCropRect(element.cropPreset);
+          const attrs = {
             href: element.imageData,
-            x: 0,
-            y: 0,
-            width: w,
-            height: h,
+            x: crop.x ? -crop.x * w / crop.w : 0,
+            y: crop.y ? -crop.y * h / crop.h : 0,
+            width: w / crop.w,
+            height: h / crop.h,
             opacity: Number(element.opacity ?? .35),
             preserveAspectRatio: "none"
+          };
+          if (crop.w < 1 || crop.h < 1) {
+            const clipId = uid("clip");
+            g.appendChild(svgEl("clipPath", { id: clipId }, [svgEl("rect", { x: 0, y: 0, width: w, height: h })]));
+            attrs["clip-path"] = "url(#" + clipId + ")";
+          }
+          g.appendChild(svgEl("image", {
+            ...attrs
           }));
         } else {
           g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-line", stroke: "#9aa4b2", fill: "#f8fafc" }));
           g.appendChild(textEl("下絵画像なし", w / 2, h / 2, { fontSize: 3, anchor: "middle" }));
         }
+      }
+
+      function underlayCropRect(preset) {
+        const map = {
+          top: { x: 0, y: 0, w: 1, h: .5 },
+          bottom: { x: 0, y: .5, w: 1, h: .5 },
+          left: { x: 0, y: 0, w: .5, h: 1 },
+          right: { x: .5, y: 0, w: .5, h: 1 }
+        };
+        return map[preset] || { x: 0, y: 0, w: 1, h: 1 };
       }
 
       function drawWire(g, element, stroke) {
@@ -2219,9 +2238,18 @@
           return `<button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>`;
         }
         if (element.type === "underlayImage") {
+          const crop = element.cropPreset || "full";
           return `
             <label>透明度</label>
             <input data-bind="opacity" data-kind="number" type="number" min="0.05" max="1" step="0.05" value="${round(element.opacity ?? .35)}">
+            <label>表示範囲</label>
+            <select data-bind="cropPreset">
+              <option value="full"${crop === "full" ? " selected" : ""}>全体</option>
+              <option value="top"${crop === "top" ? " selected" : ""}>上半分</option>
+              <option value="bottom"${crop === "bottom" ? " selected" : ""}>下半分</option>
+              <option value="left"${crop === "left" ? " selected" : ""}>左半分</option>
+              <option value="right"${crop === "right" ? " selected" : ""}>右半分</option>
+            </select>
             <p class="muted">下絵は初期状態でロックされます。位置やサイズを調整する場合はロック解除してください。</p>
           `;
         }
@@ -2397,7 +2425,7 @@
           line: { id: uid("el"), type: "line", points: [[x, y], [x + 30, y]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke, layer: defaultLayerFor("line") },
           rect: { ...base, w: 34, h: 22, label: "" },
           circle: { ...base, w: 22, h: 22, label: "" },
-          underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, locked: true, layer: "layout" },
+          underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
           terminal: { ...base, w: 20, h: 10, label: "1" },
@@ -3880,6 +3908,7 @@
           label: name || "下絵",
           imageData: dataUrl,
           opacity: .35,
+          cropPreset: "full",
           rotation: 0,
           locked: true,
           stroke: "#5b626b",
