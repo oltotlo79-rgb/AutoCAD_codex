@@ -631,6 +631,10 @@
             <button type="button" id="sampleTerminalPageBtn">見本風</button>
             <button type="button" id="indexPageBtn">目次</button>
           </div>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="ioPageBtn">I/O</button>
+            <button type="button" id="layoutPageBtn">配置</button>
+          </div>
         </div>
 
         <div class="section" id="selectionPanel"></div>
@@ -2162,6 +2166,104 @@
         render();
       }
 
+      function addIoPage() {
+        const page = createPage({
+          name: "I-O" + (state.pages.length + 1),
+          size: "A4",
+          orientation: "landscape",
+          frameVariant: "side",
+          title: "PLC I/O 接続図"
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: 18,
+          y: 26,
+          w: 80,
+          h: 8,
+          text: "PLC I/O 接続図",
+          fontSize: 4,
+          rotation: 0,
+          stroke: state.settings.stroke
+        });
+        const plc = defaultElement("plcBlock", 118, 46);
+        plc.w = 58;
+        plc.h = 94;
+        plc.rows = 16;
+        plc.label = "PLC-01";
+        plc.pinText = "I00\nI01\nI02\nI03\nI04\nI05\nI06\nI07\nO00\nO01\nO02\nO03\nO04\nO05\nO06\nO07";
+        page.elements.push(plc);
+        for (let i = 0; i < 16; i++) {
+          const y = 58 + i * 5;
+          const left = i < 8;
+          const x1 = left ? 30 : 176;
+          const x2 = left ? 118 : 248;
+          page.elements.push({
+            id: uid("el"),
+            type: "wire",
+            points: [[x1, y], [x2, y]],
+            wireNo: (left ? "I" : "O") + String(i % 8).padStart(2, "0"),
+            wireType: state.settings.currentWireType,
+            stroke: state.settings.stroke
+          });
+          page.elements.push({
+            id: uid("el"),
+            type: "text",
+            x: left ? 18 : 252,
+            y,
+            w: 48,
+            h: 5,
+            text: (left ? "入力信号" : "出力信号") + String(i % 8),
+            fontSize: 2.4,
+            rotation: 0,
+            stroke: state.settings.stroke
+          });
+        }
+        state.pages.push(page);
+        state.activePageId = page.id;
+        selectedId = null;
+        commitHistory("I/Oページを追加しました。");
+        render();
+      }
+
+      function addLayoutPage() {
+        const page = createPage({
+          name: "配置" + (state.pages.length + 1),
+          size: "A4",
+          orientation: "portrait",
+          frameVariant: "compact",
+          title: "機器配置図"
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "text",
+          x: 20,
+          y: 26,
+          w: 70,
+          h: 8,
+          text: "機器配置図",
+          fontSize: 4,
+          rotation: 0,
+          stroke: state.settings.stroke
+        });
+        page.elements.push({ id: uid("el"), type: "rect", x: 28, y: 46, w: 154, h: 190, label: "盤内", rotation: 0, stroke: state.settings.stroke });
+        const items = [
+          ["PLC", 42, 62, 46, 32],
+          ["端子台 X1", 102, 62, 58, 18],
+          ["電源 PS1", 42, 108, 42, 26],
+          ["リレー", 102, 104, 58, 36],
+          ["予備", 42, 158, 118, 34]
+        ];
+        items.forEach(([label, x, y, w, h]) => {
+          page.elements.push({ id: uid("el"), type: "rect", x, y, w, h, label, rotation: 0, stroke: state.settings.stroke });
+        });
+        state.pages.push(page);
+        state.activePageId = page.id;
+        selectedId = null;
+        commitHistory("機器配置ページを追加しました。");
+        render();
+      }
+
       function deleteSelected() {
         const page = currentPage();
         if (!page || !selectedId) return;
@@ -3107,6 +3209,8 @@
         qs("#deletePageBtn").addEventListener("click", deletePage);
         qs("#sampleTerminalPageBtn").addEventListener("click", addSampleTerminalPage);
         qs("#indexPageBtn").addEventListener("click", addIndexPage);
+        qs("#ioPageBtn").addEventListener("click", addIoPage);
+        qs("#layoutPageBtn").addEventListener("click", addLayoutPage);
         qsa("[data-tool]").forEach(button => {
           button.addEventListener("click", () => setActiveTool(button.dataset.tool));
         });
