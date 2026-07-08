@@ -2296,6 +2296,8 @@
 
       function auditProject() {
         const issues = [];
+        const arrows = new Map();
+        const terminalNames = new Map();
         state.pages.forEach(page => {
           const size = pageSize(page);
           const wireNos = new Map();
@@ -2317,6 +2319,19 @@
             if (["terminalStrip", "connector"].includes(element.type) && Number(element.count || 0) <= 0) {
               issues.push({ level: "警告", page: page.name, message: "端子数が不正です。", target: element.label || element.id });
             }
+            if (["terminalStrip", "connector"].includes(element.type) && element.label) {
+              const key = page.name + "::" + element.label;
+              terminalNames.set(key, (terminalNames.get(key) || 0) + 1);
+            }
+            if (element.type === "arrow") {
+              if (!element.label) {
+                issues.push({ level: "警告", page: page.name, message: "信号矢印の参照名が未入力です。", target: element.id });
+              } else {
+                const list = arrows.get(element.label) || [];
+                list.push(page.name);
+                arrows.set(element.label, list);
+              }
+            }
             const box = elementBounds(element);
             if (box && (box.x < 0 || box.y < 0 || box.x + box.w > size.w || box.y + box.h > size.h)) {
               issues.push({ level: "注意", page: page.name, message: "用紙外にはみ出しています。", target: label || element.type });
@@ -2325,6 +2340,17 @@
           wireNos.forEach((count, wireNo) => {
             if (count > 1) issues.push({ level: "情報", page: page.name, message: "同じ線番が複数あります。", target: wireNo });
           });
+        });
+        arrows.forEach((pages, label) => {
+          if (pages.length === 1) {
+            issues.push({ level: "注意", page: pages[0], message: "対応する信号矢印がありません。", target: label });
+          }
+        });
+        terminalNames.forEach((count, key) => {
+          if (count > 1) {
+            const [page, name] = key.split("::");
+            issues.push({ level: "注意", page, message: "同一ページ内で端子台名称が重複しています。", target: name });
+          }
         });
         return issues;
       }
