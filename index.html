@@ -661,6 +661,7 @@
       const PALETTE = [
         { type: "text", label: "文字", icon: "text" },
         { type: "wire", label: "配線", icon: "wire" },
+        { type: "line", label: "直線", icon: "line" },
         { type: "rect", label: "矩形", icon: "rect" },
         { type: "circle", label: "円", icon: "circle" },
         { type: "terminal", label: "端子", icon: "terminal" },
@@ -934,6 +935,7 @@
         const map = {
           text: `<svg ${common}><path ${stroke} d="M18 14h44M40 14v22M30 36h20"/></svg>`,
           wire: `<svg ${common}><path ${stroke} d="M8 22h28v-10h36"/><circle cx="36" cy="22" r="3" fill="currentColor"/></svg>`,
+          line: `<svg ${common}><path ${stroke} d="M12 32L68 12"/></svg>`,
           rect: `<svg ${common}><rect x="18" y="11" width="44" height="24" ${stroke}/></svg>`,
           circle: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
           terminal: `<svg ${common}><rect x="32" y="14" width="16" height="16" ${stroke}/><path ${stroke} d="M8 22h24M48 22h24"/></svg>`,
@@ -1183,6 +1185,7 @@
         const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
         if (element.type === "text") drawText(g, element);
         if (element.type === "wire") drawWire(g, element, stroke);
+        if (element.type === "line") drawLineElement(g, element, stroke);
         if (element.type === "rect") drawRectElement(g, element, stroke);
         if (element.type === "circle") drawCircleElement(g, element, stroke);
         if (element.type === "terminal") drawTerminal(g, element, stroke);
@@ -1247,6 +1250,26 @@
           fill: element.fill || "none"
         }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
+      }
+
+      function drawLineElement(g, element, stroke) {
+        const points = element.points || [[0, 0], [20, 0]];
+        const a = points[0];
+        const b = points[points.length - 1];
+        g.appendChild(svgEl("line", {
+          x1: a[0],
+          y1: a[1],
+          x2: b[0],
+          y2: b[1],
+          class: "symbol-line",
+          stroke,
+          "stroke-width": element.strokeWidth || .32,
+          "stroke-dasharray": element.dash || null
+        }));
+        if (element.label) {
+          const mid = pathMid(a, b);
+          g.appendChild(textEl(element.label, mid.x, mid.y - 3, { fontSize: 2.4, anchor: "middle" }));
+        }
       }
 
       function drawCircleElement(g, element, stroke) {
@@ -1553,7 +1576,7 @@
       }
 
       function elementBounds(element) {
-        if (element.type === "wire" || element.type === "arrow") {
+        if (element.type === "wire" || element.type === "arrow" || element.type === "line") {
           const points = element.points || [[0, 0], [0, 0]];
           const xs = points.map(p => p[0]);
           const ys = points.map(p => p[1]);
@@ -1626,7 +1649,7 @@
           return;
         }
         const typeName = paletteLabel(element.type);
-        const isWireLike = element.type === "wire" || element.type === "arrow";
+        const isWireLike = element.type === "wire" || element.type === "arrow" || element.type === "line";
         panel.innerHTML = `
           <div class="panel-title">選択中: ${typeName}</div>
           ${isWireLike ? wireFields(element) : normalFields(element)}
@@ -1717,8 +1740,7 @@
         const b = points[points.length - 1];
         const options = (state.wireTypes || []).map(type => `<option value="${escapeAttr(type.id)}"${element.wireType === type.id ? " selected" : ""}>${escapeHtml(type.label)}</option>`).join("");
         return `
-          <label>配線種別</label>
-          <select data-bind="wireType">${options}</select>
+          ${element.type === "wire" ? `<label>配線種別</label><select data-bind="wireType">${options}</select>` : ""}
           <div class="row">
             <div><label>始点 X</label><input data-bind="p0x" data-kind="number" type="number" step="0.5" value="${round(a[0])}"></div>
             <div><label>始点 Y</label><input data-bind="p0y" data-kind="number" type="number" step="0.5" value="${round(a[1])}"></div>
@@ -1743,6 +1765,12 @@
           return `
             <label>線番</label>
             <input data-bind="wireNo" type="text" value="${escapeAttr(element.wireNo || "")}">
+          `;
+        }
+        if (element.type === "line") {
+          return `
+            <label>線ラベル</label>
+            <input data-bind="label" type="text" value="${escapeAttr(element.label || "")}">
           `;
         }
         return `
@@ -1788,6 +1816,14 @@
             <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
           `;
         }
+        if (element.type === "line") {
+          return `
+            <div class="row">
+              <div><label>線幅</label><input data-bind="strokeWidth" data-kind="number" type="number" min="0.1" step="0.1" value="${round(element.strokeWidth || .32)}"></div>
+              <div><label>破線</label><input data-bind="dash" type="text" value="${escapeAttr(element.dash || "")}" placeholder="3 2"></div>
+            </div>
+          `;
+        }
         return "";
       }
 
@@ -1821,6 +1857,7 @@
         const base = { id: uid("el"), type, x, y, rotation: 0, stroke: state.settings.stroke };
         const defaults = {
           text: { ...base, w: 40, h: 8, text: "文字", fontSize: 3.5 },
+          line: { id: uid("el"), type: "line", points: [[x, y], [x + 30, y]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke },
           rect: { ...base, w: 34, h: 22, label: "" },
           circle: { ...base, w: 22, h: 22, label: "" },
           terminal: { ...base, w: 20, h: 10, label: "1" },
@@ -2746,6 +2783,17 @@
           }
           return;
         }
+        if (element.type === "line") {
+          const points = element.points || [[0, 0], [20, 0]];
+          const a = points[0];
+          const b = points[points.length - 1];
+          dxfLine(out, page, "GEOMETRY", a[0], a[1], b[0], b[1]);
+          if (element.label) {
+            const mid = pathMid(a, b);
+            dxfText(out, page, "TEXT", mid.x, mid.y - 3, 2.4, element.label);
+          }
+          return;
+        }
         if (element.type === "arrow") {
           const points = element.points || [[0, 0], [20, 0]];
           const a = points[0];
@@ -3003,7 +3051,7 @@
         const svg = qs("#canvas");
         const point = canvasPoint(event);
         const targetElement = event.target.closest("[data-id]");
-        if (activeTool === "wire" || activeTool === "arrow") {
+        if (activeTool === "wire" || activeTool === "arrow" || activeTool === "line") {
           const element = defaultElement(activeTool, point.x, point.y);
           element.points = [[point.x, point.y], [point.x, point.y]];
           currentPage().elements.push(element);
