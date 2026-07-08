@@ -544,13 +544,14 @@
             <button type="button" id="terminalNoBtn">端子番号</button>
           </div>
           <div class="row" style="margin-top:8px">
+            <button type="button" id="terminalEditorBtn">端子台</button>
             <button type="button" id="tagComponentsBtn">部品タグ</button>
-            <button type="button" id="auditBtn">監査</button>
           </div>
           <div class="row" style="margin-top:8px">
+            <button type="button" id="auditBtn">監査</button>
             <button type="button" id="reportCsvBtn">帳票CSV</button>
-            <button type="button" id="exportDxfBtn">DXF</button>
           </div>
+          <button type="button" id="exportDxfBtn" style="width:100%;margin-top:8px">DXF</button>
         </div>
       </aside>
 
@@ -2122,6 +2123,63 @@
         render();
       }
 
+      function showTerminalEditor() {
+        const rows = [];
+        state.pages.forEach(page => {
+          page.elements
+            .filter(element => ["terminalStrip", "connector"].includes(element.type))
+            .forEach(element => rows.push({ page, element }));
+        });
+        if (!rows.length) {
+          openDialog("端子台エディタ", '<p class="muted">端子台またはコネクタがありません。</p>');
+          return;
+        }
+        const html = `
+          <table class="report-table">
+            <thead><tr><th>ページ</th><th>種別</th><th>名称</th><th>端子数</th><th>開始</th><th>接頭辞</th></tr></thead>
+            <tbody>
+              ${rows.map(({ page, element }) => `
+                <tr data-terminal-row="${element.id}">
+                  <td>${escapeHtml(page.name)}</td>
+                  <td>${escapeHtml(paletteLabel(element.type))}</td>
+                  <td><input data-terminal-field="label" value="${escapeAttr(element.label || "")}"></td>
+                  <td><input data-terminal-field="count" type="number" min="1" step="1" value="${Number(element.count || 1)}"></td>
+                  <td><input data-terminal-field="start" type="number" step="1" value="${Number(element.start || 1)}"></td>
+                  <td><input data-terminal-field="prefix" value="${escapeAttr(element.prefix || "")}"></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="applyTerminalEditorBtn" class="primary">適用</button>
+          </div>
+        `;
+        openDialog("端子台エディタ", html);
+        qs("#applyTerminalEditorBtn").addEventListener("click", applyTerminalEditor);
+      }
+
+      function applyTerminalEditor() {
+        qsa("[data-terminal-row]").forEach(row => {
+          const element = findElementById(row.dataset.terminalRow);
+          if (!element) return;
+          qsa("[data-terminal-field]", row).forEach(input => {
+            const key = input.dataset.terminalField;
+            element[key] = input.type === "number" ? Number(input.value || 0) : input.value;
+          });
+        });
+        closeDialog();
+        commitHistory("端子台情報を更新しました。");
+        render();
+      }
+
+      function findElementById(id) {
+        for (const page of state.pages) {
+          const element = page.elements.find(item => item.id === id);
+          if (element) return element;
+        }
+        return null;
+      }
+
       function autoTagComponents() {
         const allPages = confirm("全ページの部品タグを付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
         const overwrite = confirm("既存ラベルも上書きしますか？\nOK: 上書き / キャンセル: 未入力のみ");
@@ -2485,6 +2543,7 @@
         qs("#exportPngBtn").addEventListener("click", exportPng);
         qs("#autoWireBtn").addEventListener("click", autoWireNumbers);
         qs("#terminalNoBtn").addEventListener("click", renumberTerminals);
+        qs("#terminalEditorBtn").addEventListener("click", showTerminalEditor);
         qs("#tagComponentsBtn").addEventListener("click", autoTagComponents);
         qs("#reportCsvBtn").addEventListener("click", exportReportCsv);
         qs("#auditBtn").addEventListener("click", showAudit);
