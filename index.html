@@ -3124,6 +3124,7 @@
           wireNos.forEach((count, wireNo) => {
             if (count > 1) issues.push({ level: "情報", page: page.name, message: "同じ線番が複数あります。", target: wireNo });
           });
+          auditFloatingWireEnds(page).forEach(item => issues.push(item));
         });
         arrows.forEach((pages, label) => {
           if (pages.length === 1) {
@@ -3137,6 +3138,54 @@
           }
         });
         return issues;
+      }
+
+      function auditFloatingWireEnds(page) {
+        const issues = [];
+        const endpointCounts = new Map();
+        page.elements.filter(element => element.type === "wire").forEach(wire => {
+          const pts = wire.points || [];
+          [pts[0], pts[pts.length - 1]].filter(Boolean).forEach(point => {
+            const key = pointKey(point[0], point[1]);
+            endpointCounts.set(key, (endpointCounts.get(key) || 0) + 1);
+          });
+        });
+        page.elements.filter(element => element.type === "wire").forEach(wire => {
+          const pts = wire.points || [];
+          [pts[0], pts[pts.length - 1]].filter(Boolean).forEach(point => {
+            const key = pointKey(point[0], point[1]);
+            if ((endpointCounts.get(key) || 0) > 1) return;
+            if (hasConnectionTargetNear(page, point[0], point[1], wire.id)) return;
+            issues.push({
+              level: "注意",
+              page: page.name,
+              message: "配線端点が未接続の可能性があります。",
+              target: (wire.wireNo || wire.id) + " @ " + key
+            });
+          });
+        });
+        return issues;
+      }
+
+      function hasConnectionTargetNear(page, x, y, selfId) {
+        return page.elements.some(element => {
+          if (element.id === selfId) return false;
+          if (element.type === "wire") {
+            return wireSegments(element).some(segment => pointOnSegment(x, y, segment));
+          }
+          if (element.type === "junction") {
+            return Math.abs((element.x || 0) - x) <= 1.2 && Math.abs((element.y || 0) - y) <= 1.2;
+          }
+          const box = elementBounds(element);
+          if (!box) return false;
+          return x >= box.x - 2 && x <= box.x + box.w + 2 && y >= box.y - 2 && y <= box.y + box.h + 2;
+        });
+      }
+
+      function pointOnSegment(x, y, segment) {
+        const vertical = Math.abs(segment[0] - segment[2]) < .001;
+        if (vertical) return Math.abs(x - segment[0]) < .6 && between(y, segment[1], segment[3]);
+        return Math.abs(y - segment[1]) < .6 && between(x, segment[0], segment[2]);
       }
 
       function openDialog(title, html) {
