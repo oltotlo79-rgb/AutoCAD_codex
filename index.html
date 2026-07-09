@@ -2351,30 +2351,45 @@
         const cols = Math.max(1, Number(element.cols || 4));
         const w = Number(element.w || 78);
         const h = Number(element.h || 44);
+        const colWidths = tableSizes(element.colWidths, cols, w);
+        const rowHeights = tableSizes(element.rowHeights, rows, h);
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
+        let y = 0;
         for (let i = 1; i < rows; i++) {
-          const y = h * i / rows;
+          y += rowHeights[i - 1];
           g.appendChild(svgEl("line", { x1: 0, y1: y, x2: w, y2: y, class: "symbol-line", stroke }));
         }
+        let x = 0;
         for (let i = 1; i < cols; i++) {
-          const x = w * i / cols;
+          x += colWidths[i - 1];
           g.appendChild(svgEl("line", { x1: x, y1: 0, x2: x, y2: h, class: "symbol-line", stroke }));
         }
-        drawTableCells(g, element, rows, cols, w, h);
+        drawTableCells(g, element, rows, cols, colWidths, rowHeights);
         if (element.label) g.appendChild(textEl(element.label, w / 2, -4, { fontSize: 2.5, anchor: "middle" }));
       }
 
-      function drawTableCells(g, element, rows, cols, w, h) {
+      function tableSizes(value, count, total) {
+        const values = String(value || "").split(/[,\s]+/).map(Number).filter(number => Number.isFinite(number) && number > 0);
+        if (values.length !== count) return Array.from({ length: count }, () => total / count);
+        const sum = values.reduce((acc, number) => acc + number, 0);
+        if (sum <= 0) return Array.from({ length: count }, () => total / count);
+        return values.map(number => total * number / sum);
+      }
+
+      function drawTableCells(g, element, rows, cols, colWidths, rowHeights) {
         const text = String(element.cellText || "");
         if (!text.trim()) return;
         const rowData = text.split(/\r?\n/).slice(0, rows);
-        const cellW = w / cols;
-        const cellH = h / rows;
+        const fontSize = Number(element.tableFontSize || 2.2);
+        let y = 0;
         rowData.forEach((line, rowIndex) => {
           const cells = line.includes("\t") ? line.split("\t") : line.split(",");
+          let x = 0;
           cells.slice(0, cols).forEach((cell, colIndex) => {
-            g.appendChild(textEl(cell.trim(), colIndex * cellW + 1.5, rowIndex * cellH + cellH / 2, { fontSize: 2.2 }));
+            g.appendChild(textEl(cell.trim(), x + 1.5, y + rowHeights[rowIndex] / 2 + fontSize * .28, { fontSize }));
+            x += colWidths[colIndex];
           });
+          y += rowHeights[rowIndex];
         });
       }
 
@@ -2969,6 +2984,12 @@
               <div><label>行</label><input data-bind="rows" data-kind="number" type="number" min="1" step="1" value="${Number(element.rows || 6)}"></div>
               <div><label>列</label><input data-bind="cols" data-kind="number" type="number" min="1" step="1" value="${Number(element.cols || 4)}"></div>
             </div>
+            <label>列幅（カンマ区切り）</label>
+            <input data-bind="colWidths" type="text" value="${escapeAttr(element.colWidths || "")}" placeholder="15,45,20,20">
+            <label>行高（カンマ区切り）</label>
+            <input data-bind="rowHeights" type="text" value="${escapeAttr(element.rowHeights || "")}" placeholder="8,5,5,5">
+            <label>表文字サイズ mm</label>
+            <input data-bind="tableFontSize" data-kind="number" type="number" min="1" step="0.1" value="${round(element.tableFontSize || 2.2)}">
             <label>セル文字（タブ/カンマ区切り）</label>
             <textarea data-bind="cellText">${escapeHtml(element.cellText || "")}</textarea>
           `;
@@ -3189,7 +3210,7 @@
           cableMarker: { ...base, w: 28, h: 12, label: "C" },
           cableBundle: { ...base, w: 32, h: 18, label: "CBL" },
           terminalBox: { ...base, w: 22, h: 18, label: "TB", rows: 3 },
-          table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
+          table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", colWidths: "", rowHeights: "", tableFontSize: 2.2, cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
           wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", fixedWireNo: false, hideWireNo: false, gapAtMid: false, fromOverride: "", toOverride: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
@@ -5913,7 +5934,7 @@
         const details = [electricalAttributeDetail(element), noteDetail(element)];
         if (element.fixedTag) details.unshift("fixedTag=true");
         if (element.type === "arrow") details.unshift("role=" + signalRoleLabel(element.signalRole));
-        if (element.type === "table") details.unshift("rows=" + (element.rows || ""), "cols=" + (element.cols || ""), "cells=" + String(element.cellText || "").replace(/\r?\n/g, " / "));
+        if (element.type === "table") details.unshift("rows=" + (element.rows || ""), "cols=" + (element.cols || ""), element.colWidths ? "colWidths=" + element.colWidths : "", element.rowHeights ? "rowHeights=" + element.rowHeights : "", "cells=" + String(element.cellText || "").replace(/\r?\n/g, " / "));
         if (element.type === "plcBlock") details.unshift("rows=" + (element.rows || ""), "io=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
         if (element.type === "deviceBox") details.unshift("pins=" + (element.pins || ""), "leftPins=" + String(element.pinText || "").replace(/\r?\n/g, " / "), "rightPins=" + String(element.rightPinText || "").replace(/\r?\n/g, " / "));
         if (["installationBox", "locationBox"].includes(element.type)) details.unshift("area=" + (element.type === "installationBox" ? "installation" : "location"), "value=" + (element.label || ""));
@@ -6781,14 +6802,29 @@
           const cols = Math.max(1, Number(element.cols || 4));
           const w = Number(element.w || 78);
           const h = Number(element.h || 44);
+          const colWidths = tableSizes(element.colWidths, cols, w);
+          const rowHeights = tableSizes(element.rowHeights, rows, h);
           dxfRectLocal(out, page, "TABLE", element, 0, 0, w, h);
-          for (let i = 1; i < rows; i++) dxfLineLocal(out, page, "TABLE", element, 0, h * i / rows, w, h * i / rows);
-          for (let i = 1; i < cols; i++) dxfLineLocal(out, page, "TABLE", element, w * i / cols, 0, w * i / cols, h);
+          let y = 0;
+          for (let i = 1; i < rows; i++) {
+            y += rowHeights[i - 1];
+            dxfLineLocal(out, page, "TABLE", element, 0, y, w, y);
+          }
+          let x = 0;
+          for (let i = 1; i < cols; i++) {
+            x += colWidths[i - 1];
+            dxfLineLocal(out, page, "TABLE", element, x, 0, x, h);
+          }
+          const fontSize = Number(element.tableFontSize || 2.2);
+          let textY = 0;
           String(element.cellText || "").split(/\r?\n/).slice(0, rows).forEach((line, rowIndex) => {
             const cells = line.includes("\t") ? line.split("\t") : line.split(",");
+            let textX = 0;
             cells.slice(0, cols).forEach((cell, colIndex) => {
-              dxfTextLocal(out, page, "TEXT", element, colIndex * (w / cols) + 1.5, rowIndex * (h / rows) + h / rows / 2, 2.2, cell.trim());
+              dxfTextLocal(out, page, "TEXT", element, textX + 1.5, textY + rowHeights[rowIndex] / 2 + fontSize * .28, fontSize, cell.trim());
+              textX += colWidths[colIndex];
             });
+            textY += rowHeights[rowIndex];
           });
           if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, -4, 2.5, element.label);
           dxfVisibleAttributes(out, page, element);
