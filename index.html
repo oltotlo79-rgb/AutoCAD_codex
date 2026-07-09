@@ -3298,6 +3298,45 @@
         };
       }
 
+      function centerPlacedTypes() {
+        return new Set([
+          "terminal",
+          "contactNO",
+          "contactNC",
+          "pushButton",
+          "selectorSwitch",
+          "limitSwitch",
+          "coil",
+          "fuse",
+          "breaker",
+          "lamp",
+          "buzzer",
+          "resistor",
+          "capacitor",
+          "diode",
+          "thermalRelay",
+          "motor",
+          "fan",
+          "cableMarker",
+          "cableBundle"
+        ]);
+      }
+
+      function defaultElementAtPlacement(type, x, y) {
+        const element = defaultElement(type, x, y);
+        if (centerPlacedTypes().has(type)) {
+          const w = Number(element.w || defaultElement(type).w || 0);
+          const h = Number(element.h || defaultElement(type).h || 0);
+          element.x = round(x - w / 2);
+          element.y = round(y - h / 2);
+        } else if (type === "ground") {
+          const w = Number(element.w || defaultElement(type).w || 0);
+          element.x = round(x - w / 2);
+          element.y = round(y);
+        }
+        return element;
+      }
+
       function placeElement(type, x, y) {
         const page = currentPage();
         if (!page) return;
@@ -3311,7 +3350,7 @@
           cancelPlacementMode(true);
           return;
         }
-        const element = defaultElement(type, x, y);
+        const element = defaultElementAtPlacement(type, x, y);
         page.elements.push(element);
         selectSingle(element.id);
         commitHistory("要素を配置しました。");
