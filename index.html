@@ -536,6 +536,7 @@
     <main class="shell">
       <aside class="palette">
         <div class="panel-title">部品パレット</div>
+        <input id="paletteFilter" type="search" placeholder="部品検索" aria-label="部品検索">
         <div class="palette-grid" id="paletteGrid"></div>
         <button type="button" id="symbolManagerBtn" style="width:100%;margin-top:10px">ユーザー部品管理</button>
 
@@ -901,6 +902,7 @@
       let selectedId = null;
       let selectedIds = [];
       let activeTool = "select";
+      let paletteFilterText = "";
       let dragState = null;
       let clipboardElement = null;
       let installLocationClipboard = null;
@@ -1111,6 +1113,7 @@
       function renderPalette() {
         const grid = qs("#paletteGrid");
         grid.innerHTML = "";
+        const filter = paletteFilterText.trim().toLowerCase();
         const items = [
           ...PALETTE,
           ...(state.customSymbols || []).map(symbol => ({
@@ -1118,7 +1121,15 @@
             label: symbol.label,
             icon: "box"
           }))
-        ];
+        ].filter(item => {
+          if (!filter) return true;
+          return String(item.label || "").toLowerCase().includes(filter)
+            || String(item.type || "").toLowerCase().includes(filter);
+        });
+        if (!items.length) {
+          grid.innerHTML = '<div class="muted" style="grid-column:1/-1">該当する部品がありません。</div>';
+          return;
+        }
         items.forEach(item => {
           const button = document.createElement("div");
           button.className = "palette-item" + (activeTool === item.type ? " active" : "");
@@ -5984,6 +5995,10 @@
       function attachEvents() {
         qs("#newProjectBtn").addEventListener("click", () => {
           if (confirm("現在の内容を破棄して新規作成しますか？")) initProject();
+        });
+        qs("#paletteFilter").addEventListener("input", event => {
+          paletteFilterText = event.target.value || "";
+          renderPalette();
         });
         qs("#symbolManagerBtn").addEventListener("click", showSymbolManager);
         qs("#wireTypeManagerBtn").addEventListener("click", showWireTypeManager);
