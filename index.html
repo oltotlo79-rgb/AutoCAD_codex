@@ -5714,7 +5714,7 @@
         if (element.type === "wire") {
           const layer = "WIRE_" + String(element.wireType || "control").toUpperCase();
           const points = element.points || [[0, 0], [20, 0]];
-          wireSegments(element).forEach(segment => dxfLine(out, page, layer, segment[0], segment[1], segment[2], segment[3]));
+          dxfWireSegments(element).forEach(segment => dxfLine(out, page, layer, segment[0], segment[1], segment[2], segment[3]));
           if (element.wireNo) {
             const mid = wireLabelPoint(points);
             dxfText(out, page, "WIRENO", mid.x + 1.5, mid.y - 1.8, 2.4, element.wireNo);
@@ -5854,6 +5854,48 @@
 
       function cadY(page, y) {
         return pageSize(page).h - y;
+      }
+
+      function dxfWireSegments(element) {
+        const gaps = wireGapMarkers(element);
+        if (!gaps.length) return wireSegments(element);
+        return wireSegments(element).flatMap(segment => splitSegmentForDxfGaps(segment, gaps));
+      }
+
+      function splitSegmentForDxfGaps(segment, gaps) {
+        const vertical = Math.abs(segment[0] - segment[2]) < .001;
+        const fixed = vertical ? segment[0] : segment[1];
+        const start = vertical ? segment[1] : segment[0];
+        const end = vertical ? segment[3] : segment[2];
+        const min = Math.min(start, end);
+        const max = Math.max(start, end);
+        const gapHalf = 3.2;
+        const intervals = gaps
+          .filter(gap => pointOnSegment(gap.x, gap.y, segment))
+          .map(gap => {
+            const center = vertical ? gap.y : gap.x;
+            return { start: Math.max(min, center - gapHalf), end: Math.min(max, center + gapHalf) };
+          })
+          .filter(interval => interval.end > interval.start)
+          .sort((a, b) => a.start - b.start);
+        if (!intervals.length) return [segment];
+        const merged = [];
+        intervals.forEach(interval => {
+          const last = merged[merged.length - 1];
+          if (last && interval.start <= last.end) {
+            last.end = Math.max(last.end, interval.end);
+          } else {
+            merged.push({ ...interval });
+          }
+        });
+        const pieces = [];
+        let cursor = min;
+        merged.forEach(interval => {
+          if (interval.start - cursor > .05) pieces.push([cursor, interval.start]);
+          cursor = Math.max(cursor, interval.end);
+        });
+        if (max - cursor > .05) pieces.push([cursor, max]);
+        return pieces.map(([a, b]) => vertical ? [fixed, a, fixed, b] : [a, fixed, b, fixed]);
       }
 
       function dxfLine(out, page, layer, x1, y1, x2, y2) {
