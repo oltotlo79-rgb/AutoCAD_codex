@@ -640,6 +640,7 @@
               <option value="insertReport">帳票表挿入</option>
               <option value="bom">部品集計表(BOM)</option>
               <option value="terminalPlan">端子台プラン表</option>
+              <option value="indexGen">目次生成（全ページ一覧）</option>
             </optgroup>
             <optgroup label="取込・出力">
               <option value="terminalCsv">端子CSV取込</option>
@@ -3606,6 +3607,16 @@
               <button type="button" id="deleteElementBtn">削除</button>
             </div>
             <button type="button" id="pasteInstallLocationBtn" style="width:100%;margin-top:8px" ${installLocationClipboard ? "" : "disabled"}>設備/場所貼付</button>
+            <label>所属レイヤ一括変更</label>
+            <select id="bulkLayerSelect">
+              <option value="">変更しない…</option>
+              ${(state.layers || []).map(layer => `<option value="${escapeAttr(layer.id)}">${escapeHtml(layer.label)}</option>`).join("")}
+            </select>
+            <label>配線種別一括変更（配線のみ）</label>
+            <select id="bulkWireTypeSelect">
+              <option value="">変更しない…</option>
+              ${(state.wireTypes || []).map(type => `<option value="${escapeAttr(type.id)}">${escapeHtml(type.label)}</option>`).join("")}
+            </select>
             <div class="row" style="margin-top:8px">
               <button type="button" id="bringForwardBtn">前面へ</button>
               <button type="button" id="sendBackwardBtn">背面へ</button>
@@ -3655,6 +3666,30 @@
           qs("#mergeWiresBtn", panel)?.addEventListener("click", mergeSelectedWires);
           qs("#rotateLeftBtn", panel)?.addEventListener("click", () => rotateSelected(-90));
           qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
+          qs("#bulkLayerSelect", panel)?.addEventListener("change", event => {
+            const value = event.target.value;
+            if (!value) return;
+            selectedElements().forEach(el => { el.layer = value; });
+            commitHistory("所属レイヤを一括変更しました。");
+            render();
+          });
+          qs("#bulkWireTypeSelect", panel)?.addEventListener("change", event => {
+            const value = event.target.value;
+            if (!value) return;
+            let changed = 0;
+            selectedElements().forEach(el => {
+              if (el.type === "wire") {
+                el.wireType = value;
+                changed += 1;
+              }
+            });
+            if (!changed) {
+              setStatus("選択の中に配線がありません。");
+              return;
+            }
+            commitHistory(changed + "本の配線種別を一括変更しました。");
+            render();
+          });
           return;
         }
         const element = selectedElement();
@@ -6236,6 +6271,35 @@
         render();
       }
 
+      // ===== 全ページ目次の自動生成 =====
+      function generateIndexPage() {
+        const rowsData = state.pages.map((p, i) =>
+          [String(i + 1), p.title?.drawingNo || "", p.title?.title || p.name || "", p.name || ""].join("\t"));
+        const page = createPage({
+          name: "目次" + (state.pages.length + 1),
+          size: "A4",
+          orientation: "portrait",
+          frameVariant: "index",
+          title: "図面目次"
+        });
+        page.elements.push({
+          ...defaultElement("table", 28, 52),
+          rows: rowsData.length + 1,
+          cols: 4,
+          w: 150,
+          h: Math.max(40, Math.min(200, (rowsData.length + 1) * 7)),
+          label: "図面目次",
+          colWidths: "12,38,60,40",
+          cellText: ["No.\t図番\t図名\tページ名", ...rowsData].join("\n"),
+          reportTable: true
+        });
+        state.pages.push(page);
+        state.activePageId = page.id;
+        setSelection([]);
+        commitHistory("全ページの目次を生成しました。");
+        render();
+      }
+
       // ===== 部品カタログDB =====
       function showCatalogManager() {
         const rows = (state.catalog || []).map((item, index) => `
@@ -8176,8 +8240,13 @@
         const rows = [];
         state.pages.forEach((page, pageIndex) => {
           const netIndexByWire = new Map();
+          const signalByWire = new Map();
           buildWireNets(page).forEach((net, netIdx) => {
-            net.forEach(wire => netIndexByWire.set(wire.id, netIdx + 1));
+            const labels = Array.from(netArrowLabels(page, net)).join("/");
+            net.forEach(wire => {
+              netIndexByWire.set(wire.id, netIdx + 1);
+              if (labels) signalByWire.set(wire.id, labels);
+            });
           });
           const sheetNo = page.title?.page || String(pageIndex + 1);
           page.elements.forEach(element => {
@@ -8194,7 +8263,7 @@
             if (element.type === "wire") {
               const endpoints = wireEndpointNames(page, element);
               const gapCount = (element.gapAtMid ? 1 : 0) + (element.gapPoints?.length || 0);
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: endpoints.p0[0], y: endpoints.p0[1], x2: endpoints.p1[0], y2: endpoints.p1[1], detail: joinDetails([wireStyle(element).label, "net=" + sheetNo + "-" + (netIndexByWire.get(element.id) || ""), "from=" + endpoints.from, "to=" + endpoints.to, endpoints.manual ? "sequence=manual" : "", element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", gapCount ? "gap=true" : "", gapCount ? "gapCount=" + gapCount : "", noteDetail(element)]) });
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: endpoints.p0[0], y: endpoints.p0[1], x2: endpoints.p1[0], y2: endpoints.p1[1], detail: joinDetails([wireStyle(element).label, "net=" + sheetNo + "-" + (netIndexByWire.get(element.id) || ""), signalByWire.get(element.id) ? "signal=" + signalByWire.get(element.id) : "", "from=" + endpoints.from, "to=" + endpoints.to, endpoints.manual ? "sequence=manual" : "", element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", gapCount ? "gap=true" : "", gapCount ? "gapCount=" + gapCount : "", noteDetail(element)]) });
             } else if (element.type === "terminal") {
               rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: joinDetails(["single", electricalAttributeDetail(element), noteDetail(element)]) });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
@@ -10198,6 +10267,7 @@
           insertReport: showInsertReportDialog,
           bom: showBomTable,
           terminalPlan: showTerminalPlan,
+          indexGen: generateIndexPage,
           terminalCsv: () => qs("#terminalCsvInput").click(),
           plcCsv: () => qs("#plcCsvInput").click(),
           importDxf: () => qs("#dxfImportInput").click(),
