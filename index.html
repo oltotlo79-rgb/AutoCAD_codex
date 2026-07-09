@@ -3219,14 +3219,15 @@
         const geo = geoFor(element);
         if (!geo) return false;
         geoPrims(element).forEach(prim => {
+          const primLtype = dashLtypeName(prim.dash);
           if (prim.t === "line") {
-            dxfLineLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3]);
+            dxfLineLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3], primLtype);
           } else if (prim.t === "pline") {
             for (let i = 1; i < prim.pts.length; i++) {
-              dxfLineLocal(out, page, "SYMBOL", element, prim.pts[i - 1][0], prim.pts[i - 1][1], prim.pts[i][0], prim.pts[i][1]);
+              dxfLineLocal(out, page, "SYMBOL", element, prim.pts[i - 1][0], prim.pts[i - 1][1], prim.pts[i][0], prim.pts[i][1], primLtype);
             }
           } else if (prim.t === "rect") {
-            dxfRectLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3]);
+            dxfRectLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3], primLtype);
           } else if (prim.t === "circle") {
             dxfCircleLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2]);
           } else if (prim.t === "arc") {
@@ -3601,6 +3602,10 @@
               <button type="button" id="mirrorBtn">左右ミラー</button>
               <button type="button" id="arrayCopyBtn">等間隔複製</button>
             </div>
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="rotateLeftBtn">左90°(全体)</button>
+              <button type="button" id="rotateRightBtn">右90°(全体)</button>
+            </div>
             <button type="button" id="mergeWiresBtn" style="width:100%;margin-top:8px">配線を結合(2本選択時)</button>
             <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:8px">回路として登録</button>
             <div class="row-3" style="margin-top:8px">
@@ -3632,6 +3637,8 @@
           qs("#mirrorBtn", panel)?.addEventListener("click", mirrorSelectedHorizontal);
           qs("#arrayCopyBtn", panel)?.addEventListener("click", showArrayCopyDialog);
           qs("#mergeWiresBtn", panel)?.addEventListener("click", mergeSelectedWires);
+          qs("#rotateLeftBtn", panel)?.addEventListener("click", () => rotateSelected(-90));
+          qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
           return;
         }
         const element = selectedElement();
@@ -6718,29 +6725,34 @@
         render();
       }
 
+      // 選択全体の境界中心を回転中心として剛体回転する(複数選択対応)
       function rotateSelected(degrees) {
-        const element = selectedElement();
-        if (!element) return;
-        if (isElementLocked(element)) {
+        const selected = selectedElements();
+        if (!selected.length) return;
+        if (selected.some(isElementLocked)) {
           setStatus("ロックされた要素は回転できません。");
           return;
         }
-        if (element.points) {
-          const box = elementBounds(element);
-          const cx = box.x + box.w / 2;
-          const cy = box.y + box.h / 2;
-          const angle = degrees * Math.PI / 180;
-          element.points = element.points.map(point => {
-            const dx = point[0] - cx;
-            const dy = point[1] - cy;
-            return [
-              round(cx + dx * Math.cos(angle) - dy * Math.sin(angle)),
-              round(cy + dx * Math.sin(angle) + dy * Math.cos(angle))
-            ];
-          });
-        } else {
-          element.rotation = ((Number(element.rotation || 0) + degrees) % 360 + 360) % 360;
-        }
+        const boxes = selected.map(elementBounds).filter(Boolean);
+        if (!boxes.length) return;
+        const target = unionBounds(boxes);
+        const cx = target.x + target.w / 2;
+        const cy = target.y + target.h / 2;
+        const angle = degrees * Math.PI / 180;
+        const rot = point => [
+          round(cx + (point[0] - cx) * Math.cos(angle) - (point[1] - cy) * Math.sin(angle)),
+          round(cy + (point[0] - cx) * Math.sin(angle) + (point[1] - cy) * Math.cos(angle))
+        ];
+        selected.forEach(element => {
+          if (element.points) {
+            element.points = element.points.map(rot);
+          } else {
+            const p = rot([Number(element.x || 0), Number(element.y || 0)]);
+            element.x = p[0];
+            element.y = p[1];
+            element.rotation = ((Number(element.rotation || 0) + degrees) % 360 + 360) % 360;
+          }
+        });
         commitHistory("要素を回転しました。");
         render();
       }
@@ -8816,12 +8828,33 @@
         return out.join("\n") + "\n";
       }
 
+      function dashLtypeName(dash) {
+        const value = String(dash || "").trim();
+        if (!value) return null;
+        if (value === "6 1.5 1.5 1.5") return "CENTER";
+        if (value === "8 1.5 1.5 1.5 1.5 1.5") return "PHANTOM";
+        if (value === "1.4 1.2" || value === "1.2 1.4") return "DOTTED";
+        return "DASHED";
+      }
+
       function dxfHeader(out) {
         out.push(
           "0", "SECTION",
           "2", "HEADER",
           "9", "$INSUNITS",
           "70", "4",
+          "0", "ENDSEC",
+          "0", "SECTION",
+          "2", "TABLES",
+          "0", "TABLE",
+          "2", "LTYPE",
+          "70", "5",
+          "0", "LTYPE", "2", "CONTINUOUS", "70", "0", "3", "Solid line", "72", "65", "73", "0", "40", "0",
+          "0", "LTYPE", "2", "DASHED", "70", "0", "3", "Dashed __ __ __", "72", "65", "73", "2", "40", "4.5", "49", "3", "49", "-1.5",
+          "0", "LTYPE", "2", "CENTER", "70", "0", "3", "Center ____ _ ____", "72", "65", "73", "4", "40", "10.5", "49", "6", "49", "-1.5", "49", "1.5", "49", "-1.5",
+          "0", "LTYPE", "2", "PHANTOM", "70", "0", "3", "Phantom ____ _ _ ____", "72", "65", "73", "6", "40", "15.5", "49", "8", "49", "-1.5", "49", "1.5", "49", "-1.5", "49", "1.5", "49", "-1.5",
+          "0", "LTYPE", "2", "DOTTED", "70", "0", "3", "Dotted . . .", "72", "65", "73", "2", "40", "2", "49", "0.5", "49", "-1.5",
+          "0", "ENDTAB",
           "0", "ENDSEC",
           "0", "SECTION",
           "2", "ENTITIES"
@@ -8939,8 +8972,9 @@
         }
         if (element.type === "wire") {
           const layer = "WIRE_" + String(element.wireType || "control").toUpperCase();
+          const wireLtype = dashLtypeName(wireStyle(element).dash);
           const points = element.points || [[0, 0], [20, 0]];
-          dxfWireSegments(element).forEach(segment => dxfLine(out, page, layer, segment[0], segment[1], segment[2], segment[3]));
+          dxfWireSegments(element).forEach(segment => dxfLine(out, page, layer, segment[0], segment[1], segment[2], segment[3], wireLtype));
           if (element.wireNo) {
             const pos = wireNoAnchorPoint(element);
             const dx = pos.anchor === "end" ? String(element.wireNo).length * 2.4 * .6 : 0;
@@ -8970,7 +9004,7 @@
             }
             return;
           }
-          dxfLine(out, page, element.type === "mechanicalLink" ? "SYMBOL" : "GEOMETRY", a[0], a[1], b[0], b[1]);
+          dxfLine(out, page, element.type === "mechanicalLink" ? "SYMBOL" : "GEOMETRY", a[0], a[1], b[0], b[1], dashLtypeName(element.dash));
           if (element.label) {
             const mid = pathMid(a, b);
             dxfText(out, page, "TEXT", mid.x, mid.y - 3, 2.4, element.label);
@@ -9017,7 +9051,7 @@
           const w = Number(element.w || 120);
           const h = Number(element.h || 80);
           const prefix = element.type === "installationBox" ? "INST" : "LOC";
-          dxfRectLocal(out, page, "AREA", element, 0, 0, w, h);
+          dxfRectLocal(out, page, "AREA", element, 0, 0, w, h, dashLtypeName(element.dash || "4 2"));
           dxfLineLocal(out, page, "AREA", element, 0, 7, Math.min(w, Math.max(24, String(element.label || "").length * 3.1 + 14)), 7);
           dxfTextLocal(out, page, "AREA", element, 2, 4.8, 2.5, prefix + ": " + (element.label || ""));
           return;
@@ -9769,8 +9803,10 @@
         return pieces.map(([a, b]) => vertical ? [fixed, a, fixed, b] : [a, fixed, b, fixed]);
       }
 
-      function dxfLine(out, page, layer, x1, y1, x2, y2) {
-        out.push("0", "LINE", "8", layer, "10", round(x1), "20", round(cadY(page, y1)), "11", round(x2), "21", round(cadY(page, y2)));
+      function dxfLine(out, page, layer, x1, y1, x2, y2, ltype) {
+        out.push("0", "LINE", "8", layer);
+        if (ltype) out.push("6", ltype);
+        out.push("10", round(x1), "20", round(cadY(page, y1)), "11", round(x2), "21", round(cadY(page, y2)));
       }
 
       function dxfText(out, page, layer, x, y, size, text) {
@@ -9800,10 +9836,10 @@
         ];
       }
 
-      function dxfLineLocal(out, page, layer, element, x1, y1, x2, y2) {
+      function dxfLineLocal(out, page, layer, element, x1, y1, x2, y2, ltype) {
         const a = localPoint(element, x1, y1);
         const b = localPoint(element, x2, y2);
-        dxfLine(out, page, layer, a[0], a[1], b[0], b[1]);
+        dxfLine(out, page, layer, a[0], a[1], b[0], b[1], ltype);
       }
 
       function dxfTextLocal(out, page, layer, element, x, y, size, text) {
@@ -9816,11 +9852,11 @@
         dxfCircle(out, page, layer, p[0], p[1], r);
       }
 
-      function dxfRectLocal(out, page, layer, element, x, y, w, h) {
-        dxfLineLocal(out, page, layer, element, x, y, x + w, y);
-        dxfLineLocal(out, page, layer, element, x + w, y, x + w, y + h);
-        dxfLineLocal(out, page, layer, element, x + w, y + h, x, y + h);
-        dxfLineLocal(out, page, layer, element, x, y + h, x, y);
+      function dxfRectLocal(out, page, layer, element, x, y, w, h, ltype) {
+        dxfLineLocal(out, page, layer, element, x, y, x + w, y, ltype);
+        dxfLineLocal(out, page, layer, element, x + w, y, x + w, y + h, ltype);
+        dxfLineLocal(out, page, layer, element, x + w, y + h, x, y + h, ltype);
+        dxfLineLocal(out, page, layer, element, x, y + h, x, y, ltype);
       }
 
       function dxfTerminalNodeLocal(out, page, layer, element, cx, cy, r, shape) {
