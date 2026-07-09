@@ -741,6 +741,7 @@
             <option value="facilityLadder">設備ラダー</option>
             <option value="plcInput">PLC入力回路</option>
             <option value="terminalSheet">端子接続図</option>
+            <option value="interlock">インターロック接続</option>
             <option value="ladder">ラダー（汎用）</option>
             <option value="index">目次</option>
             <option value="layout">機器配置</option>
@@ -5801,6 +5802,95 @@
         render();
       }
 
+      // ===== インターロック接続ページ(盤枠+外部枠+境界端子+送り/受け) =====
+      function showInterlockPageDialog() {
+        openDialog("インターロック接続ページ", `
+          <div class="row">
+            <div><label>盤名（左枠）</label><input id="ilLeftName" value="制御盤"></div>
+            <div><label>相手名（右枠・一点鎖線）</label><input id="ilRightName" value="相手設備"></div>
+          </div>
+          <div class="row">
+            <div><label>送り信号数（→）</label><input id="ilOutCount" type="number" min="0" max="8" step="1" value="4"></div>
+            <div><label>受け信号数（←）</label><input id="ilInCount" type="number" min="0" max="8" step="1" value="4"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="ilBuildBtn" class="primary">ページ追加</button>
+          </div>`);
+        qs("#ilBuildBtn").addEventListener("click", buildInterlockPage);
+      }
+
+      function buildInterlockPage() {
+        const leftName = qs("#ilLeftName").value || "制御盤";
+        const rightName = qs("#ilRightName").value || "相手設備";
+        const outCount = Math.max(0, Math.min(8, Math.floor(Number(qs("#ilOutCount").value || 0))));
+        const inCount = Math.max(0, Math.min(8, Math.floor(Number(qs("#ilInCount").value || 0))));
+        const page = createPage({
+          name: "インターロック",
+          size: "A4",
+          orientation: "portrait",
+          frameVariant: "ladder",
+          title: "インターロック接続"
+        });
+        const boxTop = 33;
+        const boxBottom = 255;
+        const leftBox = { x1: 38, x2: 104 };
+        const rightBox = { x1: 118, x2: 176 };
+        page.elements.push({ ...defaultElement("rect", leftBox.x1, boxTop), w: leftBox.x2 - leftBox.x1, h: boxBottom - boxTop, label: "" });
+        page.elements.push(textElement(leftBox.x1 + 2, boxTop - 3.5, leftName, 2.6, 0, 60));
+        page.elements.push({
+          ...defaultElement("line", rightBox.x1, boxTop),
+          points: [[rightBox.x1, boxTop], [rightBox.x1, boxBottom]],
+          dash: "6 1.5 1.5 1.5",
+          label: ""
+        });
+        page.elements.push({
+          ...defaultElement("line", rightBox.x2, boxTop),
+          points: [[rightBox.x2, boxTop], [rightBox.x2, boxBottom]],
+          dash: "6 1.5 1.5 1.5",
+          label: ""
+        });
+        [[rightBox.x1, rightBox.x2, boxTop], [rightBox.x1, rightBox.x2, boxBottom]].forEach(([xa, xb, y]) => {
+          page.elements.push({
+            ...defaultElement("line", xa, y),
+            points: [[xa, y], [xb, y]],
+            dash: "6 1.5 1.5 1.5",
+            label: ""
+          });
+        });
+        page.elements.push(textElement(rightBox.x1 + 2, boxTop - 3.5, rightName, 2.6, 0, 60));
+        let rowIndex = 2;
+        for (let i = 0; i < outCount; i++, rowIndex += 2) {
+          const y = round(LADDER_GRID.top + LADDER_GRID.pitch * rowIndex);
+          page.elements.push({ ...defaultElement("wire", 46, y), points: [[46, y], [round(leftBox.x2 - 2.1), y]] });
+          page.elements.push({ ...defaultElement("terminal", 0, 0), x: round(leftBox.x2 - 2.1), y: round(y - 0.9), label: "" });
+          page.elements.push({
+            ...defaultElement("arrow", leftBox.x2, y),
+            points: [[round(leftBox.x2 - 0.3), y], [rightBox.x1 + 14, y]],
+            label: "",
+            arrowStyle: "open",
+            signalRole: "source"
+          });
+        }
+        for (let i = 0; i < inCount; i++, rowIndex += 2) {
+          const y = round(LADDER_GRID.top + LADDER_GRID.pitch * rowIndex);
+          page.elements.push({ ...defaultElement("terminal", 0, 0), x: round(leftBox.x2 - 2.1), y: round(y - 0.9), label: "" });
+          page.elements.push({
+            ...defaultElement("arrow", rightBox.x1, y),
+            points: [[rightBox.x1 + 14, y], [round(leftBox.x2 + 1.5), y]],
+            label: "",
+            arrowStyle: "open",
+            signalRole: "destination"
+          });
+          page.elements.push({ ...defaultElement("wire", 46, y), points: [[46, y], [round(leftBox.x2 - 2.1), y]] });
+        }
+        state.pages.push(page);
+        state.activePageId = page.id;
+        setSelection([]);
+        closeDialog();
+        commitHistory("インターロック接続ページを追加しました。");
+        render();
+      }
+
       // ===== PLCユニット単体生成(16進アドレス連番) =====
       function showPlcUnitBuilder() {
         openDialog("PLCユニット生成", `
@@ -10008,6 +10098,7 @@
           facilityLadder: showFacilityLadderDialog,
           plcInput: showPlcInputPageDialog,
           terminalSheet: addSampleTerminalPage,
+          interlock: showInterlockPageDialog,
           ladder: addLadderPage,
           index: addIndexPage,
           layout: addLayoutPage
