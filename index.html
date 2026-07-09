@@ -1744,10 +1744,16 @@
 
       function drawTerminal(g, element, stroke) {
         const label = element.label || "1";
-        g.appendChild(svgEl("line", { x1: -10, y1: 0, x2: -3, y2: 0, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: 3, y1: 0, x2: 10, y2: 0, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("rect", { x: -3, y: -3, width: 6, height: 6, class: "symbol-fill", stroke }));
-        g.appendChild(textEl(label, 0, -5.6, { fontSize: 2.4, anchor: "middle" }));
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 8);
+        const r = Math.min(3.2, Math.max(2.4, Math.min(w, h) * .38));
+        const cx = w / 2;
+        const cy = h / 2;
+        const shape = element.terminalShape || "circle";
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: cx - r, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: cx + r, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
+        drawTerminalNode(g, cx, cy, r, shape, stroke);
+        g.appendChild(textEl(label, cx, cy + .15, { fontSize: 2.1, anchor: "middle" }));
       }
 
       function drawTerminalStrip(g, element, stroke) {
@@ -2533,6 +2539,16 @@
             </select>
           `;
         }
+        if (element.type === "terminal") {
+          const shape = element.terminalShape || "circle";
+          return `
+            <label>端子形状</label>
+            <select data-bind="terminalShape">
+              <option value="circle"${shape === "circle" ? " selected" : ""}>丸</option>
+              <option value="square"${shape === "square" ? " selected" : ""}>角</option>
+            </select>
+          `;
+        }
         if (["terminalStrip", "connector"].includes(element.type)) {
           const orientation = element.orientation || "horizontal";
           const shape = element.terminalShape || "circle";
@@ -2724,7 +2740,7 @@
           underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
-          terminal: { ...base, w: 20, h: 10, label: "1" },
+          terminal: { ...base, w: 12, h: 8, label: "1", terminalShape: "circle" },
           terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "X1" },
           contactNO: { ...base, w: 10, h: 16, label: "NO", orientation: "vertical" },
           contactNC: { ...base, w: 10, h: 16, label: "NC", orientation: "vertical" },
@@ -5932,6 +5948,11 @@
           dxfVisibleAttributes(out, page, element);
           return;
         }
+        if (element.type === "terminal") {
+          dxfTerminalLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
         if (element.type === "terminalStrip" || element.type === "connector") {
           const count = Math.max(1, Number(element.count || 8));
           const vertical = element.orientation === "vertical";
@@ -6044,6 +6065,20 @@
         dxfLineLocal(out, page, "SYMBOL", element, 8, h - 3, w - 8, 3);
         if (closed) dxfLineLocal(out, page, "SYMBOL", element, w - 10, 2, 9, h - 2);
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+      }
+
+      function dxfTerminalLocal(out, page, element) {
+        const label = element.label || "1";
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 8);
+        const r = Math.min(3.2, Math.max(2.4, Math.min(w, h) * .38));
+        const cx = w / 2;
+        const cy = h / 2;
+        const shape = element.terminalShape || "circle";
+        dxfLineLocal(out, page, "SYMBOL", element, 0, cy, cx - r, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, cx + r, cy, w, cy);
+        dxfTerminalNodeLocal(out, page, "SYMBOL", element, cx, cy, r, shape);
+        dxfTextLocal(out, page, "TEXT", element, cx - String(label).length * .6, cy + .7, 2.1, label);
       }
 
       function dxfPushButtonActuatorLocal(out, page, element) {
