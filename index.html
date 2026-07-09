@@ -616,6 +616,7 @@
               <option value="addRung">ラング追加</option>
             </optgroup>
             <optgroup label="一括生成">
+              <option value="rungCircuit">ラング回路（接点+コイル/ランプ）</option>
               <option value="wireColumn">縦配線列</option>
               <option value="wireRow">横配線行</option>
               <option value="twistedPair">ツイストペア</option>
@@ -1846,10 +1847,44 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
       }
 
+      function waveLinePoints(a, b) {
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len;
+        const ny = dx / len;
+        const amp = 2.2;
+        const n = Math.max(1, Math.round(len / 7));
+        const quads = [];
+        for (let i = 0; i < n; i++) {
+          const t0 = i / n;
+          const t1 = (i + 1) / n;
+          const sign = i % 2 ? -1 : 1;
+          quads.push({
+            from: [a[0] + dx * t0, a[1] + dy * t0],
+            ctrl: [a[0] + dx * (t0 + t1) / 2 + nx * amp * sign, a[1] + dy * (t0 + t1) / 2 + ny * amp * sign],
+            to: [a[0] + dx * t1, a[1] + dy * t1]
+          });
+        }
+        return quads;
+      }
+
       function drawLineElement(g, element, stroke) {
         const points = element.points || [[0, 0], [20, 0]];
         const a = points[0];
         const b = points[points.length - 1];
+        if (element.lineKind === "wave") {
+          const d = "M " + a[0] + " " + a[1] + waveLinePoints(a, b)
+            .map(q => " Q " + round(q.ctrl[0]) + " " + round(q.ctrl[1]) + " " + round(q.to[0]) + " " + round(q.to[1]))
+            .join("");
+          g.appendChild(svgEl("path", {
+            d,
+            class: "symbol-line",
+            stroke,
+            "stroke-width": element.strokeWidth || .32,
+            fill: "none"
+          }));
+        } else {
         g.appendChild(svgEl("line", {
           x1: a[0],
           y1: a[1],
@@ -1860,6 +1895,7 @@
           "stroke-width": element.strokeWidth || .32,
           "stroke-dasharray": element.dash || null
         }));
+        }
         if (element.label) {
           const mid = pathMid(a, b);
           g.appendChild(textEl(element.label, mid.x, mid.y - 3, { fontSize: 2.4, anchor: "middle" }));
@@ -4080,8 +4116,25 @@
             <textarea data-bind="rightPinText">${escapeHtml(element.rightPinText || "")}</textarea>
           `;
         }
-        if (element.type === "line") {
+        if (["rect", "circle"].includes(element.type)) {
+          const fill = element.fill || "";
           return `
+            <label>塗りつぶし</label>
+            <select data-bind="fill">
+              <option value=""${!fill ? " selected" : ""}>なし</option>
+              <option value="#fff"${fill === "#fff" ? " selected" : ""}>白（下を隠す）</option>
+              <option value="#111820"${fill === "#111820" ? " selected" : ""}>黒</option>
+            </select>
+          `;
+        }
+        if (element.type === "line") {
+          const lineKind = element.lineKind || "straight";
+          return `
+            <label>線形状</label>
+            <select data-bind="lineKind">
+              <option value="straight"${lineKind !== "wave" ? " selected" : ""}>直線</option>
+              <option value="wave"${lineKind === "wave" ? " selected" : ""}>波形（破断線）</option>
+            </select>
             <label>線種プリセット</label>
             <select id="lineStylePreset">
               <option value="">実線</option>
@@ -5992,6 +6045,56 @@
         setSelection(created.map(el => el.id));
         closeDialog();
         commitHistory("モータ分岐回路を生成しました。");
+        render();
+      }
+
+      // ===== ラング回路生成(直列接点+終端部品) =====
+      function showRungCircuitDialog() {
+        openDialog("ラング回路生成", `
+          <p class="muted">設備標準ページの指定行へ、P1→接点(直列)→終端部品→N1 の1行回路を生成します。</p>
+          <div class="row">
+            <div><label>開始行(00-20)</label><input id="rcRow" type="number" min="0" max="20" step="1" value="1"></div>
+            <div><label>行数</label><input id="rcCount" type="number" min="1" max="20" step="1" value="1"></div>
+          </div>
+          <div class="row">
+            <div><label>直列接点数</label><input id="rcContacts" type="number" min="0" max="4" step="1" value="2"></div>
+            <div><label>終端部品</label><select id="rcEnd"><option value="coil">コイル</option><option value="lamp">ランプ</option></select></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="rcBuildBtn" class="primary">生成</button>
+          </div>`);
+        qs("#rcBuildBtn").addEventListener("click", buildRungCircuits);
+      }
+
+      function buildRungCircuits() {
+        const page = currentPage();
+        if (!page) return;
+        const row0 = Math.max(0, Math.min(20, Math.floor(Number(qs("#rcRow").value || 1))));
+        const rows = Math.max(1, Math.min(20, Math.floor(Number(qs("#rcCount").value || 1))));
+        const nContacts = Math.max(0, Math.min(4, Math.floor(Number(qs("#rcContacts").value || 2))));
+        const endType = qs("#rcEnd").value === "lamp" ? "lamp" : "coil";
+        const created = [];
+        const leftX = 32.5;
+        const rightX = 146.5;
+        for (let r = 0; r < rows && row0 + r <= 20; r++) {
+          const y = round(LADDER_GRID.top + LADDER_GRID.pitch * (row0 + r));
+          created.push(defaultElement("junction", leftX, y));
+          let sx = leftX;
+          for (let k = 0; k < nContacts; k++) {
+            const cx = 44 + 18 * k;
+            created.push({ ...defaultElement("contactNO", cx, round(y - 2.2)), label: "" });
+            created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), y], [round(cx), y]] });
+            sx = cx + 8;
+          }
+          const endX = 134;
+          created.push({ ...defaultElement(endType, endX, round(y - 2.2)), label: "" });
+          created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), y], [endX, y]] });
+          created.push({ ...defaultElement("wire", endX + 10, y), points: [[endX + 10, y], [rightX, y]] });
+        }
+        page.elements.push(...created);
+        setSelection(created.map(el => el.id));
+        closeDialog();
+        commitHistory(rows + "行のラング回路を生成しました。");
         render();
       }
 
@@ -8473,17 +8576,14 @@
         const componentTags = new Map();
         state.pages.forEach(page => {
           const size = pageSize(page);
-          const wireNos = new Map();
           if (!page.title?.title) {
             issues.push({ level: "注意", page: page.name, message: "図名が未入力です。", target: "表題欄" });
           }
           page.elements.forEach(element => {
             const label = componentTag(element) || element.text || element.wireNo || "";
             if (element.type === "wire") {
-              if (!element.wireNo) issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "線番が未入力です。", target: element.id });
-              if (element.wireNo) {
-                const current = wireNos.get(element.wireNo) || 0;
-                wireNos.set(element.wireNo, current + 1);
+              if (!element.wireNo && !element.ladderRail && !wireStyle(element).noNumber) {
+                issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "線番が未入力です。", target: element.id });
               }
             }
             if (["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "transformer", "ground", "motor", "fan", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
@@ -8525,8 +8625,25 @@
               issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "用紙外にはみ出しています。", target: label || element.type });
             }
           });
-          wireNos.forEach((count, wireNo) => {
-            if (count > 1) issues.push({ level: "情報", page: page.name, message: "同じ線番が複数あります。", target: wireNo });
+          const pageNets = buildWireNets(page)
+            .map(net => net.filter(wire => !wire.ladderRail && !wireStyle(wire).noNumber))
+            .filter(net => net.length);
+          const numberToNets = new Map();
+          pageNets.forEach(net => {
+            const values = Array.from(new Set(net.map(wire => wire.wireNo).filter(Boolean)));
+            if (values.length > 1) {
+              issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: net[0].id, message: "同一ネット内で線番が混在しています。", target: values.join(" / ") });
+            }
+            if (values.length === 1) {
+              const list = numberToNets.get(values[0]) || [];
+              list.push(net);
+              numberToNets.set(values[0], list);
+            }
+          });
+          numberToNets.forEach((nets, wireNo) => {
+            if (nets.length > 1) {
+              issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: nets[0][0].id, message: "同じ線番が接続されていない別ネットにあります。", target: wireNo + "(" + nets.length + "ネット)" });
+            }
           });
           auditFloatingWireEnds(page).forEach(item => issues.push(item));
         });
@@ -8615,7 +8732,7 @@
             endpointCounts.set(key, (endpointCounts.get(key) || 0) + 1);
           });
         });
-        page.elements.filter(element => element.type === "wire").forEach(wire => {
+        page.elements.filter(element => element.type === "wire" && !element.ladderRail).forEach(wire => {
           const pts = wire.points || [];
           [pts[0], pts[pts.length - 1]].filter(Boolean).forEach(point => {
             const key = pointKey(point[0], point[1]);
@@ -8817,6 +8934,24 @@
           const points = element.points || [[0, 0], [20, 0]];
           const a = points[0];
           const b = points[points.length - 1];
+          if (element.lineKind === "wave") {
+            waveLinePoints(a, b).forEach(q => {
+              let prev = q.from;
+              for (let i = 1; i <= 4; i++) {
+                const t = i / 4;
+                const mt = 1 - t;
+                const px = mt * mt * q.from[0] + 2 * mt * t * q.ctrl[0] + t * t * q.to[0];
+                const py = mt * mt * q.from[1] + 2 * mt * t * q.ctrl[1] + t * t * q.to[1];
+                dxfLine(out, page, "GEOMETRY", prev[0], prev[1], px, py);
+                prev = [px, py];
+              }
+            });
+            if (element.label) {
+              const mid = pathMid(a, b);
+              dxfText(out, page, "TEXT", mid.x, mid.y - 3, 2.4, element.label);
+            }
+            return;
+          }
           dxfLine(out, page, element.type === "mechanicalLink" ? "SYMBOL" : "GEOMETRY", a[0], a[1], b[0], b[1]);
           if (element.label) {
             const mid = pathMid(a, b);
@@ -9760,6 +9895,7 @@
           event.target.value = "";
         });
         const MENU_ACTIONS = {
+          rungCircuit: showRungCircuitDialog,
           terminalNo: renumberTerminals,
           tagComponents: autoTagComponents,
           autoJunction: autoJunctions,
