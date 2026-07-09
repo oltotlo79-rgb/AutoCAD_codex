@@ -714,7 +714,7 @@
   <input id="terminalCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
   <input id="plcCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
   <input id="underlayInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
-  <input id="underlayTwoUpInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+  <input id="underlayTwoUpInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" multiple>
   <div id="printSheets" class="print-sheets"></div>
   <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
     <div class="dialog">
@@ -4063,28 +4063,40 @@
       }
 
       function importUnderlayImageFile(file) {
-        readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addUnderlayImageElement(file.name, dataUrl, imageWidth, imageHeight));
+        return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addUnderlayImageElement(file.name, dataUrl, imageWidth, imageHeight));
       }
 
       function importTwoUpUnderlayImageFile(file) {
-        readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addTwoUpUnderlayPages(file.name, dataUrl, imageWidth, imageHeight));
+        return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addTwoUpUnderlayPages(file.name, dataUrl, imageWidth, imageHeight));
       }
 
       function readUnderlayImageFile(file, onLoad) {
-        if (!file || !String(file.type || "").startsWith("image/")) {
-          setStatus("PNG/JPEG/WebP/SVG画像を選択してください。");
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = String(reader.result || "");
-          const image = new Image();
-          image.onload = () => onLoad(dataUrl, image.naturalWidth || image.width || 1, image.naturalHeight || image.height || 1);
-          image.onerror = () => onLoad(dataUrl, 16, 11);
-          image.src = dataUrl;
-        };
-        reader.onerror = () => setStatus("下絵画像を読み込めませんでした。");
-        reader.readAsDataURL(file);
+        return new Promise(resolve => {
+          if (!file || !String(file.type || "").startsWith("image/")) {
+            setStatus("PNG/JPEG/WebP/SVG画像を選択してください。");
+            resolve(false);
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = String(reader.result || "");
+            const image = new Image();
+            image.onload = () => {
+              onLoad(dataUrl, image.naturalWidth || image.width || 1, image.naturalHeight || image.height || 1);
+              resolve(true);
+            };
+            image.onerror = () => {
+              onLoad(dataUrl, 16, 11);
+              resolve(true);
+            };
+            image.src = dataUrl;
+          };
+          reader.onerror = () => {
+            setStatus("下絵画像を読み込めませんでした。");
+            resolve(false);
+          };
+          reader.readAsDataURL(file);
+        });
       }
 
       function addUnderlayImageElement(name, dataUrl, imageWidth, imageHeight) {
@@ -5747,9 +5759,10 @@
           event.target.value = "";
         });
         qs("#underlayTwoUpBtn").addEventListener("click", () => qs("#underlayTwoUpInput").click());
-        qs("#underlayTwoUpInput").addEventListener("change", event => {
-          const file = event.target.files[0];
-          if (file) importTwoUpUnderlayImageFile(file);
+        qs("#underlayTwoUpInput").addEventListener("change", async event => {
+          for (const file of Array.from(event.target.files || [])) {
+            await importTwoUpUnderlayImageFile(file);
+          }
           event.target.value = "";
         });
         qs("#saveBtn").addEventListener("click", saveProject);
