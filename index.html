@@ -589,6 +589,7 @@
             <button type="button" id="wireSequenceBtn">配線順序</button>
           </div>
           <button type="button" id="addRungBtn" style="width:100%;margin-top:8px">ラング追加</button>
+          <button type="button" id="wireColumnBtn" style="width:100%;margin-top:8px">縦配線列</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="terminalEditorBtn">端子台</button>
             <button type="button" id="tagComponentsBtn">部品タグ</button>
@@ -3448,6 +3449,68 @@
         render();
       }
 
+      function showWireColumnDialog() {
+        const page = currentPage();
+        if (!page) return;
+        const size = pageSize(page);
+        const html = `
+          <div class="row">
+            <div><label>本数</label><input id="wireColumnCount" type="number" min="1" step="1" value="8"></div>
+            <div><label>ピッチ mm</label><input id="wireColumnPitch" type="number" min="1" step="0.5" value="12"></div>
+          </div>
+          <div class="row">
+            <div><label>開始X mm</label><input id="wireColumnX" type="number" step="0.5" value="30"></div>
+            <div><label>上Y mm</label><input id="wireColumnY1" type="number" step="0.5" value="42"></div>
+          </div>
+          <div class="row">
+            <div><label>下Y mm</label><input id="wireColumnY2" type="number" step="0.5" value="${Math.max(60, round(size.h - 58))}"></div>
+            <div><label>線番接頭辞</label><input id="wireColumnPrefix" type="text" value=""></div>
+          </div>
+          <label>線番開始番号</label>
+          <input id="wireColumnStart" type="number" step="1" value="1">
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="applyWireColumnBtn" class="primary">生成</button>
+          </div>
+        `;
+        openDialog("縦配線列", html);
+        qs("#applyWireColumnBtn").addEventListener("click", applyWireColumnDialog);
+      }
+
+      function applyWireColumnDialog() {
+        const page = currentPage();
+        if (!page) return;
+        const count = Math.max(1, Math.floor(Number(qs("#wireColumnCount").value || 1)));
+        const pitch = Number(qs("#wireColumnPitch").value || 12);
+        const startX = Number(qs("#wireColumnX").value || 30);
+        const y1 = Number(qs("#wireColumnY1").value || 42);
+        const y2 = Number(qs("#wireColumnY2").value || 120);
+        const prefix = String(qs("#wireColumnPrefix").value || "").trim();
+        const start = Number(qs("#wireColumnStart").value || 1);
+        const wires = [];
+        for (let i = 0; i < count; i += 1) {
+          const x = round(startX + i * pitch);
+          wires.push({
+            id: uid("el"),
+            type: "wire",
+            points: [[x, round(y1)], [x, round(y2)]],
+            wireNo: prefix ? prefix + String(start + i).padStart(2, "0") : "",
+            fixedWireNo: false,
+            hideWireNo: false,
+            gapAtMid: false,
+            fromOverride: "",
+            toOverride: "",
+            wireType: state.settings.currentWireType,
+            stroke: state.settings.stroke,
+            layer: "wires"
+          });
+        }
+        page.elements.push(...wires);
+        setSelection(wires.map(wire => wire.id));
+        closeDialog();
+        commitHistory(count + "本の縦配線列を生成しました。");
+        render();
+      }
+
       function ladderConfig(page) {
         const size = pageSize(page);
         const portrait = size.h >= size.w;
@@ -5675,6 +5738,7 @@
         qs("#autoJunctionBtn").addEventListener("click", autoJunctions);
         qs("#wireSequenceBtn").addEventListener("click", showWireSequenceDialog);
         qs("#addRungBtn").addEventListener("click", addRungToCurrentPage);
+        qs("#wireColumnBtn").addEventListener("click", showWireColumnDialog);
         qs("#terminalEditorBtn").addEventListener("click", showTerminalEditor);
         qs("#tagComponentsBtn").addEventListener("click", autoTagComponents);
         qs("#componentTagRulesBtn").addEventListener("click", showComponentTagRulesDialog);
