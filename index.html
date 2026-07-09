@@ -2248,15 +2248,19 @@
         const w = Number(element.w || 28);
         const h = Number(element.h || 20);
         const pins = Math.max(0, Number(element.pins || 4));
-        const labels = String(element.pinText || "").split(/\r?\n/);
+        const leftLabels = String(element.pinText || "").split(/\r?\n/);
+        const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
         multilineText(g, element.label || "機器", w / 2, h / 2 - 1.2, 3.1, { fontSize: 2.1, anchor: "middle" });
         for (let i = 0; i < pins; i++) {
           const y = h * (i + 1) / (pins + 1);
           g.appendChild(svgEl("line", { x1: -5, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
           g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 5, y2: y, class: "symbol-line", stroke }));
-          if (labels[i]) {
-            g.appendChild(textEl(labels[i], 1.5, y, { fontSize: 1.8 }));
+          if (leftLabels[i]) {
+            g.appendChild(textEl(leftLabels[i], 1.5, y, { fontSize: 1.8 }));
+          }
+          if (rightLabels[i]) {
+            g.appendChild(textEl(rightLabels[i], w - 1.5, y, { fontSize: 1.8, anchor: "end" }));
           }
         }
       }
@@ -2981,8 +2985,10 @@
           return `
             <label>左右ピン数</label>
             <input data-bind="pins" data-kind="number" type="number" min="0" step="1" value="${Number(element.pins || 4)}">
-            <label>ピン名（1行1点）</label>
+            <label>左端子文字（1行1点）</label>
             <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
+            <label>右端子文字（1行1点）</label>
+            <textarea data-bind="rightPinText">${escapeHtml(element.rightPinText || "")}</textarea>
           `;
         }
         if (element.type === "line") {
@@ -3177,7 +3183,7 @@
           capacitor: { ...base, w: 12, h: 7, label: "C" },
           diode: { ...base, w: 12, h: 7, label: "D" },
           thermalRelay: { ...base, w: 12, h: 7, label: "THR", orientation: "horizontal" },
-          deviceBox: { ...base, w: 28, h: 20, label: "機器", pins: 4, pinText: "1\n2\n3\n4" },
+          deviceBox: { ...base, w: 28, h: 20, label: "機器", pins: 4, pinText: "1\n2\n3\n4", rightPinText: "" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
           cableMarker: { ...base, w: 28, h: 12, label: "C" },
@@ -5909,7 +5915,7 @@
         if (element.type === "arrow") details.unshift("role=" + signalRoleLabel(element.signalRole));
         if (element.type === "table") details.unshift("rows=" + (element.rows || ""), "cols=" + (element.cols || ""), "cells=" + String(element.cellText || "").replace(/\r?\n/g, " / "));
         if (element.type === "plcBlock") details.unshift("rows=" + (element.rows || ""), "io=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
-        if (element.type === "deviceBox") details.unshift("pins=" + (element.pins || ""), "pinText=" + String(element.pinText || "").replace(/\r?\n/g, " / "));
+        if (element.type === "deviceBox") details.unshift("pins=" + (element.pins || ""), "leftPins=" + String(element.pinText || "").replace(/\r?\n/g, " / "), "rightPins=" + String(element.rightPinText || "").replace(/\r?\n/g, " / "));
         if (["installationBox", "locationBox"].includes(element.type)) details.unshift("area=" + (element.type === "installationBox" ? "installation" : "location"), "value=" + (element.label || ""));
         return joinDetails(details);
       }
@@ -6891,6 +6897,23 @@
           dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
           const textSize = element.type === "deviceBox" ? 2 : 2.5;
           dxfTextLocal(out, page, "TEXT", element, box.w / 2 - 6, box.h / 2, textSize, element.label || element.type);
+          if (element.type === "deviceBox") {
+            const pins = Math.max(0, Number(element.pins || 4));
+            const leftLabels = String(element.pinText || "").split(/\r?\n/);
+            const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
+            for (let i = 0; i < pins; i++) {
+              const y = box.h * (i + 1) / (pins + 1);
+              dxfLineLocal(out, page, "SYMBOL", element, -5, y, 0, y);
+              dxfLineLocal(out, page, "SYMBOL", element, box.w, y, box.w + 5, y);
+              if (leftLabels[i]?.trim()) dxfTextLocal(out, page, "TEXT", element, 1.5, y + .55, 1.7, leftLabels[i].trim());
+              if (rightLabels[i]?.trim()) {
+                const text = rightLabels[i].trim();
+                dxfTextLocal(out, page, "TEXT", element, box.w - 1.5 - text.length * .85, y + .55, 1.7, text);
+              }
+            }
+            dxfVisibleAttributes(out, page, element);
+            return;
+          }
           String(element.pinText || "").split(/\r?\n/).forEach((line, index) => {
             if (!line.trim()) return;
             dxfTextLocal(out, page, "TEXT", element, 1.5, 4 + index * 3.5, element.type === "deviceBox" ? 1.7 : 2, line.trim());
