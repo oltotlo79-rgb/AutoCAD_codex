@@ -1532,24 +1532,51 @@
           "stroke-dasharray": style.dash || null
         }));
         const mid = wireLabelPoint(points);
-        if (element.gapAtMid) {
-          const segment = wireMidSegment(points);
-          const horizontal = Math.abs(segment[1] - segment[3]) <= Math.abs(segment[0] - segment[2]);
-          g.appendChild(svgEl("rect", {
-            x: mid.x - (horizontal ? 3.2 : 1.5),
-            y: mid.y - (horizontal ? 1.5 : 3.2),
-            width: horizontal ? 6.4 : 3,
-            height: horizontal ? 3 : 6.4,
-            fill: "#fff",
-            stroke: "none"
-          }));
-        }
+        wireGapMarkers(element).forEach(gap => drawWireGap(g, gap));
         if (element.wireNo && !element.hideWireNo) {
           g.appendChild(textEl(element.wireNo, mid.x + 1.6, mid.y - 1.8, { fontSize: 2.3 }));
           if (element.fixedWireNo) {
             g.appendChild(textEl("FIX", mid.x + 1.6, mid.y + 2.2, { fontSize: 1.6 }));
           }
         }
+      }
+
+      function wireGapMarkers(element) {
+        const markers = [];
+        const seen = new Set();
+        const addGap = (x, y, segment) => {
+          if (!segment) return;
+          const key = pointKey(x, y);
+          if (seen.has(key)) return;
+          seen.add(key);
+          markers.push({ x: round(x), y: round(y), segment });
+        };
+        if (element.gapAtMid) {
+          const points = element.points || [[0, 0], [20, 0]];
+          const segment = wireMidSegment(points);
+          const mid = pathMid([segment[0], segment[1]], [segment[2], segment[3]]);
+          addGap(mid.x, mid.y, segment);
+        }
+        (element.gapPoints || []).forEach(point => {
+          const x = Number(point[0]);
+          const y = Number(point[1]);
+          const segment = wireSegments(element).find(item => pointOnSegment(x, y, item));
+          addGap(x, y, segment);
+        });
+        return markers;
+      }
+
+      function drawWireGap(g, gap) {
+        const segment = gap.segment;
+        const horizontal = Math.abs(segment[1] - segment[3]) <= Math.abs(segment[0] - segment[2]);
+        g.appendChild(svgEl("rect", {
+          x: gap.x - (horizontal ? 3.2 : 1.5),
+          y: gap.y - (horizontal ? 1.5 : 3.2),
+          width: horizontal ? 6.4 : 3,
+          height: horizontal ? 3 : 6.4,
+          fill: "#fff",
+          stroke: "none"
+        }));
       }
 
       function drawRectElement(g, element, stroke) {
@@ -2200,6 +2227,8 @@
         qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
         qs("#toggleLockBtn", panel)?.addEventListener("click", toggleSelectedLock);
         qs("#toggleWireGapBtn", panel)?.addEventListener("click", toggleSelectedWireGap);
+        qs("#addIntersectionGapsBtn", panel)?.addEventListener("click", addIntersectionGapsToSelectedWire);
+        qs("#clearWireGapsBtn", panel)?.addEventListener("click", clearSelectedWireGaps);
         qs("#addWirePointBtn", panel)?.addEventListener("click", addSelectedWirePoint);
         qs("#removeWirePointBtn", panel)?.addEventListener("click", removeSelectedWirePoint);
         qs("#applyAreaAttributesBtn", panel)?.addEventListener("click", applySelectedAreaAttributes);
@@ -2315,12 +2344,18 @@
       function specificFields(element) {
         if (element.type === "wire") {
           const pointCount = element.points?.length || 2;
+          const gapCount = (element.gapAtMid ? 1 : 0) + (element.gapPoints?.length || 0);
           return `
             <div class="row" style="margin-top:8px">
               <button type="button" id="addWirePointBtn">中間点追加</button>
               <button type="button" id="removeWirePointBtn" ${pointCount <= 2 ? "disabled" : ""}>中間点削除</button>
             </div>
             <button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="addIntersectionGapsBtn">交差ギャップ追加</button>
+              <button type="button" id="clearWireGapsBtn" ${gapCount ? "" : "disabled"}>全解除</button>
+            </div>
+            <p class="muted">ギャップ数: ${gapCount}</p>
           `;
         }
         if (element.type === "underlayImage") {
@@ -3862,6 +3897,61 @@
         render();
       }
 
+      function addIntersectionGapsToSelectedWire() {
+        const page = currentPage();
+        const element = selectedElement();
+        if (!page || !element || element.type !== "wire") return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        const gaps = new Map((element.gapPoints || []).map(point => [pointKey(point[0], point[1]), [round(point[0]), round(point[1])]]));
+        const segments = wireSegments(element);
+        page.elements
+          .filter(other => other.type === "wire" && other.id !== element.id)
+          .forEach(other => {
+            segments.forEach(segment => {
+              wireSegments(other).forEach(otherSegment => {
+                const point = segmentIntersection(segment, otherSegment);
+                if (!point) return;
+                if (segmentEndpointNear(segment, point.x, point.y) || segmentEndpointNear(otherSegment, point.x, point.y)) return;
+                if (hasJunctionNear(page, point.x, point.y)) return;
+                gaps.set(pointKey(point.x, point.y), [round(point.x), round(point.y)]);
+              });
+            });
+          });
+        const before = element.gapPoints?.length || 0;
+        element.gapPoints = Array.from(gaps.values()).sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+        const added = element.gapPoints.length - before;
+        if (!added) {
+          setStatus("追加できる交差ギャップはありません。接続点がある交点は対象外です。");
+          render();
+          return;
+        }
+        commitHistory(added + "か所の交差ギャップを追加しました。");
+        render();
+      }
+
+      function clearSelectedWireGaps() {
+        const element = selectedElement();
+        if (!element || element.type !== "wire") return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        const hadGap = element.gapAtMid || (element.gapPoints && element.gapPoints.length);
+        element.gapAtMid = false;
+        element.gapPoints = [];
+        if (!hadGap) return;
+        commitHistory("配線ギャップを全解除しました。");
+        render();
+      }
+
+      function segmentEndpointNear(segment, x, y) {
+        return (Math.abs(segment[0] - x) < .6 && Math.abs(segment[1] - y) < .6)
+          || (Math.abs(segment[2] - x) < .6 && Math.abs(segment[3] - y) < .6);
+      }
+
       function addSelectedWirePoint() {
         const element = selectedElement();
         if (!element || element.type !== "wire") return;
@@ -4768,7 +4858,8 @@
             };
             if (element.type === "wire") {
               const endpoints = wireEndpointNames(page, element);
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: endpoints.p0[0], y: endpoints.p0[1], x2: endpoints.p1[0], y2: endpoints.p1[1], detail: joinDetails([wireStyle(element).label, "from=" + endpoints.from, "to=" + endpoints.to, endpoints.manual ? "sequence=manual" : "", element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", element.gapAtMid ? "gap=true" : "", noteDetail(element)]) });
+              const gapCount = (element.gapAtMid ? 1 : 0) + (element.gapPoints?.length || 0);
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: endpoints.p0[0], y: endpoints.p0[1], x2: endpoints.p1[0], y2: endpoints.p1[1], detail: joinDetails([wireStyle(element).label, "from=" + endpoints.from, "to=" + endpoints.to, endpoints.manual ? "sequence=manual" : "", element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", gapCount ? "gap=true" : "", gapCount ? "gapCount=" + gapCount : "", noteDetail(element)]) });
             } else if (element.type === "terminal") {
               rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: joinDetails(["single", electricalAttributeDetail(element), noteDetail(element)]) });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
