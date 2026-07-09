@@ -1985,6 +1985,18 @@
       function drawFuse(g, element, stroke) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 4.5);
+        if (element.orientation === "vertical") {
+          const cx = w / 2;
+          const lead = Math.min(3.5, Math.max(2.6, h * .24));
+          const bodyY = lead;
+          const bodyH = Math.max(5, h - lead * 2);
+          g.appendChild(svgEl("line", { x1: cx, y1: 0, x2: cx, y2: bodyY, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("rect", { x: 0, y: bodyY, width: w, height: bodyH, class: "symbol-fill", stroke }));
+          g.appendChild(svgEl("line", { x1: cx, y1: bodyY + bodyH, x2: cx, y2: h, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: .8, y1: bodyY + bodyH - 1.1, x2: w - .8, y2: bodyY + 1.1, class: "symbol-line", stroke }));
+          if (element.label) g.appendChild(textEl(element.label, w + 2.2, h / 2 + .7, { fontSize: 1.9 }));
+          return;
+        }
         const lead = Math.min(3.5, Math.max(2.6, w * .24));
         const bodyX = lead;
         const bodyW = Math.max(5, w - lead * 2);
@@ -1998,6 +2010,20 @@
       function drawBreaker(g, element, stroke) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 7);
+        if (element.orientation === "vertical") {
+          const cx = w / 2;
+          const upper = Math.max(3, h * .32);
+          const lower = Math.min(h - 3, h * .72);
+          const bladeX = Math.max(1.1, cx - Math.min(2.25, w * .32));
+          g.appendChild(svgEl("line", { x1: cx, y1: 0, x2: cx, y2: upper - .65, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: cx, y1: lower + .65, x2: cx, y2: h, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("circle", { cx, cy: upper, r: .65, class: "symbol-fill", stroke }));
+          g.appendChild(svgEl("circle", { cx, cy: lower, r: .65, class: "symbol-fill", stroke }));
+          g.appendChild(svgEl("line", { x1: cx + .2, y1: upper + .7, x2: bladeX, y2: lower - .3, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: cx + 1.7, y1: lower - 1.1, x2: cx + 1.7, y2: lower + 1.1, class: "symbol-line", stroke }));
+          if (element.label) g.appendChild(textEl(element.label, w + 2.2, h / 2 + .7, { fontSize: 1.9 }));
+          return;
+        }
         const cy = h / 2;
         const left = Math.max(3, w * .32);
         const right = Math.min(w - 3, w * .72);
@@ -2865,6 +2891,16 @@
             </select>
           `;
         }
+        if (["fuse", "breaker"].includes(element.type)) {
+          const orientation = element.orientation || "horizontal";
+          return `
+            <label>保護部品方向</label>
+            <select data-bind="orientation">
+              <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横配線用</option>
+              <option value="vertical"${orientation === "vertical" ? " selected" : ""}>縦配線用</option>
+            </select>
+          `;
+        }
         if (element.type === "lamp") {
           const variant = element.lampVariant || "pilot";
           return `
@@ -3044,6 +3080,7 @@
           if (["orientation", "count"].includes(key) && ["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
           if (key === "orientation" && element.type === "terminal") resizeSingleTerminalForOrientation(element);
           if (key === "orientation" && ["contactNO", "contactNC", "pushButton"].includes(element.type)) resizeContactElementForOrientation(element);
+          if (key === "orientation" && ["fuse", "breaker"].includes(element.type)) resizeProtectiveElementForOrientation(element);
         }
         if (save) commitHistory("要素を更新しました。");
         render();
@@ -3057,6 +3094,18 @@
         }
         element.w = 14;
         element.h = element.type === "pushButton" ? 12 : 10;
+      }
+
+      function resizeProtectiveElementForOrientation(element) {
+        if (element.type === "fuse") {
+          element.w = element.orientation === "vertical" ? 4.5 : 12;
+          element.h = element.orientation === "vertical" ? 12 : 4.5;
+          return;
+        }
+        if (element.type === "breaker") {
+          element.w = element.orientation === "vertical" ? 7 : 12;
+          element.h = element.orientation === "vertical" ? 12 : 7;
+        }
       }
 
       function resizeTerminalElementForOrientation(element) {
@@ -3113,8 +3162,8 @@
           selectorSwitch: { ...base, w: 12, h: 9, label: "SS", orientation: "horizontal" },
           limitSwitch: { ...base, w: 12, h: 8, label: "LS", orientation: "horizontal" },
           coil: { ...base, w: 12, h: 6, label: "CR" },
-          fuse: { ...base, w: 12, h: 4.5, label: "F" },
-          breaker: { ...base, w: 12, h: 7, label: "CB" },
+          fuse: { ...base, w: 12, h: 4.5, label: "F", orientation: "horizontal" },
+          breaker: { ...base, w: 12, h: 7, label: "CB", orientation: "horizontal" },
           lamp: { ...base, w: 10, h: 10, r: 3.5, label: "PL", lampVariant: "pilot" },
           buzzer: { ...base, w: 14, h: 9, label: "BZ", buzzerVariant: "horn" },
           solenoidValve: { ...base, w: 26, h: 16, label: "SOL" },
@@ -3298,6 +3347,11 @@
           }
           return anchors;
         }
+        if (["fuse", "breaker"].includes(element.type) && element.orientation === "vertical") {
+          add(w / 2, 0);
+          add(w / 2, h);
+          return anchors;
+        }
         if (["coil", "fuse", "breaker", "lamp", "buzzer", "solenoidValve", "sensor", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
           add(0, h / 2);
           add(w, h / 2);
@@ -3393,6 +3447,7 @@
 
       function defaultElementAtPlacement(type, x, y) {
         const element = defaultElement(type, x, y);
+        autoOrientElementForPlacement(element, x, y);
         if (centerPlacedTypes().has(type)) {
           const w = Number(element.w || defaultElement(type).w || 0);
           const h = Number(element.h || defaultElement(type).h || 0);
@@ -3404,6 +3459,32 @@
           element.y = round(y);
         }
         return element;
+      }
+
+      function autoOrientElementForPlacement(element, x, y) {
+        if (!["fuse", "breaker"].includes(element.type)) return;
+        const segment = closestAxisSegment(currentPage(), x, y);
+        if (!segment || !segment.vertical) return;
+        element.orientation = "vertical";
+        resizeProtectiveElementForOrientation(element);
+      }
+
+      function closestAxisSegment(page, x, y) {
+        if (!page) return null;
+        let best = null;
+        page.elements.forEach(element => {
+          if (element.type !== "wire" || !isElementVisible(element)) return;
+          wireSegments(element).forEach(segment => {
+            const [x1, y1, x2, y2] = segment;
+            const horizontal = Math.abs(y1 - y2) < .01;
+            const vertical = Math.abs(x1 - x2) < .01;
+            if (!horizontal && !vertical) return;
+            const point = closestPointOnSegment(x, y, segment);
+            const d = Math.hypot(point.x - x, point.y - y);
+            if (d <= SNAP_RADIUS_MM && (!best || d < best.d)) best = { horizontal, vertical, d };
+          });
+        });
+        return best;
       }
 
       function placeElement(type, x, y) {
@@ -6934,6 +7015,18 @@
       function dxfFuseLocal(out, page, element) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 4.5);
+        if (element.orientation === "vertical") {
+          const cx = w / 2;
+          const lead = Math.min(3.5, Math.max(2.6, h * .24));
+          const bodyY = lead;
+          const bodyH = Math.max(5, h - lead * 2);
+          dxfLineLocal(out, page, "SYMBOL", element, cx, 0, cx, bodyY);
+          dxfRectLocal(out, page, "SYMBOL", element, 0, bodyY, w, bodyH);
+          dxfLineLocal(out, page, "SYMBOL", element, cx, bodyY + bodyH, cx, h);
+          dxfLineLocal(out, page, "SYMBOL", element, .8, bodyY + bodyH - 1.1, w - .8, bodyY + 1.1);
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, w + 2.2, h / 2 + .7, 1.9, element.label);
+          return;
+        }
         const lead = Math.min(3.5, Math.max(2.6, w * .24));
         const bodyX = lead;
         const bodyW = Math.max(5, w - lead * 2);
@@ -6947,6 +7040,20 @@
       function dxfBreakerLocal(out, page, element) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 7);
+        if (element.orientation === "vertical") {
+          const cx = w / 2;
+          const upper = Math.max(3, h * .32);
+          const lower = Math.min(h - 3, h * .72);
+          const bladeX = Math.max(1.1, cx - Math.min(2.25, w * .32));
+          dxfLineLocal(out, page, "SYMBOL", element, cx, 0, cx, upper - .65);
+          dxfLineLocal(out, page, "SYMBOL", element, cx, lower + .65, cx, h);
+          dxfCircleLocal(out, page, "SYMBOL", element, cx, upper, .65);
+          dxfCircleLocal(out, page, "SYMBOL", element, cx, lower, .65);
+          dxfLineLocal(out, page, "SYMBOL", element, cx + .2, upper + .7, bladeX, lower - .3);
+          dxfLineLocal(out, page, "SYMBOL", element, cx + 1.7, lower - 1.1, cx + 1.7, lower + 1.1);
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, w + 2.2, h / 2 + .7, 1.9, element.label);
+          return;
+        }
         const cy = h / 2;
         const left = Math.max(3, w * .32);
         const right = Math.min(w - 3, w * .72);
