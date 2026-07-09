@@ -2363,6 +2363,7 @@
         panel.innerHTML = `
           <div class="panel-title">選択中: ${typeName}</div>
           ${isWireLike ? wireFields(element) : normalFields(element)}
+          ${symbolResetControls(element)}
           ${labelFields(element)}
           ${specificFields(element)}
           ${electricalAttributeFields(element)}
@@ -2425,6 +2426,7 @@
         qs("#applyAreaAttributesBtn", panel)?.addEventListener("click", applySelectedAreaAttributes);
         qs("#copyInstallLocationBtn", panel)?.addEventListener("click", copySelectedInstallLocation);
         qs("#pasteInstallLocationBtn", panel)?.addEventListener("click", pasteInstallLocationToSelection);
+        qs("#resetSymbolSizeBtn", panel)?.addEventListener("click", resetSelectedReferenceSize);
         attachSelectionActionButtons(panel);
         qs("#rotateLeftBtn", panel)?.addEventListener("click", () => rotateSelected(-90));
         qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
@@ -2479,6 +2481,32 @@
           <label>回転 deg</label>
           <input data-bind="rotation" data-kind="number" type="number" step="90" value="${round(element.rotation || 0)}">
         `;
+      }
+
+      function symbolResetControls(element) {
+        if (!canResetReferenceSize(element)) return "";
+        return `<button type="button" id="resetSymbolSizeBtn" style="width:100%;margin-top:8px">見本サイズに戻す</button>`;
+      }
+
+      function canResetReferenceSize(element) {
+        return element && [
+          "terminal",
+          "contactNO",
+          "contactNC",
+          "pushButton",
+          "coil",
+          "fuse",
+          "breaker",
+          "lamp",
+          "buzzer",
+          "powerSupply",
+          "transformer",
+          "ground",
+          "motor",
+          "fan",
+          "resistor",
+          "diode"
+        ].includes(element.type);
       }
 
       function wireFields(element) {
@@ -2792,6 +2820,26 @@
           element.w = count * pitch;
           element.h = element.type === "connector" ? 10 : 12;
         }
+      }
+
+      function resetSelectedReferenceSize() {
+        const element = selectedElement();
+        if (!canResetReferenceSize(element)) return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた要素は見本サイズへ戻せません。");
+          return;
+        }
+        if (["contactNO", "contactNC", "pushButton"].includes(element.type)) {
+          element.orientation = element.orientation || "horizontal";
+          resizeContactElementForOrientation(element);
+        } else {
+          const defaults = defaultElement(element.type, element.x || 0, element.y || 0);
+          ["w", "h", "r"].forEach(key => {
+            if (defaults[key] !== undefined) element[key] = defaults[key];
+          });
+        }
+        commitHistory("見本サイズへ戻しました。");
+        render();
       }
 
       function escapeHtml(text) {
