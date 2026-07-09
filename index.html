@@ -1222,7 +1222,10 @@
         if (options.grid !== false) drawGrid(svg, size);
         if (isLayerVisible("frame")) drawFrame(svg, page, size);
         visibleElements.filter(element => element.type !== "underlayImage").forEach(element => drawElement(svg, element));
-        if (options.selection) drawSelection(svg);
+        if (options.selection) {
+          drawSelection(svg);
+          drawMarquee(svg);
+        }
       }
 
       function layerFor(id) {
@@ -2006,6 +2009,31 @@
         handles.forEach(([x, y]) => {
           svg.appendChild(svgEl("rect", { x: x - 1.5, y: y - 1.5, width: 3, height: 3, class: "selection-handle" }));
         });
+      }
+
+      function drawMarquee(svg) {
+        if (!dragState || dragState.mode !== "marquee") return;
+        const rect = normalizedRect(dragState.start, dragState.current || dragState.start);
+        if (rect.w < .5 && rect.h < .5) return;
+        svg.appendChild(svgEl("rect", {
+          x: rect.x,
+          y: rect.y,
+          width: rect.w,
+          height: rect.h,
+          class: "selection-box"
+        }));
+      }
+
+      function normalizedRect(a, b) {
+        const x1 = Math.min(a.x, b.x);
+        const y1 = Math.min(a.y, b.y);
+        const x2 = Math.max(a.x, b.x);
+        const y2 = Math.max(a.y, b.y);
+        return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+      }
+
+      function boundsIntersect(a, b) {
+        return a.x <= b.x + b.w && a.x + a.w >= b.x && a.y <= b.y + b.h && a.y + a.h >= b.y;
       }
 
       function unionBounds(boxes) {
@@ -6100,7 +6128,9 @@
           svg.setPointerCapture(event.pointerId);
           render();
         } else {
-          setSelection([]);
+          if (!event.shiftKey) setSelection([]);
+          dragState = { mode: "marquee", start: point, current: point, append: event.shiftKey, originalIds: [...selectedIds] };
+          svg.setPointerCapture(event.pointerId);
           render();
         }
       }
@@ -6108,6 +6138,11 @@
       function onCanvasPointerMove(event) {
         if (!dragState) return;
         const point = canvasPoint(event);
+        if (dragState.mode === "marquee") {
+          dragState.current = point;
+          render();
+          return;
+        }
         const element = selectedElement();
         if (!element) return;
         if (dragState.mode === "draw") {
@@ -6140,6 +6175,12 @@
         } catch (_) {
           // The pointer may already be released by the browser.
         }
+        if (dragState.mode === "marquee") {
+          applyMarqueeSelection(dragState);
+          dragState = null;
+          render();
+          return;
+        }
         const element = selectedElement();
         if (element && element.points) {
           const a = element.points[0];
@@ -6152,6 +6193,29 @@
         dragState = null;
         commitHistory("作図を更新しました。");
         render();
+      }
+
+      function applyMarqueeSelection(marquee) {
+        const page = currentPage();
+        if (!page) return;
+        const rect = normalizedRect(marquee.start, marquee.current || marquee.start);
+        if (rect.w < .8 && rect.h < .8) {
+          if (!marquee.append) setSelection([]);
+          return;
+        }
+        const hits = page.elements
+          .filter(element => element.type !== "underlayImage")
+          .filter(isElementVisible)
+          .filter(element => {
+            const box = elementBounds(element);
+            return box && boundsIntersect(rect, box);
+          })
+          .map(element => element.id);
+        if (marquee.append) {
+          setSelection(Array.from(new Set([...(marquee.originalIds || []), ...hits])));
+        } else {
+          setSelection(hits);
+        }
       }
 
       function onCanvasDoubleClick(event) {
