@@ -1844,21 +1844,28 @@
       }
 
       function drawFuse(g, element, stroke) {
-        const w = Number(element.w || 24);
-        const h = Number(element.h || 10);
-        g.appendChild(svgEl("line", { x1: -10, y1: h / 2, x2: 0, y2: h / 2, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
-        g.appendChild(svgEl("line", { x1: w, y1: h / 2, x2: w + 10, y2: h / 2, class: "symbol-line", stroke }));
+        const w = Number(element.w || 18);
+        const h = Number(element.h || 6);
+        const lead = Math.min(5, Math.max(3.5, w * .24));
+        const bodyX = lead;
+        const bodyW = Math.max(5, w - lead * 2);
+        g.appendChild(svgEl("line", { x1: 0, y1: h / 2, x2: bodyX, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("rect", { x: bodyX, y: 0, width: bodyW, height: h, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: bodyX + bodyW, y1: h / 2, x2: w, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: bodyX + 1.6, y1: h - 1.1, x2: bodyX + bodyW - 1.6, y2: 1.1, class: "symbol-line", stroke }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
       function drawBreaker(g, element, stroke) {
-        const w = Number(element.w || 26);
-        const h = Number(element.h || 18);
-        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
-        g.appendChild(svgEl("line", { x1: -10, y1: h / 2, x2: 5, y2: h / 2, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: w - 5, y1: h / 2, x2: w + 10, y2: h / 2, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: 7, y1: h - 4, x2: w - 7, y2: 4, class: "symbol-line", stroke }));
+        const w = Number(element.w || 20);
+        const h = Number(element.h || 12);
+        const lead = Math.min(5, Math.max(3.5, w * .22));
+        const bodyX = lead;
+        const bodyW = Math.max(8, w - lead * 2);
+        g.appendChild(svgEl("rect", { x: bodyX, y: 0, width: bodyW, height: h, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: 0, y1: h / 2, x2: bodyX + 1.8, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: bodyX + bodyW - 1.8, y1: h / 2, x2: w, y2: h / 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: bodyX + 2.5, y1: h - 2.2, x2: bodyX + bodyW - 2.5, y2: 2.2, class: "symbol-line", stroke }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
@@ -2722,10 +2729,10 @@
           contactNO: { ...base, w: 10, h: 16, label: "NO", orientation: "vertical" },
           contactNC: { ...base, w: 10, h: 16, label: "NC", orientation: "vertical" },
           pushButton: { ...base, w: 10, h: 18, label: "PB", orientation: "vertical" },
-          coil: { ...base, w: 24, h: 14, label: "CR" },
-          fuse: { ...base, w: 24, h: 10, label: "F" },
-          breaker: { ...base, w: 26, h: 18, label: "CB" },
-          lamp: { ...base, w: 18, h: 18, r: 6, label: "PL" },
+          coil: { ...base, w: 20, h: 12, label: "CR" },
+          fuse: { ...base, w: 18, h: 6, label: "F" },
+          breaker: { ...base, w: 20, h: 12, label: "CB" },
+          lamp: { ...base, w: 14, h: 14, r: 5, label: "PL" },
           buzzer: { ...base, w: 24, h: 16, label: "BZ" },
           powerSupply: { ...base, w: 34, h: 24, label: "PS" },
           ground: { ...base, w: 18, h: 18, label: "E" },
@@ -5978,6 +5985,16 @@
           dxfVisibleAttributes(out, page, element);
           return;
         }
+        if (element.type === "fuse") {
+          dxfFuseLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
+        if (element.type === "breaker") {
+          dxfBreakerLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
         const box = elementBounds(element);
         if (["deviceBox", "plcBlock"].includes(element.type)) {
           dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
@@ -6039,6 +6056,32 @@
         }
         dxfLineLocal(out, page, "SYMBOL", element, w / 2, -8, w / 2, 2);
         dxfLineLocal(out, page, "SYMBOL", element, w / 2 - 6, -8, w / 2 + 6, -8);
+      }
+
+      function dxfFuseLocal(out, page, element) {
+        const w = Number(element.w || 18);
+        const h = Number(element.h || 6);
+        const lead = Math.min(5, Math.max(3.5, w * .24));
+        const bodyX = lead;
+        const bodyW = Math.max(5, w - lead * 2);
+        dxfLineLocal(out, page, "SYMBOL", element, 0, h / 2, bodyX, h / 2);
+        dxfRectLocal(out, page, "SYMBOL", element, bodyX, 0, bodyW, h);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW, h / 2, w, h / 2);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + 1.6, h - 1.1, bodyX + bodyW - 1.6, 1.1);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+      }
+
+      function dxfBreakerLocal(out, page, element) {
+        const w = Number(element.w || 20);
+        const h = Number(element.h || 12);
+        const lead = Math.min(5, Math.max(3.5, w * .22));
+        const bodyX = lead;
+        const bodyW = Math.max(8, w - lead * 2);
+        dxfRectLocal(out, page, "SYMBOL", element, bodyX, 0, bodyW, h);
+        dxfLineLocal(out, page, "SYMBOL", element, 0, h / 2, bodyX + 1.8, h / 2);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW - 1.8, h / 2, w, h / 2);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + 2.5, h - 2.2, bodyX + bodyW - 2.5, 2.2);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
       }
 
       function dxfVisibleAttributes(out, page, element) {
