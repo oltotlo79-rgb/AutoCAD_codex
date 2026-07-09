@@ -1678,6 +1678,7 @@
       function drawTerminalStrip(g, element, stroke) {
         const count = Math.max(1, Number(element.count || 8));
         const vertical = element.orientation === "vertical";
+        const shape = element.terminalShape || "circle";
         const w = Number(element.w || (vertical ? 12 : count * 8));
         const h = Number(element.h || (vertical ? count * 8 : 12));
         if (vertical) {
@@ -1686,7 +1687,7 @@
           g.appendChild(svgEl("path", { d: "M " + w / 2 + " 0 c -3 2 3 2 0 4", class: "symbol-line", stroke }));
           for (let i = 0; i < count; i++) {
             const cy = pitch * i + pitch / 2;
-            g.appendChild(svgEl("circle", { cx: w / 2, cy, r: Math.min(3.1, pitch * .35), class: "terminal-dot", stroke }));
+            drawTerminalNode(g, w / 2, cy, Math.min(3.1, pitch * .35), shape, stroke);
             const number = (element.prefix || "") + String((Number(element.start || 1) + i));
             g.appendChild(textEl(number, w / 2, cy, { fontSize: 2.1, anchor: "middle" }));
           }
@@ -1697,12 +1698,20 @@
           g.appendChild(svgEl("path", { d: "M 0 " + h / 2 + " c 2 -3 2 3 4 0", class: "symbol-line", stroke }));
           for (let i = 0; i < count; i++) {
             const cx = pitch * i + pitch / 2;
-            g.appendChild(svgEl("circle", { cx, cy: h / 2, r: Math.min(3.1, pitch * .35), class: "terminal-dot", stroke }));
+            drawTerminalNode(g, cx, h / 2, Math.min(3.1, pitch * .35), shape, stroke);
             const number = (element.prefix || "") + String((Number(element.start || 1) + i));
             g.appendChild(textEl(number, cx, h / 2, { fontSize: 2.1, anchor: "middle" }));
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -3.2, { fontSize: 2.5 }));
         }
+      }
+
+      function drawTerminalNode(g, cx, cy, r, shape, stroke) {
+        if (shape === "square") {
+          g.appendChild(svgEl("rect", { x: cx - r, y: cy - r, width: r * 2, height: r * 2, class: "terminal-dot", stroke }));
+          return;
+        }
+        g.appendChild(svgEl("circle", { cx, cy, r, class: "terminal-dot", stroke }));
       }
 
       function drawContact(g, element, closed, stroke) {
@@ -1853,6 +1862,7 @@
       function drawConnector(g, element, stroke) {
         const count = Math.max(1, Number(element.count || 8));
         const vertical = element.orientation === "vertical";
+        const shape = element.terminalShape || "circle";
         const w = Number(element.w || (vertical ? 10 : count * 7));
         const h = Number(element.h || (vertical ? count * 7 : 10));
         if (vertical) {
@@ -1860,7 +1870,7 @@
           g.appendChild(svgEl("line", { x1: w / 2, y1: 0, x2: w / 2, y2: h, class: "symbol-line", stroke }));
           for (let i = 0; i < count; i++) {
             const cy = pitch * i + pitch / 2;
-            g.appendChild(svgEl("circle", { cx: w / 2, cy, r: Math.min(2.7, pitch * .33), class: "terminal-dot", stroke }));
+            drawTerminalNode(g, w / 2, cy, Math.min(2.7, pitch * .33), shape, stroke);
             g.appendChild(textEl(String(i + 1), w + 3, cy, { fontSize: 2 }));
           }
           if (element.label) g.appendChild(textEl(element.label, w + 3, -3, { fontSize: 2.4 }));
@@ -1869,7 +1879,7 @@
           g.appendChild(svgEl("line", { x1: 0, y1: h / 2, x2: w, y2: h / 2, class: "symbol-line", stroke }));
           for (let i = 0; i < count; i++) {
             const cx = pitch * i + pitch / 2;
-            g.appendChild(svgEl("circle", { cx, cy: h / 2, r: Math.min(2.7, pitch * .33), class: "terminal-dot", stroke }));
+            drawTerminalNode(g, cx, h / 2, Math.min(2.7, pitch * .33), shape, stroke);
             g.appendChild(textEl(String(i + 1), cx, h + 4, { fontSize: 2, anchor: "middle" }));
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -3, { fontSize: 2.4 }));
@@ -2338,6 +2348,7 @@
         }
         if (["terminalStrip", "connector"].includes(element.type)) {
           const orientation = element.orientation || "horizontal";
+          const shape = element.terminalShape || "circle";
           return `
             <div class="row">
               <div><label>端子数</label><input data-bind="count" data-kind="number" type="number" min="1" step="1" value="${Number(element.count || 8)}"></div>
@@ -2347,6 +2358,11 @@
             <select data-bind="orientation">
               <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横</option>
               <option value="vertical"${orientation === "vertical" ? " selected" : ""}>縦</option>
+            </select>
+            <label>端子形状</label>
+            <select data-bind="terminalShape">
+              <option value="circle"${shape === "circle" ? " selected" : ""}>丸</option>
+              <option value="square"${shape === "square" ? " selected" : ""}>角</option>
             </select>
             <label>接頭辞</label>
             <input data-bind="prefix" type="text" value="${escapeAttr(element.prefix || "")}">
@@ -2511,7 +2527,7 @@
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
           terminal: { ...base, w: 20, h: 10, label: "1" },
-          terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", orientation: "horizontal", label: "X1" },
+          terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "X1" },
           contactNO: { ...base, w: 22, h: 14, label: "NO" },
           contactNC: { ...base, w: 22, h: 14, label: "NC" },
           pushButton: { ...base, w: 22, h: 14, label: "PB" },
@@ -2527,7 +2543,7 @@
           diode: { ...base, w: 24, h: 16, label: "D" },
           deviceBox: { ...base, w: 46, h: 30, label: "機器", pins: 4, pinText: "1\n2\n3\n4" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
-          connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", label: "CN" },
+          connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
           cableMarker: { ...base, w: 28, h: 12, label: "C" },
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
@@ -4460,7 +4476,7 @@
         }
         const html = `
           <table class="report-table">
-            <thead><tr><th>ページ</th><th>種別</th><th>名称</th><th>端子数</th><th>開始</th><th>方向</th><th>接頭辞</th></tr></thead>
+            <thead><tr><th>ページ</th><th>種別</th><th>名称</th><th>端子数</th><th>開始</th><th>方向</th><th>形状</th><th>接頭辞</th></tr></thead>
             <tbody>
               ${rows.map(({ page, element }) => `
                 <tr data-terminal-row="${element.id}">
@@ -4470,6 +4486,7 @@
                   <td><input data-terminal-field="count" type="number" min="1" step="1" value="${Number(element.count || 1)}"></td>
                   <td><input data-terminal-field="start" type="number" step="1" value="${Number(element.start || 1)}"></td>
                   <td><select data-terminal-field="orientation"><option value="horizontal"${(element.orientation || "horizontal") === "horizontal" ? " selected" : ""}>横</option><option value="vertical"${element.orientation === "vertical" ? " selected" : ""}>縦</option></select></td>
+                  <td><select data-terminal-field="terminalShape"><option value="circle"${(element.terminalShape || "circle") === "circle" ? " selected" : ""}>丸</option><option value="square"${element.terminalShape === "square" ? " selected" : ""}>角</option></select></td>
                   <td><input data-terminal-field="prefix" value="${escapeAttr(element.prefix || "")}"></td>
                 </tr>
               `).join("")}
@@ -5534,6 +5551,7 @@
         if (element.type === "terminalStrip" || element.type === "connector") {
           const count = Math.max(1, Number(element.count || 8));
           const vertical = element.orientation === "vertical";
+          const shape = element.terminalShape || "circle";
           const pitchSize = element.type === "connector" ? 7 : 8;
           const w = Number(element.w || (vertical ? 12 : count * pitchSize));
           const h = Number(element.h || (vertical ? count * pitchSize : 12));
@@ -5542,7 +5560,7 @@
             dxfLineLocal(out, page, "SYMBOL", element, w / 2, 0, w / 2, h);
             for (let i = 0; i < count; i++) {
               const cy = pitch * i + pitch / 2;
-              dxfCircleLocal(out, page, "SYMBOL", element, w / 2, cy, Math.min(3.1, pitch * .35));
+              dxfTerminalNodeLocal(out, page, "SYMBOL", element, w / 2, cy, Math.min(3.1, pitch * .35), shape);
               dxfTextLocal(out, page, "TEXT", element, w / 2 - 1.2, cy + .8, 1.8, (element.prefix || "") + String(Number(element.start || 1) + i));
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, w + 3, 0, 2.5, element.label);
@@ -5551,7 +5569,7 @@
             dxfLineLocal(out, page, "SYMBOL", element, 0, h / 2, w, h / 2);
             for (let i = 0; i < count; i++) {
               const cx = pitch * i + pitch / 2;
-              dxfCircleLocal(out, page, "SYMBOL", element, cx, h / 2, Math.min(3.1, pitch * .35));
+              dxfTerminalNodeLocal(out, page, "SYMBOL", element, cx, h / 2, Math.min(3.1, pitch * .35), shape);
               dxfTextLocal(out, page, "TEXT", element, cx - 1.2, h / 2 + .8, 1.8, (element.prefix || "") + String(Number(element.start || 1) + i));
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -3, 2.5, element.label);
@@ -5665,6 +5683,14 @@
         dxfLineLocal(out, page, layer, element, x + w, y, x + w, y + h);
         dxfLineLocal(out, page, layer, element, x + w, y + h, x, y + h);
         dxfLineLocal(out, page, layer, element, x, y + h, x, y);
+      }
+
+      function dxfTerminalNodeLocal(out, page, layer, element, cx, cy, r, shape) {
+        if (shape === "square") {
+          dxfRectLocal(out, page, layer, element, cx - r, cy - r, r * 2, r * 2);
+          return;
+        }
+        dxfCircleLocal(out, page, layer, element, cx, cy, r);
       }
 
       function dxfEllipseApproxLocal(out, page, layer, element, cx, cy, rx, ry) {
