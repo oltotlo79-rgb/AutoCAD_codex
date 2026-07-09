@@ -448,7 +448,8 @@
     #fileInput,
     #terminalCsvInput,
     #plcCsvInput,
-    #underlayInput { display: none; }
+    #underlayInput,
+    #underlayTwoUpInput { display: none; }
 
     @media print {
       @page { margin: 0; }
@@ -696,6 +697,7 @@
           </div>
           <button type="button" id="ladderPageBtn" style="width:100%;margin-top:8px">ラダー</button>
           <button type="button" id="underlayImageBtn" style="width:100%;margin-top:8px">下絵画像</button>
+          <button type="button" id="underlayTwoUpBtn" style="width:100%;margin-top:8px">2面下絵ページ</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="movePagePrevBtn">前へ</button>
             <button type="button" id="movePageNextBtn">後へ</button>
@@ -711,6 +713,7 @@
   <input id="terminalCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
   <input id="plcCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
   <input id="underlayInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+  <input id="underlayTwoUpInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
   <div id="printSheets" class="print-sheets"></div>
   <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
     <div class="dialog">
@@ -3981,6 +3984,14 @@
       }
 
       function importUnderlayImageFile(file) {
+        readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addUnderlayImageElement(file.name, dataUrl, imageWidth, imageHeight));
+      }
+
+      function importTwoUpUnderlayImageFile(file) {
+        readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addTwoUpUnderlayPages(file.name, dataUrl, imageWidth, imageHeight));
+      }
+
+      function readUnderlayImageFile(file, onLoad) {
         if (!file || !String(file.type || "").startsWith("image/")) {
           setStatus("PNG/JPEG/WebP/SVG画像を選択してください。");
           return;
@@ -3989,8 +4000,8 @@
         reader.onload = () => {
           const dataUrl = String(reader.result || "");
           const image = new Image();
-          image.onload = () => addUnderlayImageElement(file.name, dataUrl, image.naturalWidth || image.width || 1, image.naturalHeight || image.height || 1);
-          image.onerror = () => addUnderlayImageElement(file.name, dataUrl, 16, 11);
+          image.onload = () => onLoad(dataUrl, image.naturalWidth || image.width || 1, image.naturalHeight || image.height || 1);
+          image.onerror = () => onLoad(dataUrl, 16, 11);
           image.src = dataUrl;
         };
         reader.onerror = () => setStatus("下絵画像を読み込めませんでした。");
@@ -4000,15 +4011,58 @@
       function addUnderlayImageElement(name, dataUrl, imageWidth, imageHeight) {
         const page = currentPage();
         if (!page) return;
+        const element = buildUnderlayImageElement(page, name, dataUrl, imageWidth, imageHeight, "full");
+        page.elements.unshift(element);
+        selectSingle(element.id);
+        commitHistory("下絵画像を挿入しました。");
+        render();
+      }
+
+      function addTwoUpUnderlayPages(name, dataUrl, imageWidth, imageHeight) {
+        const base = currentPage();
+        const baseTitle = base?.title || {};
+        const baseIndex = state.pages.length + 1;
+        const pages = [
+          { suffix: "上", crop: "top" },
+          { suffix: "下", crop: "bottom" }
+        ].map((item, index) => {
+          const page = createPage({
+            name: "P" + (baseIndex + index) + "-" + item.suffix,
+            size: "A4",
+            orientation: "portrait",
+            frameVariant: base?.frameVariant || "detailed",
+            title: baseTitle.title || "電気図面",
+            drawingNo: baseTitle.drawingNo || "",
+            revision: baseTitle.revision || "",
+            designer: baseTitle.designer || "",
+            date: baseTitle.date || today,
+            facility: baseTitle.facility || "",
+            installation: baseTitle.installation || "",
+            location: baseTitle.location || ""
+          });
+          page.elements.unshift(buildUnderlayImageElement(page, name + " " + item.suffix, dataUrl, imageWidth, imageHeight, item.crop));
+          return page;
+        });
+        state.pages.push(...pages);
+        state.activePageId = pages[0].id;
+        setSelection([pages[0].elements[0].id]);
+        commitHistory("2面下絵ページを作成しました。");
+        render();
+      }
+
+      function buildUnderlayImageElement(page, name, dataUrl, imageWidth, imageHeight, cropPreset) {
         const size = pageSize(page);
         const margin = 12;
+        const crop = underlayCropRect(cropPreset);
+        const sourceWidth = Math.max(1, Number(imageWidth || 1) * crop.w);
+        const sourceHeight = Math.max(1, Number(imageHeight || 1) * crop.h);
         let w = Math.max(20, size.w - margin * 2);
-        let h = w * (Number(imageHeight || 1) / Number(imageWidth || 1));
+        let h = w * (sourceHeight / sourceWidth);
         if (h > size.h - margin * 2) {
           h = Math.max(20, size.h - margin * 2);
-          w = h * (Number(imageWidth || 1) / Number(imageHeight || 1));
+          w = h * (sourceWidth / sourceHeight);
         }
-        const element = {
+        return {
           id: uid("el"),
           type: "underlayImage",
           x: round((size.w - w) / 2),
@@ -4018,16 +4072,12 @@
           label: name || "下絵",
           imageData: dataUrl,
           opacity: .35,
-          cropPreset: "full",
+          cropPreset: cropPreset || "full",
           rotation: 0,
           locked: true,
           stroke: "#5b626b",
           layer: "layout"
         };
-        page.elements.unshift(element);
-        selectSingle(element.id);
-        commitHistory("下絵画像を挿入しました。");
-        render();
       }
 
       function openProjectFile(file) {
@@ -5605,6 +5655,12 @@
         qs("#underlayInput").addEventListener("change", event => {
           const file = event.target.files[0];
           if (file) importUnderlayImageFile(file);
+          event.target.value = "";
+        });
+        qs("#underlayTwoUpBtn").addEventListener("click", () => qs("#underlayTwoUpInput").click());
+        qs("#underlayTwoUpInput").addEventListener("change", event => {
+          const file = event.target.files[0];
+          if (file) importTwoUpUnderlayImageFile(file);
           event.target.value = "";
         });
         qs("#saveBtn").addEventListener("click", saveProject);
