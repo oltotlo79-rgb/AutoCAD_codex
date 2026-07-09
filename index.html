@@ -342,6 +342,11 @@
       pointer-events: none;
     }
 
+    .selection-handle.resize-handle {
+      pointer-events: all;
+      cursor: nwse-resize;
+    }
+
     .row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1988,7 +1993,8 @@
       }
 
       function drawSelection(svg) {
-        const boxes = selectedElements().map(elementBounds).filter(Boolean);
+        const selected = selectedElements();
+        const boxes = selected.map(elementBounds).filter(Boolean);
         if (!boxes.length) return;
         boxes.forEach(box => {
           svg.appendChild(svgEl("rect", {
@@ -2006,9 +2012,22 @@
           [box.x - 2, box.y + box.h + 2],
           [box.x + box.w + 2, box.y + box.h + 2]
         ];
-        handles.forEach(([x, y]) => {
-          svg.appendChild(svgEl("rect", { x: x - 1.5, y: y - 1.5, width: 3, height: 3, class: "selection-handle" }));
+        const resizeHandles = ["nw", "ne", "sw", "se"];
+        const resizable = selected.length === 1 && canResizeElement(selected[0]) && !isElementLocked(selected[0]);
+        handles.forEach(([x, y], index) => {
+          svg.appendChild(svgEl("rect", {
+            x: x - 1.5,
+            y: y - 1.5,
+            width: 3,
+            height: 3,
+            class: "selection-handle" + (resizable ? " resize-handle" : ""),
+            "data-resize-handle": resizable ? resizeHandles[index] : null
+          }));
         });
+      }
+
+      function canResizeElement(element) {
+        return !!element && !element.points && element.type !== "junction";
       }
 
       function drawMarquee(svg) {
@@ -6085,6 +6104,28 @@
       function onCanvasPointerDown(event) {
         const svg = qs("#canvas");
         const point = canvasPoint(event);
+        const resizeHandle = event.target.closest("[data-resize-handle]");
+        if (resizeHandle) {
+          const element = selectedElement();
+          if (!element || !canResizeElement(element)) return;
+          if (isElementLocked(element)) {
+            setStatus("ロックされた要素は変更できません。");
+            render();
+            return;
+          }
+          dragState = {
+            mode: "resize",
+            elementId: element.id,
+            handle: resizeHandle.dataset.resizeHandle,
+            start: point,
+            original: deepClone(element),
+            originalBox: elementBounds(element)
+          };
+          svg.setPointerCapture(event.pointerId);
+          event.stopPropagation();
+          render();
+          return;
+        }
         const targetElement = event.target.closest("[data-id]");
         if (activeTool === "wire" || activeTool === "arrow" || activeTool === "line") {
           const element = defaultElement(activeTool, point.x, point.y);
@@ -6140,6 +6181,11 @@
         const point = canvasPoint(event);
         if (dragState.mode === "marquee") {
           dragState.current = point;
+          render();
+          return;
+        }
+        if (dragState.mode === "resize") {
+          applyResizeDrag(point);
           render();
           return;
         }
@@ -6216,6 +6262,38 @@
         } else {
           setSelection(hits);
         }
+      }
+
+      function applyResizeDrag(point) {
+        const page = currentPage();
+        const element = page?.elements.find(item => item.id === dragState.elementId);
+        const box = dragState.originalBox;
+        if (!element || !box) return;
+        const minSize = 2.5;
+        let x = box.x;
+        let y = box.y;
+        let w = box.w;
+        let h = box.h;
+        const right = box.x + box.w;
+        const bottom = box.y + box.h;
+        if (dragState.handle.includes("e")) {
+          w = Math.max(minSize, point.x - box.x);
+        }
+        if (dragState.handle.includes("s")) {
+          h = Math.max(minSize, point.y - box.y);
+        }
+        if (dragState.handle.includes("w")) {
+          x = Math.min(point.x, right - minSize);
+          w = right - x;
+        }
+        if (dragState.handle.includes("n")) {
+          y = Math.min(point.y, bottom - minSize);
+          h = bottom - y;
+        }
+        element.x = round(x);
+        element.y = round(y);
+        element.w = round(w);
+        element.h = round(h);
       }
 
       function onCanvasDoubleClick(event) {
