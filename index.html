@@ -6426,6 +6426,25 @@
             out.push({ ...defaultElement("circle", round(d[10] - r), round(flipY(d[20]) - r)), w: round(r * 2), h: round(r * 2), label: "" });
           } else if (current.name === "TEXT" && d[1] !== undefined) {
             out.push({ ...defaultElement("text", round(d[10] || 0), flipY(d[20])), text: String(d[1]), fontSize: Number(d[40] || 2.5) });
+          } else if (current.name === "ARC" && d[40] !== undefined) {
+            // 円弧は12分割の折れ線として取り込む(CADのCCW角度→画面系へ変換)
+            const r = Number(d[40]);
+            const cx = Number(d[10] || 0);
+            const cyCad = Number(d[20] || 0);
+            let a0 = Number(d[50] || 0);
+            let a1 = Number(d[51] || 0);
+            if (a1 <= a0) a1 += 360;
+            const steps = 12;
+            let prev = null;
+            for (let k = 0; k <= steps; k++) {
+              const a = (a0 + (a1 - a0) * k / steps) * Math.PI / 180;
+              const px = round(cx + r * Math.cos(a));
+              const py = flipY(cyCad + r * Math.sin(a));
+              if (prev) {
+                out.push({ id: uid("el"), type: "line", points: [prev, [px, py]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke, layer: "symbols" });
+              }
+              prev = [px, py];
+            }
           } else if (current.name === "LWPOLYLINE" && (current.pts || []).filter(pt => pt.length === 2).length >= 2) {
             const pts = current.pts.filter(pt => pt.length === 2);
             for (let i = 1; i < pts.length; i++) {
