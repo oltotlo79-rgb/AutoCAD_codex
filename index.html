@@ -821,6 +821,7 @@
         { type: "text", label: "文字", icon: "text" },
         { type: "wire", label: "配線", icon: "wire" },
         { type: "line", label: "直線", icon: "line" },
+        { type: "mechanicalLink", label: "連動破線", icon: "mechanicalLink" },
         { type: "rect", label: "矩形", icon: "rect" },
         { type: "circle", label: "円", icon: "circle" },
         { type: "installationBox", label: "設備枠", icon: "area" },
@@ -1153,6 +1154,7 @@
           text: `<svg ${common}><path ${stroke} d="M18 14h44M40 14v22M30 36h20"/></svg>`,
           wire: `<svg ${common}><path ${stroke} d="M8 22h28v-10h36"/><circle cx="36" cy="22" r="3" fill="currentColor"/></svg>`,
           line: `<svg ${common}><path ${stroke} d="M12 32L68 12"/></svg>`,
+          mechanicalLink: `<svg ${common}><path ${stroke} stroke-dasharray="5 4" d="M40 6v32"/><path ${thin} d="M28 14h24M28 30h24"/></svg>`,
           rect: `<svg ${common}><rect x="18" y="11" width="44" height="24" ${stroke}/></svg>`,
           circle: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
           area: `<svg ${common}><rect x="12" y="8" width="56" height="30" ${thin} stroke-dasharray="5 4"/><path ${thin} d="M12 17h56"/><path ${stroke} d="M20 13h18"/></svg>`,
@@ -1462,7 +1464,7 @@
         if (element.type === "underlayImage") drawUnderlayImage(g, element);
         if (element.type === "text") drawText(g, element);
         if (element.type === "wire") drawWire(g, element, stroke);
-        if (element.type === "line") drawLineElement(g, element, stroke);
+        if (element.type === "line" || element.type === "mechanicalLink") drawLineElement(g, element, stroke);
         if (element.type === "rect") drawRectElement(g, element, stroke);
         if (element.type === "circle") drawCircleElement(g, element, stroke);
         if (element.type === "installationBox" || element.type === "locationBox") drawAreaBox(g, element, stroke);
@@ -2420,7 +2422,7 @@
       }
 
       function elementBounds(element) {
-        if (element.type === "wire" || element.type === "arrow" || element.type === "line") {
+        if (element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "mechanicalLink") {
           const points = element.points || [[0, 0], [0, 0]];
           const xs = points.map(p => p[0]);
           const ys = points.map(p => p[1]);
@@ -3056,6 +3058,7 @@
         const defaults = {
           text: { ...base, w: 40, h: 8, text: "文字", fontSize: 3.5 },
           line: { id: uid("el"), type: "line", points: [[x, y], [x + 30, y]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke, layer: defaultLayerFor("line") },
+          mechanicalLink: { id: uid("el"), type: "mechanicalLink", points: [[x, y], [x, y + 30]], label: "", strokeWidth: .26, dash: "1.2 1.4", stroke: state.settings.stroke, layer: "symbols" },
           rect: { ...base, w: 34, h: 22, label: "" },
           circle: { ...base, w: 22, h: 22, label: "" },
           underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
@@ -3102,6 +3105,7 @@
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
         if (type === "rect" || type === "circle" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return state.settings.currentLayer || "layout";
+        if (type === "mechanicalLink") return state.settings.currentLayer || "symbols";
         return state.settings.currentLayer || "symbols";
       }
 
@@ -3109,6 +3113,7 @@
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
         if (type === "rect" || type === "circle" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return "layout";
+        if (type === "mechanicalLink") return "symbols";
         return "symbols";
       }
 
@@ -3169,7 +3174,7 @@
         page.elements.forEach(element => {
           if (excludeIds.has(element.id)) return;
           if (!isElementVisible(element)) return;
-          if (element.type === "wire" || element.type === "line" || element.type === "arrow") {
+          if (element.type === "wire" || element.type === "line" || element.type === "mechanicalLink" || element.type === "arrow") {
             (element.points || []).forEach(point => anchors.push({ x: point[0], y: point[1], elementId: element.id, kind: "point" }));
             return;
           }
@@ -3204,7 +3209,7 @@
         page.elements.forEach(element => {
           if (activeIds.has(element.id)) return;
           if (!isElementVisible(element)) return;
-          if (!["wire", "line", "arrow"].includes(element.type)) return;
+          if (!["wire", "line", "mechanicalLink", "arrow"].includes(element.type)) return;
           wireSegments(element).forEach(segment => {
             const point = closestPointOnSegment(x, y, segment);
             const d = Math.hypot(point.x - x, point.y - y);
@@ -6555,11 +6560,11 @@
           }
           return;
         }
-        if (element.type === "line") {
+        if (element.type === "line" || element.type === "mechanicalLink") {
           const points = element.points || [[0, 0], [20, 0]];
           const a = points[0];
           const b = points[points.length - 1];
-          dxfLine(out, page, "GEOMETRY", a[0], a[1], b[0], b[1]);
+          dxfLine(out, page, element.type === "mechanicalLink" ? "SYMBOL" : "GEOMETRY", a[0], a[1], b[0], b[1]);
           if (element.label) {
             const mid = pathMid(a, b);
             dxfText(out, page, "TEXT", mid.x, mid.y - 3, 2.4, element.label);
@@ -7492,7 +7497,7 @@
           return;
         }
         const targetElement = event.target.closest("[data-id]");
-        if (activeTool === "wire" || activeTool === "arrow" || activeTool === "line") {
+        if (activeTool === "wire" || activeTool === "arrow" || activeTool === "line" || activeTool === "mechanicalLink") {
           const element = defaultElement(activeTool, point.x, point.y);
           element.points = [[point.x, point.y], [point.x, point.y]];
           currentPage().elements.push(element);
@@ -7502,7 +7507,7 @@
           render();
           return;
         }
-        if (activeTool !== "select" && activeTool !== "wire" && activeTool !== "arrow") {
+        if (activeTool !== "select" && activeTool !== "wire" && activeTool !== "arrow" && activeTool !== "mechanicalLink") {
           placeElement(activeTool, point.x, point.y);
           return;
         }
