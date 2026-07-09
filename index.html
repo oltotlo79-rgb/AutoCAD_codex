@@ -6402,6 +6402,15 @@
           return;
         }
         if (editing) return;
+        if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+          const toolShortcuts = { s: "select", v: "select", w: "wire", t: "text", l: "line", r: "rect", c: "circle" };
+          const tool = toolShortcuts[event.key.toLowerCase()];
+          if (tool) {
+            event.preventDefault();
+            setActiveTool(tool);
+            return;
+          }
+        }
         if (event.key === "Delete" || event.key === "Backspace") {
           event.preventDefault();
           deleteSelected();
