@@ -846,7 +846,9 @@
         { type: "motor", label: "モータ", icon: "motor" },
         { type: "fan", label: "ファン", icon: "fan" },
         { type: "resistor", label: "抵抗", icon: "resistor" },
+        { type: "capacitor", label: "コンデンサ", icon: "capacitor" },
         { type: "diode", label: "ダイオード", icon: "diode" },
+        { type: "thermalRelay", label: "サーマルリレー", icon: "thermalRelay" },
         { type: "deviceBox", label: "機器箱", icon: "box" },
         { type: "plcBlock", label: "PLC/I-O", icon: "plc" },
         { type: "connector", label: "コネクタ", icon: "connector" },
@@ -877,7 +879,9 @@
         motor: "M",
         fan: "FAN",
         resistor: "R",
+        capacitor: "C",
         diode: "D",
+        thermalRelay: "THR",
         deviceBox: "DEV",
         plcBlock: "PLC",
         connector: "CN",
@@ -1173,7 +1177,9 @@
           motor: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="40" cy="22" r="14" ${stroke}/><path ${thin} d="M32 28V16l8 8 8-8v12"/></svg>`,
           fan: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><circle cx="40" cy="22" r="14" ${stroke}/><path ${thin} d="M40 22c-7-8-2-14 7-10M40 22c10-2 13 6 6 12M40 22c-3 10-12 8-13-2"/></svg>`,
           resistor: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><rect x="26" y="14" width="28" height="16" ${stroke}/></svg>`,
+          capacitor: `<svg ${common}><path ${stroke} d="M8 22h25M47 22h25M33 12v20M47 12v20"/></svg>`,
           diode: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20M28 12l24 10-24 10V12M52 12v20"/></svg>`,
+          thermalRelay: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10M34 33c4-9 8 9 12 0"/></svg>`,
           box: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M8 18h10M8 28h10M62 18h10M62 28h10"/></svg>`,
           plc: `<svg ${common}><rect x="16" y="8" width="48" height="30" ${stroke}/><path ${thin} d="M24 8v30M16 16h48M16 24h48M16 32h48"/></svg>`,
           connector: `<svg ${common}><path ${stroke} d="M10 22h60"/><circle cx="22" cy="22" r="5" ${thin}/><circle cx="40" cy="22" r="5" ${thin}/><circle cx="58" cy="22" r="5" ${thin}/></svg>`,
@@ -1480,7 +1486,9 @@
         if (element.type === "motor") drawMotor(g, element, stroke);
         if (element.type === "fan") drawFan(g, element, stroke);
         if (element.type === "resistor") drawResistor(g, element, stroke);
+        if (element.type === "capacitor") drawCapacitor(g, element, stroke);
         if (element.type === "diode") drawDiode(g, element, stroke);
+        if (element.type === "thermalRelay") drawThermalRelay(g, element, stroke);
         if (element.type === "deviceBox") drawDeviceBox(g, element, stroke);
         if (element.type === "plcBlock") drawPlcBlock(g, element, stroke);
         if (element.type === "connector") drawConnector(g, element, stroke);
@@ -2060,6 +2068,19 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      function drawCapacitor(g, element, stroke) {
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 7);
+        const cy = h / 2;
+        const leftPlate = w / 2 - 1.2;
+        const rightPlate = w / 2 + 1.2;
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: leftPlate, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: rightPlate, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: leftPlate, y1: 1, x2: leftPlate, y2: h - 1, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: rightPlate, y1: 1, x2: rightPlate, y2: h - 1, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
+      }
+
       function drawDiode(g, element, stroke) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 10);
@@ -2070,6 +2091,15 @@
         g.appendChild(svgEl("line", { x1: barX, y1: 1.2, x2: barX, y2: h - 1.2, class: "symbol-line", stroke }));
         g.appendChild(svgEl("line", { x1: barX, y1: h / 2, x2: w, y2: h / 2, class: "symbol-line", stroke }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawThermalRelay(g, element, stroke) {
+        drawHorizontalContact(g, element, false, stroke);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 7);
+        const y = h + 1.1;
+        g.appendChild(svgEl("path", { d: "M " + (w * .25) + " " + y + " C " + (w * .37) + " " + (y - 3) + " " + (w * .48) + " " + (y + 3) + " " + (w * .6) + " " + y + " S " + (w * .78) + " " + (y + 3) + " " + (w * .88) + " " + y, class: "symbol-line", stroke, fill: "none" }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawLamp(g, element, stroke) {
@@ -3051,7 +3081,9 @@
           motor: { ...base, w: 14, h: 14, r: 5, label: "M" },
           fan: { ...base, w: 14, h: 14, r: 5, label: "FAN" },
           resistor: { ...base, w: 12, h: 4.5, label: "R" },
+          capacitor: { ...base, w: 12, h: 7, label: "C" },
           diode: { ...base, w: 12, h: 7, label: "D" },
+          thermalRelay: { ...base, w: 12, h: 7, label: "THR", orientation: "horizontal" },
           deviceBox: { ...base, w: 28, h: 20, label: "機器", pins: 4, pinText: "1\n2\n3\n4" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
@@ -3220,7 +3252,7 @@
           }
           return anchors;
         }
-        if (["coil", "fuse", "breaker", "lamp", "buzzer", "solenoidValve", "sensor", "transformer", "motor", "fan", "resistor", "diode", "cableMarker", "cableBundle"].includes(element.type)) {
+        if (["coil", "fuse", "breaker", "lamp", "buzzer", "solenoidValve", "sensor", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
           add(0, h / 2);
           add(w, h / 2);
           return anchors;
@@ -6568,8 +6600,18 @@
           dxfVisibleAttributes(out, page, element);
           return;
         }
+        if (element.type === "capacitor") {
+          dxfCapacitorLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
         if (element.type === "diode") {
           dxfDiodeLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
+        if (element.type === "thermalRelay") {
+          dxfThermalRelayLocal(out, page, element);
           dxfVisibleAttributes(out, page, element);
           return;
         }
@@ -6896,6 +6938,19 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
       }
 
+      function dxfCapacitorLocal(out, page, element) {
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 7);
+        const cy = h / 2;
+        const leftPlate = w / 2 - 1.2;
+        const rightPlate = w / 2 + 1.2;
+        dxfLineLocal(out, page, "SYMBOL", element, 0, cy, leftPlate, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, rightPlate, cy, w, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, leftPlate, 1, leftPlate, h - 1);
+        dxfLineLocal(out, page, "SYMBOL", element, rightPlate, 1, rightPlate, h - 1);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
+      }
+
       function dxfDiodeLocal(out, page, element) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 10);
@@ -6908,6 +6963,17 @@
         dxfLineLocal(out, page, "SYMBOL", element, barX, 1.2, barX, h - 1.2);
         dxfLineLocal(out, page, "SYMBOL", element, barX, h / 2, w, h / 2);
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+      }
+
+      function dxfThermalRelayLocal(out, page, element) {
+        dxfContactLocal(out, page, element, false);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 7);
+        const y = h + 1.1;
+        dxfLineLocal(out, page, "SYMBOL", element, w * .25, y, w * .38, y - 1.7);
+        dxfLineLocal(out, page, "SYMBOL", element, w * .38, y - 1.7, w * .5, y + 1.7);
+        dxfLineLocal(out, page, "SYMBOL", element, w * .5, y + 1.7, w * .63, y - 1.7);
+        dxfLineLocal(out, page, "SYMBOL", element, w * .63, y - 1.7, w * .88, y);
       }
 
       function dxfFanLocal(out, page, element) {
