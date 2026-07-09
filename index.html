@@ -2318,6 +2318,7 @@
         qs("#clearWireGapsBtn", panel)?.addEventListener("click", clearSelectedWireGaps);
         qs("#addWirePointBtn", panel)?.addEventListener("click", addSelectedWirePoint);
         qs("#removeWirePointBtn", panel)?.addEventListener("click", removeSelectedWirePoint);
+        qs("#orthogonalizeWireBtn", panel)?.addEventListener("click", orthogonalizeSelectedWire);
         qs("#applyAreaAttributesBtn", panel)?.addEventListener("click", applySelectedAreaAttributes);
         qs("#copyInstallLocationBtn", panel)?.addEventListener("click", copySelectedInstallLocation);
         qs("#pasteInstallLocationBtn", panel)?.addEventListener("click", pasteInstallLocationToSelection);
@@ -2437,6 +2438,7 @@
               <button type="button" id="addWirePointBtn">中間点追加</button>
               <button type="button" id="removeWirePointBtn" ${pointCount <= 2 ? "disabled" : ""}>中間点削除</button>
             </div>
+            <button type="button" id="orthogonalizeWireBtn" style="width:100%;margin-top:8px">直交整形</button>
             <button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>
             <div class="row" style="margin-top:8px">
               <button type="button" id="addIntersectionGapsBtn">交差ギャップ追加</button>
@@ -4069,6 +4071,45 @@
         element.points.splice(element.points.length - 2, 1);
         commitHistory("配線の中間点を削除しました。");
         render();
+      }
+
+      function orthogonalizeSelectedWire() {
+        const element = selectedElement();
+        if (!element || element.type !== "wire") return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        const original = element.points || [[0, 0], [20, 0]];
+        const normalized = orthogonalizePoints(original);
+        if (JSON.stringify(original) === JSON.stringify(normalized)) {
+          setStatus("この配線はすでに直交しています。");
+          return;
+        }
+        element.points = normalized;
+        commitHistory("配線を直交整形しました。");
+        render();
+      }
+
+      function orthogonalizePoints(points) {
+        const result = [];
+        const addPoint = point => {
+          const rounded = [round(point[0]), round(point[1])];
+          const last = result[result.length - 1];
+          if (!last || Math.abs(last[0] - rounded[0]) > .001 || Math.abs(last[1] - rounded[1]) > .001) result.push(rounded);
+        };
+        addPoint(points[0] || [0, 0]);
+        for (let i = 1; i < points.length; i += 1) {
+          const prev = result[result.length - 1];
+          const target = points[i];
+          if (Math.abs(prev[0] - target[0]) < .001 || Math.abs(prev[1] - target[1]) < .001) {
+            addPoint(target);
+          } else {
+            addPoint([prev[0], target[1]]);
+            addPoint(target);
+          }
+        }
+        return result;
       }
 
       function applySelectedAreaAttributes() {
