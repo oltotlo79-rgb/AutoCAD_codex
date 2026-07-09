@@ -1787,9 +1787,9 @@
 
       function drawTerminal(g, element, stroke) {
         const label = element.label || "1";
-        const w = Number(element.w || 12);
-        const h = Number(element.h || 8);
-        const r = Math.min(3.2, Math.max(2.4, Math.min(w, h) * .38));
+        const w = Number(element.w || 10);
+        const h = Number(element.h || 6);
+        const r = Math.min(2.45, Math.max(1.8, Math.min(w, h) * .36));
         const cx = w / 2;
         const cy = h / 2;
         const shape = element.terminalShape || "circle";
@@ -1797,13 +1797,13 @@
           g.appendChild(svgEl("line", { x1: cx, y1: 0, x2: cx, y2: cy - r, class: "symbol-line", stroke }));
           g.appendChild(svgEl("line", { x1: cx, y1: cy + r, x2: cx, y2: h, class: "symbol-line", stroke }));
           drawTerminalNode(g, cx, cy, r, shape, stroke);
-          g.appendChild(textEl(label, cx + r + 1.4, cy + .4, { fontSize: 2.1 }));
+          g.appendChild(textEl(label, cx + r + 1.2, cy + .3, { fontSize: 1.8 }));
           return;
         }
         g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: cx - r, y2: cy, class: "symbol-line", stroke }));
         g.appendChild(svgEl("line", { x1: cx + r, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
         drawTerminalNode(g, cx, cy, r, shape, stroke);
-        g.appendChild(textEl(label, cx, cy + .15, { fontSize: 2.1, anchor: "middle" }));
+        g.appendChild(textEl(label, cx, cy + .12, { fontSize: 1.8, anchor: "middle" }));
       }
 
       function drawTerminalStrip(g, element, stroke) {
@@ -1823,8 +1823,8 @@
           }));
           for (let i = 0; i < geo.count; i++) {
             const node = terminalStripNodeLocal(element, i);
-            drawTerminalNode(g, node.x, node.y, Math.min(3.1, geo.pitch * .35), geo.shape, stroke);
-            g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 2.1, anchor: "middle" }));
+            drawTerminalNode(g, node.x, node.y, Math.min(2.8, geo.pitch * .32), geo.shape, stroke);
+            g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 1.9, anchor: "middle" }));
           }
           if (element.label) g.appendChild(textEl(element.label, geo.w + 3, 0, { fontSize: 2.5 }));
         } else {
@@ -1845,8 +1845,8 @@
           g.appendChild(svgEl("path", { d, class: "symbol-line", stroke, fill: "none" }));
           for (let i = 0; i < geo.count; i++) {
             const node = terminalStripNodeLocal(element, i);
-            drawTerminalNode(g, node.x, node.y, Math.min(3.1, geo.pitch * .35), geo.shape, stroke);
-            g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 2.1, anchor: "middle" }));
+            drawTerminalNode(g, node.x, node.y, Math.min(2.8, geo.pitch * .32), geo.shape, stroke);
+            g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 1.9, anchor: "middle" }));
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -3.2, { fontSize: 2.5 }));
         }
@@ -1869,20 +1869,21 @@
       }
 
       function drawHorizontalContact(g, element, closed, stroke) {
-        const w = Number(element.w || 14);
-        const h = Number(element.h || 10);
+        const w = Number(element.w || 10);
+        const h = Number(element.h || 7);
         const cy = h / 2;
-        const left = Math.max(3.2, w * .28);
-        const right = Math.min(w - 3.2, w * .72);
-        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: left - 1, y2: cy, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: right + 1, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("circle", { cx: left, cy, r: .85, class: "symbol-fill", stroke }));
-        g.appendChild(svgEl("circle", { cx: right, cy, r: .85, class: "symbol-fill", stroke }));
-        g.appendChild(svgEl("line", { x1: left + .8, y1: cy - .2, x2: right - .4, y2: closed ? cy + .1 : cy - 3.2, class: "symbol-line", stroke }));
+        const left = Math.max(2.4, w * .3);
+        const right = Math.min(w - 2.4, w * .7);
+        const r = Math.min(.7, Math.max(.5, h * .09));
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: left - .7, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: right + .7, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx: left, cy, r, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("circle", { cx: right, cy, r, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: left + .55, y1: cy - .1, x2: right - .3, y2: closed ? cy + .05 : cy - 2.25, class: "symbol-line", stroke }));
         if (closed) {
-          g.appendChild(svgEl("line", { x1: right - .5, y1: cy - 3.1, x2: right - .5, y2: cy + 3.1, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: right - .35, y1: cy - 2.2, x2: right - .35, y2: cy + 2.2, class: "symbol-line", stroke }));
         }
-        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawVerticalContact(g, element, closed, stroke) {
@@ -1906,7 +1907,7 @@
 
       function drawPushButton(g, element, stroke) {
         drawContact(g, element, false, stroke);
-        const w = Number(element.w || (element.orientation === "vertical" ? 10 : 14));
+        const w = Number(element.w || (element.orientation === "vertical" ? 8 : 10));
         if (element.orientation === "vertical") {
           const cx = w / 2;
           g.appendChild(svgEl("line", { x1: cx, y1: 0, x2: cx, y2: 2.6, class: "symbol-line", stroke }));
@@ -1921,66 +1922,66 @@
 
       function drawSelectorSwitch(g, element, stroke) {
         drawContact(g, element, false, stroke);
-        const w = Number(element.w || 18);
-        const h = Number(element.h || 14);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 9);
         const cx = w / 2;
-        g.appendChild(svgEl("line", { x1: cx - 3.8, y1: 1.2, x2: cx + 3.8, y2: 6, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: cx + 3.8, y1: 1.2, x2: cx - 3.8, y2: 6, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: cx, y1: 1.2, x2: cx, y2: Math.max(3, h / 2 - 1.5), class: "symbol-line", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, cx, -3, { fontSize: 2.4, anchor: "middle" }));
+        g.appendChild(svgEl("line", { x1: cx - 2.7, y1: 1, x2: cx + 2.7, y2: 4.2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: cx + 2.7, y1: 1, x2: cx - 2.7, y2: 4.2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: cx, y1: 1, x2: cx, y2: Math.max(2.8, h / 2 - 1), class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, cx, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawLimitSwitch(g, element, stroke) {
         drawContact(g, element, false, stroke);
-        const w = Number(element.w || 18);
-        const h = Number(element.h || 12);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 8);
         const cx = w / 2;
-        g.appendChild(svgEl("line", { x1: cx - 6, y1: 1.2, x2: cx + 6, y2: 1.2, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: cx, y1: 1.2, x2: cx, y2: Math.max(3, h / 2 - 1.2), class: "symbol-line", stroke }));
-        g.appendChild(svgEl("circle", { cx: cx + 6.8, cy: 1.2, r: 1.1, class: "symbol-fill", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, cx, -3, { fontSize: 2.4, anchor: "middle" }));
+        g.appendChild(svgEl("line", { x1: cx - 4.2, y1: 1, x2: cx + 4.2, y2: 1, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: cx, y1: 1, x2: cx, y2: Math.max(2.6, h / 2 - .9), class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx: cx + 4.8, cy: 1, r: .8, class: "symbol-fill", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, cx, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawFuse(g, element, stroke) {
-        const w = Number(element.w || 18);
-        const h = Number(element.h || 6);
-        const lead = Math.min(5, Math.max(3.5, w * .24));
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 4.5);
+        const lead = Math.min(3.5, Math.max(2.6, w * .24));
         const bodyX = lead;
         const bodyW = Math.max(5, w - lead * 2);
         g.appendChild(svgEl("line", { x1: 0, y1: h / 2, x2: bodyX, y2: h / 2, class: "symbol-line", stroke }));
         g.appendChild(svgEl("rect", { x: bodyX, y: 0, width: bodyW, height: h, class: "symbol-fill", stroke }));
         g.appendChild(svgEl("line", { x1: bodyX + bodyW, y1: h / 2, x2: w, y2: h / 2, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: bodyX + 1.6, y1: h - 1.1, x2: bodyX + bodyW - 1.6, y2: 1.1, class: "symbol-line", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+        g.appendChild(svgEl("line", { x1: bodyX + 1.1, y1: h - .8, x2: bodyX + bodyW - 1.1, y2: .8, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawBreaker(g, element, stroke) {
-        const w = Number(element.w || 16);
-        const h = Number(element.h || 10);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 7);
         const cy = h / 2;
-        const left = Math.max(4, w * .32);
-        const right = Math.min(w - 4, w * .72);
-        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: left - .9, y2: cy, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: right + .9, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("circle", { cx: left, cy, r: .85, class: "symbol-fill", stroke }));
-        g.appendChild(svgEl("circle", { cx: right, cy, r: .85, class: "symbol-fill", stroke }));
-        g.appendChild(svgEl("line", { x1: left + .9, y1: cy - .3, x2: right - .4, y2: Math.max(1.6, cy - 3.1), class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: right - 1.6, y1: cy + 2.4, x2: right + 1.6, y2: cy + 2.4, class: "symbol-line", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+        const left = Math.max(3, w * .32);
+        const right = Math.min(w - 3, w * .72);
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: left - .65, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: right + .65, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx: left, cy, r: .65, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("circle", { cx: right, cy, r: .65, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: left + .7, y1: cy - .2, x2: right - .3, y2: Math.max(1.1, cy - 2.25), class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: right - 1.1, y1: cy + 1.7, x2: right + 1.1, y2: cy + 1.7, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawCoil(g, element, stroke) {
-        const w = Number(element.w || 16);
-        const h = Number(element.h || 8);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 6);
         const cy = h / 2;
-        const bodyX = Math.max(3.2, w * .24);
+        const bodyX = Math.max(2.6, w * .24);
         const bodyW = Math.max(6, w - bodyX * 2);
         g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: bodyX, y2: cy, class: "symbol-line", stroke }));
         g.appendChild(svgEl("line", { x1: bodyX + bodyW, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("rect", { x: bodyX, y: 1, width: bodyW, height: h - 2, class: "symbol-fill", stroke }));
-        g.appendChild(svgEl("line", { x1: bodyX + bodyW * .35, y1: 1.4, x2: bodyX + bodyW * .35, y2: h - 1.4, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("line", { x1: bodyX + bodyW * .65, y1: 1.4, x2: bodyX + bodyW * .65, y2: h - 1.4, class: "symbol-line", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+        g.appendChild(svgEl("rect", { x: bodyX, y: .8, width: bodyW, height: h - 1.6, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: bodyX + bodyW * .35, y1: 1.1, x2: bodyX + bodyW * .35, y2: h - 1.1, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: bodyX + bodyW * .65, y1: 1.1, x2: bodyX + bodyW * .65, y2: h - 1.1, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawPowerSupply(g, element, stroke) {
@@ -2072,8 +2073,8 @@
       }
 
       function drawLamp(g, element, stroke) {
-        const w = Number(element.w || 14);
-        const h = Number(element.h || 14);
+        const w = Number(element.w || 10);
+        const h = Number(element.h || 10);
         if ((element.lampVariant || "pilot") === "cylinder") {
           drawCylinderLamp(g, element, stroke, w, h);
           return;
@@ -2085,7 +2086,7 @@
         g.appendChild(svgEl("line", { x1: cx + r, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
         g.appendChild(svgEl("circle", { cx, cy, r, class: "symbol-fill", stroke }));
         g.appendChild(svgEl("path", { d: "M " + (cx - r * .45) + " " + cy + " C " + (cx - r * .15) + " " + (cy - r * .45) + " " + (cx + r * .15) + " " + (cy - r * .45) + " " + (cx + r * .45) + " " + cy, class: "symbol-line", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, cx, -3, { fontSize: 2.4, anchor: "middle" }));
+        if (element.label) g.appendChild(textEl(element.label, cx, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawCylinderLamp(g, element, stroke, w, h) {
@@ -2098,12 +2099,12 @@
         g.appendChild(svgEl("line", { x1: bodyX + bodyW, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
         g.appendChild(svgEl("path", { d: "M " + bodyX + " " + (bodyY + 1) + " C " + bodyX + " " + (bodyY - .4) + " " + (bodyX + bodyW) + " " + (bodyY - .4) + " " + (bodyX + bodyW) + " " + (bodyY + 1), class: "symbol-line", stroke }));
         g.appendChild(svgEl("path", { d: "M " + bodyX + " " + (bodyY + 1) + " V " + (bodyY + bodyH - 1) + " C " + bodyX + " " + (bodyY + bodyH + .4) + " " + (bodyX + bodyW) + " " + (bodyY + bodyH + .4) + " " + (bodyX + bodyW) + " " + (bodyY + bodyH - 1) + " V " + (bodyY + 1), class: "symbol-line", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawBuzzer(g, element, stroke) {
-        const w = Number(element.w || 18);
-        const h = Number(element.h || 12);
+        const w = Number(element.w || 14);
+        const h = Number(element.h || 9);
         if ((element.buzzerVariant || "horn") === "speaker") {
           drawSpeakerBuzzer(g, element, stroke, w, h);
           return;
@@ -2116,7 +2117,7 @@
         g.appendChild(svgEl("path", { d: "M " + (throat + .7) + " " + (cy - 2.3) + " C " + (throat + 2.6) + " " + (cy - 4.5) + " " + (throat + 5.2) + " " + (cy - 4.2) + " " + (throat + 6.8) + " " + (cy - 2.4) + " L " + mouthX + " " + (cy - 4.9), class: "symbol-line", stroke }));
         g.appendChild(svgEl("path", { d: "M " + (throat + .7) + " " + (cy + 2.3) + " C " + (throat + 2.6) + " " + (cy + 4.5) + " " + (throat + 5.2) + " " + (cy + 4.2) + " " + (throat + 6.8) + " " + (cy + 2.4) + " L " + mouthX + " " + (cy + 4.9), class: "symbol-line", stroke }));
         g.appendChild(svgEl("path", { d: "M " + mouthX + " " + (cy - 4.9) + " C " + w + " " + (cy - 2) + " " + w + " " + (cy + 2) + " " + mouthX + " " + (cy + 4.9), class: "symbol-line", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawSpeakerBuzzer(g, element, stroke, w, h) {
@@ -2124,7 +2125,7 @@
         g.appendChild(svgEl("path", { d: "M 0 " + cy + " H " + (w * .24) + " L " + (w * .62) + " 2.2 V " + (h - 2.2) + " L " + (w * .24) + " " + cy, class: "symbol-line", stroke }));
         g.appendChild(svgEl("path", { d: "M " + (w * .72) + " " + (h * .3) + " C " + (w * .9) + " " + (h * .42) + " " + (w * .9) + " " + (h * .58) + " " + (w * .72) + " " + (h * .7), class: "symbol-line", stroke }));
         g.appendChild(svgEl("path", { d: "M " + (w * .84) + " " + (h * .18) + " C " + w + " " + (h * .38) + " " + w + " " + (h * .62) + " " + (w * .84) + " " + (h * .82), class: "symbol-line", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
       function drawSolenoidValve(g, element, stroke) {
@@ -3000,12 +3001,12 @@
 
       function resizeSingleTerminalForOrientation(element) {
         if (element.orientation === "vertical") {
-          element.w = 8;
-          element.h = 12;
+          element.w = 6;
+          element.h = 10;
           return;
         }
-        element.w = 12;
-        element.h = 8;
+        element.w = 10;
+        element.h = 6;
       }
 
       function escapeHtml(text) {
@@ -3030,27 +3031,27 @@
           underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
-          terminal: { ...base, w: 12, h: 8, label: "1", orientation: "horizontal", terminalShape: "circle" },
+          terminal: { ...base, w: 10, h: 6, label: "1", orientation: "horizontal", terminalShape: "circle" },
           terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "X1" },
-          contactNO: { ...base, w: 14, h: 10, label: "NO", orientation: "horizontal" },
-          contactNC: { ...base, w: 14, h: 10, label: "NC", orientation: "horizontal" },
-          pushButton: { ...base, w: 14, h: 12, label: "PB", orientation: "horizontal" },
-          selectorSwitch: { ...base, w: 18, h: 14, label: "SS", orientation: "horizontal" },
-          limitSwitch: { ...base, w: 18, h: 12, label: "LS", orientation: "horizontal" },
-          coil: { ...base, w: 16, h: 8, label: "CR" },
-          fuse: { ...base, w: 18, h: 6, label: "F" },
-          breaker: { ...base, w: 16, h: 10, label: "CB" },
-          lamp: { ...base, w: 14, h: 14, r: 5, label: "PL", lampVariant: "pilot" },
-          buzzer: { ...base, w: 18, h: 12, label: "BZ", buzzerVariant: "horn" },
+          contactNO: { ...base, w: 10, h: 7, label: "NO", orientation: "horizontal" },
+          contactNC: { ...base, w: 10, h: 7, label: "NC", orientation: "horizontal" },
+          pushButton: { ...base, w: 10, h: 8, label: "PB", orientation: "horizontal" },
+          selectorSwitch: { ...base, w: 12, h: 9, label: "SS", orientation: "horizontal" },
+          limitSwitch: { ...base, w: 12, h: 8, label: "LS", orientation: "horizontal" },
+          coil: { ...base, w: 12, h: 6, label: "CR" },
+          fuse: { ...base, w: 12, h: 4.5, label: "F" },
+          breaker: { ...base, w: 12, h: 7, label: "CB" },
+          lamp: { ...base, w: 10, h: 10, r: 3.5, label: "PL", lampVariant: "pilot" },
+          buzzer: { ...base, w: 14, h: 9, label: "BZ", buzzerVariant: "horn" },
           solenoidValve: { ...base, w: 26, h: 16, label: "SOL" },
           sensor: { ...base, w: 24, h: 14, label: "SEN" },
           powerSupply: { ...base, w: 34, h: 24, label: "PS" },
           transformer: { ...base, w: 24, h: 16, label: "T" },
-          ground: { ...base, w: 12, h: 14, label: "E" },
-          motor: { ...base, w: 18, h: 18, r: 6.3, label: "M" },
-          fan: { ...base, w: 16, h: 16, r: 6, label: "FAN" },
-          resistor: { ...base, w: 18, h: 6, label: "R" },
-          diode: { ...base, w: 18, h: 10, label: "D" },
+          ground: { ...base, w: 9, h: 10, label: "E" },
+          motor: { ...base, w: 14, h: 14, r: 5, label: "M" },
+          fan: { ...base, w: 14, h: 14, r: 5, label: "FAN" },
+          resistor: { ...base, w: 12, h: 4.5, label: "R" },
+          diode: { ...base, w: 12, h: 7, label: "D" },
           deviceBox: { ...base, w: 46, h: 30, label: "機器", pins: 4, pinText: "1\n2\n3\n4" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
@@ -3412,8 +3413,8 @@
       }
 
       function horizontalTerminalAt(cx, cy, label, shape = "square") {
-        const w = 10;
-        const h = 7;
+        const w = 9;
+        const h = 6;
         return {
           ...defaultElement("terminal", cx - w / 2, cy - h / 2),
           x: round(cx - w / 2),
@@ -3429,8 +3430,8 @@
       }
 
       function verticalTerminalAt(cx, cy, label, shape = "square") {
-        const w = 8;
-        const h = 12;
+        const w = 6;
+        const h = 10;
         return {
           ...defaultElement("terminal", cx - w / 2, cy - h / 2),
           x: round(cx - w / 2),
@@ -6474,8 +6475,8 @@
             dxfLineLocal(out, page, "SYMBOL", element, w / 2, 0, w / 2, h);
             for (let i = 0; i < count; i++) {
               const cy = pitch * i + pitch / 2;
-              dxfTerminalNodeLocal(out, page, "SYMBOL", element, w / 2, cy, Math.min(3.1, pitch * .35), shape);
-              dxfTextLocal(out, page, "TEXT", element, w / 2 - 1.2, cy + .8, 1.8, (element.prefix || "") + String(Number(element.start || 1) + i));
+              dxfTerminalNodeLocal(out, page, "SYMBOL", element, w / 2, cy, Math.min(2.8, pitch * .32), shape);
+              dxfTextLocal(out, page, "TEXT", element, w / 2 - 1.1, cy + .65, 1.7, (element.prefix || "") + String(Number(element.start || 1) + i));
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, w + 3, 0, 2.5, element.label);
           } else {
@@ -6483,8 +6484,8 @@
             dxfLineLocal(out, page, "SYMBOL", element, 0, h / 2, w, h / 2);
             for (let i = 0; i < count; i++) {
               const cx = pitch * i + pitch / 2;
-              dxfTerminalNodeLocal(out, page, "SYMBOL", element, cx, h / 2, Math.min(3.1, pitch * .35), shape);
-              dxfTextLocal(out, page, "TEXT", element, cx - 1.2, h / 2 + .8, 1.8, (element.prefix || "") + String(Number(element.start || 1) + i));
+              dxfTerminalNodeLocal(out, page, "SYMBOL", element, cx, h / 2, Math.min(2.8, pitch * .32), shape);
+              dxfTextLocal(out, page, "TEXT", element, cx - 1.1, h / 2 + .65, 1.7, (element.prefix || "") + String(Number(element.start || 1) + i));
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -3, 2.5, element.label);
           }
@@ -6509,9 +6510,11 @@
           dxfVisibleAttributes(out, page, element);
           return;
         }
-        if (["contactNO", "contactNC", "pushButton"].includes(element.type)) {
+        if (["contactNO", "contactNC", "pushButton", "selectorSwitch", "limitSwitch"].includes(element.type)) {
           dxfContactLocal(out, page, element, element.type === "contactNC");
           if (element.type === "pushButton") dxfPushButtonActuatorLocal(out, page, element);
+          if (element.type === "selectorSwitch") dxfSelectorSwitchActuatorLocal(out, page, element);
+          if (element.type === "limitSwitch") dxfLimitSwitchActuatorLocal(out, page, element);
           dxfVisibleAttributes(out, page, element);
           return;
         }
@@ -6537,6 +6540,16 @@
         }
         if (element.type === "buzzer") {
           dxfBuzzerLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
+        if (element.type === "solenoidValve") {
+          dxfSolenoidValveLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
+        if (element.type === "sensor") {
+          dxfSensorLocal(out, page, element);
           dxfVisibleAttributes(out, page, element);
           return;
         }
@@ -6567,6 +6580,16 @@
         }
         if (element.type === "transformer") {
           dxfTransformerLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
+        if (element.type === "cableBundle") {
+          dxfCableBundleLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
+        if (element.type === "terminalBox") {
+          dxfTerminalBoxLocal(out, page, element);
           dxfVisibleAttributes(out, page, element);
           return;
         }
@@ -6610,37 +6633,45 @@
           if (element.label) dxfTextLocal(out, page, "TEXT", element, -Math.max(5, String(element.label).length * 1.35), h / 2 + .8, 2.2, element.label);
           return;
         }
-        const w = Number(element.w || 14);
-        const h = Number(element.h || 10);
+        const w = Number(element.w || 10);
+        const h = Number(element.h || 7);
         const cy = h / 2;
-        const left = Math.max(3.2, w * .28);
-        const right = Math.min(w - 3.2, w * .72);
-        dxfLineLocal(out, page, "SYMBOL", element, 0, cy, left - 1, cy);
-        dxfLineLocal(out, page, "SYMBOL", element, right + 1, cy, w, cy);
-        dxfCircleLocal(out, page, "SYMBOL", element, left, cy, .85);
-        dxfCircleLocal(out, page, "SYMBOL", element, right, cy, .85);
-        dxfLineLocal(out, page, "SYMBOL", element, left + .8, cy - .2, right - .4, closed ? cy + .1 : cy - 3.2);
-        if (closed) dxfLineLocal(out, page, "SYMBOL", element, right - .5, cy - 3.1, right - .5, cy + 3.1);
-        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+        const left = Math.max(2.4, w * .3);
+        const right = Math.min(w - 2.4, w * .7);
+        const r = Math.min(.7, Math.max(.5, h * .09));
+        dxfLineLocal(out, page, "SYMBOL", element, 0, cy, left - .7, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, right + .7, cy, w, cy);
+        dxfCircleLocal(out, page, "SYMBOL", element, left, cy, r);
+        dxfCircleLocal(out, page, "SYMBOL", element, right, cy, r);
+        dxfLineLocal(out, page, "SYMBOL", element, left + .55, cy - .1, right - .3, closed ? cy + .05 : cy - 2.25);
+        if (closed) dxfLineLocal(out, page, "SYMBOL", element, right - .35, cy - 2.2, right - .35, cy + 2.2);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
       function dxfTerminalLocal(out, page, element) {
         const label = element.label || "1";
-        const w = Number(element.w || 12);
-        const h = Number(element.h || 8);
-        const r = Math.min(3.2, Math.max(2.4, Math.min(w, h) * .38));
+        const w = Number(element.w || 10);
+        const h = Number(element.h || 6);
+        const r = Math.min(2.45, Math.max(1.8, Math.min(w, h) * .36));
         const cx = w / 2;
         const cy = h / 2;
         const shape = element.terminalShape || "circle";
+        if (element.orientation === "vertical") {
+          dxfLineLocal(out, page, "SYMBOL", element, cx, 0, cx, cy - r);
+          dxfLineLocal(out, page, "SYMBOL", element, cx, cy + r, cx, h);
+          dxfTerminalNodeLocal(out, page, "SYMBOL", element, cx, cy, r, shape);
+          dxfTextLocal(out, page, "TEXT", element, cx + r + .8, cy + .55, 1.8, label);
+          return;
+        }
         dxfLineLocal(out, page, "SYMBOL", element, 0, cy, cx - r, cy);
         dxfLineLocal(out, page, "SYMBOL", element, cx + r, cy, w, cy);
         dxfTerminalNodeLocal(out, page, "SYMBOL", element, cx, cy, r, shape);
-        dxfTextLocal(out, page, "TEXT", element, cx - String(label).length * .6, cy + .7, 2.1, label);
+        dxfTextLocal(out, page, "TEXT", element, cx - String(label).length * .5, cy + .6, 1.8, label);
       }
 
       function dxfPushButtonActuatorLocal(out, page, element) {
-        const w = Number(element.w || (element.orientation === "vertical" ? 10 : 14));
-        const h = Number(element.h || (element.orientation === "vertical" ? 18 : 12));
+        const w = Number(element.w || (element.orientation === "vertical" ? 8 : 10));
+        const h = Number(element.h || (element.orientation === "vertical" ? 14 : 8));
         if (element.orientation === "vertical") {
           const cx = w / 2;
           dxfLineLocal(out, page, "SYMBOL", element, cx, 0, cx, 2.6);
@@ -6652,51 +6683,69 @@
         dxfLineLocal(out, page, "SYMBOL", element, Math.max(0, cx - 4), 0, Math.min(w, cx + 4), 0);
       }
 
+      function dxfSelectorSwitchActuatorLocal(out, page, element) {
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 9);
+        const cx = w / 2;
+        dxfLineLocal(out, page, "SYMBOL", element, cx - 2.7, 1, cx + 2.7, 4.2);
+        dxfLineLocal(out, page, "SYMBOL", element, cx + 2.7, 1, cx - 2.7, 4.2);
+        dxfLineLocal(out, page, "SYMBOL", element, cx, 1, cx, Math.max(2.8, h / 2 - 1));
+      }
+
+      function dxfLimitSwitchActuatorLocal(out, page, element) {
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 8);
+        const cx = w / 2;
+        dxfLineLocal(out, page, "SYMBOL", element, cx - 4.2, 1, cx + 4.2, 1);
+        dxfLineLocal(out, page, "SYMBOL", element, cx, 1, cx, Math.max(2.6, h / 2 - .9));
+        dxfCircleLocal(out, page, "SYMBOL", element, cx + 4.8, 1, .8);
+      }
+
       function dxfFuseLocal(out, page, element) {
-        const w = Number(element.w || 18);
-        const h = Number(element.h || 6);
-        const lead = Math.min(5, Math.max(3.5, w * .24));
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 4.5);
+        const lead = Math.min(3.5, Math.max(2.6, w * .24));
         const bodyX = lead;
         const bodyW = Math.max(5, w - lead * 2);
         dxfLineLocal(out, page, "SYMBOL", element, 0, h / 2, bodyX, h / 2);
         dxfRectLocal(out, page, "SYMBOL", element, bodyX, 0, bodyW, h);
         dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW, h / 2, w, h / 2);
-        dxfLineLocal(out, page, "SYMBOL", element, bodyX + 1.6, h - 1.1, bodyX + bodyW - 1.6, 1.1);
-        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + 1.1, h - .8, bodyX + bodyW - 1.1, .8);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
       function dxfBreakerLocal(out, page, element) {
-        const w = Number(element.w || 16);
-        const h = Number(element.h || 10);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 7);
         const cy = h / 2;
-        const left = Math.max(4, w * .32);
-        const right = Math.min(w - 4, w * .72);
-        dxfLineLocal(out, page, "SYMBOL", element, 0, cy, left - .9, cy);
-        dxfLineLocal(out, page, "SYMBOL", element, right + .9, cy, w, cy);
-        dxfCircleLocal(out, page, "SYMBOL", element, left, cy, .85);
-        dxfCircleLocal(out, page, "SYMBOL", element, right, cy, .85);
-        dxfLineLocal(out, page, "SYMBOL", element, left + .9, cy - .3, right - .4, Math.max(1.6, cy - 3.1));
-        dxfLineLocal(out, page, "SYMBOL", element, right - 1.6, cy + 2.4, right + 1.6, cy + 2.4);
-        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+        const left = Math.max(3, w * .32);
+        const right = Math.min(w - 3, w * .72);
+        dxfLineLocal(out, page, "SYMBOL", element, 0, cy, left - .65, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, right + .65, cy, w, cy);
+        dxfCircleLocal(out, page, "SYMBOL", element, left, cy, .65);
+        dxfCircleLocal(out, page, "SYMBOL", element, right, cy, .65);
+        dxfLineLocal(out, page, "SYMBOL", element, left + .7, cy - .2, right - .3, Math.max(1.1, cy - 2.25));
+        dxfLineLocal(out, page, "SYMBOL", element, right - 1.1, cy + 1.7, right + 1.1, cy + 1.7);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
       function dxfCoilLocal(out, page, element) {
-        const w = Number(element.w || 16);
-        const h = Number(element.h || 8);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 6);
         const cy = h / 2;
-        const bodyX = Math.max(3.2, w * .24);
+        const bodyX = Math.max(2.6, w * .24);
         const bodyW = Math.max(6, w - bodyX * 2);
         dxfLineLocal(out, page, "SYMBOL", element, 0, cy, bodyX, cy);
         dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW, cy, w, cy);
-        dxfRectLocal(out, page, "SYMBOL", element, bodyX, 1, bodyW, h - 2);
-        dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW * .35, 1.4, bodyX + bodyW * .35, h - 1.4);
-        dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW * .65, 1.4, bodyX + bodyW * .65, h - 1.4);
-        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+        dxfRectLocal(out, page, "SYMBOL", element, bodyX, .8, bodyW, h - 1.6);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW * .35, 1.1, bodyX + bodyW * .35, h - 1.1);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW * .65, 1.1, bodyX + bodyW * .65, h - 1.1);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
       function dxfLampLocal(out, page, element) {
-        const w = Number(element.w || 14);
-        const h = Number(element.h || 14);
+        const w = Number(element.w || 10);
+        const h = Number(element.h || 10);
         if ((element.lampVariant || "pilot") === "cylinder") {
           const cy = h / 2;
           const bodyX = Math.max(3.5, w * .3);
@@ -6709,7 +6758,7 @@
           dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW, bodyY + 1, bodyX + bodyW, bodyY + bodyH - 1);
           dxfEllipseApproxLocal(out, page, "SYMBOL", element, bodyX + bodyW / 2, bodyY + 1, bodyW / 2, 1.2);
           dxfEllipseApproxLocal(out, page, "SYMBOL", element, bodyX + bodyW / 2, bodyY + bodyH - 1, bodyW / 2, 1.2);
-          if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
           return;
         }
         const r = Number(element.r || Math.min(w, h) * .34);
@@ -6720,12 +6769,12 @@
         dxfCircleLocal(out, page, "SYMBOL", element, cx, cy, r);
         dxfLineLocal(out, page, "SYMBOL", element, cx - r * .45, cy, cx, cy - r * .32);
         dxfLineLocal(out, page, "SYMBOL", element, cx, cy - r * .32, cx + r * .45, cy);
-        if (element.label) dxfTextLocal(out, page, "TEXT", element, cx - String(element.label).length * .8, -3, 2.4, element.label);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, cx - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
       function dxfBuzzerLocal(out, page, element) {
-        const w = Number(element.w || 18);
-        const h = Number(element.h || 12);
+        const w = Number(element.w || 14);
+        const h = Number(element.h || 9);
         const cy = h / 2;
         if ((element.buzzerVariant || "horn") === "horn") {
           const throat = Math.max(4.2, w * .26);
@@ -6739,7 +6788,7 @@
           dxfLineLocal(out, page, "SYMBOL", element, mouthX, cy - 4.9, w, cy - 2);
           dxfLineLocal(out, page, "SYMBOL", element, w, cy - 2, w, cy + 2);
           dxfLineLocal(out, page, "SYMBOL", element, w, cy + 2, mouthX, cy + 4.9);
-          if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
           return;
         }
         dxfLineLocal(out, page, "SYMBOL", element, 0, cy, w * .24, cy);
@@ -6752,7 +6801,63 @@
         dxfLineLocal(out, page, "SYMBOL", element, w * .84, h * .18, w, h * .38);
         dxfLineLocal(out, page, "SYMBOL", element, w, h * .38, w, h * .62);
         dxfLineLocal(out, page, "SYMBOL", element, w, h * .62, w * .84, h * .82);
-        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
+      }
+
+      function dxfSolenoidValveLocal(out, page, element) {
+        const w = Number(element.w || 26);
+        const h = Number(element.h || 16);
+        const cy = h / 2;
+        const coilW = Math.max(7, w * .28);
+        const bodyX = coilW + 2;
+        const bodyW = Math.max(8, w - bodyX - 2);
+        dxfLineLocal(out, page, "SYMBOL", element, 0, cy, 2.5, cy);
+        dxfRectLocal(out, page, "SYMBOL", element, 2.5, 2, coilW, h - 4);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX, 2, bodyX + bodyW, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW, cy, bodyX, h - 2);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX, h - 2, bodyX, 2);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW, 2, bodyX + bodyW, h - 2);
+        dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW, cy, w, cy);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
+      }
+
+      function dxfSensorLocal(out, page, element) {
+        const w = Number(element.w || 24);
+        const h = Number(element.h || 14);
+        const cy = h / 2;
+        dxfLineLocal(out, page, "SYMBOL", element, 0, cy, 4, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, w - 4, cy, w, cy);
+        dxfRectLocal(out, page, "SYMBOL", element, 4, 2, w - 8, h - 4);
+        dxfLineLocal(out, page, "SYMBOL", element, 7, 5, w - 10, 5);
+        dxfLineLocal(out, page, "SYMBOL", element, 7, h - 5, w - 7, h - 5);
+        dxfLineLocal(out, page, "SYMBOL", element, w - 4, cy - 4, w, cy - 8);
+        dxfLineLocal(out, page, "SYMBOL", element, w - 3, cy, w + 2, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, w - 4, cy + 4, w, cy + 8);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
+      }
+
+      function dxfCableBundleLocal(out, page, element) {
+        const w = Number(element.w || 32);
+        const h = Number(element.h || 18);
+        dxfLineLocal(out, page, "SYMBOL", element, 0, h * .2, w, h * .2);
+        dxfLineLocal(out, page, "SYMBOL", element, 0, h * .5, w, h * .5);
+        dxfLineLocal(out, page, "SYMBOL", element, 0, h * .8, w, h * .8);
+        dxfRectLocal(out, page, "SYMBOL", element, w * .42, 1.5, w * .18, h - 3);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
+      }
+
+      function dxfTerminalBoxLocal(out, page, element) {
+        const w = Number(element.w || 22);
+        const h = Number(element.h || 18);
+        const rows = Math.max(2, Number(element.rows || 3));
+        dxfRectLocal(out, page, "SYMBOL", element, 0, 0, w, h);
+        for (let i = 1; i < rows; i++) dxfLineLocal(out, page, "SYMBOL", element, 0, h * i / rows, w, h * i / rows);
+        for (let i = 0; i < rows; i++) {
+          const y = h * (i + .5) / rows;
+          dxfLineLocal(out, page, "SYMBOL", element, -5, y, 0, y);
+          dxfLineLocal(out, page, "SYMBOL", element, w, y, w + 5, y);
+        }
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
       function dxfGroundLocal(out, page, element) {
