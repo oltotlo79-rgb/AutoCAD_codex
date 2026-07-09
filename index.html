@@ -1999,6 +1999,7 @@
         const count = Math.max(1, Number(element.count || 8));
         const vertical = element.orientation === "vertical";
         const unit = element.type === "terminalStrip" && element.stripStyle === "unit" && vertical;
+        const levels = unit && Number(element.levels) === 2 ? 2 : 1;
         const pitchSize = element.type === "connector" ? 7 : 8;
         const w = Number(element.w || (vertical ? 12 : count * pitchSize));
         const h = Number(element.h || (vertical ? count * pitchSize : 12));
@@ -2006,6 +2007,8 @@
           count,
           vertical,
           unit,
+          levels,
+          nodes: count * levels,
           w,
           h,
           pitch: (vertical ? h : w) / count,
@@ -2013,9 +2016,13 @@
         };
       }
 
+      // index が count 以上のときは2段目(右列)のノードを返す
       function terminalStripNodeLocal(element, index) {
         const geo = terminalStripGeometry(element);
-        if (geo.unit) return { x: 0, y: geo.pitch * index + geo.pitch / 2 };
+        if (geo.unit) {
+          const level2 = index >= geo.count;
+          return { x: level2 ? geo.w : 0, y: geo.pitch * (index % geo.count) + geo.pitch / 2 };
+        }
         return geo.vertical
           ? { x: geo.w / 2, y: geo.pitch * index + geo.pitch / 2 }
           : { x: geo.pitch * index + geo.pitch / 2, y: geo.h / 2 };
@@ -2029,6 +2036,11 @@
       function terminalLabel(element, index) {
         const custom = String(element.terminalLabels || "").split(/\r?\n/);
         if (custom[index] && custom[index].trim()) return custom[index].trim();
+        const count = Math.max(1, Number(element.count || 8));
+        if (element.stripStyle === "unit" && Number(element.levels) === 2 && index >= count) {
+          const prefix2 = element.prefix2 !== undefined && element.prefix2 !== "" ? element.prefix2 : (element.prefix || "");
+          return prefix2 + String(Number(element.start2 || element.start || 1) + (index - count));
+        }
         return (element.prefix || "") + String(Number(element.start || 1) + index);
       }
 
@@ -2064,11 +2076,12 @@
           g.appendChild(svgEl("line", { x1: w, y1: 0, x2: w, y2: geo.h, class: "symbol-line", stroke }));
           g.appendChild(svgEl("path", { d: wave(0), class: "symbol-line", stroke, fill: "none" }));
           g.appendChild(svgEl("path", { d: wave(geo.h), class: "symbol-line", stroke, fill: "none" }));
-          for (let i = 0; i < geo.count; i++) {
-            const cy = geo.pitch * i + geo.pitch / 2;
+          for (let i = 0; i < geo.nodes; i++) {
+            const cy = geo.pitch * (i % geo.count) + geo.pitch / 2;
             const r = Math.min(3.5, geo.pitch * .37);
-            g.appendChild(svgEl("circle", { cx: w / 2, cy, r, class: "terminal-dot", stroke }));
-            g.appendChild(textEl(terminalLabel(element, i), w / 2, cy, { fontSize: 2, anchor: "middle" }));
+            const cx = geo.levels === 2 ? (i < geo.count ? 4.5 : w - 4.5) : w / 2;
+            g.appendChild(svgEl("circle", { cx, cy, r, class: "terminal-dot", stroke }));
+            g.appendChild(textEl(terminalLabel(element, i), cx, cy, { fontSize: 2, anchor: "middle" }));
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
           const unitJumperStart = Number(element.start || 1);
@@ -4083,6 +4096,16 @@
             <input data-bind="prefix" type="text" value="${escapeAttr(element.prefix || "")}">
             <label>ジャンパ(例: 1-2;3-5)</label>
             <input data-bind="jumpers" type="text" value="${escapeAttr(element.jumpers || "")}" placeholder="1-2;3-5">
+            ${element.type === "terminalStrip" ? `
+            <label>段数（ユニット列のみ）</label>
+            <select data-bind="levels" data-kind="number">
+              <option value="1"${Number(element.levels) !== 2 ? " selected" : ""}>1段</option>
+              <option value="2"${Number(element.levels) === 2 ? " selected" : ""}>2段（左右2列）</option>
+            </select>
+            <div class="row">
+              <div><label>2段目開始</label><input data-bind="start2" data-kind="number" type="number" step="1" value="${Number(element.start2 || element.start || 1)}"></div>
+              <div><label>2段目接頭辞</label><input data-bind="prefix2" type="text" value="${escapeAttr(element.prefix2 || "")}"></div>
+            </div>` : ""}
             <label>端子名（1行1点・空行は自動番号）</label>
             <textarea data-bind="terminalLabels">${escapeHtml(element.terminalLabels || "")}</textarea>
           `;
@@ -4252,7 +4275,7 @@
               item.id !== element.id && item.type === element.type && componentTag(item) === value));
             if (dup) setStatus("注意: 同種部品でタグ「" + value + "」が重複しています。");
           }
-          if (["orientation", "count", "stripStyle"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element);
+          if (["orientation", "count", "stripStyle", "levels"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element);
           if (key === "orientation" && element.type === "terminal" && !resizeGeoElementForOrientation(element)) resizeSingleTerminalForOrientation(element);
           if (key === "orientation" && ["contactNO", "contactNC", "pushButton", "selectorSwitch", "limitSwitch", "pressureSwitch", "thermalRelay", "thermalElement", "contactBlock"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeContactElementForOrientation(element);
           if (key === "orientation" && ["fuse", "breaker", "resistor"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
@@ -4302,7 +4325,7 @@
       function resizeTerminalElementForOrientation(element) {
         const count = Math.max(1, Number(element.count || 8));
         if (element.type === "terminalStrip" && element.stripStyle === "unit" && element.orientation === "vertical") {
-          element.w = 10.5;
+          element.w = Number(element.levels) === 2 ? 16 : 10.5;
           element.h = count * 9.5;
           return;
         }
@@ -4481,7 +4504,7 @@
           }
           if (element.type === "terminalStrip" || element.type === "connector") {
             const geo = terminalStripGeometry(element);
-            for (let i = 0; i < geo.count; i++) {
+            for (let i = 0; i < (geo.nodes || geo.count); i++) {
               anchors.push({ ...terminalStripNodeGlobal(element, i), elementId: element.id, kind: "terminal" });
             }
             return;
@@ -6298,9 +6321,10 @@
             .filter(element => ["terminalStrip", "connector"].includes(element.type))
             .forEach(strip => {
               const count = Math.max(1, Number(strip.count || 1));
+              const total = strip.stripStyle === "unit" && Number(strip.levels) === 2 ? count * 2 : count;
               const start = Number(strip.start || 1);
               const jumperPairs = terminalJumperPairs(strip);
-              for (let i = 0; i < count; i++) {
+              for (let i = 0; i < total; i++) {
                 const node = terminalStripNodeGlobal(strip, i);
                 // 端子小円を挟んで配線が届く構成があるため、許容は2.5mmとする
                 const wires = page.elements.filter(wire => wire.type === "wire"
@@ -6312,10 +6336,9 @@
                   return nearestElementName(page, far[0], far[1], wire.id);
                 }).filter(Boolean)));
                 const no = start + i;
-                const jumpers = jumperPairs
-                  .filter(([a, b]) => a === no || b === no)
-                  .map(pair => pair.join("-"))
-                  .join(",");
+                const jumpers = i < count
+                  ? jumperPairs.filter(([a, b]) => a === no || b === no).map(pair => pair.join("-")).join(",")
+                  : "";
                 out.push({
                   page: page.name,
                   strip: strip.label || paletteLabel(strip.type),
@@ -8087,7 +8110,8 @@
               rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: joinDetails(["single", electricalAttributeDetail(element), noteDetail(element)]) });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
               const count = Number(element.count || 1);
-              for (let i = 0; i < count; i++) {
+              const totalNodes = element.stripStyle === "unit" && Number(element.levels) === 2 ? count * 2 : count;
+              for (let i = 0; i < totalNodes; i++) {
                 rows.push({
                   record: "terminal",
                   ...base,
@@ -9207,12 +9231,14 @@
                 dxfLineLocal(out, page, "SYMBOL", element, wavePts[i - 1][0], wavePts[i - 1][1], wavePts[i][0], wavePts[i][1]);
               }
             });
-            for (let i = 0; i < count; i++) {
-              const cy = pitch * i + pitch / 2;
+            const unitLevels = Number(element.levels) === 2 ? 2 : 1;
+            for (let i = 0; i < count * unitLevels; i++) {
+              const cy = pitch * (i % count) + pitch / 2;
               const r = Math.min(3.5, pitch * .37);
-              dxfCircleLocal(out, page, "SYMBOL", element, w / 2, cy, r);
+              const cx = unitLevels === 2 ? (i < count ? 4.5 : w - 4.5) : w / 2;
+              dxfCircleLocal(out, page, "SYMBOL", element, cx, cy, r);
               const label = terminalLabel(element, i);
-              dxfTextLocal(out, page, "TEXT", element, w / 2 - label.length * .6, cy + .7, 2, label);
+              dxfTextLocal(out, page, "TEXT", element, cx - label.length * .6, cy + .7, 2, label);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
             const unitJumperStart = Number(element.start || 1);
@@ -10426,7 +10452,7 @@
         if (!element || element.points) return [];
         if (element.type === "terminalStrip" || element.type === "connector") {
           const geo = terminalStripGeometry(element);
-          return Array.from({ length: geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
+          return Array.from({ length: geo.nodes || geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
         }
         if (element.type === "junction") return [{ x: element.x || 0, y: element.y || 0 }];
         return elementConnectionAnchors(element);
@@ -10467,7 +10493,7 @@
         if (element.type === "junction") return [{ x: element.x || 0, y: element.y || 0 }];
         if (element.type === "terminalStrip" || element.type === "connector") {
           const geo = terminalStripGeometry(element);
-          return Array.from({ length: geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
+          return Array.from({ length: geo.nodes || geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
         }
         const anchors = elementConnectionAnchors(element);
         if (anchors.length) return anchors;
