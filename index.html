@@ -1817,14 +1817,14 @@
       function drawTerminalStrip(g, element, stroke) {
         const geo = terminalStripGeometry(element);
         if (geo.vertical) {
-          const bodyW = Math.max(geo.w, 10);
+          const bodyW = Math.max(geo.w, 8);
           g.appendChild(svgEl("rect", {
             x: (geo.w - bodyW) / 2,
             y: 0,
             width: bodyW,
             height: geo.h,
-            rx: Math.min(bodyW / 2, 4),
-            ry: Math.min(bodyW / 2, 4),
+            rx: Math.min(bodyW / 2, 3.2),
+            ry: Math.min(bodyW / 2, 3.2),
             class: "symbol-line",
             stroke,
             fill: "none"
@@ -3355,16 +3355,16 @@
 
       function addReferenceTerminalWiringSet(page, x, y, options = {}) {
         const pitch = 8.6;
-        const stripW = 12;
+        const stripW = 9.5;
         const groupCount = 8;
         const groupH = groupCount * pitch;
-        const gap = 15;
+        const gap = 16;
         const busX = x + 8;
         const stripX = x + 132;
         const topY = y + 6;
         const lowerY = topY + groupH + gap;
-        const inlineX = x + 42;
-        const rightTextX = stripX + 18;
+        const tagX = x + 30;
+        const rightTextX = stripX + stripW + 8;
         const leftStrip = referenceTerminalStrip(stripX, topY, stripW, groupH, groupCount, 1, options.label || "X1", "vertical");
         const rightStrip = referenceTerminalStrip(stripX, lowerY, stripW, groupH, groupCount, 11, "", "vertical");
         page.elements.push(leftStrip, rightStrip);
@@ -3408,21 +3408,20 @@
             stroke: state.settings.stroke,
             layer: "wires"
           });
-          page.elements.push(horizontalTerminalAt(inlineX, node.y, no, "square"));
           page.elements.push({
             id: uid("el"),
             type: "junction",
             x: round(wireStartX),
             y: round(node.y),
-            w: 4,
-            h: 4,
-            r: 1.05,
+            w: 2.4,
+            h: 2.4,
+            r: .55,
             label: "",
             stroke: state.settings.stroke,
             layer: "symbols"
           });
-          page.elements.push(textElement(rightTextX, node.y - 1.2, (options.signalPrefix || "SIG") + String(terminalNo).padStart(2, "0"), 2.2, 0, 42));
-          page.elements.push(textElement(inlineX - 7.5, node.y - 2.7, wireNo, 1.9, 0, 16));
+          page.elements.push(textElement(tagX, node.y - 2.3, "X" + String(terminalNo).padStart(2, "0"), 1.7, 0, 12));
+          page.elements.push(textElement(rightTextX, node.y - 1.1, (options.signalPrefix || "SIG") + String(terminalNo).padStart(2, "0"), 1.9, 0, 42));
         });
       }
 
