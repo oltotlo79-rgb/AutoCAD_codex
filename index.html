@@ -3322,6 +3322,27 @@
         ]);
       }
 
+      function wireBreakingTypes() {
+        return new Set([
+          "contactNO",
+          "contactNC",
+          "pushButton",
+          "selectorSwitch",
+          "limitSwitch",
+          "coil",
+          "fuse",
+          "breaker",
+          "lamp",
+          "buzzer",
+          "resistor",
+          "capacitor",
+          "diode",
+          "thermalRelay",
+          "motor",
+          "fan"
+        ]);
+      }
+
       function defaultElementAtPlacement(type, x, y) {
         const element = defaultElement(type, x, y);
         if (centerPlacedTypes().has(type)) {
@@ -3352,10 +3373,68 @@
         }
         const element = defaultElementAtPlacement(type, x, y);
         page.elements.push(element);
+        breakWiresForInlineElement(page, element);
         selectSingle(element.id);
         commitHistory("要素を配置しました。");
         setActiveTool("select");
         render();
+      }
+
+      function breakWiresForInlineElement(page, element) {
+        if (!page || !element || !wireBreakingTypes().has(element.type)) return;
+        const anchors = elementConnectionAnchors(element);
+        if (anchors.length < 2) return;
+        const a = anchors[0];
+        const b = anchors[anchors.length - 1];
+        const horizontal = Math.abs(a.y - b.y) < .35;
+        const vertical = Math.abs(a.x - b.x) < .35;
+        if (!horizontal && !vertical) return;
+        const low = horizontal ? Math.min(a.x, b.x) : Math.min(a.y, b.y);
+        const high = horizontal ? Math.max(a.x, b.x) : Math.max(a.y, b.y);
+        const axis = horizontal ? a.y : a.x;
+        const replacement = [];
+        let changed = false;
+        page.elements.forEach(item => {
+          if (item.id === element.id || item.type !== "wire" || !Array.isArray(item.points) || item.points.length !== 2) {
+            replacement.push(item);
+            return;
+          }
+          const [p0, p1] = item.points;
+          const wireHorizontal = Math.abs(p0[1] - p1[1]) < .01;
+          const wireVertical = Math.abs(p0[0] - p1[0]) < .01;
+          if ((horizontal && !wireHorizontal) || (vertical && !wireVertical)) {
+            replacement.push(item);
+            return;
+          }
+          const wireAxis = horizontal ? p0[1] : p0[0];
+          if (Math.abs(wireAxis - axis) > .45) {
+            replacement.push(item);
+            return;
+          }
+          const start = horizontal ? p0[0] : p0[1];
+          const end = horizontal ? p1[0] : p1[1];
+          const min = Math.min(start, end);
+          const max = Math.max(start, end);
+          if (low <= min + .6 || high >= max - .6 || low >= high) {
+            replacement.push(item);
+            return;
+          }
+          const beforeEnd = horizontal ? [round(low), round(wireAxis)] : [round(wireAxis), round(low)];
+          const afterStart = horizontal ? [round(high), round(wireAxis)] : [round(wireAxis), round(high)];
+          const leftFirst = start <= end;
+          const before = deepClone(item);
+          const after = deepClone(item);
+          before.id = uid("el");
+          after.id = uid("el");
+          before.points = leftFirst ? [p0, beforeEnd] : [p0, afterStart];
+          after.points = leftFirst ? [afterStart, p1] : [beforeEnd, p1];
+          before.points = before.points.map(point => [round(point[0]), round(point[1])]);
+          after.points = after.points.map(point => [round(point[0]), round(point[1])]);
+          after.hideWireNo = true;
+          replacement.push(before, after);
+          changed = true;
+        });
+        if (changed) page.elements = replacement;
       }
 
       function placeCustomSymbol(id, x, y) {
