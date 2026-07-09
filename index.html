@@ -638,6 +638,7 @@
               <option value="reportTable">図面要素一覧</option>
               <option value="insertReport">帳票表挿入</option>
               <option value="bom">部品集計表(BOM)</option>
+              <option value="terminalPlan">端子台プラン表</option>
             </optgroup>
             <optgroup label="取込・出力">
               <option value="terminalCsv">端子CSV取込</option>
@@ -2025,6 +2026,8 @@
       }
 
       function terminalLabel(element, index) {
+        const custom = String(element.terminalLabels || "").split(/\r?\n/);
+        if (custom[index] && custom[index].trim()) return custom[index].trim();
         return (element.prefix || "") + String(Number(element.start || 1) + index);
       }
 
@@ -4072,6 +4075,8 @@
             <input data-bind="prefix" type="text" value="${escapeAttr(element.prefix || "")}">
             <label>ジャンパ(例: 1-2;3-5)</label>
             <input data-bind="jumpers" type="text" value="${escapeAttr(element.jumpers || "")}" placeholder="1-2;3-5">
+            <label>端子名（1行1点・空行は自動番号）</label>
+            <textarea data-bind="terminalLabels">${escapeHtml(element.terminalLabels || "")}</textarea>
           `;
         }
         if (element.type === "table") {
@@ -5222,18 +5227,18 @@
       }
 
       function addTerminalCsvPages(rows, fileName) {
-        const perPage = 20;
+        const perPage = 17;
         const created = [];
         for (let offset = 0; offset < rows.length; offset += perPage) {
           const chunk = rows.slice(offset, offset + perPage);
           const pageNo = Math.floor(offset / perPage) + 1;
           const totalPages = Math.ceil(rows.length / perPage);
           const page = createPage({
-            name: "端子CSV" + (state.pages.length + pageNo),
+            name: "端子接続図",
             size: "A4",
-            orientation: "landscape",
-            frameVariant: "side",
-            title: "端子接続図"
+            orientation: "portrait",
+            frameVariant: "ladder",
+            title: "端子接続図 " + pageNo + "/" + totalPages
           });
           populateTerminalCsvPage(page, chunk, pageNo, totalPages, fileName, offset);
           state.pages.push(page);
@@ -5245,124 +5250,42 @@
         render();
       }
 
+      // 端子台配線図の型: レール + 横配線(線番は終点寄せ) + 端子小円 + ユニット列端子台。
+      // 端子名はCSVの値を terminalLabels として端子円内に表示する。
       function populateTerminalCsvPage(page, rows, pageNo, totalPages, fileName, offset) {
-        const startX = 38;
-        const startY = 58;
-        const stripW = 184;
-        const pitch = stripW / Math.max(1, rows.length);
-        const bottomY = 148;
-        const stripName = mostCommon(rows.map(row => row.strip).filter(Boolean)) || "X1";
-        page.elements.push({
-          id: uid("el"),
-          type: "text",
-          x: 18,
-          y: 28,
-          w: 112,
-          h: 8,
-          text: "端子接続図 " + pageNo + "/" + totalPages,
-          fontSize: 4,
-          rotation: 0,
-          stroke: state.settings.stroke,
-          layer: "notes"
-        });
-        page.elements.push({
-          id: uid("el"),
-          type: "text",
-          x: 18,
-          y: 36,
-          w: 140,
-          h: 6,
-          text: "取込元: " + fileName,
-          fontSize: 2.4,
-          rotation: 0,
-          stroke: state.settings.stroke,
-          layer: "notes"
-        });
-        page.elements.push({
-          id: uid("el"),
-          type: "terminalStrip",
-          x: startX,
-          y: startY,
-          w: stripW,
-          h: 12,
+        const stripName = mostCommon(rows.map(row => row.strip).filter(Boolean)) || "TB1";
+        page.elements.push(...facilityRailElements("P1", 32.5, "+", 22));
+        page.elements.push(...facilityRailElements("N1", 146.5, "-", 22));
+        const strip = {
+          ...defaultElement("terminalStrip", 130.5, 31.75),
+          x: 130.5,
+          y: 31.75,
+          w: 10.5,
+          h: rows.length * 9.5,
           count: rows.length,
           start: 1 + offset,
           prefix: "",
+          orientation: "vertical",
+          terminalShape: "circle",
+          stripStyle: "unit",
           label: stripName,
-          rotation: 0,
-          stroke: state.settings.stroke,
-          layer: "symbols"
-        });
+          terminalLabels: rows.map(row => row.terminal || "").join("\n"),
+          note: "取込元: " + fileName
+        };
+        page.elements.push(strip);
         rows.forEach((row, index) => {
-          const x = startX + pitch * index + pitch / 2;
-          const terminal = row.terminal || String(offset + index + 1);
+          const y = round(36.5 + 9.5 * index);
+          page.elements.push(defaultElement("junction", 32.5, y));
           page.elements.push({
-            id: uid("el"),
-            type: "wire",
-            points: [[x, startY + 8], [x, bottomY]],
+            ...defaultElement("wire", 32.5, y),
+            points: [[32.5, y], [128.4, y]],
             wireNo: row.wireNo || "",
-            wireType: state.settings.currentWireType,
-            stroke: state.settings.stroke,
-            layer: "wires"
-          });
-          page.elements.push({
-            id: uid("el"),
-            type: "terminal",
-            x,
-            y: bottomY,
-            w: 20,
-            h: 10,
-            label: terminal,
-            rotation: 90,
-            stroke: state.settings.stroke,
-            layer: "symbols",
+            wireNoAlign: "end",
             note: row.note || ""
           });
-          if (row.signal) {
-            page.elements.push({
-              id: uid("el"),
-              type: "text",
-              x: x - 2,
-              y: startY - 10,
-              w: 34,
-              h: 5,
-              text: row.signal,
-              fontSize: 2.25,
-              rotation: -90,
-              stroke: state.settings.stroke,
-              layer: "notes"
-            });
-          }
-          if (row.dest) {
-            page.elements.push({
-              id: uid("el"),
-              type: "text",
-              x: x - 2,
-              y: bottomY + 34,
-              w: 42,
-              h: 5,
-              text: row.dest,
-              fontSize: 2.25,
-              rotation: -90,
-              stroke: state.settings.stroke,
-              layer: "notes"
-            });
-          }
-        });
-        page.elements.push({
-          id: uid("el"),
-          type: "table",
-          x: 18,
-          y: 168,
-          w: 222,
-          h: 24,
-          rows: Math.min(rows.length + 1, 6),
-          cols: 4,
-          label: "端子一覧",
-          cellText: ["端子\t線番\t信号\t接続先", ...rows.slice(0, 5).map(row => [row.terminal, row.wireNo, row.signal, row.dest].join("\t"))].join("\n"),
-          rotation: 0,
-          stroke: state.settings.stroke,
-          layer: "notes"
+          page.elements.push({ ...defaultElement("terminal", 0, 0), x: 128.4, y: round(y - 0.9), label: "" });
+          const desc = [row.signal, row.dest].filter(Boolean).join(" ");
+          if (desc) page.elements.push(textElement(149.5, y - 1.2, desc, 2.3, 0, 42));
         });
       }
 
@@ -6266,6 +6189,90 @@
           selectSingle(table.id);
           closeDialog();
           commitHistory("BOM表を挿入しました。");
+          render();
+        });
+      }
+
+      // ===== 端子台プラン表(端子ごとの配線・接続先一覧) =====
+      function collectTerminalPlanRows() {
+        const out = [];
+        state.pages.forEach(page => {
+          page.elements
+            .filter(element => ["terminalStrip", "connector"].includes(element.type))
+            .forEach(strip => {
+              const count = Math.max(1, Number(strip.count || 1));
+              const start = Number(strip.start || 1);
+              const jumperPairs = terminalJumperPairs(strip);
+              for (let i = 0; i < count; i++) {
+                const node = terminalStripNodeGlobal(strip, i);
+                // 端子小円を挟んで配線が届く構成があるため、許容は2.5mmとする
+                const wires = page.elements.filter(wire => wire.type === "wire"
+                  && wireEndpointsOf(wire).some(point => Math.hypot(point[0] - node.x, point[1] - node.y) <= 2.5));
+                const wireNos = Array.from(new Set(wires.map(wire => wire.wireNo).filter(Boolean)));
+                const dests = Array.from(new Set(wires.map(wire => {
+                  const ends = wireEndpointsOf(wire);
+                  const far = Math.hypot(ends[0][0] - node.x, ends[0][1] - node.y) <= 2.5 ? ends[1] : ends[0];
+                  return nearestElementName(page, far[0], far[1], wire.id);
+                }).filter(Boolean)));
+                const no = start + i;
+                const jumpers = jumperPairs
+                  .filter(([a, b]) => a === no || b === no)
+                  .map(pair => pair.join("-"))
+                  .join(",");
+                out.push({
+                  page: page.name,
+                  strip: strip.label || paletteLabel(strip.type),
+                  terminal: terminalLabel(strip, i),
+                  wireNo: wireNos.join(" / "),
+                  dest: dests.join(" / "),
+                  jumpers
+                });
+              }
+            });
+        });
+        return out;
+      }
+
+      function showTerminalPlan() {
+        const rows = collectTerminalPlanRows();
+        const html = rows.length
+          ? `<table class="report-table"><thead><tr><th>ページ</th><th>端子台</th><th>端子</th><th>線番</th><th>接続先</th><th>ジャンパ</th></tr></thead>
+             <tbody>${rows.map(row => `<tr><td>${escapeHtml(row.page)}</td><td>${escapeHtml(row.strip)}</td><td>${escapeHtml(row.terminal)}</td><td>${escapeHtml(row.wireNo)}</td><td>${escapeHtml(row.dest)}</td><td>${escapeHtml(row.jumpers)}</td></tr>`).join("")}</tbody></table>
+             <div class="inline" style="justify-content:flex-end;margin-top:12px">
+               <button type="button" id="terminalPlanCsvBtn">CSV出力</button>
+               <button type="button" id="terminalPlanInsertBtn" class="primary">表として挿入</button>
+             </div>`
+          : '<p class="muted">端子台またはコネクタがありません。</p>';
+        openDialog("端子台プラン表", html);
+        qs("#terminalPlanCsvBtn")?.addEventListener("click", () => {
+          const headers = ["page", "strip", "terminal", "wireNo", "dest", "jumpers"];
+          const csv = [headers.join(","), ...collectTerminalPlanRows().map(row => headers.map(h => csvCell(row[h])).join(","))].join("\r\n");
+          download("terminal-plan.csv", csv, "text/csv;charset=utf-8");
+          setStatus("端子台プラン表CSVを書き出しました。");
+        });
+        qs("#terminalPlanInsertBtn")?.addEventListener("click", () => {
+          const page = currentPage();
+          if (!page) return;
+          const body = collectTerminalPlanRows().slice(0, 24).map(row =>
+            [row.strip, row.terminal, row.wireNo, row.dest, row.jumpers].join("\t"));
+          if (!body.length) {
+            setStatus("挿入できる端子台プラン行がありません。");
+            return;
+          }
+          const table = {
+            ...defaultElement("table", 22, 42),
+            rows: body.length + 1,
+            cols: 5,
+            w: Math.min(pageSize(page).w - 44, 170),
+            h: Math.max(28, (body.length + 1) * 6),
+            label: "端子台プラン表",
+            cellText: ["端子台\t端子\t線番\t接続先\tジャンパ", ...body].join("\n"),
+            reportTable: true
+          };
+          page.elements.push(table);
+          selectSingle(table.id);
+          closeDialog();
+          commitHistory("端子台プラン表を挿入しました。");
           render();
         });
       }
@@ -7963,7 +7970,7 @@
                 rows.push({
                   record: "terminal",
                   ...base,
-                  name: (element.prefix || "") + String(Number(element.start || 1) + i),
+                  name: terminalLabel(element, i),
                   x: Number(element.x || 0),
                   y: Number(element.y || 0),
                   x2: "",
@@ -9929,6 +9936,7 @@
           reportTable: showReportTable,
           insertReport: showInsertReportDialog,
           bom: showBomTable,
+          terminalPlan: showTerminalPlan,
           terminalCsv: () => qs("#terminalCsvInput").click(),
           plcCsv: () => qs("#plcCsvInput").click(),
           importDxf: () => qs("#dxfImportInput").click(),
@@ -10526,4 +10534,3 @@
   </script>
 </body>
 </html>
-
