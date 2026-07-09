@@ -831,6 +831,7 @@
         { type: "terminalSheet", label: "端子配線セット", icon: "sheet" },
         { type: "contactNO", label: "a接点", icon: "contactNO" },
         { type: "contactNC", label: "b接点", icon: "contactNC" },
+        { type: "contactBlock", label: "接点ブロック", icon: "contactBlock" },
         { type: "pushButton", label: "押しボタン", icon: "pushButton" },
         { type: "selectorSwitch", label: "切替スイッチ", icon: "selectorSwitch" },
         { type: "limitSwitch", label: "リミットスイッチ", icon: "limitSwitch" },
@@ -864,6 +865,7 @@
       const DEFAULT_TAG_PREFIXES = {
         contactNO: "CR",
         contactNC: "CR",
+        contactBlock: "CR",
         pushButton: "PB",
         selectorSwitch: "SS",
         limitSwitch: "LS",
@@ -1163,6 +1165,7 @@
           sheet: `<svg ${common}><path ${thin} d="M12 34h56M20 12v22M34 12v22M48 12v22M62 12v22"/><path ${stroke} d="M12 12h56"/></svg>`,
           contactNO: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10"/></svg>`,
           contactNC: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10M50 13v18"/></svg>`,
+          contactBlock: `<svg ${common}><rect x="20" y="9" width="40" height="26" ${thin} stroke-dasharray="4 3"/><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10"/></svg>`,
           pushButton: `<svg ${common}><path ${stroke} d="M8 25h18M54 25h18M40 7v12M30 7h20"/><circle cx="28" cy="25" r="3" ${thin}/><circle cx="52" cy="25" r="3" ${thin}/><path ${stroke} d="M31 24l18-10"/></svg>`,
           selectorSwitch: `<svg ${common}><path ${stroke} d="M8 24h18M54 24h18"/><circle cx="28" cy="24" r="3" ${thin}/><circle cx="52" cy="24" r="3" ${thin}/><path ${stroke} d="M31 23l18-11M40 8l8 8M48 8l-8 8"/></svg>`,
           limitSwitch: `<svg ${common}><path ${stroke} d="M8 25h18M54 25h18"/><circle cx="28" cy="25" r="3" ${thin}/><circle cx="52" cy="25" r="3" ${thin}/><path ${stroke} d="M31 24l18-10M36 7h18M45 7v8"/></svg>`,
@@ -1472,6 +1475,7 @@
         if (element.type === "terminalStrip") drawTerminalStrip(g, element, stroke);
         if (element.type === "contactNO") drawContact(g, element, false, stroke);
         if (element.type === "contactNC") drawContact(g, element, true, stroke);
+        if (element.type === "contactBlock") drawContactBlock(g, element, stroke);
         if (element.type === "pushButton") drawPushButton(g, element, stroke);
         if (element.type === "selectorSwitch") drawSelectorSwitch(g, element, stroke);
         if (element.type === "limitSwitch") drawLimitSwitch(g, element, stroke);
@@ -1913,6 +1917,32 @@
           g.appendChild(svgEl("line", { x1: bladeX - .1, y1: lower - .9, x2: cx + r, y2: upper + .9, class: "symbol-line", stroke }));
         }
         if (element.label) g.appendChild(textEl(element.label, -2.4, h / 2 + .8, { fontSize: 2.2, anchor: "end" }));
+      }
+
+      function drawContactBlock(g, element, stroke) {
+        const w = Number(element.w || 14);
+        const h = Number(element.h || 12);
+        const cy = h / 2;
+        const closed = (element.blockContact || "NO") === "NC";
+        const left = Math.max(4.2, w * .36);
+        const right = Math.min(w - 4.2, w * .64);
+        g.appendChild(svgEl("rect", {
+          x: .6,
+          y: .6,
+          width: w - 1.2,
+          height: h - 1.2,
+          class: "symbol-line",
+          stroke,
+          fill: "none",
+          "stroke-dasharray": "1.4 1.2"
+        }));
+        g.appendChild(svgEl("line", { x1: -4, y1: cy, x2: left - .7, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: right + .7, y1: cy, x2: w + 4, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx: left, cy, r: .62, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("circle", { cx: right, cy, r: .62, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: left + .55, y1: cy - .1, x2: right - .25, y2: closed ? cy + .05 : cy - 2.1, class: "symbol-line", stroke }));
+        if (closed) g.appendChild(svgEl("line", { x1: right - .3, y1: cy - 2.1, x2: right - .3, y2: cy + 2.1, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.8, anchor: "middle" }));
       }
 
       function drawPushButton(g, element, stroke) {
@@ -2825,6 +2855,16 @@
             </select>
           `;
         }
+        if (element.type === "contactBlock") {
+          const kind = element.blockContact || "NO";
+          return `
+            <label>ブロック内接点</label>
+            <select data-bind="blockContact">
+              <option value="NO"${kind === "NO" ? " selected" : ""}>a接点</option>
+              <option value="NC"${kind === "NC" ? " selected" : ""}>b接点</option>
+            </select>
+          `;
+        }
         if (element.type === "lamp") {
           const variant = element.lampVariant || "pilot";
           return `
@@ -3068,6 +3108,7 @@
           terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "X1" },
           contactNO: { ...base, w: 10, h: 7, label: "NO", orientation: "horizontal" },
           contactNC: { ...base, w: 10, h: 7, label: "NC", orientation: "horizontal" },
+          contactBlock: { ...base, w: 14, h: 12, label: "CR", orientation: "horizontal", blockContact: "NO" },
           pushButton: { ...base, w: 10, h: 8, label: "PB", orientation: "horizontal" },
           selectorSwitch: { ...base, w: 12, h: 9, label: "SS", orientation: "horizontal" },
           limitSwitch: { ...base, w: 12, h: 8, label: "LS", orientation: "horizontal" },
@@ -3247,7 +3288,7 @@
           }
           return anchors;
         }
-        if (["contactNO", "contactNC", "pushButton", "selectorSwitch", "limitSwitch"].includes(element.type)) {
+        if (["contactNO", "contactNC", "contactBlock", "pushButton", "selectorSwitch", "limitSwitch"].includes(element.type)) {
           if (element.orientation === "vertical") {
             add(w / 2, 0);
             add(w / 2, h);
@@ -3308,6 +3349,7 @@
           "terminal",
           "contactNO",
           "contactNC",
+          "contactBlock",
           "pushButton",
           "selectorSwitch",
           "limitSwitch",
@@ -3331,6 +3373,7 @@
         return new Set([
           "contactNO",
           "contactNC",
+          "contactBlock",
           "pushButton",
           "selectorSwitch",
           "limitSwitch",
@@ -6672,6 +6715,11 @@
           dxfVisibleAttributes(out, page, element);
           return;
         }
+        if (element.type === "contactBlock") {
+          dxfContactBlockLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
         if (element.type === "fuse") {
           dxfFuseLocal(out, page, element);
           dxfVisibleAttributes(out, page, element);
@@ -6811,6 +6859,23 @@
         dxfLineLocal(out, page, "SYMBOL", element, left + .55, cy - .1, right - .3, closed ? cy + .05 : cy - 2.25);
         if (closed) dxfLineLocal(out, page, "SYMBOL", element, right - .35, cy - 2.2, right - .35, cy + 2.2);
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
+      }
+
+      function dxfContactBlockLocal(out, page, element) {
+        const w = Number(element.w || 14);
+        const h = Number(element.h || 12);
+        const cy = h / 2;
+        const closed = (element.blockContact || "NO") === "NC";
+        const left = Math.max(4.2, w * .36);
+        const right = Math.min(w - 4.2, w * .64);
+        dxfRectLocal(out, page, "SYMBOL", element, .6, .6, w - 1.2, h - 1.2);
+        dxfLineLocal(out, page, "SYMBOL", element, -4, cy, left - .7, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, right + .7, cy, w + 4, cy);
+        dxfCircleLocal(out, page, "SYMBOL", element, left, cy, .62);
+        dxfCircleLocal(out, page, "SYMBOL", element, right, cy, .62);
+        dxfLineLocal(out, page, "SYMBOL", element, left + .55, cy - .1, right - .25, closed ? cy + .05 : cy - 2.1);
+        if (closed) dxfLineLocal(out, page, "SYMBOL", element, right - .3, cy - 2.1, right - .3, cy + 2.1);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.8, element.label);
       }
 
       function dxfTerminalLocal(out, page, element) {
