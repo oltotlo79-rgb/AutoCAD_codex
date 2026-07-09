@@ -347,6 +347,15 @@
       cursor: nwse-resize;
     }
 
+    .point-handle {
+      fill: #fff;
+      stroke: var(--accent-2);
+      stroke-width: .55;
+      vector-effect: non-scaling-stroke;
+      pointer-events: all;
+      cursor: crosshair;
+    }
+
     .row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -2043,6 +2052,18 @@
             "data-resize-handle": resizable ? resizeHandles[index] : null
           }));
         });
+        if (selected.length === 1 && selected[0].points && !isElementLocked(selected[0])) {
+          selected[0].points.forEach((point, index) => {
+            svg.appendChild(svgEl("rect", {
+              x: point[0] - 1.7,
+              y: point[1] - 1.7,
+              width: 3.4,
+              height: 3.4,
+              class: "point-handle",
+              "data-point-index": index
+            }));
+          });
+        }
       }
 
       function canResizeElement(element) {
@@ -6183,6 +6204,28 @@
       function onCanvasPointerDown(event) {
         const svg = qs("#canvas");
         const point = canvasPoint(event);
+        const pointHandle = event.target.closest("[data-point-index]");
+        if (pointHandle) {
+          const element = selectedElement();
+          const pointIndex = Number(pointHandle.dataset.pointIndex);
+          if (!element || !element.points?.[pointIndex]) return;
+          if (isElementLocked(element)) {
+            setStatus("ロックされた要素は変更できません。");
+            render();
+            return;
+          }
+          dragState = {
+            mode: "point",
+            elementId: element.id,
+            pointIndex,
+            start: point,
+            original: deepClone(element)
+          };
+          svg.setPointerCapture(event.pointerId);
+          event.stopPropagation();
+          render();
+          return;
+        }
         const resizeHandle = event.target.closest("[data-resize-handle]");
         if (resizeHandle) {
           const element = selectedElement();
@@ -6265,6 +6308,11 @@
         }
         if (dragState.mode === "resize") {
           applyResizeDrag(point);
+          render();
+          return;
+        }
+        if (dragState.mode === "point") {
+          applyPointDrag(point);
           render();
           return;
         }
@@ -6373,6 +6421,13 @@
         element.y = round(y);
         element.w = round(w);
         element.h = round(h);
+      }
+
+      function applyPointDrag(point) {
+        const page = currentPage();
+        const element = page?.elements.find(item => item.id === dragState.elementId);
+        if (!element || !element.points?.[dragState.pointIndex]) return;
+        element.points[dragState.pointIndex] = [round(point.x), round(point.y)];
       }
 
       function onCanvasDoubleClick(event) {
