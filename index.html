@@ -545,6 +545,7 @@
     <main class="shell">
       <aside class="palette">
         <div class="panel-title">部品パレット</div>
+        <button type="button" id="selectOnlyBtn" data-tool="select" style="width:100%;margin-bottom:8px">選択</button>
         <input id="paletteFilter" type="search" placeholder="部品検索" aria-label="部品検索">
         <div class="palette-grid" id="paletteGrid"></div>
         <button type="button" id="symbolManagerBtn" style="width:100%;margin-top:10px">ユーザー部品管理</button>
@@ -552,7 +553,12 @@
         <div class="section">
           <div class="panel-title">表示</div>
           <label for="zoomRange">ズーム</label>
-          <input id="zoomRange" type="range" min="1.6" max="5.2" step=".1" value="3.2">
+          <input id="zoomRange" type="range" min="0.8" max="8" step=".1" value="3.2">
+          <div class="row-3" style="margin-top:8px">
+            <button type="button" id="zoomOutBtn">縮小</button>
+            <button type="button" id="zoomInBtn">拡大</button>
+            <button type="button" id="actualSizeBtn">標準</button>
+          </div>
           <button type="button" id="fitPageBtn" style="width:100%;margin-top:8px">全体表示</button>
           <div class="row">
             <div>
@@ -667,7 +673,7 @@
         <select id="frameVariant">
           <option value="compact">基本: 右下表題欄</option>
           <option value="detailed">詳細: 右下+改訂欄</option>
-          <option value="side">見本風: 側面表題欄</option>
+          <option value="side">側面表題欄</option>
           <option value="index">目次/表紙: 大型表欄</option>
           <option value="blank">枠線のみ</option>
         </select>
@@ -712,7 +718,7 @@
             <button type="button" id="deletePageBtn">削除</button>
           </div>
           <div class="row" style="margin-top:8px">
-            <button type="button" id="sampleTerminalPageBtn">見本風</button>
+            <button type="button" id="sampleTerminalPageBtn">端子図</button>
             <button type="button" id="indexPageBtn">目次</button>
           </div>
           <div class="row" style="margin-top:8px">
@@ -764,6 +770,9 @@
         { id: "general", label: "汎用", grid: 2.5, wireNumberFormat: "%S-%N", componentTagFormat: "%F%N", frameVariant: "detailed" },
         { id: "toyota-draft", label: "トヨタ標準（仮）", grid: 2.5, wireNumberFormat: "%S-%N", componentTagFormat: "%F%N", frameVariant: "detailed" }
       ];
+
+      const SNAP_RADIUS_MM = 4;
+      const MAJOR_GRID_MM = 10;
 
       const TITLE_FIELDS = [
         { key: "title", label: "図名" },
@@ -822,11 +831,15 @@
         { type: "contactNO", label: "a接点", icon: "contactNO" },
         { type: "contactNC", label: "b接点", icon: "contactNC" },
         { type: "pushButton", label: "押しボタン", icon: "pushButton" },
+        { type: "selectorSwitch", label: "切替スイッチ", icon: "selectorSwitch" },
+        { type: "limitSwitch", label: "リミットスイッチ", icon: "limitSwitch" },
         { type: "coil", label: "コイル", icon: "coil" },
         { type: "fuse", label: "ヒューズ", icon: "fuse" },
         { type: "breaker", label: "遮断器", icon: "breaker" },
         { type: "lamp", label: "ランプ", icon: "lamp" },
         { type: "buzzer", label: "ブザー", icon: "buzzer" },
+        { type: "solenoidValve", label: "ソレノイド弁", icon: "solenoidValve" },
+        { type: "sensor", label: "センサ", icon: "sensor" },
         { type: "powerSupply", label: "電源", icon: "powerSupply" },
         { type: "transformer", label: "トランス", icon: "transformer" },
         { type: "ground", label: "接地", icon: "ground" },
@@ -838,6 +851,8 @@
         { type: "plcBlock", label: "PLC/I-O", icon: "plc" },
         { type: "connector", label: "コネクタ", icon: "connector" },
         { type: "cableMarker", label: "ケーブル", icon: "cableMarker" },
+        { type: "cableBundle", label: "ケーブル束", icon: "cableBundle" },
+        { type: "terminalBox", label: "端子箱", icon: "terminalBox" },
         { type: "table", label: "表", icon: "table" },
         { type: "arrow", label: "信号矢印", icon: "arrow" },
         { type: "junction", label: "接続点", icon: "dot" }
@@ -847,11 +862,15 @@
         contactNO: "CR",
         contactNC: "CR",
         pushButton: "PB",
+        selectorSwitch: "SS",
+        limitSwitch: "LS",
         coil: "CR",
         fuse: "F",
         breaker: "CB",
         lamp: "PL",
         buzzer: "BZ",
+        solenoidValve: "SOL",
+        sensor: "SEN",
         powerSupply: "PS",
         transformer: "T",
         ground: "E",
@@ -863,6 +882,8 @@
         plcBlock: "PLC",
         connector: "CN",
         cableMarker: "C",
+        cableBundle: "CBL",
+        terminalBox: "TB",
         arrow: "REF"
       };
 
@@ -1137,11 +1158,15 @@
           contactNO: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10"/></svg>`,
           contactNC: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10M50 13v18"/></svg>`,
           pushButton: `<svg ${common}><path ${stroke} d="M8 25h18M54 25h18M40 7v12M30 7h20"/><circle cx="28" cy="25" r="3" ${thin}/><circle cx="52" cy="25" r="3" ${thin}/><path ${stroke} d="M31 24l18-10"/></svg>`,
+          selectorSwitch: `<svg ${common}><path ${stroke} d="M8 24h18M54 24h18"/><circle cx="28" cy="24" r="3" ${thin}/><circle cx="52" cy="24" r="3" ${thin}/><path ${stroke} d="M31 23l18-11M40 8l8 8M48 8l-8 8"/></svg>`,
+          limitSwitch: `<svg ${common}><path ${stroke} d="M8 25h18M54 25h18"/><circle cx="28" cy="25" r="3" ${thin}/><circle cx="52" cy="25" r="3" ${thin}/><path ${stroke} d="M31 24l18-10M36 7h18M45 7v8"/></svg>`,
           coil: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20"/><rect x="28" y="14" width="24" height="16" ${stroke}/><path ${thin} d="M36 15v14M44 15v14"/></svg>`,
           fuse: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20"/><rect x="28" y="14" width="24" height="16" ${stroke}/></svg>`,
           breaker: `<svg ${common}><path ${stroke} d="M8 24h20M54 24h18"/><circle cx="30" cy="24" r="3" ${thin}/><circle cx="52" cy="24" r="3" ${thin}/><path ${stroke} d="M33 23l16-10M48 31h10"/></svg>`,
           lamp: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="40" cy="22" r="12" ${stroke}/><path ${thin} d="M34 23c4-6 8-6 12 0"/></svg>`,
           buzzer: `<svg ${common}><path ${stroke} d="M8 24h14"/><circle cx="25" cy="24" r="3" ${thin}/><path ${stroke} d="M29 16c6-7 16-6 21 1l18-5M29 32c6 7 16 6 21-1l18 5M68 12c5 7 5 17 0 24"/></svg>`,
+          solenoidValve: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><rect x="24" y="12" width="14" height="20" ${stroke}/><path ${thin} d="M38 12l18 10-18 10M56 12v20"/></svg>`,
+          sensor: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><rect x="24" y="12" width="32" height="20" ${stroke}/><path ${thin} d="M30 18h12M30 26h18M52 14l8-6M55 22h10M52 30l8 6"/></svg>`,
           powerSupply: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M28 18h10M33 13v10M46 18h10M46 28h10"/></svg>`,
           transformer: `<svg ${common}><path ${stroke} d="M8 22h14M58 22h14M32 10c-10 0-10 24 0 24M48 10c10 0 10 24 0 24"/><path ${thin} d="M38 10v24M42 10v24"/></svg>`,
           ground: `<svg ${common}><path ${stroke} d="M40 8v14M26 22h28M31 29h18M36 36h8"/></svg>`,
@@ -1153,6 +1178,8 @@
           plc: `<svg ${common}><rect x="16" y="8" width="48" height="30" ${stroke}/><path ${thin} d="M24 8v30M16 16h48M16 24h48M16 32h48"/></svg>`,
           connector: `<svg ${common}><path ${stroke} d="M10 22h60"/><circle cx="22" cy="22" r="5" ${thin}/><circle cx="40" cy="22" r="5" ${thin}/><circle cx="58" cy="22" r="5" ${thin}/></svg>`,
           cableMarker: `<svg ${common}><path ${stroke} d="M8 22h64"/><ellipse cx="40" cy="22" rx="16" ry="9" ${thin}/></svg>`,
+          cableBundle: `<svg ${common}><path ${thin} d="M12 12h20c13 0 16 20 32 20M12 22h18c13 0 17 0 38 0M12 32h20c13 0 16-20 32-20"/><rect x="30" y="9" width="18" height="26" ${stroke}/></svg>`,
+          terminalBox: `<svg ${common}><rect x="22" y="10" width="36" height="24" ${stroke}/><path ${thin} d="M8 18h14M8 27h14M58 18h14M58 27h14M32 10v24M44 10v24"/></svg>`,
           table: `<svg ${common}><rect x="12" y="10" width="56" height="26" ${stroke}/><path ${thin} d="M12 18h56M12 27h56M30 10v26M50 10v26"/></svg>`,
           arrow: `<svg ${common}><path ${stroke} d="M10 22h50M50 12l12 10-12 10"/></svg>`,
           dot: `<svg ${common}><path ${stroke} d="M8 22h64M40 8v28"/><circle cx="40" cy="22" r="5" fill="currentColor"/></svg>`
@@ -1256,8 +1283,22 @@
           "stroke-width": .13
         }));
         defs.appendChild(pattern);
+        const major = svgEl("pattern", {
+          id: "majorGridPattern",
+          width: MAJOR_GRID_MM,
+          height: MAJOR_GRID_MM,
+          patternUnits: "userSpaceOnUse"
+        });
+        major.appendChild(svgEl("path", {
+          d: "M " + MAJOR_GRID_MM + " 0 L 0 0 0 " + MAJOR_GRID_MM,
+          fill: "none",
+          stroke: "#cfd8e3",
+          "stroke-width": .18
+        }));
+        defs.appendChild(major);
         svg.appendChild(defs);
         svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#gridPattern)", opacity: .62 }));
+        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#majorGridPattern)", opacity: .48 }));
       }
 
       function drawFrame(svg, page, size) {
@@ -1424,11 +1465,15 @@
         if (element.type === "contactNO") drawContact(g, element, false, stroke);
         if (element.type === "contactNC") drawContact(g, element, true, stroke);
         if (element.type === "pushButton") drawPushButton(g, element, stroke);
+        if (element.type === "selectorSwitch") drawSelectorSwitch(g, element, stroke);
+        if (element.type === "limitSwitch") drawLimitSwitch(g, element, stroke);
         if (element.type === "coil") drawCoil(g, element, stroke);
         if (element.type === "fuse") drawFuse(g, element, stroke);
         if (element.type === "breaker") drawBreaker(g, element, stroke);
         if (element.type === "lamp") drawLamp(g, element, stroke);
         if (element.type === "buzzer") drawBuzzer(g, element, stroke);
+        if (element.type === "solenoidValve") drawSolenoidValve(g, element, stroke);
+        if (element.type === "sensor") drawSensor(g, element, stroke);
         if (element.type === "powerSupply") drawPowerSupply(g, element, stroke);
         if (element.type === "transformer") drawTransformer(g, element, stroke);
         if (element.type === "ground") drawGround(g, element, stroke);
@@ -1440,6 +1485,8 @@
         if (element.type === "plcBlock") drawPlcBlock(g, element, stroke);
         if (element.type === "connector") drawConnector(g, element, stroke);
         if (element.type === "cableMarker") drawCableMarker(g, element, stroke);
+        if (element.type === "cableBundle") drawCableBundle(g, element, stroke);
+        if (element.type === "terminalBox") drawTerminalBox(g, element, stroke);
         if (element.type === "table") drawTable(g, element, stroke);
         if (element.type === "arrow") drawArrow(g, element, stroke);
         if (element.type === "junction") drawJunction(g, element, stroke);
@@ -1706,6 +1753,38 @@
         return segments[segments.length - 1];
       }
 
+      function terminalStripGeometry(element) {
+        const count = Math.max(1, Number(element.count || 8));
+        const vertical = element.orientation === "vertical";
+        const pitchSize = element.type === "connector" ? 7 : 8;
+        const w = Number(element.w || (vertical ? 12 : count * pitchSize));
+        const h = Number(element.h || (vertical ? count * pitchSize : 12));
+        return {
+          count,
+          vertical,
+          w,
+          h,
+          pitch: (vertical ? h : w) / count,
+          shape: element.terminalShape || "circle"
+        };
+      }
+
+      function terminalStripNodeLocal(element, index) {
+        const geo = terminalStripGeometry(element);
+        return geo.vertical
+          ? { x: geo.w / 2, y: geo.pitch * index + geo.pitch / 2 }
+          : { x: geo.pitch * index + geo.pitch / 2, y: geo.h / 2 };
+      }
+
+      function terminalStripNodeGlobal(element, index) {
+        const node = terminalStripNodeLocal(element, index);
+        return localAnchor(element, node.x, node.y);
+      }
+
+      function terminalLabel(element, index) {
+        return (element.prefix || "") + String(Number(element.start || 1) + index);
+      }
+
       function drawTerminal(g, element, stroke) {
         const label = element.label || "1";
         const w = Number(element.w || 12);
@@ -1714,6 +1793,13 @@
         const cx = w / 2;
         const cy = h / 2;
         const shape = element.terminalShape || "circle";
+        if (element.orientation === "vertical") {
+          g.appendChild(svgEl("line", { x1: cx, y1: 0, x2: cx, y2: cy - r, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: cx, y1: cy + r, x2: cx, y2: h, class: "symbol-line", stroke }));
+          drawTerminalNode(g, cx, cy, r, shape, stroke);
+          g.appendChild(textEl(label, cx + r + 1.4, cy + .4, { fontSize: 2.1 }));
+          return;
+        }
         g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: cx - r, y2: cy, class: "symbol-line", stroke }));
         g.appendChild(svgEl("line", { x1: cx + r, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
         drawTerminalNode(g, cx, cy, r, shape, stroke);
@@ -1721,31 +1807,46 @@
       }
 
       function drawTerminalStrip(g, element, stroke) {
-        const count = Math.max(1, Number(element.count || 8));
-        const vertical = element.orientation === "vertical";
-        const shape = element.terminalShape || "circle";
-        const w = Number(element.w || (vertical ? 12 : count * 8));
-        const h = Number(element.h || (vertical ? count * 8 : 12));
-        if (vertical) {
-          const pitch = h / count;
-          g.appendChild(svgEl("path", { d: "M " + w / 2 + " 0 V " + h, class: "symbol-line", stroke }));
-          g.appendChild(svgEl("path", { d: "M " + w / 2 + " 0 c -3 2 3 2 0 4", class: "symbol-line", stroke }));
-          for (let i = 0; i < count; i++) {
-            const cy = pitch * i + pitch / 2;
-            drawTerminalNode(g, w / 2, cy, Math.min(3.1, pitch * .35), shape, stroke);
-            const number = (element.prefix || "") + String((Number(element.start || 1) + i));
-            g.appendChild(textEl(number, w / 2, cy, { fontSize: 2.1, anchor: "middle" }));
+        const geo = terminalStripGeometry(element);
+        if (geo.vertical) {
+          const bodyW = Math.max(geo.w, 10);
+          g.appendChild(svgEl("rect", {
+            x: (geo.w - bodyW) / 2,
+            y: 0,
+            width: bodyW,
+            height: geo.h,
+            rx: Math.min(bodyW / 2, 4),
+            ry: Math.min(bodyW / 2, 4),
+            class: "symbol-line",
+            stroke,
+            fill: "none"
+          }));
+          for (let i = 0; i < geo.count; i++) {
+            const node = terminalStripNodeLocal(element, i);
+            drawTerminalNode(g, node.x, node.y, Math.min(3.1, geo.pitch * .35), geo.shape, stroke);
+            g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 2.1, anchor: "middle" }));
           }
-          if (element.label) g.appendChild(textEl(element.label, w + 3, 0, { fontSize: 2.5 }));
+          if (element.label) g.appendChild(textEl(element.label, geo.w + 3, 0, { fontSize: 2.5 }));
         } else {
-          const pitch = w / count;
-          g.appendChild(svgEl("path", { d: "M 0 " + h / 2 + " H " + w, class: "symbol-line", stroke }));
-          g.appendChild(svgEl("path", { d: "M 0 " + h / 2 + " c 2 -3 2 3 4 0", class: "symbol-line", stroke }));
-          for (let i = 0; i < count; i++) {
-            const cx = pitch * i + pitch / 2;
-            drawTerminalNode(g, cx, h / 2, Math.min(3.1, pitch * .35), shape, stroke);
-            const number = (element.prefix || "") + String((Number(element.start || 1) + i));
-            g.appendChild(textEl(number, cx, h / 2, { fontSize: 2.1, anchor: "middle" }));
+          const r = Math.min(geo.h / 2, 5.5);
+          const notch = Math.min(4, geo.h * .34);
+          const d = [
+            "M", r, 0,
+            "H", geo.w - notch,
+            "C", geo.w - 1, 0, geo.w, 1.2, geo.w, 3,
+            "L", geo.w - notch, geo.h / 2,
+            "L", geo.w, geo.h - 3,
+            "C", geo.w, geo.h - 1.2, geo.w - 1, geo.h, geo.w - notch, geo.h,
+            "H", r,
+            "C", 1.2, geo.h, 0, geo.h - 1.2, 0, geo.h / 2,
+            "C", 0, 1.2, 1.2, 0, r, 0,
+            "Z"
+          ].join(" ");
+          g.appendChild(svgEl("path", { d, class: "symbol-line", stroke, fill: "none" }));
+          for (let i = 0; i < geo.count; i++) {
+            const node = terminalStripNodeLocal(element, i);
+            drawTerminalNode(g, node.x, node.y, Math.min(3.1, geo.pitch * .35), geo.shape, stroke);
+            g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 2.1, anchor: "middle" }));
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -3.2, { fontSize: 2.5 }));
         }
@@ -1816,6 +1917,28 @@
         const cx = w / 2;
         g.appendChild(svgEl("line", { x1: cx, y1: 0, x2: cx, y2: Math.max(1.2, h / 2 - 1.8), class: "symbol-line", stroke }));
         g.appendChild(svgEl("line", { x1: Math.max(0, cx - 4), y1: 0, x2: Math.min(w, cx + 4), y2: 0, class: "symbol-line", stroke }));
+      }
+
+      function drawSelectorSwitch(g, element, stroke) {
+        drawContact(g, element, false, stroke);
+        const w = Number(element.w || 18);
+        const h = Number(element.h || 14);
+        const cx = w / 2;
+        g.appendChild(svgEl("line", { x1: cx - 3.8, y1: 1.2, x2: cx + 3.8, y2: 6, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: cx + 3.8, y1: 1.2, x2: cx - 3.8, y2: 6, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: cx, y1: 1.2, x2: cx, y2: Math.max(3, h / 2 - 1.5), class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, cx, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawLimitSwitch(g, element, stroke) {
+        drawContact(g, element, false, stroke);
+        const w = Number(element.w || 18);
+        const h = Number(element.h || 12);
+        const cx = w / 2;
+        g.appendChild(svgEl("line", { x1: cx - 6, y1: 1.2, x2: cx + 6, y2: 1.2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: cx, y1: 1.2, x2: cx, y2: Math.max(3, h / 2 - 1.2), class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx: cx + 6.8, cy: 1.2, r: 1.1, class: "symbol-fill", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, cx, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
       function drawFuse(g, element, stroke) {
@@ -2004,6 +2127,34 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      function drawSolenoidValve(g, element, stroke) {
+        const w = Number(element.w || 26);
+        const h = Number(element.h || 16);
+        const cy = h / 2;
+        const coilW = Math.max(7, w * .28);
+        const bodyX = coilW + 2;
+        const bodyW = Math.max(8, w - bodyX - 2);
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: 2.5, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("rect", { x: 2.5, y: 2, width: coilW, height: h - 4, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + bodyX + " 2 L " + (bodyX + bodyW) + " " + cy + " L " + bodyX + " " + (h - 2) + " Z", class: "symbol-line", stroke, fill: "none" }));
+        g.appendChild(svgEl("line", { x1: bodyX + bodyW, y1: 2, x2: bodyX + bodyW, y2: h - 2, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: bodyX + bodyW, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawSensor(g, element, stroke) {
+        const w = Number(element.w || 24);
+        const h = Number(element.h || 14);
+        const cy = h / 2;
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: 4, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: w - 4, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("rect", { x: 4, y: 2, width: w - 8, height: h - 4, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: 7, y1: 5, x2: w - 10, y2: 5, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: 7, y1: h - 5, x2: w - 7, y2: h - 5, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + (w - 4) + " " + (cy - 4) + " l 4 -4 M " + (w - 3) + " " + cy + " h 5 M " + (w - 4) + " " + (cy + 4) + " l 4 4", class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
       function drawDeviceBox(g, element, stroke) {
         const w = Number(element.w || 42);
         const h = Number(element.h || 28);
@@ -2069,6 +2220,37 @@
         g.appendChild(svgEl("line", { x1: -12, y1: h / 2, x2: w + 12, y2: h / 2, class: "symbol-line", stroke }));
         g.appendChild(svgEl("ellipse", { cx: w / 2, cy: h / 2, rx: w / 2, ry: h / 2, class: "symbol-fill", stroke }));
         g.appendChild(textEl(element.label || "C", w / 2, h / 2, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawCableBundle(g, element, stroke) {
+        const w = Number(element.w || 32);
+        const h = Number(element.h || 18);
+        const mid = h / 2;
+        g.appendChild(svgEl("rect", { x: w * .38, y: 1.5, width: w * .22, height: h - 3, class: "symbol-fill", stroke }));
+        [-5, 0, 5].forEach(offset => {
+          g.appendChild(svgEl("path", {
+            d: "M 0 " + (mid + offset) + " C " + (w * .3) + " " + (mid + offset) + " " + (w * .62) + " " + (mid - offset) + " " + w + " " + (mid - offset),
+            class: "symbol-line",
+            stroke
+          }));
+        });
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawTerminalBox(g, element, stroke) {
+        const w = Number(element.w || 22);
+        const h = Number(element.h || 18);
+        const rows = Math.max(2, Number(element.rows || 3));
+        g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
+        for (let i = 1; i < rows; i++) {
+          g.appendChild(svgEl("line", { x1: 0, y1: h * i / rows, x2: w, y2: h * i / rows, class: "symbol-line", stroke }));
+        }
+        for (let i = 0; i < rows; i++) {
+          const y = h * (i + .5) / rows;
+          g.appendChild(svgEl("line", { x1: -6, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 6, y2: y, class: "symbol-line", stroke }));
+        }
+        if (element.label) g.appendChild(textEl(element.label, w / 2, h + 4, { fontSize: 2.2, anchor: "middle" }));
       }
 
       function drawTable(g, element, stroke) {
@@ -2280,6 +2462,21 @@
         renderSelectionPanel();
       }
 
+      function clampZoom(value) {
+        const input = qs("#zoomRange");
+        const min = Number(input?.min || .8);
+        const max = Number(input?.max || 8);
+        const zoom = Number(value);
+        return Math.max(min, Math.min(max, Number.isFinite(zoom) ? zoom : 3.2));
+      }
+
+      function setZoom(value, save = false) {
+        state.settings.zoom = clampZoom(value);
+        setValue("zoomRange", state.settings.zoom);
+        if (save) commitHistory("ズームを変更しました。");
+        render();
+      }
+
       function renderStandardSelect() {
         const select = qs("#drawingStandard");
         if (!select) return;
@@ -2363,7 +2560,6 @@
         panel.innerHTML = `
           <div class="panel-title">選択中: ${typeName}</div>
           ${isWireLike ? wireFields(element) : normalFields(element)}
-          ${symbolResetControls(element)}
           ${labelFields(element)}
           ${specificFields(element)}
           ${electricalAttributeFields(element)}
@@ -2426,7 +2622,6 @@
         qs("#applyAreaAttributesBtn", panel)?.addEventListener("click", applySelectedAreaAttributes);
         qs("#copyInstallLocationBtn", panel)?.addEventListener("click", copySelectedInstallLocation);
         qs("#pasteInstallLocationBtn", panel)?.addEventListener("click", pasteInstallLocationToSelection);
-        qs("#resetSymbolSizeBtn", panel)?.addEventListener("click", resetSelectedReferenceSize);
         attachSelectionActionButtons(panel);
         qs("#rotateLeftBtn", panel)?.addEventListener("click", () => rotateSelected(-90));
         qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
@@ -2481,32 +2676,6 @@
           <label>回転 deg</label>
           <input data-bind="rotation" data-kind="number" type="number" step="90" value="${round(element.rotation || 0)}">
         `;
-      }
-
-      function symbolResetControls(element) {
-        if (!canResetReferenceSize(element)) return "";
-        return `<button type="button" id="resetSymbolSizeBtn" style="width:100%;margin-top:8px">見本サイズに戻す</button>`;
-      }
-
-      function canResetReferenceSize(element) {
-        return element && [
-          "terminal",
-          "contactNO",
-          "contactNC",
-          "pushButton",
-          "coil",
-          "fuse",
-          "breaker",
-          "lamp",
-          "buzzer",
-          "powerSupply",
-          "transformer",
-          "ground",
-          "motor",
-          "fan",
-          "resistor",
-          "diode"
-        ].includes(element.type);
       }
 
       function wireFields(element) {
@@ -2645,7 +2814,13 @@
         }
         if (element.type === "terminal") {
           const shape = element.terminalShape || "circle";
+          const orientation = element.orientation || "horizontal";
           return `
+            <label>方向</label>
+            <select data-bind="orientation">
+              <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横</option>
+              <option value="vertical"${orientation === "vertical" ? " selected" : ""}>縦</option>
+            </select>
             <label>端子形状</label>
             <select data-bind="terminalShape">
               <option value="circle"${shape === "circle" ? " selected" : ""}>丸</option>
@@ -2794,6 +2969,7 @@
           element[key] = value;
           if (key === "tag" && supportsElectricalAttributes(element) && !element.label) element.label = value;
           if (["orientation", "count"].includes(key) && ["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
+          if (key === "orientation" && element.type === "terminal") resizeSingleTerminalForOrientation(element);
           if (key === "orientation" && ["contactNO", "contactNC", "pushButton"].includes(element.type)) resizeContactElementForOrientation(element);
         }
         if (save) commitHistory("要素を更新しました。");
@@ -2822,24 +2998,14 @@
         }
       }
 
-      function resetSelectedReferenceSize() {
-        const element = selectedElement();
-        if (!canResetReferenceSize(element)) return;
-        if (isElementLocked(element)) {
-          setStatus("ロックされた要素は見本サイズへ戻せません。");
+      function resizeSingleTerminalForOrientation(element) {
+        if (element.orientation === "vertical") {
+          element.w = 8;
+          element.h = 12;
           return;
         }
-        if (["contactNO", "contactNC", "pushButton"].includes(element.type)) {
-          element.orientation = element.orientation || "horizontal";
-          resizeContactElementForOrientation(element);
-        } else {
-          const defaults = defaultElement(element.type, element.x || 0, element.y || 0);
-          ["w", "h", "r"].forEach(key => {
-            if (defaults[key] !== undefined) element[key] = defaults[key];
-          });
-        }
-        commitHistory("見本サイズへ戻しました。");
-        render();
+        element.w = 12;
+        element.h = 8;
       }
 
       function escapeHtml(text) {
@@ -2864,16 +3030,20 @@
           underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
-          terminal: { ...base, w: 12, h: 8, label: "1", terminalShape: "circle" },
+          terminal: { ...base, w: 12, h: 8, label: "1", orientation: "horizontal", terminalShape: "circle" },
           terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "X1" },
           contactNO: { ...base, w: 14, h: 10, label: "NO", orientation: "horizontal" },
           contactNC: { ...base, w: 14, h: 10, label: "NC", orientation: "horizontal" },
           pushButton: { ...base, w: 14, h: 12, label: "PB", orientation: "horizontal" },
+          selectorSwitch: { ...base, w: 18, h: 14, label: "SS", orientation: "horizontal" },
+          limitSwitch: { ...base, w: 18, h: 12, label: "LS", orientation: "horizontal" },
           coil: { ...base, w: 16, h: 8, label: "CR" },
           fuse: { ...base, w: 18, h: 6, label: "F" },
           breaker: { ...base, w: 16, h: 10, label: "CB" },
           lamp: { ...base, w: 14, h: 14, r: 5, label: "PL", lampVariant: "pilot" },
           buzzer: { ...base, w: 18, h: 12, label: "BZ", buzzerVariant: "horn" },
+          solenoidValve: { ...base, w: 26, h: 16, label: "SOL" },
+          sensor: { ...base, w: 24, h: 14, label: "SEN" },
           powerSupply: { ...base, w: 34, h: 24, label: "PS" },
           transformer: { ...base, w: 24, h: 16, label: "T" },
           ground: { ...base, w: 12, h: 14, label: "E" },
@@ -2885,6 +3055,8 @@
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
           cableMarker: { ...base, w: 28, h: 12, label: "C" },
+          cableBundle: { ...base, w: 32, h: 18, label: "CBL" },
+          terminalBox: { ...base, w: 22, h: 18, label: "TB", rows: 3 },
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
@@ -2907,13 +3079,14 @@
         return "symbols";
       }
 
-      function canvasPoint(event) {
+      function canvasPoint(event, options = {}) {
         const svg = qs("#canvas");
         const point = svg.createSVGPoint();
         point.x = event.clientX;
         point.y = event.clientY;
         const transformed = point.matrixTransform(svg.getScreenCTM().inverse());
-        return snapPoint(transformed.x, transformed.y);
+        if (options.raw) return { x: transformed.x, y: transformed.y };
+        return snapPoint(transformed.x, transformed.y, options);
       }
 
       function snap(value) {
@@ -2922,43 +3095,30 @@
         return Math.round(value / grid) * grid;
       }
 
-      function snapPoint(x, y) {
+      function snapPoint(x, y, options = {}) {
         const gridPoint = { x: snap(x), y: snap(y) };
         if (!state.settings.objectSnap) return gridPoint;
-        const anchors = collectSnapAnchors(currentPage());
-        let best = null;
-        anchors.forEach(anchor => {
-          const d = Math.hypot(anchor.x - x, anchor.y - y);
-          if (d <= 3 && (!best || d < best.d)) best = { ...anchor, d };
-        });
-        return best ? { x: best.x, y: best.y } : gridPoint;
+        const excludeIds = options.excludeIds || (options.excludeSelected ? currentSelectionIdSet() : new Set());
+        const anchors = options.connectionOnly
+          ? collectConnectionAnchors(currentPage(), excludeIds)
+          : collectSnapAnchors(currentPage(), excludeIds);
+        const best = closestAnchor(anchors, x, y);
+        if (best) return { x: best.x, y: best.y };
+        const segmentSnap = closestSegmentSnapPoint(currentPage(), x, y, excludeIds);
+        return segmentSnap || gridPoint;
       }
 
-      function collectSnapAnchors(page) {
+      function currentSelectionIdSet() {
+        return new Set(selectedIds.length ? selectedIds : (selectedId ? [selectedId] : []));
+      }
+
+      function collectSnapAnchors(page, excludeIds = new Set()) {
         if (!page) return [];
-        const anchors = [];
-        const activeIds = new Set(selectedIds.length ? selectedIds : (selectedId ? [selectedId] : []));
+        const anchors = collectConnectionAnchors(page, excludeIds);
         page.elements.forEach(element => {
-          if (activeIds.has(element.id)) return;
+          if (excludeIds.has(element.id)) return;
           if (!isElementVisible(element)) return;
-          if (element.type === "wire" || element.type === "line" || element.type === "arrow") {
-            (element.points || []).forEach(point => anchors.push({ x: point[0], y: point[1] }));
-            return;
-          }
-          if (element.type === "junction") {
-            anchors.push({ x: element.x || 0, y: element.y || 0 });
-            return;
-          }
-          if (element.type === "terminalStrip" || element.type === "connector") {
-            const count = Math.max(1, Number(element.count || 1));
-            const w = Number(element.w || count * 8);
-            const h = Number(element.h || 12);
-            const pitch = w / count;
-            for (let i = 0; i < count; i++) {
-              anchors.push(localAnchor(element, pitch * i + pitch / 2, h / 2));
-            }
-            return;
-          }
+          if (element.points || element.type === "junction" || element.type === "terminalStrip" || element.type === "connector") return;
           const box = elementBounds(element);
           if (!box) return;
           anchors.push({ x: box.x, y: box.y });
@@ -2967,6 +3127,133 @@
           anchors.push({ x: box.x + box.w, y: box.y + box.h });
           anchors.push({ x: box.x + box.w / 2, y: box.y + box.h / 2 });
         });
+        return anchors;
+      }
+
+      function collectConnectionAnchors(page, excludeIds = new Set()) {
+        if (!page) return [];
+        const anchors = [];
+        page.elements.forEach(element => {
+          if (excludeIds.has(element.id)) return;
+          if (!isElementVisible(element)) return;
+          if (element.type === "wire" || element.type === "line" || element.type === "arrow") {
+            (element.points || []).forEach(point => anchors.push({ x: point[0], y: point[1], elementId: element.id, kind: "point" }));
+            return;
+          }
+          if (element.type === "junction") {
+            anchors.push({ x: element.x || 0, y: element.y || 0, elementId: element.id, kind: "junction" });
+            return;
+          }
+          if (element.type === "terminalStrip" || element.type === "connector") {
+            const geo = terminalStripGeometry(element);
+            for (let i = 0; i < geo.count; i++) {
+              anchors.push({ ...terminalStripNodeGlobal(element, i), elementId: element.id, kind: "terminal" });
+            }
+            return;
+          }
+          elementConnectionAnchors(element).forEach(anchor => anchors.push({ ...anchor, elementId: element.id, kind: "terminal" }));
+        });
+        return anchors;
+      }
+
+      function closestAnchor(anchors, x, y, radius = SNAP_RADIUS_MM) {
+        let best = null;
+        anchors.forEach(anchor => {
+          const d = Math.hypot(anchor.x - x, anchor.y - y);
+          if (d <= radius && (!best || d < best.d)) best = { ...anchor, d };
+        });
+        return best;
+      }
+
+      function closestSegmentSnapPoint(page, x, y, activeIds = new Set(selectedIds.length ? selectedIds : (selectedId ? [selectedId] : []))) {
+        if (!page) return null;
+        let best = null;
+        page.elements.forEach(element => {
+          if (activeIds.has(element.id)) return;
+          if (!isElementVisible(element)) return;
+          if (!["wire", "line", "arrow"].includes(element.type)) return;
+          wireSegments(element).forEach(segment => {
+            const point = closestPointOnSegment(x, y, segment);
+            const d = Math.hypot(point.x - x, point.y - y);
+            if (d <= SNAP_RADIUS_MM && (!best || d < best.d)) best = { ...point, d };
+          });
+        });
+        return best ? { x: round(best.x), y: round(best.y) } : null;
+      }
+
+      function closestPointOnSegment(x, y, segment) {
+        const [x1, y1, x2, y2] = segment;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const lengthSq = dx * dx + dy * dy;
+        if (lengthSq < .0001) return { x: x1, y: y1 };
+        const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / lengthSq));
+        return { x: x1 + dx * t, y: y1 + dy * t };
+      }
+
+      function elementConnectionAnchors(element) {
+        const anchors = [];
+        const w = Number(element.w || defaultElement(element.type).w || 20);
+        const h = Number(element.h || defaultElement(element.type).h || 10);
+        const add = (x, y) => anchors.push(localAnchor(element, x, y));
+        if (element.type === "terminal") {
+          const cx = w / 2;
+          const cy = h / 2;
+          add(cx, cy);
+          if (element.orientation === "vertical") {
+            add(cx, 0);
+            add(cx, h);
+          } else {
+            add(0, cy);
+            add(w, cy);
+          }
+          return anchors;
+        }
+        if (["contactNO", "contactNC", "pushButton", "selectorSwitch", "limitSwitch"].includes(element.type)) {
+          if (element.orientation === "vertical") {
+            add(w / 2, 0);
+            add(w / 2, h);
+          } else {
+            add(0, h / 2);
+            add(w, h / 2);
+          }
+          return anchors;
+        }
+        if (["coil", "fuse", "breaker", "lamp", "buzzer", "solenoidValve", "sensor", "transformer", "motor", "fan", "resistor", "diode", "cableMarker", "cableBundle"].includes(element.type)) {
+          add(0, h / 2);
+          add(w, h / 2);
+          return anchors;
+        }
+        if (element.type === "terminalBox") {
+          const rows = Math.max(2, Number(element.rows || 3));
+          for (let i = 0; i < rows; i++) {
+            const y = h * (i + .5) / rows;
+            add(0, y);
+            add(w, y);
+          }
+          return anchors;
+        }
+        if (element.type === "ground") {
+          add(w / 2, 0);
+          return anchors;
+        }
+        if (element.type === "deviceBox") {
+          const pins = Math.max(0, Number(element.pins || 4));
+          for (let i = 0; i < pins; i++) {
+            const y = h * (i + 1) / (pins + 1);
+            add(0, y);
+            add(w, y);
+          }
+          return anchors;
+        }
+        if (element.type === "plcBlock") {
+          const rows = Math.max(2, Number(element.rows || 8));
+          for (let i = 1; i <= rows; i++) {
+            const y = 8 + i * ((h - 10) / rows) - 3;
+            add(0, y);
+          }
+          return anchors;
+        }
         return anchors;
       }
 
@@ -2988,7 +3275,7 @@
         if (type === "terminalSheet") {
           addTerminalSheet(page, x, y);
           commitHistory("端子配線セットを配置しました。");
-          render();
+          cancelPlacementMode(true);
           return;
         }
         const element = defaultElement(type, x, y);
@@ -3024,43 +3311,170 @@
       }
 
       function addTerminalSheet(page, x, y) {
-        const strip = defaultElement("terminalStrip", x, y);
-        strip.w = 96;
-        strip.h = 10;
-        strip.count = 12;
-        strip.label = "X1";
-        page.elements.push(strip);
-        for (let i = 0; i < strip.count; i++) {
-          const px = x + (strip.w / strip.count) * i + (strip.w / strip.count) / 2;
+        addReferenceTerminalWiringSet(page, x, y, {
+          title: "",
+          terminalPrefix: "",
+          wirePrefix: "W",
+          signalPrefix: "SIG"
+        });
+        setSelection([]);
+      }
+
+      function addReferenceTerminalWiringSet(page, x, y, options = {}) {
+        const pitch = 8.6;
+        const stripW = 12;
+        const groupCount = 8;
+        const groupH = groupCount * pitch;
+        const gap = 15;
+        const busX = x + 8;
+        const stripX = x + 132;
+        const topY = y + 6;
+        const lowerY = topY + groupH + gap;
+        const inlineX = x + 42;
+        const rightTextX = stripX + 18;
+        const leftStrip = referenceTerminalStrip(stripX, topY, stripW, groupH, groupCount, 1, options.label || "X1", "vertical");
+        const rightStrip = referenceTerminalStrip(stripX, lowerY, stripW, groupH, groupCount, 11, "", "vertical");
+        page.elements.push(leftStrip, rightStrip);
+        const nodes = [];
+        [leftStrip, rightStrip].forEach(strip => {
+          for (let i = 0; i < strip.count; i++) nodes.push(terminalStripNodeGlobal(strip, i));
+        });
+        if (options.title) {
+          page.elements.push(textElement(x - 4, y - 24, options.title, 3.4, 0, 92));
+        }
+        page.elements.push({
+          id: uid("el"),
+          type: "arrow",
+          points: [[busX, nodes[0].y - 14], [busX, nodes[nodes.length - 1].y + 20]],
+          label: "",
+          signalRole: "reference",
+          stroke: state.settings.stroke,
+          layer: "wires"
+        });
+        page.elements.push({
+          id: uid("el"),
+          type: "arrow",
+          points: [[stripX + stripW / 2, nodes[0].y - 14], [stripX + stripW / 2, nodes[nodes.length - 1].y + 20]],
+          label: "",
+          stroke: state.settings.stroke,
+          layer: "wires"
+        });
+        nodes.forEach((node, index) => {
+          const no = String(index + 1).padStart(2, "0");
+          const terminalNo = index < 8 ? index + 1 : index + 3;
+          const wireStartX = index < 8 ? busX : busX + 18;
+          const wireNo = (options.wirePrefix || "W") + no;
           page.elements.push({
             id: uid("el"),
             type: "wire",
-            points: [[px, y + strip.h], [px, y + strip.h + 34]],
-            wireNo: "W" + String(i + 1).padStart(2, "0"),
+            points: [[wireStartX, round(node.y)], [round(node.x), round(node.y)]],
+            wireNo,
+            fixedWireNo: false,
+            hideWireNo: false,
             wireType: state.settings.currentWireType,
-            stroke: state.settings.stroke
+            stroke: state.settings.stroke,
+            layer: "wires"
           });
+          page.elements.push(horizontalTerminalAt(inlineX, node.y, no, "square"));
           page.elements.push({
             id: uid("el"),
-            type: "text",
-            x: px - 3,
-            y: y + strip.h + 40,
-            w: 12,
-            h: 5,
-            text: String(i + 1).padStart(2, "0"),
-            fontSize: 2.5,
-            rotation: -90,
-            stroke: state.settings.stroke
+            type: "junction",
+            x: round(wireStartX),
+            y: round(node.y),
+            w: 4,
+            h: 4,
+            r: 1.05,
+            label: "",
+            stroke: state.settings.stroke,
+            layer: "symbols"
           });
-        }
-        selectSingle(strip.id);
+          page.elements.push(textElement(rightTextX, node.y - 1.2, (options.signalPrefix || "SIG") + String(terminalNo).padStart(2, "0"), 2.2, 0, 42));
+          page.elements.push(textElement(inlineX - 7.5, node.y - 2.7, wireNo, 1.9, 0, 16));
+        });
+      }
+
+      function referenceTerminalStrip(x, y, w, h, count, start, label, orientation = "horizontal") {
+        return {
+          ...defaultElement("terminalStrip", x, y),
+          x,
+          y,
+          w,
+          h,
+          count,
+          start,
+          prefix: "",
+          orientation,
+          terminalShape: "circle",
+          label,
+          rotation: 0,
+          layer: "symbols"
+        };
+      }
+
+      function horizontalTerminalAt(cx, cy, label, shape = "square") {
+        const w = 10;
+        const h = 7;
+        return {
+          ...defaultElement("terminal", cx - w / 2, cy - h / 2),
+          x: round(cx - w / 2),
+          y: round(cy - h / 2),
+          w,
+          h,
+          label,
+          orientation: "horizontal",
+          terminalShape: shape,
+          rotation: 0,
+          layer: "symbols"
+        };
+      }
+
+      function verticalTerminalAt(cx, cy, label, shape = "square") {
+        const w = 8;
+        const h = 12;
+        return {
+          ...defaultElement("terminal", cx - w / 2, cy - h / 2),
+          x: round(cx - w / 2),
+          y: round(cy - h / 2),
+          w,
+          h,
+          label,
+          orientation: "vertical",
+          terminalShape: shape,
+          rotation: 0,
+          layer: "symbols"
+        };
+      }
+
+      function textElement(x, y, text, fontSize = 2.4, rotation = 0, w = 24) {
+        return {
+          id: uid("el"),
+          type: "text",
+          x: round(x),
+          y: round(y),
+          w,
+          h: Math.max(5, fontSize * 1.7),
+          text,
+          fontSize,
+          rotation,
+          stroke: state.settings.stroke,
+          layer: "notes"
+        };
       }
 
       function setActiveTool(tool) {
         activeTool = tool;
         qsa("[data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === tool));
+        qs("#selectOnlyBtn")?.classList.toggle("active", tool === "select");
         renderPalette();
         setStatus(tool === "select" ? "選択ツールです。" : paletteLabel(tool) + "を配置できます。");
+      }
+
+      function cancelPlacementMode(clearSelection = false) {
+        activeTool = "select";
+        if (clearSelection) setSelection([]);
+        qsa("[data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === "select"));
+        render();
+        setStatus("選択ツールです。");
       }
 
       function applyStandard(id) {
@@ -3081,7 +3495,7 @@
         const workspace = qs("#workspace");
         const w = Math.max(240, workspace.clientWidth - 90);
         const h = Math.max(240, workspace.clientHeight - 90);
-        state.settings.zoom = Math.max(1.2, Math.min(5.2, Math.min(w / size.w, h / size.h)));
+        state.settings.zoom = clampZoom(Math.min(w / size.w, h / size.h));
         commitHistory("用紙全体を表示しました。");
         render();
       }
@@ -3145,87 +3559,22 @@
         const page = createPage({
           name: "端子図" + (state.pages.length + 1),
           size: "A4",
-          orientation: "landscape",
-          frameVariant: "side",
+          orientation: "portrait",
+          frameVariant: "detailed",
           title: "端子接続図"
         });
-        const startX = 42;
-        const startY = 50;
-        const stripW = 178;
-        const count = 20;
-        page.elements.push({
-          id: uid("el"),
-          type: "text",
-          x: 18,
-          y: 28,
-          w: 70,
-          h: 8,
-          text: "端子接続図",
-          fontSize: 4,
-          rotation: 0,
-          stroke: state.settings.stroke
-        });
-        page.elements.push({
-          id: uid("el"),
-          type: "terminalStrip",
-          x: startX,
-          y: startY,
-          w: stripW,
-          h: 12,
-          count,
-          start: 1,
-          prefix: "",
+        page.elements.push(textElement(18, 28, "端子接続図", 4, 0, 70));
+        addReferenceTerminalWiringSet(page, 46, 62, {
+          title: "",
           label: "X1",
-          rotation: 0,
-          stroke: state.settings.stroke
-        });
-        for (let i = 0; i < count; i++) {
-          const pitch = stripW / count;
-          const x = startX + pitch * i + pitch / 2;
-          const y2 = i % 5 === 4 ? 142 : 156;
-          page.elements.push({
-            id: uid("el"),
-            type: "wire",
-            points: [[x, startY + 8], [x, y2]],
-            wireNo: "W" + String(i + 1).padStart(2, "0"),
-            wireType: state.settings.currentWireType,
-            stroke: state.settings.stroke
-          });
-          page.elements.push({
-            id: uid("el"),
-            type: "text",
-            x: x - 2,
-            y: startY - 9,
-            w: 24,
-            h: 5,
-            text: "信号" + String(i + 1).padStart(2, "0"),
-            fontSize: 2.4,
-            rotation: -90,
-            stroke: state.settings.stroke
-          });
-          page.elements.push({
-            id: uid("el"),
-            type: "terminal",
-            x,
-            y: y2,
-            w: 20,
-            h: 10,
-            label: String(i + 1).padStart(2, "0"),
-            rotation: 90,
-            stroke: state.settings.stroke
-          });
-        }
-        page.elements.push({
-          id: uid("el"),
-          type: "arrow",
-          points: [[18, 160], [238, 160]],
-          label: "次ページへ",
-          stroke: state.settings.stroke
+          terminalPrefix: "",
+          wirePrefix: "W",
+          signalPrefix: "SIG"
         });
         state.pages.push(page);
         state.activePageId = page.id;
         setSelection([]);
-        commitHistory("見本風ページを追加しました。");
+        commitHistory("端子図ページを追加しました。");
         render();
       }
 
@@ -3780,7 +4129,7 @@
         });
         addLadderRails(page, cfg);
         for (let i = 0; i < 10; i++) {
-          addLadderRungElements(page, cfg, cfg.startY + i * cfg.pitch, i + 1, i < 3);
+          addLadderRungElements(page, cfg, cfg.startY + i * cfg.pitch, i + 1);
         }
         state.pages.push(page);
         state.activePageId = page.id;
@@ -3801,7 +4150,7 @@
           setStatus("このページにはラングを追加する余白がありません。");
           return;
         }
-        addLadderRungElements(page, cfg, y, nextIndex, false);
+        addLadderRungElements(page, cfg, y, nextIndex);
         commitHistory("ラングを追加しました。");
         render();
       }
@@ -3952,23 +4301,10 @@
         page.elements.push(ladderText("N", cfg.rightRail + 2, cfg.startY - 17, 3, "middle"));
       }
 
-      function addLadderRungElements(page, cfg, y, index, sample) {
+      function addLadderRungElements(page, cfg, y, index) {
         const rungNo = String(index).padStart(3, "0");
         page.elements.push(ladderText(rungNo, cfg.leftRail - 18, y, 2.6, "end"));
         page.elements.push(ladderWire([[cfg.leftRail, y], [cfg.rightRail, y]], "R" + rungNo, { ladderRung: true, rungNo }));
-        if (!sample) return;
-        const contact = defaultElement(index === 2 ? "contactNC" : "contactNO", cfg.leftRail + 20, y - 7);
-        contact.orientation = "horizontal";
-        contact.w = 14;
-        contact.h = 10;
-        contact.label = index === 1 ? "PB01" : (index === 2 ? "PB02" : "LS01");
-        contact.tag = contact.label;
-        contact.description = index === 1 ? "起動" : (index === 2 ? "停止" : "位置検出");
-        const coil = defaultElement(index === 3 ? "lamp" : "coil", cfg.rightRail - 40, y - 7);
-        coil.label = index === 3 ? "PL01" : "CR" + String(index).padStart(2, "0");
-        coil.tag = coil.label;
-        coil.description = index === 3 ? "運転表示" : "制御リレー";
-        page.elements.push(contact, coil);
       }
 
       function ladderWire(points, wireNo, extra = {}) {
@@ -4582,12 +4918,20 @@
             const dataUrl = String(reader.result || "");
             const image = new Image();
             image.onload = () => {
-              onLoad(dataUrl, image.naturalWidth || image.width || 1, image.naturalHeight || image.height || 1);
-              resolve(true);
+              Promise.resolve(onLoad(dataUrl, image.naturalWidth || image.width || 1, image.naturalHeight || image.height || 1))
+                .then(() => resolve(true))
+                .catch(error => {
+                  setStatus("下絵画像の処理に失敗しました: " + error.message);
+                  resolve(false);
+                });
             };
             image.onerror = () => {
-              onLoad(dataUrl, 16, 11);
-              resolve(true);
+              Promise.resolve(onLoad(dataUrl, 16, 11))
+                .then(() => resolve(true))
+                .catch(error => {
+                  setStatus("下絵画像の処理に失敗しました: " + error.message);
+                  resolve(false);
+                });
             };
             image.src = dataUrl;
           };
@@ -4609,14 +4953,12 @@
         render();
       }
 
-      function addTwoUpUnderlayPages(name, dataUrl, imageWidth, imageHeight) {
+      async function addTwoUpUnderlayPages(name, dataUrl, imageWidth, imageHeight) {
         const base = currentPage();
         const baseTitle = base?.title || {};
         const baseIndex = state.pages.length + 1;
-        const pages = [
-          { suffix: "上", crop: "top" },
-          { suffix: "下", crop: "bottom" }
-        ].map((item, index) => {
+        const splitImages = await rotatedA3TwoUpImages(dataUrl);
+        const pages = splitImages.map((item, index) => {
           const page = createPage({
             name: "P" + (baseIndex + index) + "-" + item.suffix,
             size: "A4",
@@ -4631,7 +4973,7 @@
             installation: baseTitle.installation || "",
             location: baseTitle.location || ""
           });
-          page.elements.unshift(buildUnderlayImageElement(page, name + " " + item.suffix, dataUrl, imageWidth, imageHeight, item.crop));
+          page.elements.unshift(buildUnderlayImageElement(page, name + " " + item.suffix, item.dataUrl, item.width, item.height, "full"));
           return page;
         });
         state.pages.push(...pages);
@@ -4639,6 +4981,46 @@
         setSelection([pages[0].elements[0].id]);
         commitHistory("2面下絵ページを作成しました。");
         render();
+      }
+
+      function rotatedA3TwoUpImages(dataUrl) {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => {
+            try {
+              const sourceW = image.naturalWidth || image.width || 1;
+              const sourceH = image.naturalHeight || image.height || 1;
+              const rotated = document.createElement("canvas");
+              rotated.width = sourceH;
+              rotated.height = sourceW;
+              const ctx = rotated.getContext("2d");
+              ctx.translate(rotated.width, 0);
+              ctx.rotate(Math.PI / 2);
+              ctx.drawImage(image, 0, 0);
+              const halfW = Math.floor(rotated.width / 2);
+              const items = [
+                { suffix: "1", sx: 0, sw: halfW },
+                { suffix: "2", sx: halfW, sw: rotated.width - halfW }
+              ].map(item => {
+                const canvas = document.createElement("canvas");
+                canvas.width = item.sw;
+                canvas.height = rotated.height;
+                canvas.getContext("2d").drawImage(rotated, item.sx, 0, item.sw, rotated.height, 0, 0, item.sw, rotated.height);
+                return {
+                  suffix: item.suffix,
+                  dataUrl: canvas.toDataURL("image/png"),
+                  width: item.sw,
+                  height: rotated.height
+                };
+              });
+              resolve(items);
+            } catch (error) {
+              reject(error);
+            }
+          };
+          image.onerror = () => reject(new Error("画像を回転分割できません。"));
+          image.src = dataUrl;
+        });
       }
 
       function selectCurrentUnderlay() {
@@ -6597,6 +6979,11 @@
         qs("#newProjectBtn").addEventListener("click", () => {
           if (confirm("現在の内容を破棄して新規作成しますか？")) initProject();
         });
+        qs("#selectOnlyBtn").addEventListener("click", event => {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          cancelPlacementMode(true);
+        });
         qs("#paletteFilter").addEventListener("input", event => {
           paletteFilterText = event.target.value || "";
           renderPalette();
@@ -6677,11 +7064,11 @@
         qsa("[data-tool]").forEach(button => {
           button.addEventListener("click", () => setActiveTool(button.dataset.tool));
         });
-        qs("#zoomRange").addEventListener("input", event => {
-          state.settings.zoom = Number(event.target.value);
-          render();
-        });
+        qs("#zoomRange").addEventListener("input", event => setZoom(event.target.value, false));
         qs("#zoomRange").addEventListener("change", () => commitHistory("ズームを変更しました。"));
+        qs("#zoomOutBtn").addEventListener("click", () => setZoom(state.settings.zoom - .4, true));
+        qs("#zoomInBtn").addEventListener("click", () => setZoom(state.settings.zoom + .4, true));
+        qs("#actualSizeBtn").addEventListener("click", () => setZoom(3.78, true));
         qs("#fitPageBtn").addEventListener("click", fitPageToWorkspace);
         qs("#gridSize").addEventListener("change", event => {
           state.settings.grid = Number(event.target.value || 2.5);
@@ -6756,13 +7143,21 @@
         svg.addEventListener("pointerup", onCanvasPointerUp);
         svg.addEventListener("pointercancel", onCanvasPointerUp);
         svg.addEventListener("dblclick", onCanvasDoubleClick);
+        svg.addEventListener("wheel", onCanvasWheel, { passive: false });
 
         window.addEventListener("keydown", onKeyDown);
       }
 
+      function onCanvasWheel(event) {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        const delta = event.deltaY < 0 ? .25 : -.25;
+        setZoom(state.settings.zoom + delta, false);
+      }
+
       function onCanvasPointerDown(event) {
         const svg = qs("#canvas");
-        const point = canvasPoint(event);
+        const point = canvasPoint(event, { connectionOnly: activeTool === "wire", raw: activeTool === "select" });
         const pointHandle = event.target.closest("[data-point-index]");
         if (pointHandle) {
           const element = selectedElement();
@@ -6845,7 +7240,10 @@
             mode: "move",
             elementId: targetId,
             start: point,
-            originals: selectedElements().map(item => deepClone(item))
+            originals: selectedElements().map(item => deepClone(item)),
+            attachedWires: currentPage().elements
+              .filter(item => item.type === "wire" && !currentSelectionIdSet().has(item.id))
+              .map(item => deepClone(item))
           };
           svg.setPointerCapture(event.pointerId);
           render();
@@ -6859,7 +7257,12 @@
 
       function onCanvasPointerMove(event) {
         if (!dragState) return;
-        const point = canvasPoint(event);
+        const page = currentPage();
+        const activeDragElement = page?.elements.find(item => item.id === dragState.elementId);
+        const point = canvasPoint(event, {
+          excludeSelected: ["move", "resize", "point", "draw"].includes(dragState.mode),
+          connectionOnly: activeDragElement?.type === "wire" && ["draw", "point"].includes(dragState.mode)
+        });
         if (dragState.mode === "marquee") {
           dragState.current = point;
           render();
@@ -6883,9 +7286,11 @@
           return;
         }
         if (dragState.mode === "move") {
-          const dx = point.x - dragState.start.x;
-          const dy = point.y - dragState.start.y;
-          const page = currentPage();
+          let dx = point.x - dragState.start.x;
+          let dy = point.y - dragState.start.y;
+          const snapDelta = movementSnapDelta(dragState.originals || [], dx, dy);
+          dx += snapDelta.dx;
+          dy += snapDelta.dy;
           (dragState.originals || []).forEach(original => {
             const target = page.elements.find(item => item.id === original.id);
             if (!target) return;
@@ -6896,12 +7301,120 @@
               target.y = Number(original.y || 0) + dy;
             }
           });
+          syncAttachedWireEndpoints(page, dragState.originals || [], dragState.attachedWires || [], dx, dy);
           render();
         }
       }
 
+      function syncAttachedWireEndpoints(page, originals, wireOriginals, dx, dy) {
+        const pairs = [];
+        originals.forEach(original => {
+          if (!original || original.points) return;
+          const oldAnchors = componentConnectionAnchors(original);
+          if (!oldAnchors.length) return;
+          const moved = deepClone(original);
+          moved.x = Number(moved.x || 0) + dx;
+          moved.y = Number(moved.y || 0) + dy;
+          const newAnchors = componentConnectionAnchors(moved);
+          oldAnchors.forEach((oldAnchor, index) => {
+            const next = newAnchors[index];
+            if (next) pairs.push({ oldAnchor, newAnchor: next });
+          });
+        });
+        if (!pairs.length) return;
+        const selectedSet = currentSelectionIdSet();
+        wireOriginals.forEach(originalWire => {
+          const wire = page.elements.find(item => item.id === originalWire.id);
+          if (!wire || selectedSet.has(wire.id) || !wire.points) return;
+          const lastIndex = originalWire.points.length - 1;
+          wire.points = originalWire.points.map((point, index) => {
+            if (index !== 0 && index !== lastIndex) return [round(point[0]), round(point[1])];
+            let pair = null;
+            pairs.forEach(item => {
+              const d = Math.hypot(point[0] - item.oldAnchor.x, point[1] - item.oldAnchor.y);
+              if (d <= SNAP_RADIUS_MM && (!pair || d < pair.d)) pair = { ...item, d };
+            });
+            return pair ? [round(pair.newAnchor.x), round(pair.newAnchor.y)] : [round(point[0]), round(point[1])];
+          });
+        });
+      }
+
+      function componentConnectionAnchors(element) {
+        if (!element || element.points) return [];
+        if (element.type === "terminalStrip" || element.type === "connector") {
+          const geo = terminalStripGeometry(element);
+          return Array.from({ length: geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
+        }
+        if (element.type === "junction") return [{ x: element.x || 0, y: element.y || 0 }];
+        return elementConnectionAnchors(element);
+      }
+
+      function movementSnapDelta(originals, dx, dy) {
+        if (!state.settings.objectSnap || !originals.length) return { dx: 0, dy: 0 };
+        const page = currentPage();
+        const excludeIds = new Set(originals.map(original => original.id));
+        const targets = collectSnapAnchors(page, excludeIds);
+        let best = null;
+        originals.flatMap(original => movedElementAnchors(original, dx, dy)).forEach(source => {
+          targets.forEach(target => {
+            const d = Math.hypot(target.x - source.x, target.y - source.y);
+            if (d <= SNAP_RADIUS_MM && (!best || d < best.d)) {
+              best = { d, dx: target.x - source.x, dy: target.y - source.y };
+            }
+          });
+          const segmentTarget = closestSegmentSnapPoint(page, source.x, source.y, excludeIds);
+          if (segmentTarget) {
+            const d = Math.hypot(segmentTarget.x - source.x, segmentTarget.y - source.y);
+            if (d <= SNAP_RADIUS_MM && (!best || d < best.d)) {
+              best = { d, dx: segmentTarget.x - source.x, dy: segmentTarget.y - source.y };
+            }
+          }
+        });
+        return best ? { dx: best.dx, dy: best.dy } : { dx: 0, dy: 0 };
+      }
+
+      function movedElementAnchors(original, dx, dy) {
+        const element = deepClone(original);
+        if (element.points) {
+          element.points = element.points.map(point => [point[0] + dx, point[1] + dy]);
+          return (element.points || []).map(point => ({ x: point[0], y: point[1] }));
+        }
+        element.x = Number(element.x || 0) + dx;
+        element.y = Number(element.y || 0) + dy;
+        if (element.type === "junction") return [{ x: element.x || 0, y: element.y || 0 }];
+        if (element.type === "terminalStrip" || element.type === "connector") {
+          const geo = terminalStripGeometry(element);
+          return Array.from({ length: geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
+        }
+        const anchors = elementConnectionAnchors(element);
+        if (anchors.length) return anchors;
+        const box = elementBounds(element);
+        return box ? [{ x: box.x + box.w / 2, y: box.y + box.h / 2 }] : [];
+      }
+
+      function snapPointElementConnections(element, page) {
+        if (!element || !page || !element.points?.length || !state.settings.objectSnap) return;
+        const excludeIds = new Set([element.id]);
+        const lastIndex = element.points.length - 1;
+        const targetIndices = element.type === "wire" ? [0, lastIndex] : element.points.map((_, index) => index);
+        targetIndices.forEach(index => {
+          const point = element.points[index];
+          if (!point) return;
+          const snapped = snapConnectionPoint(page, point[0], point[1], excludeIds);
+          element.points[index] = [round(snapped.x), round(snapped.y)];
+        });
+      }
+
+      function snapConnectionPoint(page, x, y, excludeIds = new Set()) {
+        const anchor = closestAnchor(collectConnectionAnchors(page, excludeIds), x, y);
+        if (anchor) return { x: anchor.x, y: anchor.y };
+        const segment = closestSegmentSnapPoint(page, x, y, excludeIds);
+        return segment || { x, y };
+      }
+
       function onCanvasPointerUp(event) {
         if (!dragState) return;
+        const finishedDrag = dragState;
         try {
           qs("#canvas").releasePointerCapture(event.pointerId);
         } catch (_) {
@@ -6913,6 +7426,11 @@
           render();
           return;
         }
+        const page = currentPage();
+        const touchedIds = finishedDrag.mode === "move"
+          ? (finishedDrag.originals || []).map(original => original.id)
+          : [finishedDrag.elementId].filter(Boolean);
+        touchedIds.forEach(id => snapPointElementConnections(page?.elements.find(item => item.id === id), page));
         const element = selectedElement();
         if (element && element.points) {
           const a = element.points[0];
