@@ -1141,7 +1141,7 @@
           fuse: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20"/><rect x="28" y="14" width="24" height="16" ${stroke}/></svg>`,
           breaker: `<svg ${common}><path ${stroke} d="M8 24h20M54 24h18"/><circle cx="30" cy="24" r="3" ${thin}/><circle cx="52" cy="24" r="3" ${thin}/><path ${stroke} d="M33 23l16-10M48 31h10"/></svg>`,
           lamp: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="40" cy="22" r="12" ${stroke}/><path ${thin} d="M34 23c4-6 8-6 12 0"/></svg>`,
-          buzzer: `<svg ${common}><path ${stroke} d="M8 24h16l22-12v24L24 24"/><path ${thin} d="M55 15c7 5 7 13 0 18M64 10c10 8 10 24 0 32"/></svg>`,
+          buzzer: `<svg ${common}><path ${stroke} d="M8 24h14"/><circle cx="25" cy="24" r="3" ${thin}/><path ${stroke} d="M29 16c6-7 16-6 21 1l18-5M29 32c6 7 16 6 21-1l18 5M68 12c5 7 5 17 0 24"/></svg>`,
           powerSupply: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M28 18h10M33 13v10M46 18h10M46 28h10"/></svg>`,
           transformer: `<svg ${common}><path ${stroke} d="M8 22h14M58 22h14M32 10c-10 0-10 24 0 24M48 10c10 0 10 24 0 24"/><path ${thin} d="M38 10v24M42 10v24"/></svg>`,
           ground: `<svg ${common}><path ${stroke} d="M40 8v14M26 22h28M31 29h18M36 36h8"/></svg>`,
@@ -1951,6 +1951,10 @@
       function drawLamp(g, element, stroke) {
         const w = Number(element.w || 14);
         const h = Number(element.h || 14);
+        if ((element.lampVariant || "pilot") === "cylinder") {
+          drawCylinderLamp(g, element, stroke, w, h);
+          return;
+        }
         const r = Number(element.r || Math.min(w, h) * .34);
         const cx = w / 2;
         const cy = h / 2;
@@ -1961,9 +1965,38 @@
         if (element.label) g.appendChild(textEl(element.label, cx, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      function drawCylinderLamp(g, element, stroke, w, h) {
+        const cy = h / 2;
+        const bodyX = Math.max(3.5, w * .3);
+        const bodyW = Math.max(5.5, w - bodyX * 2);
+        const bodyY = Math.max(1.6, h * .18);
+        const bodyH = h - bodyY * 2;
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: bodyX, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: bodyX + bodyW, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + bodyX + " " + (bodyY + 1) + " C " + bodyX + " " + (bodyY - .4) + " " + (bodyX + bodyW) + " " + (bodyY - .4) + " " + (bodyX + bodyW) + " " + (bodyY + 1), class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + bodyX + " " + (bodyY + 1) + " V " + (bodyY + bodyH - 1) + " C " + bodyX + " " + (bodyY + bodyH + .4) + " " + (bodyX + bodyW) + " " + (bodyY + bodyH + .4) + " " + (bodyX + bodyW) + " " + (bodyY + bodyH - 1) + " V " + (bodyY + 1), class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
       function drawBuzzer(g, element, stroke) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 12);
+        if ((element.buzzerVariant || "horn") === "speaker") {
+          drawSpeakerBuzzer(g, element, stroke, w, h);
+          return;
+        }
+        const cy = h / 2;
+        const throat = Math.max(4.2, w * .26);
+        const mouthX = w - .4;
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: throat - .8, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx: throat, cy, r: .85, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + (throat + .7) + " " + (cy - 2.3) + " C " + (throat + 2.6) + " " + (cy - 4.5) + " " + (throat + 5.2) + " " + (cy - 4.2) + " " + (throat + 6.8) + " " + (cy - 2.4) + " L " + mouthX + " " + (cy - 4.9), class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + (throat + .7) + " " + (cy + 2.3) + " C " + (throat + 2.6) + " " + (cy + 4.5) + " " + (throat + 5.2) + " " + (cy + 4.2) + " " + (throat + 6.8) + " " + (cy + 2.4) + " L " + mouthX + " " + (cy + 4.9), class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + mouthX + " " + (cy - 4.9) + " C " + w + " " + (cy - 2) + " " + w + " " + (cy + 2) + " " + mouthX + " " + (cy + 4.9), class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawSpeakerBuzzer(g, element, stroke, w, h) {
         const cy = h / 2;
         g.appendChild(svgEl("path", { d: "M 0 " + cy + " H " + (w * .24) + " L " + (w * .62) + " 2.2 V " + (h - 2.2) + " L " + (w * .24) + " " + cy, class: "symbol-line", stroke }));
         g.appendChild(svgEl("path", { d: "M " + (w * .72) + " " + (h * .3) + " C " + (w * .9) + " " + (h * .42) + " " + (w * .9) + " " + (h * .58) + " " + (w * .72) + " " + (h * .7), class: "symbol-line", stroke }));
@@ -2562,6 +2595,26 @@
             </select>
           `;
         }
+        if (element.type === "lamp") {
+          const variant = element.lampVariant || "pilot";
+          return `
+            <label>ランプ形状</label>
+            <select data-bind="lampVariant">
+              <option value="pilot"${variant === "pilot" ? " selected" : ""}>丸形パイロット</option>
+              <option value="cylinder"${variant === "cylinder" ? " selected" : ""}>筒形表示灯</option>
+            </select>
+          `;
+        }
+        if (element.type === "buzzer") {
+          const variant = element.buzzerVariant || "horn";
+          return `
+            <label>ブザー形状</label>
+            <select data-bind="buzzerVariant">
+              <option value="horn"${variant === "horn" ? " selected" : ""}>ホーン</option>
+              <option value="speaker"${variant === "speaker" ? " selected" : ""}>スピーカー</option>
+            </select>
+          `;
+        }
         if (element.type === "terminal") {
           const shape = element.terminalShape || "circle";
           return `
@@ -2771,8 +2824,8 @@
           coil: { ...base, w: 16, h: 8, label: "CR" },
           fuse: { ...base, w: 18, h: 6, label: "F" },
           breaker: { ...base, w: 16, h: 10, label: "CB" },
-          lamp: { ...base, w: 14, h: 14, r: 5, label: "PL" },
-          buzzer: { ...base, w: 18, h: 12, label: "BZ" },
+          lamp: { ...base, w: 14, h: 14, r: 5, label: "PL", lampVariant: "pilot" },
+          buzzer: { ...base, w: 18, h: 12, label: "BZ", buzzerVariant: "horn" },
           powerSupply: { ...base, w: 34, h: 24, label: "PS" },
           transformer: { ...base, w: 24, h: 16, label: "T" },
           ground: { ...base, w: 12, h: 14, label: "E" },
@@ -6214,6 +6267,21 @@
       function dxfLampLocal(out, page, element) {
         const w = Number(element.w || 14);
         const h = Number(element.h || 14);
+        if ((element.lampVariant || "pilot") === "cylinder") {
+          const cy = h / 2;
+          const bodyX = Math.max(3.5, w * .3);
+          const bodyW = Math.max(5.5, w - bodyX * 2);
+          const bodyY = Math.max(1.6, h * .18);
+          const bodyH = h - bodyY * 2;
+          dxfLineLocal(out, page, "SYMBOL", element, 0, cy, bodyX, cy);
+          dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW, cy, w, cy);
+          dxfLineLocal(out, page, "SYMBOL", element, bodyX, bodyY + 1, bodyX, bodyY + bodyH - 1);
+          dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW, bodyY + 1, bodyX + bodyW, bodyY + bodyH - 1);
+          dxfEllipseApproxLocal(out, page, "SYMBOL", element, bodyX + bodyW / 2, bodyY + 1, bodyW / 2, 1.2);
+          dxfEllipseApproxLocal(out, page, "SYMBOL", element, bodyX + bodyW / 2, bodyY + bodyH - 1, bodyW / 2, 1.2);
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+          return;
+        }
         const r = Number(element.r || Math.min(w, h) * .34);
         const cx = w / 2;
         const cy = h / 2;
@@ -6229,6 +6297,21 @@
         const w = Number(element.w || 18);
         const h = Number(element.h || 12);
         const cy = h / 2;
+        if ((element.buzzerVariant || "horn") === "horn") {
+          const throat = Math.max(4.2, w * .26);
+          const mouthX = w - .4;
+          dxfLineLocal(out, page, "SYMBOL", element, 0, cy, throat - .8, cy);
+          dxfCircleLocal(out, page, "SYMBOL", element, throat, cy, .85);
+          dxfLineLocal(out, page, "SYMBOL", element, throat + .7, cy - 2.3, throat + 6.8, cy - 2.4);
+          dxfLineLocal(out, page, "SYMBOL", element, throat + 6.8, cy - 2.4, mouthX, cy - 4.9);
+          dxfLineLocal(out, page, "SYMBOL", element, throat + .7, cy + 2.3, throat + 6.8, cy + 2.4);
+          dxfLineLocal(out, page, "SYMBOL", element, throat + 6.8, cy + 2.4, mouthX, cy + 4.9);
+          dxfLineLocal(out, page, "SYMBOL", element, mouthX, cy - 4.9, w, cy - 2);
+          dxfLineLocal(out, page, "SYMBOL", element, w, cy - 2, w, cy + 2);
+          dxfLineLocal(out, page, "SYMBOL", element, w, cy + 2, mouthX, cy + 4.9);
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+          return;
+        }
         dxfLineLocal(out, page, "SYMBOL", element, 0, cy, w * .24, cy);
         dxfLineLocal(out, page, "SYMBOL", element, w * .24, cy, w * .62, 2.2);
         dxfLineLocal(out, page, "SYMBOL", element, w * .62, 2.2, w * .62, h - 2.2);
