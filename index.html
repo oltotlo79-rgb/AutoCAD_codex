@@ -463,7 +463,9 @@
     #terminalCsvInput,
     #plcCsvInput,
     #underlayInput,
-    #underlayTwoUpInput { display: none; }
+    #underlayTwoUpInput,
+    #dxfImportInput,
+    #packImportInput { display: none; }
 
     @media print {
       @page { margin: 0; }
@@ -548,7 +550,6 @@
         <button type="button" id="selectOnlyBtn" data-tool="select" style="width:100%;margin-bottom:8px">選択</button>
         <input id="paletteFilter" type="search" placeholder="部品検索" aria-label="部品検索">
         <div class="palette-grid" id="paletteGrid"></div>
-        <button type="button" id="symbolManagerBtn" style="width:100%;margin-top:10px">ユーザー部品管理</button>
 
         <div class="section">
           <div class="panel-title">表示</div>
@@ -587,57 +588,65 @@
         </div>
 
         <div class="section">
-          <div class="panel-title">配線設定</div>
+          <div class="panel-title">配線・レイヤ</div>
           <label for="currentWireType">配線種別</label>
           <select id="currentWireType"></select>
-          <button type="button" id="wireTypeManagerBtn" style="width:100%;margin-top:8px">配線種別管理</button>
-        </div>
-
-        <div class="section">
-          <div class="panel-title">レイヤ</div>
           <label for="currentLayer">作図レイヤ</label>
           <select id="currentLayer"></select>
-          <button type="button" id="layerManagerBtn" style="width:100%;margin-top:8px">レイヤ管理</button>
         </div>
 
         <div class="section">
-          <div class="panel-title">自動処理</div>
+          <div class="panel-title">自動処理・ツール</div>
           <label for="wireNumberFormat">線番書式</label>
           <input id="wireNumberFormat" type="text" value="%S-%N">
           <label for="componentTagFormat">部品タグ書式</label>
           <input id="componentTagFormat" type="text" value="%F%N">
           <div class="row" style="margin-top:8px">
-            <button type="button" id="autoWireBtn">線番</button>
-            <button type="button" id="terminalNoBtn">端子番号</button>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button type="button" id="autoJunctionBtn">接続点生成</button>
-            <button type="button" id="wireSequenceBtn">配線順序</button>
-          </div>
-          <button type="button" id="addRungBtn" style="width:100%;margin-top:8px">ラング追加</button>
-          <div class="row" style="margin-top:8px">
-            <button type="button" id="wireColumnBtn">縦配線列</button>
-            <button type="button" id="wireRowBtn">横配線行</button>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button type="button" id="terminalEditorBtn">端子台</button>
-            <button type="button" id="tagComponentsBtn">部品タグ</button>
-          </div>
-          <button type="button" id="componentTagRulesBtn" style="width:100%;margin-top:8px">部品タグ規則</button>
-          <div class="row" style="margin-top:8px">
-            <button type="button" id="crossRefBtn">クロス参照</button>
+            <button type="button" id="autoWireBtn">線番採番</button>
             <button type="button" id="auditBtn">監査</button>
           </div>
-          <div class="row" style="margin-top:8px">
-            <button type="button" id="reportCsvBtn">帳票CSV</button>
-            <button type="button" id="copyReportBtn">一覧表示</button>
-          </div>
-          <button type="button" id="insertReportTableBtn" style="width:100%;margin-top:8px">帳票表挿入</button>
-          <div class="row" style="margin-top:8px">
-            <button type="button" id="terminalCsvBtn">端子CSV</button>
-            <button type="button" id="plcCsvBtn">PLC CSV</button>
-          </div>
-          <button type="button" id="exportDxfBtn" style="width:100%;margin-top:8px">DXF</button>
+          <label for="actionMenu">機能メニュー</label>
+          <select id="actionMenu">
+            <option value="">選択してください…</option>
+            <optgroup label="自動処理">
+              <option value="terminalNo">端子番号の振り直し</option>
+              <option value="tagComponents">部品タグ採番</option>
+              <option value="autoJunction">接続点生成</option>
+              <option value="wireSequence">配線順序(FROM/TO)</option>
+              <option value="addRung">ラング追加</option>
+            </optgroup>
+            <optgroup label="一括生成">
+              <option value="wireColumn">縦配線列</option>
+              <option value="wireRow">横配線行</option>
+              <option value="twistedPair">ツイストペア</option>
+              <option value="motorCircuit">モータ分岐回路</option>
+              <option value="plcUnit">PLCユニット</option>
+              <option value="panelLink">盤レイアウト連携</option>
+            </optgroup>
+            <optgroup label="一覧・管理">
+              <option value="terminalEditor">端子台エディタ</option>
+              <option value="tagRules">部品タグ規則</option>
+              <option value="wireTypeManager">配線種別管理</option>
+              <option value="layerManager">レイヤ管理</option>
+              <option value="catalog">部品カタログ</option>
+              <option value="symbolManager">ユーザー部品管理</option>
+            </optgroup>
+            <optgroup label="帳票・確認">
+              <option value="crossRef">クロスリファレンス</option>
+              <option value="reportCsv">帳票CSV出力</option>
+              <option value="reportTable">図面要素一覧</option>
+              <option value="insertReport">帳票表挿入</option>
+              <option value="bom">部品集計表(BOM)</option>
+            </optgroup>
+            <optgroup label="取込・出力">
+              <option value="terminalCsv">端子CSV取込</option>
+              <option value="plcCsv">PLC CSV取込</option>
+              <option value="importDxf">DXF取込</option>
+              <option value="exportDxf">DXF出力</option>
+              <option value="exportPack">標準パック出力</option>
+              <option value="importPack">標準パック取込</option>
+            </optgroup>
+          </select>
         </div>
       </aside>
 
@@ -675,6 +684,7 @@
           <option value="detailed">詳細: 右下+改訂欄</option>
           <option value="side">側面表題欄</option>
           <option value="index">目次/表紙: 大型表欄</option>
+          <option value="ladder">設備標準: 行番号+機器符号表</option>
           <option value="blank">枠線のみ</option>
         </select>
 
@@ -710,6 +720,8 @@
             <input id="pageLocation" type="text">
           </div>
         </div>
+        <label for="pageSideNote">側注記（左余白の縦書き）</label>
+        <input id="pageSideNote" type="text" placeholder="設備名など">
 
         <div class="section">
           <div class="inline">
@@ -718,23 +730,26 @@
             <button type="button" id="deletePageBtn">削除</button>
           </div>
           <div class="row" style="margin-top:8px">
-            <button type="button" id="sampleTerminalPageBtn">端子図</button>
-            <button type="button" id="indexPageBtn">目次</button>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button type="button" id="ioPageBtn">I/O</button>
-            <button type="button" id="layoutPageBtn">配置</button>
-          </div>
-          <button type="button" id="ladderPageBtn" style="width:100%;margin-top:8px">ラダー</button>
-          <div class="row" style="margin-top:8px">
-            <button type="button" id="underlayImageBtn">下絵画像</button>
-            <button type="button" id="selectUnderlayBtn">下絵選択</button>
-          </div>
-          <button type="button" id="underlayTwoUpBtn" style="width:100%;margin-top:8px">2面下絵ページ</button>
-          <div class="row" style="margin-top:8px">
             <button type="button" id="movePagePrevBtn">前へ</button>
             <button type="button" id="movePageNextBtn">後へ</button>
           </div>
+          <label for="templateMenu">テンプレートからページ追加</label>
+          <select id="templateMenu">
+            <option value="">選択してください…</option>
+            <option value="facilityLadder">設備ラダー</option>
+            <option value="plcInput">PLC入力回路</option>
+            <option value="terminalSheet">端子接続図</option>
+            <option value="ladder">ラダー（汎用）</option>
+            <option value="index">目次</option>
+            <option value="layout">機器配置</option>
+          </select>
+          <label for="underlayMenu">下絵</label>
+          <select id="underlayMenu">
+            <option value="">選択してください…</option>
+            <option value="insert">下絵画像を挿入</option>
+            <option value="twoUp">2面下絵ページを作成</option>
+            <option value="select">下絵を選択（ロック中も可）</option>
+          </select>
         </div>
 
         <div class="section" id="selectionPanel"></div>
@@ -747,6 +762,8 @@
   <input id="plcCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
   <input id="underlayInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
   <input id="underlayTwoUpInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" multiple>
+  <input id="dxfImportInput" type="file" accept=".dxf,application/dxf">
+  <input id="packImportInput" type="file" accept=".json,application/json">
   <div id="printSheets" class="print-sheets"></div>
   <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
     <div class="dialog">
@@ -851,6 +868,8 @@
         { type: "capacitor", label: "コンデンサ", icon: "capacitor" },
         { type: "diode", label: "ダイオード", icon: "diode" },
         { type: "thermalRelay", label: "サーマルリレー", icon: "thermalRelay" },
+        { type: "thermalElement", label: "サーマル素子", icon: "thermalElement" },
+        { type: "pressureSwitch", label: "圧力スイッチ", icon: "pressureSwitch" },
         { type: "deviceBox", label: "機器箱", icon: "box" },
         { type: "plcBlock", label: "PLC/I-O", icon: "plc" },
         { type: "connector", label: "コネクタ", icon: "connector" },
@@ -859,6 +878,8 @@
         { type: "terminalBox", label: "端子箱", icon: "terminalBox" },
         { type: "table", label: "表", icon: "table" },
         { type: "arrow", label: "信号矢印", icon: "arrow" },
+        { type: "positionMark", label: "ポジション表示", icon: "positionMark" },
+        { type: "polarityMark", label: "極性マーク", icon: "polarityMark" },
         { type: "junction", label: "接続点", icon: "dot" }
       ];
 
@@ -885,6 +906,8 @@
         capacitor: "C",
         diode: "D",
         thermalRelay: "THR",
+        thermalElement: "OL",
+        pressureSwitch: "PS",
         deviceBox: "DEV",
         plcBlock: "PLC",
         connector: "CN",
@@ -1013,6 +1036,8 @@
           ...(state.project || {})
         };
         state.project.titleMap = { ...DEFAULT_TITLE_MAP, ...(state.project.titleMap || {}) };
+        if (!Array.isArray(state.catalog)) state.catalog = [];
+        if (!Array.isArray(state.standardPacks)) state.standardPacks = [];
         return state.project;
       }
 
@@ -1160,31 +1185,35 @@
           rect: `<svg ${common}><rect x="18" y="11" width="44" height="24" ${stroke}/></svg>`,
           circle: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
           area: `<svg ${common}><rect x="12" y="8" width="56" height="30" ${thin} stroke-dasharray="5 4"/><path ${thin} d="M12 17h56"/><path ${stroke} d="M20 13h18"/></svg>`,
-          terminal: `<svg ${common}><rect x="32" y="14" width="16" height="16" ${stroke}/><path ${stroke} d="M8 22h24M48 22h24"/></svg>`,
-          strip: `<svg ${common}><path ${stroke} d="M10 24h60"/><circle cx="20" cy="24" r="6" ${thin}/><circle cx="35" cy="24" r="6" ${thin}/><circle cx="50" cy="24" r="6" ${thin}/><circle cx="65" cy="24" r="6" ${thin}/></svg>`,
+          terminal: `<svg ${common}><path ${stroke} d="M8 22h24M48 22h24"/><circle cx="40" cy="22" r="8" ${thin}/></svg>`,
+          strip: `<svg ${common}><path ${stroke} d="M30 8v28M50 8v28"/><path ${thin} d="M30 8c4-4 16-4 20 0M30 36c4 4 16 4 20 0"/><circle cx="40" cy="16" r="5.5" ${thin}/><circle cx="40" cy="29" r="5.5" ${thin}/></svg>`,
           sheet: `<svg ${common}><path ${thin} d="M12 34h56M20 12v22M34 12v22M48 12v22M62 12v22"/><path ${stroke} d="M12 12h56"/></svg>`,
-          contactNO: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10"/></svg>`,
-          contactNC: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10M50 13v18"/></svg>`,
-          contactBlock: `<svg ${common}><rect x="20" y="9" width="40" height="26" ${thin} stroke-dasharray="4 3"/><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10"/></svg>`,
-          pushButton: `<svg ${common}><path ${stroke} d="M8 25h18M54 25h18M40 7v12M30 7h20"/><circle cx="28" cy="25" r="3" ${thin}/><circle cx="52" cy="25" r="3" ${thin}/><path ${stroke} d="M31 24l18-10"/></svg>`,
-          selectorSwitch: `<svg ${common}><path ${stroke} d="M8 24h18M54 24h18"/><circle cx="28" cy="24" r="3" ${thin}/><circle cx="52" cy="24" r="3" ${thin}/><path ${stroke} d="M31 23l18-11M40 8l8 8M48 8l-8 8"/></svg>`,
-          limitSwitch: `<svg ${common}><path ${stroke} d="M8 25h18M54 25h18"/><circle cx="28" cy="25" r="3" ${thin}/><circle cx="52" cy="25" r="3" ${thin}/><path ${stroke} d="M31 24l18-10M36 7h18M45 7v8"/></svg>`,
-          coil: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20"/><rect x="28" y="14" width="24" height="16" ${stroke}/><path ${thin} d="M36 15v14M44 15v14"/></svg>`,
+          contactNO: `<svg ${common}><path ${stroke} d="M8 22h24M48 22h24"/><rect x="32" y="9" width="5" height="26" ${thin}/><rect x="43" y="9" width="5" height="26" ${thin}/></svg>`,
+          contactNC: `<svg ${common}><path ${stroke} d="M8 22h24M48 22h24"/><rect x="32" y="9" width="5" height="26" ${thin}/><rect x="43" y="9" width="5" height="26" ${thin}/><path ${stroke} d="M30 37L52 6"/></svg>`,
+          contactBlock: `<svg ${common}><rect x="14" y="6" width="52" height="32" ${thin}/><path ${stroke} d="M18 22h14M48 22h14"/><rect x="34" y="12" width="4" height="20" ${thin}/><rect x="42" y="12" width="4" height="20" ${thin}/></svg>`,
+          pushButton: `<svg ${common}><path ${stroke} d="M8 28h16M56 28h16"/><circle cx="30" cy="28" r="4" ${thin}/><circle cx="50" cy="28" r="4" ${thin}/><path ${stroke} d="M24 18h32M40 18v-8M32 10h16"/></svg>`,
+          selectorSwitch: `<svg ${common}><path ${stroke} d="M8 28h16M56 28h16"/><circle cx="30" cy="28" r="4" ${thin}/><circle cx="50" cy="28" r="4" ${thin}/><path ${thin} d="M30 22v-8h8M50 22v-8h-8"/></svg>`,
+          limitSwitch: `<svg ${common}><path ${stroke} d="M8 28h16M56 28h16"/><circle cx="30" cy="28" r="4" ${thin}/><circle cx="50" cy="28" r="4" ${thin}/><rect x="28" y="8" width="24" height="8" ${thin}/></svg>`,
+          pressureSwitch: `<svg ${common}><path ${stroke} d="M8 18h16M56 18h16"/><circle cx="30" cy="18" r="4" ${thin}/><circle cx="50" cy="18" r="4" ${thin}/><path ${stroke} d="M33 15l16 8"/><path ${thin} d="M38 24v6M31 36c1-7 15-7 16 0z"/></svg>`,
+          coil: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
           fuse: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20"/><rect x="28" y="14" width="24" height="16" ${stroke}/></svg>`,
-          breaker: `<svg ${common}><path ${stroke} d="M8 24h20M54 24h18"/><circle cx="30" cy="24" r="3" ${thin}/><circle cx="52" cy="24" r="3" ${thin}/><path ${stroke} d="M33 23l16-10M48 31h10"/></svg>`,
-          lamp: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="40" cy="22" r="12" ${stroke}/><path ${thin} d="M34 23c4-6 8-6 12 0"/></svg>`,
+          breaker: `<svg ${common}><path ${stroke} d="M4 26h7"/><circle cx="15" cy="26" r="3.5" ${thin}/><circle cx="41" cy="26" r="3.5" ${thin}/><path ${stroke} d="M15 26a13 13 0 0 1 26 0"/><path ${stroke} d="M45 26h4v-8h8v14h6v-6h9"/></svg>`,
+          lamp: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><circle cx="40" cy="22" r="13" ${stroke}/><path ${thin} d="M50 12l6-6M50 32l6 6M30 12l-6-6M30 32l-6 6"/></svg>`,
           buzzer: `<svg ${common}><path ${stroke} d="M8 24h14"/><circle cx="25" cy="24" r="3" ${thin}/><path ${stroke} d="M29 16c6-7 16-6 21 1l18-5M29 32c6 7 16 6 21-1l18 5M68 12c5 7 5 17 0 24"/></svg>`,
           solenoidValve: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><rect x="24" y="12" width="14" height="20" ${stroke}/><path ${thin} d="M38 12l18 10-18 10M56 12v20"/></svg>`,
           sensor: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><rect x="24" y="12" width="32" height="20" ${stroke}/><path ${thin} d="M30 18h12M30 26h18M52 14l8-6M55 22h10M52 30l8 6"/></svg>`,
           powerSupply: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M28 18h10M33 13v10M46 18h10M46 28h10"/></svg>`,
           transformer: `<svg ${common}><path ${stroke} d="M8 22h14M58 22h14M32 10c-10 0-10 24 0 24M48 10c10 0 10 24 0 24"/><path ${thin} d="M38 10v24M42 10v24"/></svg>`,
-          ground: `<svg ${common}><path ${stroke} d="M40 8v14M26 22h28M31 29h18M36 36h8"/></svg>`,
-          motor: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="40" cy="22" r="14" ${stroke}/><path ${thin} d="M32 28V16l8 8 8-8v12"/></svg>`,
+          ground: `<svg ${common}><path ${stroke} d="M40 6v14"/><path ${thin} d="M40 20l-9 9M46 23l-9 9M52 26l-9 9"/></svg>`,
+          motor: `<svg ${common}><circle cx="46" cy="22" r="15" ${stroke}/><path ${thin} d="M40 28V16l6 7 6-7v12"/><circle cx="12" cy="9" r="3" ${thin}/><circle cx="10" cy="22" r="3" ${thin}/><circle cx="12" cy="35" r="3" ${thin}/><path ${thin} d="M15 10l17 6M13 22h18M15 34l17-6"/></svg>`,
           fan: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><circle cx="40" cy="22" r="14" ${stroke}/><path ${thin} d="M40 22c-7-8-2-14 7-10M40 22c10-2 13 6 6 12M40 22c-3 10-12 8-13-2"/></svg>`,
           resistor: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><rect x="26" y="14" width="28" height="16" ${stroke}/></svg>`,
           capacitor: `<svg ${common}><path ${stroke} d="M8 22h25M47 22h25M33 12v20M47 12v20"/></svg>`,
           diode: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20M28 12l24 10-24 10V12M52 12v20"/></svg>`,
-          thermalRelay: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="28" cy="22" r="3" ${thin}/><circle cx="52" cy="22" r="3" ${thin}/><path ${stroke} d="M31 21l18-10M34 33c4-9 8 9 12 0"/></svg>`,
+          thermalRelay: `<svg ${common}><path ${stroke} d="M8 24h14M58 24h14"/><circle cx="27" cy="24" r="4" ${thin}/><circle cx="53" cy="24" r="4" ${thin}/><path ${stroke} d="M34 17l12 14M34 31l12-14"/></svg>`,
+          thermalElement: `<svg ${common}><path ${stroke} d="M8 30h16V14h32v16h16"/></svg>`,
+          positionMark: `<svg ${common}><path ${stroke} d="M8 22h64M40 6v32"/><rect x="34" y="16" width="12" height="12" ${thin}/></svg>`,
+          polarityMark: `<svg ${common}><circle cx="40" cy="22" r="11" ${stroke}/><path ${thin} d="M32 22h16M40 14v16"/></svg>`,
           box: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M8 18h10M8 28h10M62 18h10M62 28h10"/></svg>`,
           plc: `<svg ${common}><rect x="16" y="8" width="48" height="30" ${stroke}/><path ${thin} d="M24 8v30M16 16h48M16 24h48M16 32h48"/></svg>`,
           connector: `<svg ${common}><path ${stroke} d="M10 22h60"/><circle cx="22" cy="22" r="5" ${thin}/><circle cx="40" cy="22" r="5" ${thin}/><circle cx="58" cy="22" r="5" ${thin}/></svg>`,
@@ -1223,6 +1252,7 @@
       }
 
       function render() {
+        crossRefCache = null;
         renderPalette();
         renderTabs();
         const page = currentPage();
@@ -1315,6 +1345,11 @@
       function drawFrame(svg, page, size) {
         const margin = frameMargin(size);
         const frame = svgEl("g", { class: "frame" });
+        if (page.frameVariant === "ladder") {
+          drawLadderFrame(frame, page, size);
+          svg.appendChild(frame);
+          return;
+        }
         frame.appendChild(svgEl("rect", { x: margin, y: margin, width: size.w - margin * 2, height: size.h - margin * 2, class: "frame-thick" }));
         frame.appendChild(svgEl("rect", { x: margin + 4, y: margin + 4, width: size.w - (margin + 4) * 2, height: size.h - (margin + 4) * 2, class: "frame-line" }));
         drawCoordinateNumbers(frame, size, margin);
@@ -1436,6 +1471,145 @@
         frame.appendChild(textEl("図名", x + 83, y + h / rows / 2, { fontSize: 2.5, anchor: "middle" }));
       }
 
+      // ===== 設備標準図枠(行番号+機器符号表+表題欄) =====
+      function drawLadderFrame(frame, page, size) {
+        const L = 19, R = size.w - 19, T = 18, B = size.h - 24;
+        frame.appendChild(svgEl("rect", { x: L, y: T, width: R - L, height: B - T, class: "frame-thick" }));
+        for (let i = 0; i <= 20; i++) {
+          frame.appendChild(textEl(String(i).padStart(2, "0"), 25.5, 27 + 9.5 * i, { fontSize: 3, anchor: "middle" }));
+        }
+        frame.appendChild(textEl(page.name || "", (L + R) / 2, 22.5, { fontSize: 3.5, anchor: "middle" }));
+        const tblTop = B - 49;
+        const xrefR = 105.8;
+        frame.appendChild(svgEl("rect", { x: L, y: tblTop, width: xrefR - L, height: B - tblTop, class: "frame-line" }));
+        for (let i = 1; i < 13; i++) {
+          const x = L + (xrefR - L) * i / 13;
+          frame.appendChild(svgEl("line", { x1: x, y1: tblTop, x2: x, y2: B, class: "frame-light" }));
+        }
+        [tblTop + 5, B - 11, B - 5.5].forEach(y => frame.appendChild(svgEl("line", { x1: L, y1: y, x2: xrefR, y2: y, class: "frame-light" })));
+        const devTop = tblTop;
+        const devBottom = tblTop + 28.5;
+        frame.appendChild(svgEl("rect", { x: xrefR, y: devTop, width: R - xrefR, height: devBottom - devTop, class: "frame-line" }));
+        const gw = (R - xrefR) / 2;
+        [0, 1].forEach(gi => {
+          const gx = xrefR + gi * gw;
+          frame.appendChild(svgEl("line", { x1: gx + 11, y1: devTop, x2: gx + 11, y2: devBottom, class: "frame-light" }));
+          frame.appendChild(svgEl("line", { x1: gx + gw - 4.5, y1: devTop, x2: gx + gw - 4.5, y2: devBottom, class: "frame-light" }));
+          frame.appendChild(textEl("機器符号", gx + 5.5, devTop + 1.6, { fontSize: 1.7, anchor: "middle" }));
+          frame.appendChild(textEl("機 器 符 号 内 容", gx + 11 + (gw - 15.5) / 2, devTop + 1.6, { fontSize: 1.7, anchor: "middle" }));
+          frame.appendChild(textEl("頁", gx + gw - 2.25, devTop + 1.6, { fontSize: 1.7, anchor: "middle" }));
+        });
+        frame.appendChild(svgEl("line", { x1: xrefR + gw, y1: devTop, x2: xrefR + gw, y2: devBottom, class: "frame-line" }));
+        for (let i = 1; i <= 10; i++) {
+          const y = devTop + 2.6 + (devBottom - devTop - 2.6) * i / 10;
+          frame.appendChild(svgEl("line", { x1: xrefR, y1: y, x2: R, y2: y, class: "frame-light" }));
+        }
+        const t1 = devBottom;
+        const t2 = t1 + 6;
+        const t3 = t2 + 8;
+        const t4 = B;
+        frame.appendChild(svgEl("rect", { x: xrefR, y: t1, width: R - xrefR, height: t4 - t1, class: "frame-thick" }));
+        frame.appendChild(svgEl("line", { x1: xrefR, y1: t2, x2: R, y2: t2, class: "frame-line" }));
+        frame.appendChild(svgEl("line", { x1: xrefR, y1: t3, x2: R, y2: t3, class: "frame-line" }));
+        frame.appendChild(svgEl("line", { x1: 137, y1: t1, x2: 137, y2: t2, class: "frame-line" }));
+        frame.appendChild(textEl("客先機番", xrefR + 1.2, t1 + 1.8, { fontSize: 1.7 }));
+        frame.appendChild(textEl(page.title.installation || "", (xrefR + 137) / 2, (t1 + t2) / 2 + 1, { fontSize: 2.4, anchor: "middle" }));
+        frame.appendChild(textEl("装置区分", 138.2, t1 + 1.8, { fontSize: 1.7 }));
+        frame.appendChild(textEl(page.title.facility || "", (137 + R) / 2, (t1 + t2) / 2 + 1, { fontSize: 2.4, anchor: "middle" }));
+        frame.appendChild(svgEl("line", { x1: 110, y1: t2, x2: 110, y2: t4, class: "frame-line" }));
+        frame.appendChild(svgEl("line", { x1: 177, y1: t2, x2: 177, y2: t3, class: "frame-line" }));
+        frame.appendChild(textEl("内", 107.9, t2 + 2.6, { fontSize: 1.9, anchor: "middle" }));
+        frame.appendChild(textEl("容", 107.9, t2 + 5.4, { fontSize: 1.9, anchor: "middle" }));
+        frame.appendChild(textEl(page.title.title || "", (110 + 177) / 2, (t2 + t3) / 2, { fontSize: 3.2, anchor: "middle" }));
+        frame.appendChild(textEl("頁", 184, t2 + 1.8, { fontSize: 1.7, anchor: "middle" }));
+        frame.appendChild(textEl(page.title.page || "", 184, t3 - 2.4, { fontSize: 3.5, anchor: "middle" }));
+        frame.appendChild(textEl("図", 107.9, t3 + 2.2, { fontSize: 1.9, anchor: "middle" }));
+        frame.appendChild(textEl("番", 107.9, t3 + 4.8, { fontSize: 1.9, anchor: "middle" }));
+        frame.appendChild(textEl(page.title.drawingNo || "−", (110 + R) / 2, (t3 + t4) / 2, { fontSize: 2.6, anchor: "middle" }));
+        frame.appendChild(textEl("汎用図番:", L, size.h - 20, { fontSize: 1.9 }));
+        frame.appendChild(textEl("図番:", 55, size.h - 20, { fontSize: 1.9 }));
+        frame.appendChild(textEl("出力日: " + (page.title.date || ""), 95, size.h - 20, { fontSize: 1.9 }));
+        frame.appendChild(textEl("更新日: " + (state.project.date || ""), 125, size.h - 20, { fontSize: 1.9 }));
+        if (state.project.designer) frame.appendChild(textEl(state.project.designer, R, size.h - 20, { fontSize: 2.1, anchor: "end" }));
+        if (page.title.sideNote) {
+          frame.appendChild(textEl(page.title.sideNote, 16.5, size.h / 2, {
+            fontSize: 2.2,
+            anchor: "middle",
+            transform: "rotate(-90 16.5 " + (size.h / 2) + ")"
+          }));
+        }
+        fillLadderXrefTable(frame, page, size);
+        fillLadderDeviceTable(frame, page, size);
+      }
+
+      function pageCoilXrefColumns(page) {
+        const data = crossRefData();
+        const cols = [];
+        page.elements.forEach(element => {
+          if (!coilTypes().has(element.type)) return;
+          const tag = componentTag(element);
+          if (!tag) return;
+          cols.push({ tag, refs: data.contacts.get(tag) || [] });
+        });
+        return cols.slice(0, 13);
+      }
+
+      function fillLadderXrefTable(frame, page, size) {
+        const L = 19;
+        const xrefR = 105.8;
+        const B = size.h - 24;
+        const tblTop = B - 49;
+        const colW = (xrefR - L) / 13;
+        pageCoilXrefColumns(page).forEach((col, i) => {
+          const x = L + colW * i;
+          frame.appendChild(textEl(col.tag, x + 0.6, tblTop + 2.5, { fontSize: 1.8 }));
+          col.refs.slice(0, 12).forEach((ref, j) => {
+            const y = tblTop + 7.5 + j * 2.6;
+            frame.appendChild(textEl(ref.address, x + colW - 0.8, y, { fontSize: 1.7, anchor: "end" }));
+            if (ref.closed) {
+              const w = String(ref.address).length * 1.06;
+              frame.appendChild(svgEl("line", { x1: x + colW - 0.8 - w, y1: y + 1.1, x2: x + colW - 0.8, y2: y + 1.1, class: "frame-light" }));
+            }
+          });
+        });
+      }
+
+      function pageDeviceTableRows(page) {
+        const data = crossRefData();
+        const seen = new Set();
+        const rows = [];
+        page.elements.forEach(element => {
+          const tag = componentTag(element);
+          if (!tag || seen.has(tag)) return;
+          if (!coilTypes().has(element.type) && !contactChildTypes().has(element.type)) return;
+          seen.add(tag);
+          const coil = data.coils.get(tag);
+          rows.push({
+            tag,
+            desc: String(element.description || coil?.element.description || "").split(/\r?\n/)[0],
+            page: coil && coil.page.id !== page.id ? String(pageSheetNumber(coil.page)) : ""
+          });
+        });
+        return rows.slice(0, 20);
+      }
+
+      function fillLadderDeviceTable(frame, page, size) {
+        const xrefR = 105.8;
+        const R = size.w - 19;
+        const B = size.h - 24;
+        const devTop = B - 49;
+        const gw = (R - xrefR) / 2;
+        const rowH = (28.5 - 2.6) / 10;
+        pageDeviceTableRows(page).forEach((row, index) => {
+          const gi = Math.floor(index / 10);
+          const gx = xrefR + gi * gw;
+          const y = devTop + 2.6 + (index % 10) * rowH + rowH * 0.7;
+          frame.appendChild(textEl(row.tag, gx + 0.6, y, { fontSize: 1.7 }));
+          if (row.desc) frame.appendChild(textEl(row.desc, gx + 11.6, y, { fontSize: 1.7 }));
+          if (row.page) frame.appendChild(textEl(row.page, gx + gw - 2.25, y, { fontSize: 1.7, anchor: "middle" }));
+        });
+      }
+
       function drawRows(parent, x, y, w, h, rowHeights) {
         let yy = y;
         rowHeights.slice(0, -1).forEach(row => {
@@ -1464,6 +1638,11 @@
           g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")");
         }
         const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
+        if (drawGeoSymbol(g, element, stroke)) {
+          drawVisibleAttributes(g, element);
+          svg.appendChild(g);
+          return;
+        }
         if (element.type === "underlayImage") drawUnderlayImage(g, element);
         if (element.type === "text") drawText(g, element);
         if (element.type === "wire") drawWire(g, element, stroke);
@@ -1542,6 +1721,17 @@
           fontSize: element.fontSize || 3.5,
           anchor: element.align || "start"
         });
+        if (element.underline) {
+          const size = Number(element.fontSize || 3.5);
+          String(element.text || "").split("\n").forEach((line, index) => {
+            if (!line.trim()) return;
+            const w = line.length * size * 0.62;
+            const y = index * size * 1.25 + size * 0.72;
+            const anchor = element.align || "start";
+            const x0 = anchor === "middle" ? -w / 2 : (anchor === "end" ? -w : 0);
+            g.appendChild(svgEl("line", { x1: x0, y1: y, x2: x0 + w, y2: y, class: "symbol-line", stroke: element.stroke || state.settings.stroke }));
+          });
+        }
       }
 
       function drawUnderlayImage(g, element) {
@@ -1593,12 +1783,12 @@
           "stroke-width": style.width,
           "stroke-dasharray": style.dash || null
         }));
-        const mid = wireLabelPoint(points);
         wireGapMarkers(element).forEach(gap => drawWireGap(g, gap));
         if (element.wireNo && !element.hideWireNo) {
-          g.appendChild(textEl(element.wireNo, mid.x + 1.6, mid.y - 1.8, { fontSize: 2.3 }));
+          const pos = wireNoAnchorPoint(element);
+          g.appendChild(textEl(element.wireNo, pos.x, pos.y, { fontSize: 2.3, anchor: pos.anchor }));
           if (element.fixedWireNo) {
-            g.appendChild(textEl("FIX", mid.x + 1.6, mid.y + 2.2, { fontSize: 1.6 }));
+            g.appendChild(textEl("FIX", pos.x, pos.y + 4, { fontSize: 1.6, anchor: pos.anchor }));
           }
         }
       }
@@ -1770,12 +1960,14 @@
       function terminalStripGeometry(element) {
         const count = Math.max(1, Number(element.count || 8));
         const vertical = element.orientation === "vertical";
+        const unit = element.type === "terminalStrip" && element.stripStyle === "unit" && vertical;
         const pitchSize = element.type === "connector" ? 7 : 8;
         const w = Number(element.w || (vertical ? 12 : count * pitchSize));
         const h = Number(element.h || (vertical ? count * pitchSize : 12));
         return {
           count,
           vertical,
+          unit,
           w,
           h,
           pitch: (vertical ? h : w) / count,
@@ -1785,6 +1977,7 @@
 
       function terminalStripNodeLocal(element, index) {
         const geo = terminalStripGeometry(element);
+        if (geo.unit) return { x: 0, y: geo.pitch * index + geo.pitch / 2 };
         return geo.vertical
           ? { x: geo.w / 2, y: geo.pitch * index + geo.pitch / 2 }
           : { x: geo.pitch * index + geo.pitch / 2, y: geo.h / 2 };
@@ -1822,6 +2015,33 @@
 
       function drawTerminalStrip(g, element, stroke) {
         const geo = terminalStripGeometry(element);
+        if (geo.unit) {
+          const w = geo.w;
+          const wave = y => "M 0 " + y +
+            " C " + round(w * .19) + " " + round(y - 2.2) + " " + round(w * .33) + " " + round(y - 2.2) + " " + round(w / 2) + " " + y +
+            " C " + round(w * .67) + " " + round(y + 2.2) + " " + round(w * .81) + " " + round(y + 2.2) + " " + w + " " + y;
+          g.appendChild(svgEl("line", { x1: 0, y1: 0, x2: 0, y2: geo.h, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: w, y1: 0, x2: w, y2: geo.h, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("path", { d: wave(0), class: "symbol-line", stroke, fill: "none" }));
+          g.appendChild(svgEl("path", { d: wave(geo.h), class: "symbol-line", stroke, fill: "none" }));
+          for (let i = 0; i < geo.count; i++) {
+            const cy = geo.pitch * i + geo.pitch / 2;
+            const r = Math.min(3.5, geo.pitch * .37);
+            g.appendChild(svgEl("circle", { cx: w / 2, cy, r, class: "terminal-dot", stroke }));
+            g.appendChild(textEl(terminalLabel(element, i), w / 2, cy, { fontSize: 2, anchor: "middle" }));
+          }
+          if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
+          const unitJumperStart = Number(element.start || 1);
+          terminalJumperPairs(element).forEach(([a, b]) => {
+            const ia = a - unitJumperStart;
+            const ib = b - unitJumperStart;
+            if (ia < 0 || ib < 0 || ia >= geo.count || ib >= geo.count) return;
+            const na = terminalStripNodeLocal(element, ia);
+            const nb = terminalStripNodeLocal(element, ib);
+            g.appendChild(svgEl("path", { d: "M " + na.x + " " + na.y + " Q " + (na.x - 3.6) + " " + ((na.y + nb.y) / 2) + " " + nb.x + " " + nb.y, class: "symbol-line", stroke, fill: "none" }));
+          });
+          return;
+        }
         if (geo.vertical) {
           const bodyW = Math.max(geo.w, 8);
           g.appendChild(svgEl("rect", {
@@ -1864,6 +2084,17 @@
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -3.2, { fontSize: 2.5 }));
         }
+        const jumperStart = Number(element.start || 1);
+        terminalJumperPairs(element).forEach(([a, b]) => {
+          const ia = a - jumperStart;
+          const ib = b - jumperStart;
+          if (ia < 0 || ib < 0 || ia >= geo.count || ib >= geo.count) return;
+          const na = terminalStripNodeLocal(element, ia);
+          const nb = terminalStripNodeLocal(element, ib);
+          const cx = (na.x + nb.x) / 2 + (geo.vertical ? 3.6 : 0);
+          const cy = (na.y + nb.y) / 2 + (geo.vertical ? 0 : 3.6);
+          g.appendChild(svgEl("path", { d: "M " + na.x + " " + na.y + " Q " + cx + " " + cy + " " + nb.x + " " + nb.y, class: "symbol-line", stroke, fill: "none" }));
+        });
       }
 
       function drawTerminalNode(g, cx, cy, r, shape, stroke) {
@@ -2254,18 +2485,20 @@
         multilineText(g, element.label || "機器", w / 2, h / 2 - 1.2, 3.1, { fontSize: 2.1, anchor: "middle" });
         for (let i = 0; i < pins; i++) {
           const y = h * (i + 1) / (pins + 1);
-          g.appendChild(svgEl("line", { x1: -5, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
-          g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 5, y2: y, class: "symbol-line", stroke }));
           if (leftLabels[i]) {
-            g.appendChild(textEl(leftLabels[i], 1.5, y, { fontSize: 1.8 }));
+            g.appendChild(textEl(leftLabels[i], 1.5, y, { fontSize: 2.2 }));
           }
           if (rightLabels[i]) {
-            g.appendChild(textEl(rightLabels[i], w - 1.5, y, { fontSize: 1.8, anchor: "end" }));
+            g.appendChild(textEl(rightLabels[i], w - 1.5, y, { fontSize: 2.2, anchor: "end" }));
           }
         }
       }
 
       function drawPlcBlock(g, element, stroke) {
+        if ((element.plcStyle || "grid") === "unit") {
+          drawPlcUnitColumn(g, element, stroke);
+          return;
+        }
         const w = Number(element.w || 48);
         const rows = Math.max(2, Number(element.rows || 8));
         const h = Number(element.h || rows * 6 + 10);
@@ -2365,6 +2598,18 @@
           g.appendChild(svgEl("line", { x1: x, y1: 0, x2: x, y2: h, class: "symbol-line", stroke }));
         }
         drawTableCells(g, element, rows, cols, colWidths, rowHeights);
+        const diagonals = tableDiagonalCells(element);
+        if (diagonals.length) {
+          const xs = [0];
+          colWidths.forEach(cw => xs.push(xs[xs.length - 1] + cw));
+          const ys = [0];
+          rowHeights.forEach(rh => ys.push(ys[ys.length - 1] + rh));
+          diagonals.forEach(([r, c]) => {
+            if (r >= 1 && r <= rows && c >= 1 && c <= cols) {
+              g.appendChild(svgEl("line", { x1: xs[c - 1], y1: ys[r], x2: xs[c], y2: ys[r - 1], class: "symbol-line", stroke }));
+            }
+          });
+        }
         if (element.label) g.appendChild(textEl(element.label, w / 2, -4, { fontSize: 2.5, anchor: "middle" }));
       }
 
@@ -2393,24 +2638,700 @@
         });
       }
 
+      function arrowHeadSpec(style) {
+        return { open: [3, .35], solid: [3.4, .26], fork: [3.2, .44], chevron: [2.2, .49] }[style] || [3, .35];
+      }
+
       function drawArrow(g, element, stroke) {
         const points = element.points || [[element.x || 0, element.y || 0], [(element.x || 0) + 30, element.y || 0]];
         const a = points[0];
         const b = points[points.length - 1];
-        g.appendChild(svgEl("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: "symbol-line", stroke }));
+        const style = element.arrowStyle || "open";
+        if (style !== "chevron") {
+          g.appendChild(svgEl("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: "symbol-line", stroke }));
+        }
         const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
-        const len = 4;
-        const p1 = [b[0] - len * Math.cos(angle - .6), b[1] - len * Math.sin(angle - .6)];
-        const p2 = [b[0] - len * Math.cos(angle + .6), b[1] - len * Math.sin(angle + .6)];
-        g.appendChild(svgEl("path", { d: "M " + p1[0] + " " + p1[1] + " L " + b[0] + " " + b[1] + " L " + p2[0] + " " + p2[1], class: "symbol-line", stroke }));
+        const head = (tip, dirAngle) => {
+          const [len, half] = arrowHeadSpec(style);
+          const sgn = style === "fork" ? 1 : -1;
+          const q1 = [tip[0] + sgn * len * Math.cos(dirAngle - half), tip[1] + sgn * len * Math.sin(dirAngle - half)];
+          const q2 = [tip[0] + sgn * len * Math.cos(dirAngle + half), tip[1] + sgn * len * Math.sin(dirAngle + half)];
+          if (style === "solid") {
+            g.appendChild(svgEl("path", { d: "M " + q1[0] + " " + q1[1] + " L " + tip[0] + " " + tip[1] + " L " + q2[0] + " " + q2[1] + " Z", fill: stroke, stroke: "none" }));
+          } else {
+            g.appendChild(svgEl("path", { d: "M " + q1[0] + " " + q1[1] + " L " + tip[0] + " " + tip[1] + " L " + q2[0] + " " + q2[1], class: "symbol-line", stroke, fill: "none" }));
+          }
+        };
+        head(b, angle);
+        if (element.arrowAtStart) head(a, angle + Math.PI);
         if (element.label) {
           const mid = pathMid(a, b);
           g.appendChild(textEl(element.label, mid.x, mid.y - 3, { fontSize: 2.4, anchor: "middle" }));
         }
+        const note = arrowCounterpartNote(element);
+        if (note) {
+          g.appendChild(textEl(note, b[0], b[1] - 3, { fontSize: 1.8, anchor: "end" }));
+        }
       }
 
       function drawJunction(g, element, stroke) {
-        g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: Number(element.r || 1.45), fill: stroke }));
+        g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: Number(element.r || 0.75), fill: stroke }));
+      }
+
+      // ===== ラダー行グリッドと行アドレス(頁番号+行番号2桁) =====
+      const LADDER_GRID = { top: 27, pitch: 9.5, rows: 20 };
+
+      function ladderRowAt(y) {
+        const row = Math.round((y - LADDER_GRID.top) / LADDER_GRID.pitch);
+        return Math.max(0, Math.min(LADDER_GRID.rows, row));
+      }
+
+      function elementLadderRow(element) {
+        const box = elementBounds(element);
+        if (!box) return 0;
+        return ladderRowAt(box.y + box.h / 2);
+      }
+
+      function pageSheetNumber(page) {
+        const n = Number(page.title?.page);
+        return Number.isFinite(n) && n > 0 ? n : state.pages.indexOf(page) + 1;
+      }
+
+      function elementAddress(page, element) {
+        return String(pageSheetNumber(page)) + String(elementLadderRow(element)).padStart(2, "0");
+      }
+
+      // ===== コイル↔接点クロスリファレンス =====
+      let crossRefCache = null;
+
+      function coilTypes() {
+        return new Set(["coil"]);
+      }
+
+      function contactChildTypes() {
+        return new Set(["contactNO", "contactNC", "contactBlock", "thermalRelay"]);
+      }
+
+      function buildCrossRefCache() {
+        const coils = new Map();
+        const contacts = new Map();
+        state.pages.forEach(page => {
+          page.elements.forEach(element => {
+            const tag = componentTag(element);
+            if (!tag) return;
+            if (coilTypes().has(element.type)) {
+              if (!coils.has(tag)) coils.set(tag, { page, element, address: elementAddress(page, element) });
+            } else if (contactChildTypes().has(element.type)) {
+              const list = contacts.get(tag) || [];
+              list.push({
+                page,
+                element,
+                address: elementAddress(page, element),
+                closed: element.type === "contactNC" || element.type === "thermalRelay" || element.blockContact === "NC"
+              });
+              contacts.set(tag, list);
+            }
+          });
+        });
+        return { coils, contacts };
+      }
+
+      function crossRefData() {
+        if (!crossRefCache) crossRefCache = buildCrossRefCache();
+        return crossRefCache;
+      }
+
+      function contactAutoRefNo(element) {
+        if (element.refNo) return String(element.refNo);
+        const tag = componentTag(element);
+        if (!tag) return "";
+        const coil = crossRefData().coils.get(tag);
+        return coil && coil.element.id !== element.id ? coil.address : "";
+      }
+
+      // ===== ジオメトリ単一定義方式(固定寸法シンボル定義) =====
+      // SVG / DXF / 接続アンカーはすべてここから導出する。座標は横向き基準mm。
+      const SYMBOL_GEO = {
+        contactNO: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.7, 2.2] },
+            { t: "line", p: [5.3, 2.2, 8, 2.2] },
+            { t: "rect", p: [2.7, 0.6, 0.6, 3.2], fill: "white" },
+            { t: "rect", p: [4.7, 0.6, 0.6, 3.2], fill: "white" },
+            { t: "text", p: [4, -1.4], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -3.6], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [4, 6.0], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        contactNC: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.7, 2.2] },
+            { t: "line", p: [5.3, 2.2, 8, 2.2] },
+            { t: "rect", p: [2.7, 0.6, 0.6, 3.2], fill: "white" },
+            { t: "rect", p: [4.7, 0.6, 0.6, 3.2], fill: "white" },
+            { t: "line", p: [2.6, 4.6, 5.4, -0.4] },
+            { t: "text", p: [4, -1.4], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -3.6], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [4, 6.0], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        thermalRelay: {
+          w: 8, h: 4,
+          anchors: [[0, 2.4], [8, 2.4]],
+          prims: [
+            { t: "line", p: [0, 2.4, 1.7, 2.4] },
+            { t: "line", p: [6.3, 2.4, 8, 2.4] },
+            { t: "circle", p: [2.6, 2.4, 0.9], fill: "white" },
+            { t: "circle", p: [5.4, 2.4, 0.9], fill: "white" },
+            { t: "line", p: [3.1, 1.3, 4.9, 3.1] },
+            { t: "line", p: [3.1, 3.1, 4.9, 1.3] },
+            { t: "text", p: [4, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -3.4], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [4, 5.6], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        thermalElement: {
+          w: 8, h: 3,
+          anchors: [[0, 3], [8, 3]],
+          prims: [
+            { t: "pline", pts: [[0, 3], [2.2, 3], [2.2, 1.2], [5.8, 1.2], [5.8, 3], [8, 3]] },
+            { t: "text", p: [4, -0.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        breaker: {
+          w: 12, h: 5,
+          anchors: [[0, 3], [12, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 1.6, 3] },
+            { t: "arc", p: [4.75, 3, 2.25, 180, 360] },
+            { t: "circle", p: [2.5, 3, 0.9], fill: "white" },
+            { t: "circle", p: [7, 3, 0.9], fill: "white" },
+            { t: "line", p: [7.9, 3, 8.4, 3] },
+            { t: "pline", pts: [[8.4, 3], [8.4, 1.9], [9.4, 1.9], [9.4, 4.1], [10.2, 4.1], [10.2, 3], [12, 3]] },
+            { t: "text", p: [4.75, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4.75, -3.4], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [9.3, 0.9], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        coil: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.8, 2.2] },
+            { t: "line", p: [7.2, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 2.2], fill: "white" },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.6], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "catalog" }
+          ]
+        },
+        lamp: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.8, 2.2] },
+            { t: "line", p: [7.2, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 2.2], fill: "white" },
+            { t: "line", p: [6.56, 0.64, 7.4, -0.2] },
+            { t: "line", p: [6.56, 3.76, 7.4, 4.6] },
+            { t: "line", p: [3.44, 0.64, 2.6, -0.2] },
+            { t: "line", p: [3.44, 3.76, 2.6, 4.6] },
+            { t: "text", p: [5, 2.2], size: 2.2, anchor: "middle", field: "lampColor" },
+            { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.8], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        pushButton: {
+          w: 10, h: 5,
+          anchors: [[0, 3.5], [10, 3.5]],
+          prims: [
+            { t: "line", p: [0, 3.5, 2.5, 3.5] },
+            { t: "line", p: [7.5, 3.5, 10, 3.5] },
+            { t: "circle", p: [3.4, 3.5, 0.9], fill: "white" },
+            { t: "circle", p: [6.6, 3.5, 0.9], fill: "white" },
+            { t: "line", p: [2.6, 2.2, 7.4, 2.2] },
+            { t: "line", p: [5, 2.2, 5, 1.0] },
+            { t: "line", p: [4.3, 1.0, 5.7, 1.0] },
+            { t: "text", p: [5, 6.6], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        pushButtonEmergency: {
+          w: 10, h: 6,
+          anchors: [[0, 3.8], [10, 3.8]],
+          prims: [
+            { t: "line", p: [0, 3.8, 2.5, 3.8] },
+            { t: "line", p: [7.5, 3.8, 10, 3.8] },
+            { t: "circle", p: [3.4, 3.8, 0.9], fill: "white" },
+            { t: "circle", p: [6.6, 3.8, 0.9], fill: "white" },
+            { t: "line", p: [2.4, 2.9, 7.6, 2.9] },
+            { t: "line", p: [5, 2.9, 5, 1.5] },
+            { t: "line", p: [3.6, 1.5, 6.4, 1.5] },
+            { t: "arc", p: [5, 3.8, 1.9, 20, 160] },
+            { t: "text", p: [7.6, 1.5], size: 1.6, anchor: "start", value: "R" },
+            { t: "text", p: [5, 6.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        selectorSwitch: {
+          w: 10, h: 5,
+          anchors: [[0, 3.2], [10, 3.2]],
+          prims: [
+            { t: "line", p: [0, 3.2, 2.5, 3.2] },
+            { t: "line", p: [7.5, 3.2, 10, 3.2] },
+            { t: "circle", p: [3.4, 3.2, 0.9], fill: "white" },
+            { t: "circle", p: [6.6, 3.2, 0.9], fill: "white" },
+            { t: "pline", pts: [[3.4, 2.3], [3.4, 1.4], [4.1, 1.4]] },
+            { t: "pline", pts: [[6.6, 2.3], [6.6, 1.4], [5.9, 1.4]] },
+            { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        limitSwitch: {
+          w: 10, h: 4.6,
+          anchors: [[0, 2.8], [10, 2.8]],
+          prims: [
+            { t: "line", p: [0, 2.8, 2.5, 2.8] },
+            { t: "line", p: [7.5, 2.8, 10, 2.8] },
+            { t: "circle", p: [3.4, 2.8, 0.9], fill: "white" },
+            { t: "circle", p: [6.6, 2.8, 0.9], fill: "white" },
+            { t: "rect", p: [2.9, 0.4, 4.2, 1.3], fill: "white" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        pressureSwitch: {
+          w: 10, h: 6,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.5, 2.2] },
+            { t: "line", p: [7.5, 2.2, 10, 2.2] },
+            { t: "circle", p: [3.4, 2.2, 0.9], fill: "white" },
+            { t: "circle", p: [6.6, 2.2, 0.9], fill: "white" },
+            { t: "line", p: [4.1, 1.7, 7.3, 3.2] },
+            { t: "line", p: [4.6, 2.6, 4.6, 3.6] },
+            { t: "arc", p: [4.6, 4.7, 1.1, 180, 360] },
+            { t: "line", p: [3.5, 4.7, 5.7, 4.7] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        motor: {
+          w: 16, h: 16,
+          anchors: [[0.9, 2.4], [0.9, 8], [0.9, 13.6], [14.6, 14.6]],
+          prims: [
+            { t: "circle", p: [8, 8, 6], fill: "white" },
+            { t: "circle", p: [0.9, 2.4, 0.9], fill: "white" },
+            { t: "circle", p: [0.9, 8, 0.9], fill: "white" },
+            { t: "circle", p: [0.9, 13.6, 0.9], fill: "white" },
+            { t: "line", p: [1.7, 2.8, 3.76, 3.76] },
+            { t: "line", p: [1.8, 8, 2, 8] },
+            { t: "line", p: [1.7, 13.2, 3.76, 12.24] },
+            { t: "line", p: [12.24, 12.24, 14.6, 14.6] },
+            { t: "text", p: [8, 8], size: 2.2, anchor: "middle", field: "label" }
+          ]
+        },
+        ground: {
+          w: 4, h: 5,
+          anchors: [[2, 0]],
+          prims: [
+            { t: "line", p: [2, 0, 2, 2.6] },
+            { t: "line", p: [2.0, 2.6, 0.87, 3.73] },
+            { t: "line", p: [2.6, 3.05, 1.47, 4.18] },
+            { t: "line", p: [3.2, 3.5, 2.07, 4.63] },
+            { t: "text", p: [2, 6.6], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        terminal: {
+          w: 1.8, h: 1.8,
+          anchors: [[0, 0.9], [0.9, 0.9], [1.8, 0.9]],
+          prims: [
+            { t: "circle", p: [0.9, 0.9, 0.9], fill: "white" },
+            { t: "text", p: [0.9, -1.4], size: 1.8, anchor: "middle", field: "label" }
+          ]
+        },
+        resistor: {
+          w: 10, h: 2.6,
+          anchors: [[0, 1.3], [10, 1.3]],
+          prims: [
+            { t: "line", p: [0, 1.3, 2.5, 1.3] },
+            { t: "line", p: [7.5, 1.3, 10, 1.3] },
+            { t: "rect", p: [2.5, 0, 5, 2.6], fill: "white" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        varistor: {
+          w: 10, h: 2.6,
+          anchors: [[0, 1.3], [10, 1.3]],
+          prims: [
+            { t: "line", p: [0, 1.3, 2.5, 1.3] },
+            { t: "line", p: [7.5, 1.3, 10, 1.3] },
+            { t: "rect", p: [2.5, 0, 5, 2.6], fill: "white" },
+            { t: "line", p: [2.5, 2.6, 7.5, 0] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        connectorPair: {
+          w: 6, h: 3,
+          anchors: [[0, 1.5], [6, 1.5]],
+          prims: [
+            { t: "line", p: [0, 1.5, 2.3, 1.5] },
+            { t: "line", p: [2.3, 0.3, 2.3, 2.7] },
+            { t: "arc", p: [3.9, 1.5, 1.2, 270, 450] },
+            { t: "line", p: [5.1, 1.5, 6, 1.5] },
+            { t: "text", p: [3, 4.4], size: 1.8, anchor: "middle", field: "label" }
+          ]
+        },
+        contactBlock: {
+          w: 14, h: 8,
+          anchors: [[0, 4], [14, 4]],
+          prims: [
+            { t: "rect", p: [0, 0, 14, 8] },
+            { t: "line", p: [1.2, 4, 6.0, 4] },
+            { t: "line", p: [8.0, 4, 12.8, 4] },
+            { t: "rect", p: [6.0, 2.4, 0.6, 3.2], fill: "white" },
+            { t: "rect", p: [7.4, 2.4, 0.6, 3.2], fill: "white" },
+            { t: "text", p: [7, -1.4], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [7, 9.8], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        contactBlockNC: {
+          w: 14, h: 8,
+          anchors: [[0, 4], [14, 4]],
+          prims: [
+            { t: "rect", p: [0, 0, 14, 8] },
+            { t: "line", p: [1.2, 4, 6.0, 4] },
+            { t: "line", p: [8.0, 4, 12.8, 4] },
+            { t: "rect", p: [6.0, 2.4, 0.6, 3.2], fill: "white" },
+            { t: "rect", p: [7.4, 2.4, 0.6, 3.2], fill: "white" },
+            { t: "line", p: [5.8, 6.2, 8.2, 1.8] },
+            { t: "text", p: [7, -1.4], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [7, 9.8], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        positionMarkBox: {
+          w: 4, h: 6,
+          anchors: [[2, 3]],
+          prims: [
+            { t: "line", p: [2, 0, 2, 6] },
+            { t: "rect", p: [1.2, 2.2, 1.6, 1.6], fill: "white" },
+            { t: "text", p: [2, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        positionMarkLine: {
+          w: 4, h: 6,
+          anchors: [[2, 3]],
+          prims: [
+            { t: "line", p: [2, 0, 2, 6] },
+            { t: "text", p: [2, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        polarityMarkPlus: {
+          w: 2.6, h: 2.6,
+          anchors: [[1.3, 2.6]],
+          prims: [
+            { t: "circle", p: [1.3, 1.3, 1.1], fill: "white" },
+            { t: "line", p: [0.55, 1.3, 2.05, 1.3] },
+            { t: "line", p: [1.3, 0.55, 1.3, 2.05] },
+            { t: "text", p: [1.3, -1.4], size: 2.2, anchor: "middle", field: "label" }
+          ]
+        },
+        polarityMarkMinus: {
+          w: 2.6, h: 2.6,
+          anchors: [[1.3, 2.6]],
+          prims: [
+            { t: "circle", p: [1.3, 1.3, 1.1], fill: "white" },
+            { t: "line", p: [0.55, 1.3, 2.05, 1.3] },
+            { t: "text", p: [1.3, -1.4], size: 2.2, anchor: "middle", field: "label" }
+          ]
+        }
+      };
+
+      function geoKeyFor(element) {
+        switch (element.type) {
+          case "contactNO": return "contactNO";
+          case "contactNC": return "contactNC";
+          case "thermalRelay": return "thermalRelay";
+          case "thermalElement": return "thermalElement";
+          case "breaker": return "breaker";
+          case "coil": return "coil";
+          case "lamp": return (element.lampVariant || "pilot") === "pilot" ? "lamp" : null;
+          case "pushButton": return (element.pbStyle || "momentary") === "emergency" ? "pushButtonEmergency" : "pushButton";
+          case "selectorSwitch": return "selectorSwitch";
+          case "limitSwitch": return "limitSwitch";
+          case "pressureSwitch": return "pressureSwitch";
+          case "motor": return "motor";
+          case "ground": return "ground";
+          case "terminal": return (element.terminalShape || "circle") === "circle" ? "terminal" : null;
+          case "resistor": return (element.resistorStyle || "box") === "varistor" ? "varistor" : "resistor";
+          case "connector": return element.connStyle === "pair" ? "connectorPair" : null;
+          case "contactBlock": return (element.blockContact || "NO") === "NC" ? "contactBlockNC" : "contactBlock";
+          case "positionMark": return (element.markStyle || "box") === "box" ? "positionMarkBox" : "positionMarkLine";
+          case "polarityMark": return (element.sign || "+") === "-" ? "polarityMarkMinus" : "polarityMarkPlus";
+          default: return null;
+        }
+      }
+
+      function geoFor(element) {
+        const key = geoKeyFor(element);
+        return key ? SYMBOL_GEO[key] || null : null;
+      }
+
+      function geoBodySize(element) {
+        const geo = geoFor(element);
+        if (!geo) return null;
+        const vertical = element.orientation === "vertical";
+        return { w: vertical ? geo.h : geo.w, h: vertical ? geo.w : geo.h };
+      }
+
+      function geoMapPoint(geo, element, x, y) {
+        const vertical = element.orientation === "vertical";
+        const bw = vertical ? geo.h : geo.w;
+        const bh = vertical ? geo.w : geo.h;
+        const ox = (Number(element.w || bw) - bw) / 2;
+        const oy = (Number(element.h || bh) - bh) / 2;
+        if (vertical) return [geo.h - y + ox, x + oy];
+        return [x + ox, y + oy];
+      }
+
+      function geoPrims(element) {
+        const geo = geoFor(element);
+        if (!geo) return [];
+        const map = (x, y) => geoMapPoint(geo, element, x, y);
+        return geo.prims.map((prim, index) => {
+          const q = deepClone(prim);
+          if (prim.t === "line") {
+            const a = map(prim.p[0], prim.p[1]);
+            const b = map(prim.p[2], prim.p[3]);
+            q.p = [a[0], a[1], b[0], b[1]];
+          } else if (prim.t === "pline") {
+            q.pts = prim.pts.map(pt => map(pt[0], pt[1]));
+          } else if (prim.t === "rect") {
+            const a = map(prim.p[0], prim.p[1]);
+            const b = map(prim.p[0] + prim.p[2], prim.p[1] + prim.p[3]);
+            q.p = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])];
+          } else if (prim.t === "circle") {
+            const c = map(prim.p[0], prim.p[1]);
+            q.p = [c[0], c[1], prim.p[2]];
+          } else if (prim.t === "arc") {
+            const c = map(prim.p[0], prim.p[1]);
+            const rot = element.orientation === "vertical" ? 90 : 0;
+            q.p = [c[0], c[1], prim.p[2], prim.p[3] + rot, prim.p[4] + rot];
+          } else if (prim.t === "text") {
+            const c = map(prim.p[0], prim.p[1]);
+            q.p = [c[0], c[1]];
+          }
+          if (element.type === "contactBlock" && element.blockFrame === "dashed" && index === 0 && q.t === "rect") {
+            q.dash = "1.4 1.2";
+          }
+          return q;
+        });
+      }
+
+      function geoTextValue(element, prim) {
+        if (prim.field === "refNo" && contactChildTypes().has(element.type)) {
+          return contactAutoRefNo(element);
+        }
+        if (prim.field === "descLine") {
+          return String(element.description || "").split(/\r?\n/)[0];
+        }
+        if (prim.field) {
+          const raw = element[prim.field];
+          return raw === undefined || raw === null ? "" : String(raw);
+        }
+        return prim.value === undefined ? "" : String(prim.value);
+      }
+
+      function svgArcPath(cx, cy, r, a0, a1) {
+        const rad = d => d * Math.PI / 180;
+        const x0 = cx + r * Math.cos(rad(a0));
+        const y0 = cy + r * Math.sin(rad(a0));
+        const x1 = cx + r * Math.cos(rad(a1));
+        const y1 = cy + r * Math.sin(rad(a1));
+        const large = Math.abs(a1 - a0) > 180 ? 1 : 0;
+        return "M " + round(x0) + " " + round(y0) + " A " + r + " " + r + " 0 " + large + " 1 " + round(x1) + " " + round(y1);
+      }
+
+      function drawGeoSymbol(g, element, stroke) {
+        const geo = geoFor(element);
+        if (!geo) return false;
+        geoPrims(element).forEach(prim => {
+          if (prim.t === "line") {
+            g.appendChild(svgEl("line", { x1: prim.p[0], y1: prim.p[1], x2: prim.p[2], y2: prim.p[3], class: "symbol-line", stroke, "stroke-dasharray": prim.dash || null }));
+          } else if (prim.t === "pline") {
+            g.appendChild(svgEl("path", { d: prim.pts.map((pt, i) => (i ? "L " : "M ") + pt[0] + " " + pt[1]).join(" "), class: "symbol-line", stroke, "stroke-dasharray": prim.dash || null }));
+          } else if (prim.t === "rect") {
+            g.appendChild(svgEl("rect", { x: prim.p[0], y: prim.p[1], width: prim.p[2], height: prim.p[3], class: prim.fill === "white" ? "symbol-fill" : "symbol-line", stroke, fill: prim.fill === "white" ? "#fff" : "none", "stroke-dasharray": prim.dash || null }));
+          } else if (prim.t === "circle") {
+            if (prim.fill === "solid") g.appendChild(svgEl("circle", { cx: prim.p[0], cy: prim.p[1], r: prim.p[2], fill: stroke }));
+            else g.appendChild(svgEl("circle", { cx: prim.p[0], cy: prim.p[1], r: prim.p[2], class: prim.fill === "white" ? "terminal-dot" : "symbol-line", stroke, fill: prim.fill === "white" ? "#fff" : "none" }));
+          } else if (prim.t === "arc") {
+            g.appendChild(svgEl("path", { d: svgArcPath(prim.p[0], prim.p[1], prim.p[2], prim.p[3], prim.p[4]), class: "symbol-line", stroke, fill: "none" }));
+          } else if (prim.t === "text") {
+            const value = geoTextValue(element, prim);
+            if (value) g.appendChild(textEl(value, prim.p[0], prim.p[1], { fontSize: prim.size || 2, anchor: prim.anchor || "middle" }));
+          }
+        });
+        return true;
+      }
+
+      function dxfGeoSymbol(out, page, element) {
+        const geo = geoFor(element);
+        if (!geo) return false;
+        geoPrims(element).forEach(prim => {
+          if (prim.t === "line") {
+            dxfLineLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3]);
+          } else if (prim.t === "pline") {
+            for (let i = 1; i < prim.pts.length; i++) {
+              dxfLineLocal(out, page, "SYMBOL", element, prim.pts[i - 1][0], prim.pts[i - 1][1], prim.pts[i][0], prim.pts[i][1]);
+            }
+          } else if (prim.t === "rect") {
+            dxfRectLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3]);
+          } else if (prim.t === "circle") {
+            dxfCircleLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2]);
+          } else if (prim.t === "arc") {
+            dxfArcLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3], prim.p[4]);
+          } else if (prim.t === "text") {
+            const value = geoTextValue(element, prim);
+            if (!value) return;
+            const size = prim.size || 2;
+            const dx = prim.anchor === "middle" ? value.length * size * .3 : (prim.anchor === "end" ? value.length * size * .6 : 0);
+            dxfTextLocal(out, page, "TEXT", element, prim.p[0] - dx, prim.p[1] + size * .35, size, value);
+          }
+        });
+        return true;
+      }
+
+      function dxfArcLocal(out, page, layer, element, cx, cy, r, a0, a1) {
+        const c = localPoint(element, cx, cy);
+        const rot = Number(element.rotation || 0);
+        const s = ((-(a1 + rot)) % 360 + 360) % 360;
+        const e = ((-(a0 + rot)) % 360 + 360) % 360;
+        out.push("0", "ARC", "8", layer, "10", round(c[0]), "20", round(cadY(page, c[1])), "40", round(r), "50", round(s), "51", round(e));
+      }
+
+      function dxfQuadApproxLocal(out, page, layer, element, x0, y0, cx, cy, x1, y1) {
+        const steps = 8;
+        let prev = [x0, y0];
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          const mt = 1 - t;
+          const px = mt * mt * x0 + 2 * mt * t * cx + t * t * x1;
+          const py = mt * mt * y0 + 2 * mt * t * cy + t * t * y1;
+          dxfLineLocal(out, page, layer, element, prev[0], prev[1], px, py);
+          prev = [px, py];
+        }
+      }
+
+      function dxfTextRotated(out, page, layer, x, y, size, text, angle) {
+        out.push("0", "TEXT", "8", layer, "10", round(x), "20", round(cadY(page, y)), "40", round(size), "1", String(text || ""), "50", String(angle));
+      }
+
+      function geoAnchors(element) {
+        const geo = geoFor(element);
+        if (!geo) return null;
+        return geo.anchors.map(a => {
+          const p = geoMapPoint(geo, element, a[0], a[1]);
+          return localAnchor(element, p[0], p[1]);
+        });
+      }
+
+      function resizeGeoElementForOrientation(element) {
+        const size = geoBodySize(element);
+        if (!size) return false;
+        element.w = size.w;
+        element.h = size.h;
+        return true;
+      }
+
+      // ===== 配線ラベル配置(mid/start/end) =====
+      function wireNoAnchorPoint(element) {
+        const points = element.points || [[0, 0], [20, 0]];
+        const align = element.wireNoAlign || "mid";
+        const dx = Number(element.wireNoDx || 0);
+        const dy = Number(element.wireNoDy || 0);
+        if (align === "mid") {
+          const mid = wireLabelPoint(points);
+          return { x: mid.x + 1.6 + dx, y: mid.y - 1.8 + dy, anchor: "start" };
+        }
+        const end = align === "end" ? points[points.length - 1] : points[0];
+        return {
+          x: end[0] + (align === "end" ? -1.2 : 1.2) + dx,
+          y: end[1] - 1.6 + dy,
+          anchor: align === "end" ? "end" : "start"
+        };
+      }
+
+      // ===== 表の斜線セル =====
+      function tableDiagonalCells(element) {
+        return String(element.cellDiagonals || "")
+          .split(";")
+          .map(pair => pair.split(",").map(Number))
+          .filter(p => p.length === 2 && p.every(Number.isFinite));
+      }
+
+      // ===== 端子台ジャンパ =====
+      function terminalJumperPairs(element) {
+        return String(element.jumpers || "")
+          .split(";")
+          .map(pair => pair.split("-").map(n => Number(n.trim())))
+          .filter(p => p.length === 2 && p.every(Number.isFinite));
+      }
+
+      // ===== PLC 16進アドレス連番 =====
+      function splitPlcAddress(address) {
+        const match = String(address || "").trim().match(/^(.*?)([0-9A-Fa-f]{1,4})$/);
+        return match ? { prefix: match[1], digits: match[2] } : null;
+      }
+
+      function plcAddressSequence(start, count) {
+        const parts = splitPlcAddress(start);
+        if (!parts) return Array.from({ length: count }, (_, i) => String(start) + i);
+        const base = parseInt(parts.digits, 16);
+        return Array.from({ length: count }, (_, i) =>
+          parts.prefix + (base + i).toString(16).toUpperCase().padStart(parts.digits.length, "0"));
+      }
+
+      // ===== 信号矢印のペア注記 =====
+      function arrowCounterpartNote(element) {
+        const role = element.signalRole || "reference";
+        if (!element.label || role === "reference") return "";
+        const targetRole = role === "source" ? "destination" : "source";
+        for (const page of state.pages) {
+          for (const item of page.elements) {
+            if (item.type === "arrow" && item.id !== element.id && item.label === element.label
+              && (item.signalRole || "reference") === targetRole) {
+              return "頁" + pageSheetNumber(page);
+            }
+          }
+        }
+        return "";
+      }
+
+      // ===== PLCユニット列(波形破断線+端子円) =====
+      function plcUnitWavePoints(w, y) {
+        return [[0, y], [1.8, y - 1.6], [3.6, y - 1.6], [w / 2, y], [w / 2 + 1.65, y + 1.6], [w - 1.8, y + 1.6], [w, y]];
+      }
+
+      function drawPlcUnitColumn(g, element, stroke) {
+        const rows = Math.max(1, Number(element.rows || 8));
+        const w = 10.5;
+        const h = rows * 9.5;
+        const labels = String(element.pinText || "").split(/\r?\n/);
+        const wave = y => "M 0 " + y +
+          " C 2 " + (y - 2.2) + " 3.5 " + (y - 2.2) + " 5.25 " + y +
+          " C 7 " + (y + 2.2) + " 8.5 " + (y + 2.2) + " 10.5 " + y;
+        g.appendChild(svgEl("line", { x1: 0, y1: 0, x2: 0, y2: h, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: w, y1: 0, x2: w, y2: h, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: wave(0), class: "symbol-line", stroke, fill: "none" }));
+        g.appendChild(svgEl("path", { d: wave(h), class: "symbol-line", stroke, fill: "none" }));
+        for (let i = 0; i < rows; i++) {
+          const cy = 9.5 * i + 4.75;
+          g.appendChild(svgEl("circle", { cx: w / 2, cy, r: 3.5, class: "terminal-dot", stroke }));
+          if (labels[i]) g.appendChild(textEl(labels[i], w / 2, cy, { fontSize: 2, anchor: "middle" }));
+        }
+        if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
       }
 
       function drawSelection(svg) {
@@ -2460,7 +3381,7 @@
       }
 
       function canResizeElement(element) {
-        return !!element && !element.points && element.type !== "junction";
+        return !!element && !element.points && element.type !== "junction" && !geoFor(element);
       }
 
       function drawMarquee(svg) {
@@ -2556,6 +3477,7 @@
         setValue("drawDate", page.title.date);
         setValue("pageInstallation", page.title.installation || "");
         setValue("pageLocation", page.title.location || "");
+        setValue("pageSideNote", page.title.sideNote || "");
         setValue("zoomRange", state.settings.zoom);
         setValue("gridSize", state.settings.grid);
         setValue("snapToggle", state.settings.snap ? "on" : "off");
@@ -2588,7 +3510,8 @@
       function renderStandardSelect() {
         const select = qs("#drawingStandard");
         if (!select) return;
-        const html = STANDARDS.map(standard => `<option value="${escapeAttr(standard.id)}">${escapeHtml(standard.label)}</option>`).join("");
+        const all = [...STANDARDS, ...(state.standardPacks || [])];
+        const html = all.map(standard => `<option value="${escapeAttr(standard.id)}">${escapeHtml(standard.label || standard.id)}</option>`).join("");
         if (select.innerHTML !== html) select.innerHTML = html;
       }
 
@@ -2631,6 +3554,15 @@
               <button type="button" id="bringForwardBtn">前面へ</button>
               <button type="button" id="sendBackwardBtn">背面へ</button>
             </div>
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="groupBtn">グループ化</button>
+              <button type="button" id="ungroupBtn">グループ解除</button>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="mirrorBtn">左右ミラー</button>
+              <button type="button" id="arrayCopyBtn">等間隔複製</button>
+            </div>
+            <button type="button" id="mergeWiresBtn" style="width:100%;margin-top:8px">配線を結合(2本選択時)</button>
             <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:8px">回路として登録</button>
             <div class="row-3" style="margin-top:8px">
               <button type="button" data-align="left">左揃え</button>
@@ -2656,6 +3588,11 @@
           attachSelectionActionButtons(panel);
           qs("#pasteInstallLocationBtn", panel)?.addEventListener("click", pasteInstallLocationToSelection);
           qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
+          qs("#groupBtn", panel)?.addEventListener("click", groupSelected);
+          qs("#ungroupBtn", panel)?.addEventListener("click", ungroupSelected);
+          qs("#mirrorBtn", panel)?.addEventListener("click", mirrorSelectedHorizontal);
+          qs("#arrayCopyBtn", panel)?.addEventListener("click", showArrayCopyDialog);
+          qs("#mergeWiresBtn", panel)?.addEventListener("click", mergeSelectedWires);
           return;
         }
         const element = selectedElement();
@@ -2697,6 +3634,10 @@
             <button type="button" id="rotateLeftBtn">左90°</button>
             <button type="button" id="rotateRightBtn">右90°</button>
           </div>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="mirrorBtn">左右ミラー</button>
+            <button type="button" id="arrayCopyBtn">等間隔複製</button>
+          </div>
           <div class="row-3" style="margin-top:8px">
             <button type="button" data-nudge="-1,0">←</button>
             <button type="button" data-nudge="0,-1">↑</button>
@@ -2727,6 +3668,17 @@
         qs("#addWirePointBtn", panel)?.addEventListener("click", addSelectedWirePoint);
         qs("#removeWirePointBtn", panel)?.addEventListener("click", removeSelectedWirePoint);
         qs("#orthogonalizeWireBtn", panel)?.addEventListener("click", orthogonalizeSelectedWire);
+        qs("#splitWireBtn", panel)?.addEventListener("click", splitSelectedWire);
+        qs("#catalogPickBtn", panel)?.addEventListener("click", showCatalogPicker);
+        qs("#mirrorBtn", panel)?.addEventListener("click", mirrorSelectedHorizontal);
+        qs("#arrayCopyBtn", panel)?.addEventListener("click", showArrayCopyDialog);
+        qs("#lineStylePreset", panel)?.addEventListener("change", event => {
+          const target = selectedElement();
+          if (!target) return;
+          target.dash = event.target.value;
+          commitHistory("線種を変更しました。");
+          render();
+        });
         qs("#applyAreaAttributesBtn", panel)?.addEventListener("click", applySelectedAreaAttributes);
         qs("#copyInstallLocationBtn", panel)?.addEventListener("click", copySelectedInstallLocation);
         qs("#pasteInstallLocationBtn", panel)?.addEventListener("click", pasteInstallLocationToSelection);
@@ -2811,14 +3763,26 @@
             <textarea data-bind="text">${escapeHtml(element.text || "")}</textarea>
             <label>文字サイズ mm</label>
             <input data-bind="fontSize" data-kind="number" type="number" step="0.2" value="${round(element.fontSize || 3.5)}">
+            <label><input data-bind="underline" type="checkbox" ${element.underline ? "checked" : ""} style="width:auto;min-height:auto"> 下線</label>
           `;
         }
         if (element.type === "wire") {
+          const align = element.wireNoAlign || "mid";
           return `
             <label>線番</label>
             <input data-bind="wireNo" type="text" value="${escapeAttr(element.wireNo || "")}">
             <label><input data-bind="fixedWireNo" type="checkbox" ${element.fixedWireNo ? "checked" : ""} style="width:auto;min-height:auto"> 線番固定</label>
             <label><input data-bind="hideWireNo" type="checkbox" ${element.hideWireNo ? "checked" : ""} style="width:auto;min-height:auto"> 線番非表示</label>
+            <label>線番位置</label>
+            <select data-bind="wireNoAlign">
+              <option value="mid"${align === "mid" ? " selected" : ""}>中央</option>
+              <option value="start"${align === "start" ? " selected" : ""}>始点寄せ</option>
+              <option value="end"${align === "end" ? " selected" : ""}>終点寄せ</option>
+            </select>
+            <div class="row">
+              <div><label>線番調整X</label><input data-bind="wireNoDx" data-kind="number" type="number" step="0.5" value="${round(element.wireNoDx || 0)}"></div>
+              <div><label>線番調整Y</label><input data-bind="wireNoDy" data-kind="number" type="number" step="0.5" value="${round(element.wireNoDy || 0)}"></div>
+            </div>
             <div class="row">
               <div><label>FROM</label><input data-bind="fromOverride" type="text" value="${escapeAttr(element.fromOverride || "")}"></div>
               <div><label>TO</label><input data-bind="toOverride" type="text" value="${escapeAttr(element.toOverride || "")}"></div>
@@ -2847,6 +3811,7 @@
               <button type="button" id="removeWirePointBtn" ${pointCount <= 2 ? "disabled" : ""}>中間点削除</button>
             </div>
             <button type="button" id="orthogonalizeWireBtn" style="width:100%;margin-top:8px">直交整形</button>
+            <button type="button" id="splitWireBtn" style="width:100%;margin-top:8px">配線を分割</button>
             <button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>
             <div class="row" style="margin-top:8px">
               <button type="button" id="addIntersectionGapsBtn">交差ギャップ追加</button>
@@ -2874,13 +3839,14 @@
         if (element.type === "installationBox" || element.type === "locationBox") {
           const target = element.type === "installationBox" ? "設備" : "場所";
           return `
-            <label>枠線破線</label>
-            <input data-bind="dash" type="text" value="${escapeAttr(element.dash || "4 2")}" placeholder="4 2">
+            <label>枠線破線（一点鎖線: 6 1.5 1.5 1.5）</label>
+            <input data-bind="dash" type="text" value="${escapeAttr(element.dash || "4 2")}" placeholder="4 2 / 6 1.5 1.5 1.5">
             <button type="button" id="applyAreaAttributesBtn" style="width:100%;margin-top:8px">枠内へ${target}属性を適用</button>
           `;
         }
         if (element.type === "arrow") {
           const role = element.signalRole || "reference";
+          const arrowStyle = element.arrowStyle || "open";
           return `
             <label>信号矢印種別</label>
             <select data-bind="signalRole">
@@ -2888,9 +3854,36 @@
               <option value="source"${role === "source" ? " selected" : ""}>発信元</option>
               <option value="destination"${role === "destination" ? " selected" : ""}>受信先</option>
             </select>
+            <label>矢印スタイル</label>
+            <select data-bind="arrowStyle">
+              <option value="open"${arrowStyle === "open" ? " selected" : ""}>開き(送り先)</option>
+              <option value="solid"${arrowStyle === "solid" ? " selected" : ""}>塗り(ページ継続)</option>
+              <option value="fork"${arrowStyle === "fork" ? " selected" : ""}>フォーク(母線端)</option>
+              <option value="chevron"${arrowStyle === "chevron" ? " selected" : ""}>シェブロン(継続&gt;)</option>
+            </select>
+            <label><input data-bind="arrowAtStart" type="checkbox" ${element.arrowAtStart ? "checked" : ""} style="width:auto;min-height:auto"> 始点側にも矢印</label>
           `;
         }
         if (["contactNO", "contactNC", "pushButton"].includes(element.type)) {
+          const orientation = element.orientation || "horizontal";
+          const pbStyle = element.pbStyle || "momentary";
+          return `
+            <label>接点方向</label>
+            <select data-bind="orientation">
+              <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横向き標準</option>
+              <option value="vertical"${orientation === "vertical" ? " selected" : ""}>縦配線上の回転配置用</option>
+            </select>
+            ${element.type === "pushButton" ? `
+            <label>PB形状</label>
+            <select data-bind="pbStyle">
+              <option value="momentary"${pbStyle === "momentary" ? " selected" : ""}>標準(モーメンタリ)</option>
+              <option value="emergency"${pbStyle === "emergency" ? " selected" : ""}>非常停止(キノコ)</option>
+            </select>` : `
+            <label>参照番号(空欄=コイルから自動)</label>
+            <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
+          `;
+        }
+        if (element.type === "thermalRelay") {
           const orientation = element.orientation || "horizontal";
           return `
             <label>接点方向</label>
@@ -2898,16 +3891,26 @@
               <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横向き標準</option>
               <option value="vertical"${orientation === "vertical" ? " selected" : ""}>縦配線上の回転配置用</option>
             </select>
+            <label>参照番号(空欄=コイルから自動)</label>
+            <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">
           `;
         }
         if (element.type === "contactBlock") {
           const kind = element.blockContact || "NO";
+          const frame = element.blockFrame || "solid";
           return `
             <label>ブロック内接点</label>
             <select data-bind="blockContact">
               <option value="NO"${kind === "NO" ? " selected" : ""}>a接点</option>
               <option value="NC"${kind === "NC" ? " selected" : ""}>b接点</option>
             </select>
+            <label>ブロック枠</label>
+            <select data-bind="blockFrame">
+              <option value="solid"${frame === "solid" ? " selected" : ""}>実線</option>
+              <option value="dashed"${frame === "dashed" ? " selected" : ""}>点線</option>
+            </select>
+            <label>参照番号(空欄=コイルから自動)</label>
+            <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">
           `;
         }
         if (["fuse", "breaker"].includes(element.type)) {
@@ -2917,6 +3920,45 @@
             <select data-bind="orientation">
               <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横配線用</option>
               <option value="vertical"${orientation === "vertical" ? " selected" : ""}>縦配線用</option>
+            </select>
+            ${element.type === "breaker" ? `
+            <label>定格表示(トリップ素子上)</label>
+            <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}" placeholder="10A">` : ""}
+          `;
+        }
+        if (element.type === "resistor") {
+          const style = element.resistorStyle || "box";
+          const orientation = element.orientation || "horizontal";
+          return `
+            <label>抵抗形状</label>
+            <select data-bind="resistorStyle">
+              <option value="box"${style === "box" ? " selected" : ""}>標準(枠)</option>
+              <option value="varistor"${style === "varistor" ? " selected" : ""}>バリスタ(斜線)</option>
+            </select>
+            <label>方向</label>
+            <select data-bind="orientation">
+              <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横</option>
+              <option value="vertical"${orientation === "vertical" ? " selected" : ""}>縦</option>
+            </select>
+          `;
+        }
+        if (element.type === "positionMark") {
+          const style = element.markStyle || "box";
+          return `
+            <label>マーク形状</label>
+            <select data-bind="markStyle">
+              <option value="box"${style === "box" ? " selected" : ""}>縦線+小箱(入)</option>
+              <option value="line"${style === "line" ? " selected" : ""}>縦線のみ(切)</option>
+            </select>
+          `;
+        }
+        if (element.type === "polarityMark") {
+          const sign = element.sign || "+";
+          return `
+            <label>極性</label>
+            <select data-bind="sign">
+              <option value="+"${sign === "+" ? " selected" : ""}>⊕ プラス</option>
+              <option value="-"${sign === "-" ? " selected" : ""}>⊖ マイナス</option>
             </select>
           `;
         }
@@ -2928,6 +3970,8 @@
               <option value="pilot"${variant === "pilot" ? " selected" : ""}>丸形パイロット</option>
               <option value="cylinder"${variant === "cylinder" ? " selected" : ""}>筒形表示灯</option>
             </select>
+            <label>ランプ色文字(W/R/G等)</label>
+            <input data-bind="lampColor" type="text" value="${escapeAttr(element.lampColor || "")}" placeholder="W">
           `;
         }
         if (element.type === "buzzer") {
@@ -2959,7 +4003,21 @@
         if (["terminalStrip", "connector"].includes(element.type)) {
           const orientation = element.orientation || "horizontal";
           const shape = element.terminalShape || "circle";
+          const connStyle = element.connStyle || "strip";
+          const stripStyle = element.stripStyle || "";
           return `
+            ${element.type === "terminalStrip" ? `
+            <label>端子台形状</label>
+            <select data-bind="stripStyle">
+              <option value="unit"${stripStyle === "unit" ? " selected" : ""}>ユニット列（縦・端子円）</option>
+              <option value=""${stripStyle !== "unit" ? " selected" : ""}>ピル形</option>
+            </select>` : ""}
+            ${element.type === "connector" ? `
+            <label>コネクタ形状</label>
+            <select data-bind="connStyle">
+              <option value="strip"${connStyle !== "pair" ? " selected" : ""}>端子列</option>
+              <option value="pair"${connStyle === "pair" ? " selected" : ""}>コネクタ対(プラグ/ソケット)</option>
+            </select>` : ""}
             <div class="row">
               <div><label>端子数</label><input data-bind="count" data-kind="number" type="number" min="1" step="1" value="${Number(element.count || 8)}"></div>
               <div><label>開始番号</label><input data-bind="start" data-kind="number" type="number" step="1" value="${Number(element.start || 1)}"></div>
@@ -2976,6 +4034,8 @@
             </select>
             <label>接頭辞</label>
             <input data-bind="prefix" type="text" value="${escapeAttr(element.prefix || "")}">
+            <label>ジャンパ(例: 1-2;3-5)</label>
+            <input data-bind="jumpers" type="text" value="${escapeAttr(element.jumpers || "")}" placeholder="1-2;3-5">
           `;
         }
         if (element.type === "table") {
@@ -2988,6 +4048,8 @@
             <input data-bind="colWidths" type="text" value="${escapeAttr(element.colWidths || "")}" placeholder="15,45,20,20">
             <label>行高（カンマ区切り）</label>
             <input data-bind="rowHeights" type="text" value="${escapeAttr(element.rowHeights || "")}" placeholder="8,5,5,5">
+            <label>斜線セル（行,列;行,列）</label>
+            <input data-bind="cellDiagonals" type="text" value="${escapeAttr(element.cellDiagonals || "")}" placeholder="2,3;3,3">
             <label>表文字サイズ mm</label>
             <input data-bind="tableFontSize" data-kind="number" type="number" min="1" step="0.1" value="${round(element.tableFontSize || 2.2)}">
             <label>セル文字（タブ/カンマ区切り）</label>
@@ -2995,9 +4057,15 @@
           `;
         }
         if (element.type === "plcBlock") {
+          const plcStyle = element.plcStyle || "grid";
           return `
+            <label>PLC表示形式</label>
+            <select data-bind="plcStyle">
+              <option value="grid"${plcStyle === "grid" ? " selected" : ""}>格子ボックス</option>
+              <option value="unit"${plcStyle === "unit" ? " selected" : ""}>ユニット列(端子円+破断線)</option>
+            </select>
             <label>I/O行数</label>
-            <input data-bind="rows" data-kind="number" type="number" min="2" step="1" value="${Number(element.rows || 8)}">
+            <input data-bind="rows" data-kind="number" type="number" min="1" step="1" value="${Number(element.rows || 8)}">
             <label>I/O名（1行1点）</label>
             <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
           `;
@@ -3014,6 +4082,14 @@
         }
         if (element.type === "line") {
           return `
+            <label>線種プリセット</label>
+            <select id="lineStylePreset">
+              <option value="">実線</option>
+              <option value="3 2">破線</option>
+              <option value="6 1.5 1.5 1.5">一点鎖線</option>
+              <option value="8 1.5 1.5 1.5 1.5 1.5">二点鎖線</option>
+              <option value="1.4 1.2">細点線</option>
+            </select>
             <div class="row">
               <div><label>線幅</label><input data-bind="strokeWidth" data-kind="number" type="number" min="0.1" step="0.1" value="${round(element.strokeWidth || .32)}"></div>
               <div><label>破線</label><input data-bind="dash" type="text" value="${escapeAttr(element.dash || "")}" placeholder="3 2"></div>
@@ -3050,6 +4126,7 @@
               <div><label>メーカー</label><input data-bind="manufacturer" type="text" value="${escapeAttr(element.manufacturer || "")}"></div>
               <div><label>品番</label><input data-bind="catalog" type="text" value="${escapeAttr(element.catalog || "")}"></div>
             </div>
+            <button type="button" id="catalogPickBtn" style="width:100%;margin-top:8px">カタログから選択</button>
             <div class="row">
               <div><label>定格</label><input data-bind="rating" type="text" value="${escapeAttr(element.rating || "")}"></div>
               <div><label>項目</label><input data-bind="item" type="text" value="${escapeAttr(element.item || "")}"></div>
@@ -3090,7 +4167,7 @@
 
       function supportsElectricalAttributes(element) {
         if (!element) return false;
-        return !["text", "wire", "line", "rect", "circle", "underlayImage", "installationBox", "locationBox", "table", "arrow", "junction"].includes(element.type);
+        return !["text", "wire", "line", "rect", "circle", "underlayImage", "installationBox", "locationBox", "table", "arrow", "junction", "positionMark", "polarityMark", "mechanicalLink"].includes(element.type);
       }
 
       function updateSelectedFromInput(input, save = true) {
@@ -3104,10 +4181,31 @@
         } else {
           element[key] = value;
           if (key === "tag" && supportsElectricalAttributes(element) && !element.label) element.label = value;
-          if (["orientation", "count"].includes(key) && ["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
-          if (key === "orientation" && element.type === "terminal") resizeSingleTerminalForOrientation(element);
-          if (key === "orientation" && ["contactNO", "contactNC", "pushButton"].includes(element.type)) resizeContactElementForOrientation(element);
-          if (key === "orientation" && ["fuse", "breaker"].includes(element.type)) resizeProtectiveElementForOrientation(element);
+          if (key === "tag" && value) {
+            const dup = state.pages.some(page => page.elements.some(item =>
+              item.id !== element.id && item.type === element.type && componentTag(item) === value));
+            if (dup) setStatus("注意: 同種部品でタグ「" + value + "」が重複しています。");
+          }
+          if (["orientation", "count", "stripStyle"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element);
+          if (key === "orientation" && element.type === "terminal" && !resizeGeoElementForOrientation(element)) resizeSingleTerminalForOrientation(element);
+          if (key === "orientation" && ["contactNO", "contactNC", "pushButton", "selectorSwitch", "limitSwitch", "pressureSwitch", "thermalRelay", "thermalElement", "contactBlock"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeContactElementForOrientation(element);
+          if (key === "orientation" && ["fuse", "breaker", "resistor"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
+          if (["pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "terminalShape", "connStyle", "blockContact"].includes(key)) {
+            if (!resizeGeoElementForOrientation(element)) {
+              if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
+              if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
+              if (element.type === "lamp") { element.w = 10; element.h = 10; }
+            }
+          }
+          if (element.type === "plcBlock" && ["plcStyle", "rows"].includes(key)) {
+            if ((element.plcStyle || "grid") === "unit") {
+              element.w = 10.5;
+              element.h = Math.max(1, Number(element.rows || 8)) * 9.5;
+            } else if (key === "plcStyle") {
+              element.w = 50;
+              element.h = Math.max(2, Number(element.rows || 8)) * 6 + 10;
+            }
+          }
         }
         if (save) commitHistory("要素を更新しました。");
         render();
@@ -3137,6 +4235,11 @@
 
       function resizeTerminalElementForOrientation(element) {
         const count = Math.max(1, Number(element.count || 8));
+        if (element.type === "terminalStrip" && element.stripStyle === "unit" && element.orientation === "vertical") {
+          element.w = 10.5;
+          element.h = count * 9.5;
+          return;
+        }
         const pitch = element.type === "connector" ? 7 : 8;
         if (element.orientation === "vertical") {
           element.w = element.type === "connector" ? 10 : 12;
@@ -3180,30 +4283,34 @@
           underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
-          terminal: { ...base, w: 10, h: 6, label: "1", orientation: "horizontal", terminalShape: "circle" },
-          terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "X1" },
-          contactNO: { ...base, w: 10, h: 7, label: "NO", orientation: "horizontal" },
-          contactNC: { ...base, w: 10, h: 7, label: "NC", orientation: "horizontal" },
-          contactBlock: { ...base, w: 14, h: 12, label: "CR", orientation: "horizontal", blockContact: "NO" },
-          pushButton: { ...base, w: 10, h: 8, label: "PB", orientation: "horizontal" },
-          selectorSwitch: { ...base, w: 12, h: 9, label: "SS", orientation: "horizontal" },
-          limitSwitch: { ...base, w: 12, h: 8, label: "LS", orientation: "horizontal" },
-          coil: { ...base, w: 12, h: 6, label: "CR" },
+          terminal: { ...base, w: 1.8, h: 1.8, label: "1", orientation: "horizontal", terminalShape: "circle" },
+          terminalStrip: { ...base, w: 10.5, h: 152, count: 16, start: 1, prefix: "", orientation: "vertical", terminalShape: "circle", stripStyle: "unit", label: "TB1", jumpers: "" },
+          contactNO: { ...base, w: 8, h: 4.4, label: "NO", orientation: "horizontal", refNo: "" },
+          contactNC: { ...base, w: 8, h: 4.4, label: "NC", orientation: "horizontal", refNo: "" },
+          contactBlock: { ...base, w: 14, h: 8, label: "CR", orientation: "horizontal", blockContact: "NO", blockFrame: "solid", refNo: "" },
+          pushButton: { ...base, w: 10, h: 5, label: "PB", orientation: "horizontal", pbStyle: "momentary" },
+          selectorSwitch: { ...base, w: 10, h: 5, label: "SS", orientation: "horizontal" },
+          limitSwitch: { ...base, w: 10, h: 4.6, label: "LS", orientation: "horizontal" },
+          pressureSwitch: { ...base, w: 10, h: 6, label: "PS", orientation: "horizontal" },
+          coil: { ...base, w: 10, h: 4.4, label: "CR" },
           fuse: { ...base, w: 12, h: 4.5, label: "F", orientation: "horizontal" },
-          breaker: { ...base, w: 12, h: 7, label: "CB", orientation: "horizontal" },
-          lamp: { ...base, w: 10, h: 10, r: 3.5, label: "PL", lampVariant: "pilot" },
+          breaker: { ...base, w: 12, h: 5, label: "CB", orientation: "horizontal", refNo: "" },
+          lamp: { ...base, w: 10, h: 4.4, label: "PL", lampVariant: "pilot", lampColor: "W" },
           buzzer: { ...base, w: 14, h: 9, label: "BZ", buzzerVariant: "horn" },
           solenoidValve: { ...base, w: 26, h: 16, label: "SOL" },
           sensor: { ...base, w: 24, h: 14, label: "SEN" },
           powerSupply: { ...base, w: 34, h: 24, label: "PS" },
           transformer: { ...base, w: 24, h: 16, label: "T" },
-          ground: { ...base, w: 9, h: 10, label: "E" },
-          motor: { ...base, w: 14, h: 14, r: 5, label: "M" },
+          ground: { ...base, w: 4, h: 5, label: "E" },
+          motor: { ...base, w: 16, h: 16, label: "M" },
           fan: { ...base, w: 14, h: 14, r: 5, label: "FAN" },
-          resistor: { ...base, w: 12, h: 4.5, label: "R" },
+          resistor: { ...base, w: 10, h: 2.6, label: "R", orientation: "horizontal", resistorStyle: "box" },
           capacitor: { ...base, w: 12, h: 7, label: "C" },
           diode: { ...base, w: 12, h: 7, label: "D" },
-          thermalRelay: { ...base, w: 12, h: 7, label: "THR", orientation: "horizontal" },
+          thermalRelay: { ...base, w: 8, h: 4, label: "THR", orientation: "horizontal", refNo: "" },
+          thermalElement: { ...base, w: 8, h: 3, label: "OL", orientation: "horizontal" },
+          positionMark: { ...base, w: 4, h: 6, label: "入", markStyle: "box" },
+          polarityMark: { ...base, w: 2.6, h: 2.6, label: "", sign: "+" },
           deviceBox: { ...base, w: 28, h: 20, label: "機器", pins: 4, pinText: "1\n2\n3\n4", rightPinText: "" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
@@ -3211,9 +4318,9 @@
           cableBundle: { ...base, w: 32, h: 18, label: "CBL" },
           terminalBox: { ...base, w: 22, h: 18, label: "TB", rows: 3 },
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", colWidths: "", rowHeights: "", tableFontSize: 2.2, cellText: "No.\t項目\t内容\t備考" },
-          junction: { ...base, w: 4, h: 4, r: 1.45, label: "" },
-          arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
-          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", fixedWireNo: false, hideWireNo: false, gapAtMid: false, fromOverride: "", toOverride: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
+          junction: { ...base, w: 2, h: 2, r: 0.75, label: "" },
+          arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", arrowStyle: "open", arrowAtStart: false, stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
+          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireNoAlign: "mid", fixedWireNo: false, hideWireNo: false, gapAtMid: false, fromOverride: "", toOverride: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
         };
         return deepClone(defaults[type] || defaults.deviceBox);
       }
@@ -3252,6 +4359,13 @@
 
       function snapPoint(x, y, options = {}) {
         const gridPoint = { x: snap(x), y: snap(y) };
+        const activePage = currentPage();
+        if (activePage && activePage.frameVariant === "ladder" && state.settings.snap) {
+          const row = LADDER_GRID.top + LADDER_GRID.pitch * Math.round((y - LADDER_GRID.top) / LADDER_GRID.pitch);
+          if (Math.abs(row - y) <= 2 && row >= LADDER_GRID.top && row <= LADDER_GRID.top + LADDER_GRID.pitch * LADDER_GRID.rows) {
+            gridPoint.y = round(row);
+          }
+        }
         if (!state.settings.objectSnap) return gridPoint;
         const excludeIds = options.excludeIds || (options.excludeSelected ? currentSelectionIdSet() : new Set());
         const anchors = options.connectionOnly
@@ -3347,6 +4461,8 @@
       }
 
       function elementConnectionAnchors(element) {
+        const fromGeo = geoAnchors(element);
+        if (fromGeo) return fromGeo;
         const anchors = [];
         const w = Number(element.w || defaultElement(element.type).w || 20);
         const h = Number(element.h || defaultElement(element.type).h || 10);
@@ -3407,6 +4523,11 @@
           return anchors;
         }
         if (element.type === "plcBlock") {
+          if ((element.plcStyle || "grid") === "unit") {
+            const rows = Math.max(1, Number(element.rows || 8));
+            for (let i = 0; i < rows; i++) add(0, 9.5 * i + 4.75);
+            return anchors;
+          }
           const rows = Math.max(2, Number(element.rows || 8));
           for (let i = 1; i <= rows; i++) {
             const y = 8 + i * ((h - 10) / rows) - 3;
@@ -3431,6 +4552,10 @@
           "contactNO",
           "contactNC",
           "contactBlock",
+          "thermalElement",
+          "pressureSwitch",
+          "positionMark",
+          "polarityMark",
           "pushButton",
           "selectorSwitch",
           "limitSwitch",
@@ -3455,6 +4580,9 @@
           "contactNO",
           "contactNC",
           "contactBlock",
+          "thermalElement",
+          "pressureSwitch",
+          "terminal",
           "pushButton",
           "selectorSwitch",
           "limitSwitch",
@@ -3489,11 +4617,11 @@
       }
 
       function autoOrientElementForPlacement(element, x, y) {
-        if (!["fuse", "breaker"].includes(element.type)) return;
+        if (!["fuse", "breaker", "resistor"].includes(element.type)) return;
         const segment = closestAxisSegment(currentPage(), x, y);
         if (!segment || !segment.vertical) return;
         element.orientation = "vertical";
-        resizeProtectiveElementForOrientation(element);
+        if (!resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
       }
 
       function closestAxisSegment(page, x, y) {
@@ -3628,75 +4756,43 @@
       }
 
       function addReferenceTerminalWiringSet(page, x, y, options = {}) {
-        const pitch = 8.6;
-        const stripW = 9.5;
-        const groupCount = 8;
-        const groupH = groupCount * pitch;
-        const gap = 16;
-        const busX = x + 8;
-        const stripX = x + 132;
-        const topY = y + 6;
-        const lowerY = topY + groupH + gap;
-        const tagX = x + 30;
-        const rightTextX = stripX + stripW + 8;
-        const leftStrip = referenceTerminalStrip(stripX, topY, stripW, groupH, groupCount, 1, options.label || "X1", "vertical");
-        const rightStrip = referenceTerminalStrip(stripX, lowerY, stripW, groupH, groupCount, 11, "", "vertical");
-        page.elements.push(leftStrip, rightStrip);
-        const nodes = [];
-        [leftStrip, rightStrip].forEach(strip => {
-          for (let i = 0; i < strip.count; i++) nodes.push(terminalStripNodeGlobal(strip, i));
-        });
-        if (options.title) {
-          page.elements.push(textElement(x - 4, y - 24, options.title, 3.4, 0, 92));
-        }
-        page.elements.push({
-          id: uid("el"),
-          type: "arrow",
-          points: [[busX, nodes[0].y - 14], [busX, nodes[nodes.length - 1].y + 20]],
-          label: "",
-          signalRole: "reference",
-          stroke: state.settings.stroke,
-          layer: "wires"
-        });
-        page.elements.push({
-          id: uid("el"),
-          type: "arrow",
-          points: [[stripX + stripW / 2, nodes[0].y - 14], [stripX + stripW / 2, nodes[nodes.length - 1].y + 20]],
-          label: "",
-          stroke: state.settings.stroke,
-          layer: "wires"
-        });
-        nodes.forEach((node, index) => {
-          const no = String(index + 1).padStart(2, "0");
-          const terminalNo = index < 8 ? index + 1 : index + 3;
-          const wireStartX = index < 8 ? busX : busX + 18;
-          const wireNo = (options.wirePrefix || "W") + no;
+        // 端子台配線図の型:
+        // 左から横配線 → 端子小円 → ユニット列端子台(波形破断線+端子円)、線番は終点寄せ表示
+        const count = Math.max(1, Number(options.count || 16));
+        const startNo = Number(options.start || 1);
+        const stripX = round(x + 96);
+        const strip = {
+          ...defaultElement("terminalStrip", stripX, y),
+          x: stripX,
+          y: round(y),
+          w: 10.5,
+          h: count * 9.5,
+          count,
+          start: startNo,
+          prefix: options.terminalPrefix || "",
+          orientation: "vertical",
+          terminalShape: "circle",
+          stripStyle: "unit",
+          label: options.label || "TB1"
+        };
+        page.elements.push(strip);
+        for (let i = 0; i < count; i++) {
+          const cy = round(y + 9.5 * i + 4.75);
+          const wireNo = (options.wirePrefix || "W") + String(startNo + i).padStart(2, "0");
           page.elements.push({
-            id: uid("el"),
-            type: "wire",
-            points: [[wireStartX, round(node.y)], [round(node.x), round(node.y)]],
+            ...defaultElement("wire", x, cy),
+            points: [[round(x), cy], [round(stripX - 2.1), cy]],
             wireNo,
-            fixedWireNo: false,
-            hideWireNo: false,
-            wireType: state.settings.currentWireType,
-            stroke: state.settings.stroke,
-            layer: "wires"
+            wireNoAlign: "end"
           });
-          page.elements.push({
-            id: uid("el"),
-            type: "junction",
-            x: round(wireStartX),
-            y: round(node.y),
-            w: 2.4,
-            h: 2.4,
-            r: .55,
-            label: "",
-            stroke: state.settings.stroke,
-            layer: "symbols"
-          });
-          page.elements.push(textElement(tagX, node.y - 2.3, "X" + String(terminalNo).padStart(2, "0"), 1.7, 0, 12));
-          page.elements.push(textElement(rightTextX, node.y - 1.1, (options.signalPrefix || "SIG") + String(terminalNo).padStart(2, "0"), 1.9, 0, 42));
-        });
+          page.elements.push({ ...defaultElement("terminal", 0, 0), x: round(stripX - 2.1), y: round(cy - 0.9), label: "" });
+          if (options.signalPrefix) {
+            page.elements.push(textElement(stripX + 21, cy - 1.2, options.signalPrefix + String(startNo + i).padStart(2, "0"), 2.3, 0, 42));
+          }
+        }
+        if (options.title) {
+          page.elements.push(textElement(x, y - 8, options.title, 3.4, 0, 92));
+        }
       }
 
       function referenceTerminalStrip(x, y, w, h, count, start, label, orientation = "horizontal") {
@@ -3784,6 +4880,12 @@
       }
 
       function applyStandard(id) {
+        const pack = (state.standardPacks || []).find(item => item.id === id);
+        if (pack) {
+          state.settings.standard = id;
+          applyStandardPack(pack);
+          return;
+        }
         const standard = STANDARDS.find(item => item.id === id) || STANDARDS[0];
         state.settings.standard = standard.id;
         state.settings.grid = standard.grid;
@@ -3863,24 +4965,29 @@
 
       function addSampleTerminalPage() {
         const page = createPage({
-          name: "端子図" + (state.pages.length + 1),
+          name: "端子接続図" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
-          frameVariant: "detailed",
+          frameVariant: "ladder",
           title: "端子接続図"
         });
-        page.elements.push(textElement(18, 28, "端子接続図", 4, 0, 70));
-        addReferenceTerminalWiringSet(page, 46, 62, {
-          title: "",
-          label: "X1",
+        page.elements.push(...facilityRailElements("P1", 32.5, "+", 22));
+        page.elements.push(...facilityRailElements("N1", 146.5, "-", 22));
+        page.elements.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
+        addReferenceTerminalWiringSet(page, 32.5, 31.75, {
+          label: "TB1",
           terminalPrefix: "",
           wirePrefix: "W",
-          signalPrefix: "SIG"
+          signalPrefix: "SIG",
+          count: 16
         });
+        for (let i = 0; i < 16; i++) {
+          page.elements.push(defaultElement("junction", 32.5, round(36.5 + 9.5 * i)));
+        }
         state.pages.push(page);
         state.activePageId = page.id;
         setSelection([]);
-        commitHistory("端子図ページを追加しました。");
+        commitHistory("端子接続図ページを追加しました。");
         render();
       }
 
@@ -4207,18 +5314,18 @@
       }
 
       function addPlcCsvPages(rows, fileName) {
-        const perPage = 30;
+        const perPage = 17;
         const created = [];
         for (let offset = 0; offset < rows.length; offset += perPage) {
           const chunk = rows.slice(offset, offset + perPage);
           const pageNo = Math.floor(offset / perPage) + 1;
           const totalPages = Math.ceil(rows.length / perPage);
           const page = createPage({
-            name: "PLC CSV" + (state.pages.length + pageNo),
+            name: "制御盤",
             size: "A4",
-            orientation: "landscape",
-            frameVariant: "side",
-            title: "PLC I/O 接続図"
+            orientation: "portrait",
+            frameVariant: "ladder",
+            title: "PLC I/O 接続図 " + pageNo + "/" + totalPages
           });
           populatePlcCsvPage(page, chunk, pageNo, totalPages, fileName);
           state.pages.push(page);
@@ -4230,89 +5337,39 @@
         render();
       }
 
+      // 右にユニット列、左へ横配線+端子小円。行はラダー行グリッドに整列し、
+      // 配線端点はユニットの端子アンカー位置と一致させる(ずれ無し)。
       function populatePlcCsvPage(page, rows, pageNo, totalPages, fileName) {
-        const leftRows = rows.filter(row => row.direction !== "output");
-        const rightRows = rows.filter(row => row.direction === "output");
-        const maxRows = Math.max(2, leftRows.length, rightRows.length);
-        const plcX = 118;
-        const plcY = 46;
-        const plcW = 58;
-        const plcH = Math.max(62, Math.min(132, 14 + maxRows * 5.8));
-        const pitch = (plcH - 16) / maxRows;
-        page.elements.push({
-          id: uid("el"),
-          type: "text",
-          x: 18,
-          y: 26,
-          w: 110,
-          h: 8,
-          text: "PLC I/O 接続図 " + pageNo + "/" + totalPages,
-          fontSize: 4,
-          rotation: 0,
-          stroke: state.settings.stroke,
-          layer: "notes"
-        });
-        page.elements.push({
-          id: uid("el"),
-          type: "text",
-          x: 18,
-          y: 36,
-          w: 140,
-          h: 6,
-          text: "取込元: " + fileName,
-          fontSize: 2.4,
-          rotation: 0,
-          stroke: state.settings.stroke,
-          layer: "notes"
-        });
-        const plc = defaultElement("plcBlock", plcX, plcY);
-        plc.w = plcW;
-        plc.h = plcH;
-        plc.rows = maxRows;
-        plc.label = "PLC-CSV";
-        plc.tag = "PLC-CSV";
-        plc.description = "CSV取込I/O";
-        plc.pinText = Array.from({ length: maxRows }, (_, index) => {
-          const left = leftRows[index]?.address || "";
-          const right = rightRows[index]?.address || "";
-          return [left, right].filter(Boolean).join(" / ");
-        }).join("\n");
-        page.elements.push(plc);
-        leftRows.forEach((row, index) => addPlcCsvIoRow(page, row, index, "input", plc, pitch));
-        rightRows.forEach((row, index) => addPlcCsvIoRow(page, row, index, "output", plc, pitch));
-      }
-
-      function addPlcCsvIoRow(page, row, index, side, plc, pitch) {
-        const y = Number(plc.y || 0) + 8 + (index + .5) * pitch;
-        const left = side === "input";
-        const plcName = (plc.label || "PLC") + ":" + row.address;
-        const deviceName = row.device || row.signal || "";
-        const x1 = left ? 30 : Number(plc.x || 0) + Number(plc.w || 58);
-        const x2 = left ? Number(plc.x || 0) : 248;
-        page.elements.push({
-          id: uid("el"),
-          type: "wire",
-          points: [[x1, y], [x2, y]],
-          wireNo: row.wireNo || row.address,
-          fromOverride: left ? deviceName : plcName,
-          toOverride: left ? plcName : deviceName,
-          wireType: state.settings.currentWireType,
-          stroke: state.settings.stroke,
-          layer: "wires",
-          note: row.note || ""
-        });
-        page.elements.push({
-          id: uid("el"),
-          type: "text",
-          x: left ? 18 : 252,
-          y: y - 1.8,
-          w: 54,
-          h: 5,
-          text: [row.address, row.signal].filter(Boolean).join("  "),
-          fontSize: 2.3,
-          rotation: 0,
-          stroke: state.settings.stroke,
-          layer: "notes"
+        page.elements.push(...facilityRailElements("P1", 32.5, "+", 22));
+        page.elements.push(...facilityRailElements("N1", 146.5, "-", 22));
+        const unit = {
+          ...defaultElement("plcBlock", 130.5, 31.75),
+          plcStyle: "unit",
+          rows: rows.length,
+          w: 10.5,
+          h: rows.length * 9.5,
+          label: "PLC(" + pageNo + "/" + totalPages + ")",
+          pinText: rows.map(row => row.address).join("\n"),
+          note: "取込元: " + fileName
+        };
+        page.elements.push(unit);
+        rows.forEach((row, index) => {
+          const y = round(36.5 + 9.5 * index);
+          const plcName = (unit.label || "PLC") + ":" + row.address;
+          const deviceName = row.device || row.signal || "";
+          const input = row.direction !== "output";
+          page.elements.push(defaultElement("junction", 32.5, y));
+          page.elements.push({
+            ...defaultElement("wire", 32.5, y),
+            points: [[32.5, y], [128.4, y]],
+            wireNo: row.wireNo || row.address,
+            wireNoAlign: "end",
+            fromOverride: input ? deviceName : plcName,
+            toOverride: input ? plcName : deviceName,
+            note: row.note || ""
+          });
+          page.elements.push({ ...defaultElement("terminal", 0, 0), x: 128.4, y: round(y - 0.9), label: "" });
+          page.elements.push(textElement(149.5, y - 1.2, [input ? "入力" : "出力", row.signal, deviceName].filter(Boolean).join(" "), 2.3, 0, 42));
         });
       }
 
@@ -4348,66 +5405,6 @@
         state.activePageId = page.id;
         setSelection([]);
         commitHistory("目次ページを追加しました。");
-        render();
-      }
-
-      function addIoPage() {
-        const page = createPage({
-          name: "I-O" + (state.pages.length + 1),
-          size: "A4",
-          orientation: "landscape",
-          frameVariant: "side",
-          title: "PLC I/O 接続図"
-        });
-        page.elements.push({
-          id: uid("el"),
-          type: "text",
-          x: 18,
-          y: 26,
-          w: 80,
-          h: 8,
-          text: "PLC I/O 接続図",
-          fontSize: 4,
-          rotation: 0,
-          stroke: state.settings.stroke
-        });
-        const plc = defaultElement("plcBlock", 118, 46);
-        plc.w = 58;
-        plc.h = 94;
-        plc.rows = 16;
-        plc.label = "PLC-01";
-        plc.pinText = "I00\nI01\nI02\nI03\nI04\nI05\nI06\nI07\nO00\nO01\nO02\nO03\nO04\nO05\nO06\nO07";
-        page.elements.push(plc);
-        for (let i = 0; i < 16; i++) {
-          const y = 58 + i * 5;
-          const left = i < 8;
-          const x1 = left ? 30 : 176;
-          const x2 = left ? 118 : 248;
-          page.elements.push({
-            id: uid("el"),
-            type: "wire",
-            points: [[x1, y], [x2, y]],
-            wireNo: (left ? "I" : "O") + String(i % 8).padStart(2, "0"),
-            wireType: state.settings.currentWireType,
-            stroke: state.settings.stroke
-          });
-          page.elements.push({
-            id: uid("el"),
-            type: "text",
-            x: left ? 18 : 252,
-            y,
-            w: 48,
-            h: 5,
-            text: (left ? "入力信号" : "出力信号") + String(i % 8),
-            fontSize: 2.4,
-            rotation: 0,
-            stroke: state.settings.stroke
-          });
-        }
-        state.pages.push(page);
-        state.activePageId = page.id;
-        setSelection([]);
-        commitHistory("I/Oページを追加しました。");
         render();
       }
 
@@ -4686,6 +5683,817 @@
         state.activePageId = page.id;
         setSelection([]);
         commitHistory("機器配置ページを追加しました。");
+        render();
+      }
+
+      // ===== 設備ラダーページ(複数レール対応) =====
+      function facilityRailElements(name, x, sign, markY) {
+        const items = [];
+        items.push({ ...defaultElement("polarityMark", round(x - 1.3), markY), label: name, sign });
+        items.push({
+          ...defaultElement("wire", x, 30),
+          points: [[x, 30], [x, 217]],
+          wireNo: "",
+          hideWireNo: true,
+          ladderRail: name,
+          wireType: state.settings.currentWireType
+        });
+        items.push({ ...defaultElement("arrow", x, 34), points: [[x, 34], [x, 30]], label: "", arrowStyle: "fork", ladderRail: name });
+        items.push({ ...defaultElement("arrow", x, 213), points: [[x, 213], [x, 217]], label: "", arrowStyle: "fork", ladderRail: name });
+        return items;
+      }
+
+      function showFacilityLadderDialog() {
+        openDialog("設備ラダーページ", `
+          <label>左レール名（カンマ区切り・右から順に配置）</label>
+          <input id="ladRails" value="P1" placeholder="P1,P2,P3">
+          <div class="row">
+            <div><label>右レール名</label><input id="ladRight" value="N1"></div>
+            <div><label>電源注記</label><input id="ladNote" value="(DC24V)"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="ladBuildBtn" class="primary">ページ追加</button>
+          </div>`);
+        qs("#ladBuildBtn").addEventListener("click", addFacilityLadderPage);
+      }
+
+      function addFacilityLadderPage() {
+        const rails = String(qs("#ladRails")?.value || "P1").split(",").map(s => s.trim()).filter(Boolean);
+        const rightName = String(qs("#ladRight")?.value || "N1").trim() || "N1";
+        const note = String(qs("#ladNote")?.value || "").trim();
+        const page = createPage({
+          name: "リレー回路" + (state.pages.length + 1),
+          size: "A4",
+          orientation: "portrait",
+          frameVariant: "ladder",
+          title: "リレー回路"
+        });
+        (rails.length ? rails : ["P1"]).forEach((name, i) => {
+          const x = round(32.5 - 4 * i);
+          page.elements.push(...facilityRailElements(name, x, "+", 22 + 3 * i));
+          page.elements.push(textElement(x - 2, 219 + 3 * i, name, 2.2, 0, 12));
+        });
+        page.elements.push(...facilityRailElements(rightName, 146.5, "-", 22));
+        page.elements.push(textElement(144.5, 219, rightName, 2.2, 0, 12));
+        if (note) page.elements.push(textElement(40, 24.5, note, 1.9, 0, 20));
+        state.pages.push(page);
+        state.activePageId = page.id;
+        setSelection([]);
+        closeDialog();
+        commitHistory("設備ラダーページを追加しました。");
+        render();
+      }
+
+      // ===== PLC入力回路ページ(scan-001.pdf の型) =====
+      function showPlcInputPageDialog() {
+        openDialog("PLC入力回路ページ", `
+          <div class="row">
+            <div><label>ユニット名</label><input id="plcInUnit" value="UNIT-1"></div>
+            <div><label>開始アドレス(16進連番)</label><input id="plcInStart" value="X000"></div>
+          </div>
+          <div class="row">
+            <div><label>点数（最大17）</label><input id="plcInCount" type="number" min="1" max="17" step="1" value="16"></div>
+            <div><label>各行に接点を配置</label><select id="plcInContacts"><option value="on">する</option><option value="off">しない</option></select></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="plcInBuildBtn" class="primary">ページ追加</button>
+          </div>`);
+        qs("#plcInBuildBtn").addEventListener("click", addPlcInputCircuitPage);
+      }
+
+      function addPlcInputCircuitPage() {
+        const unitName = qs("#plcInUnit")?.value || "PLC";
+        const start = qs("#plcInStart")?.value || "X000";
+        const count = Math.max(1, Math.min(17, Math.floor(Number(qs("#plcInCount")?.value || 16))));
+        const withContacts = (qs("#plcInContacts")?.value || "on") === "on";
+        const addresses = plcAddressSequence(start, count);
+        const page = createPage({
+          name: "制御盤",
+          size: "A4",
+          orientation: "portrait",
+          frameVariant: "ladder",
+          title: "入力回路(" + addresses[0] + ")"
+        });
+        page.elements.push(...facilityRailElements("P1", 32.5, "+", 22));
+        page.elements.push(...facilityRailElements("N1", 146.5, "-", 22));
+        page.elements.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
+        const unit = {
+          ...defaultElement("plcBlock", 130.5, 31.75),
+          plcStyle: "unit",
+          rows: count,
+          w: 10.5,
+          h: count * 9.5,
+          label: unitName,
+          pinText: addresses.join("\n")
+        };
+        page.elements.push(unit);
+        addresses.forEach((address, i) => {
+          const y = round(36.5 + 9.5 * i);
+          page.elements.push(defaultElement("junction", 32.5, y));
+          if (withContacts) {
+            page.elements.push({ ...defaultElement("contactNO", 44, y - 2.2), label: "" });
+            page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [44, y]] });
+            page.elements.push({ ...defaultElement("wire", 52, y), points: [[52, y], [128.4, y]], wireNo: address, wireNoAlign: "end" });
+          } else {
+            page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [128.4, y]], wireNo: address, wireNoAlign: "end" });
+          }
+          page.elements.push({ ...defaultElement("terminal", 0, 0), x: 128.4, y: round(y - 0.9), label: "" });
+        });
+        state.pages.push(page);
+        state.activePageId = page.id;
+        setSelection([]);
+        closeDialog();
+        commitHistory("PLC入力回路ページを追加しました。");
+        render();
+      }
+
+      // ===== PLCユニット単体生成(16進アドレス連番) =====
+      function showPlcUnitBuilder() {
+        openDialog("PLCユニット生成", `
+          <div class="row">
+            <div><label>ユニット名</label><input id="plcUnitName" value="REMOTE-IO"></div>
+            <div><label>開始アドレス</label><input id="plcUnitStart" value="X100"></div>
+          </div>
+          <div class="row">
+            <div><label>点数</label><input id="plcUnitCount" type="number" min="1" max="32" step="1" value="16"></div>
+            <div><label>配置X mm</label><input id="plcUnitX" type="number" step="0.5" value="130.5"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="plcUnitBuildBtn" class="primary">生成</button>
+          </div>`);
+        qs("#plcUnitBuildBtn").addEventListener("click", () => {
+          const page = currentPage();
+          if (!page) return;
+          const count = Math.max(1, Math.min(32, Math.floor(Number(qs("#plcUnitCount").value || 16))));
+          const addresses = plcAddressSequence(qs("#plcUnitStart").value || "X000", count);
+          const unit = {
+            ...defaultElement("plcBlock", Number(qs("#plcUnitX").value || 130.5), 31.75),
+            plcStyle: "unit",
+            rows: count,
+            w: 10.5,
+            h: count * 9.5,
+            label: qs("#plcUnitName").value || "PLC",
+            pinText: addresses.join("\n")
+          };
+          page.elements.push(unit);
+          selectSingle(unit.id);
+          closeDialog();
+          commitHistory("PLCユニットを生成しました。");
+          render();
+        });
+      }
+
+      // ===== ツイストペア/シールド一括生成 =====
+      function showTwistedPairDialog() {
+        openDialog("ツイストペア生成", `
+          <div class="row">
+            <div><label>導体数</label><input id="twCount" type="number" min="2" max="8" step="1" value="4"></div>
+            <div><label>導体ピッチ mm</label><input id="twPitch" type="number" step="0.1" value="6.3"></div>
+          </div>
+          <div class="row">
+            <div><label>開始X mm</label><input id="twX" type="number" step="0.5" value="40"></div>
+            <div><label>開始Y mm</label><input id="twY" type="number" step="0.5" value="80"></div>
+          </div>
+          <div class="row">
+            <div><label>全長 mm</label><input id="twSpan" type="number" step="1" value="60"></div>
+            <div><label>ラベル(カンマ区切り)</label><input id="twLabels" value="" placeholder="信号名をカンマ区切り"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="twBuildBtn" class="primary">生成</button>
+          </div>`);
+        qs("#twBuildBtn").addEventListener("click", buildTwistedPairFromDialog);
+      }
+
+      function buildTwistedPairFromDialog() {
+        const page = currentPage();
+        if (!page) return;
+        const count = Math.max(2, Math.min(8, Math.floor(Number(qs("#twCount").value || 4))));
+        const pitch = Number(qs("#twPitch").value || 6.3);
+        const x0 = Number(qs("#twX").value || 40);
+        const y0 = Number(qs("#twY").value || 80);
+        const span = Math.max(30, Number(qs("#twSpan").value || 60));
+        const labels = String(qs("#twLabels").value || "").split(",").map(s => s.trim());
+        const created = [];
+        const yTop = y0;
+        const yBot = y0 + pitch * (count - 1);
+        const exL = x0 + 10;
+        const exR = x0 + span - 10;
+        for (let i = 0; i < count; i++) {
+          const y = round(y0 + pitch * i);
+          created.push({ ...defaultElement("wire", x0, y), points: [[x0, y], [round(x0 + span), y]] });
+          created.push({ ...defaultElement("arrow", x0 - 4, y), points: [[x0 - 4, y], [x0, y]], label: "", arrowStyle: "chevron" });
+          if (labels[i]) created.push(textElement(x0 - 12, y - 1.2, labels[i], 2.2, 0, 12));
+        }
+        const ellH = round((count - 1) * pitch + 5);
+        [exL, exR].forEach(cx => {
+          created.push({ ...defaultElement("circle", round(cx - 1.9), round(yTop - 2.5)), w: 3.8, h: ellH, label: "" });
+        });
+        const mid = (exL + exR) / 2;
+        [[exL + 3, mid - 2], [mid + 2, exR - 3]].forEach(([xa, xb]) => {
+          created.push({ ...defaultElement("line", xa, yTop), points: [[round(xa), yTop], [round(xb), yBot]], label: "" });
+          created.push({ ...defaultElement("line", xa, yBot), points: [[round(xa), yBot], [round(xb), yTop]], label: "" });
+        });
+        created.push({ ...defaultElement("line", exL, yTop - 2), points: [[exL, round(yTop - 2)], [exR, round(yTop - 2)]], dash: "3 2", label: "" });
+        created.push({ ...defaultElement("line", exL, yBot + 2), points: [[exL, round(yBot + 2)], [exR, round(yBot + 2)]], dash: "3 2", label: "" });
+        page.elements.push(...created);
+        setSelection(created.map(el => el.id));
+        closeDialog();
+        commitHistory("ツイストペアを生成しました。");
+        render();
+      }
+
+      // ===== モータ分岐回路ビルダー =====
+      function showMotorCircuitDialog() {
+        openDialog("モータ分岐回路", `
+          <div class="row">
+            <div><label>開始X mm</label><input id="mcX" type="number" step="0.5" value="40"></div>
+            <div><label>1相目Y mm</label><input id="mcY" type="number" step="0.5" value="65"></div>
+          </div>
+          <div class="row">
+            <div><label>全長 mm</label><input id="mcSpan" type="number" step="1" value="96"></div>
+            <div><label>モータタグ</label><input id="mcTag" value="M1"></div>
+          </div>
+          <div class="row">
+            <div><label>MC接点タグ</label><input id="mcContactTag" value="MC1"></div>
+            <div><label>サーマルタグ</label><input id="mcThermalTag" value="OL1"></div>
+          </div>
+          <label><input id="mcWithBreaker" type="checkbox" checked style="width:auto;min-height:auto"> 遮断器3極（連動破線つき）</label>
+          <label><input id="mcWithThermal" type="checkbox" checked style="width:auto;min-height:auto"> サーマル素子</label>
+          <label><input id="mcWithGround" type="checkbox" checked style="width:auto;min-height:auto"> モータ接地</label>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="mcBuildBtn" class="primary">生成</button>
+          </div>`);
+        qs("#mcBuildBtn").addEventListener("click", buildMotorBranchFromDialog);
+      }
+
+      function buildMotorBranchFromDialog() {
+        const page = currentPage();
+        if (!page) return;
+        const x0 = Number(qs("#mcX").value || 40);
+        const y0 = Number(qs("#mcY").value || 65);
+        const span = Math.max(70, Number(qs("#mcSpan").value || 96));
+        const tag = qs("#mcTag").value || "M1";
+        const pitch = 5.6;
+        const withBreaker = qs("#mcWithBreaker").checked;
+        const withThermal = qs("#mcWithThermal").checked;
+        const withGround = qs("#mcWithGround").checked;
+        const created = [];
+        const lineYs = [y0, y0 + pitch, y0 + pitch * 2];
+        const motorX = x0 + span;
+        const motor = { ...defaultElement("motor", motorX, round(y0 - 2.4)), label: tag, tag };
+        created.push(motor);
+        const stations = [];
+        let cursor = x0 + 4;
+        const breakers = [];
+        if (withBreaker) {
+          lineYs.forEach(y => {
+            const el = { ...defaultElement("breaker", cursor, round(y - 3)), label: "", refNo: "" };
+            breakers.push(el);
+            created.push(el);
+          });
+          breakers[0].label = "CB-" + tag;
+          stations.push([cursor, cursor + 12]);
+          cursor += 22;
+        }
+        lineYs.forEach((y, i) => {
+          created.push({ ...defaultElement("contactNO", cursor, round(y - 2.2)), label: i === 0 ? (qs("#mcContactTag").value || "MC") : "" });
+        });
+        stations.push([cursor, cursor + 8]);
+        cursor += 18;
+        if (withThermal) {
+          lineYs.forEach((y, i) => {
+            created.push({ ...defaultElement("thermalElement", cursor, round(y - 3)), label: i === 0 ? (qs("#mcThermalTag").value || "OL") : "" });
+          });
+          stations.push([cursor, cursor + 8]);
+          cursor += 18;
+        }
+        lineYs.forEach(y => {
+          let sx = x0;
+          stations.forEach(([a, b]) => {
+            created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), round(y)], [round(a), round(y)]] });
+            sx = b;
+          });
+          created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), round(y)], [round(motorX + 0.9), round(y)]] });
+        });
+        if (withBreaker && breakers.length === 3) {
+          const lx = round(breakers[0].x + 4.75);
+          created.push({
+            ...defaultElement("mechanicalLink", lx, 0),
+            points: [[lx, round(breakers[0].y + 0.75)], [lx, round(breakers[2].y + 0.75)]]
+          });
+        }
+        if (withGround) {
+          const gx = round(motorX + 14.6);
+          const gy = round(y0 - 2.4 + 14.6);
+          created.push({ ...defaultElement("wire", gx, gy), points: [[gx, gy], [gx, gy + 8]] });
+          created.push({ ...defaultElement("ground", round(gx - 2), gy + 8), label: "" });
+        }
+        page.elements.push(...created);
+        setSelection(created.map(el => el.id));
+        closeDialog();
+        commitHistory("モータ分岐回路を生成しました。");
+        render();
+      }
+
+      // ===== 部品カタログDB =====
+      function showCatalogManager() {
+        const rows = (state.catalog || []).map((item, index) => `
+          <tr data-cat-row="${index}">
+            <td><input data-cat-field="family" value="${escapeAttr(item.family || "")}" placeholder="CR" style="width:64px"></td>
+            <td><input data-cat-field="manufacturer" value="${escapeAttr(item.manufacturer || "")}"></td>
+            <td><input data-cat-field="catalog" value="${escapeAttr(item.catalog || "")}"></td>
+            <td><input data-cat-field="description" value="${escapeAttr(item.description || "")}"></td>
+            <td><input data-cat-field="rating" value="${escapeAttr(item.rating || "")}" style="width:80px"></td>
+            <td><input data-cat-field="maxNO" type="number" step="1" value="${item.maxNO ?? ""}" style="width:56px"></td>
+            <td><input data-cat-field="maxNC" type="number" step="1" value="${item.maxNC ?? ""}" style="width:56px"></td>
+            <td><button type="button" data-cat-delete="${index}">削除</button></td>
+          </tr>`).join("");
+        openDialog("部品カタログ", `
+          <p class="muted">種別接頭辞（%Fと同じ）で絞り込みに使われます。a/b接点上限はリレー監査に使われます。</p>
+          <table class="report-table">
+            <thead><tr><th>種別</th><th>メーカー</th><th>品番</th><th>説明</th><th>定格</th><th>a上限</th><th>b上限</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="addCatalogRowBtn">行追加</button>
+            <button type="button" id="applyCatalogBtn" class="primary">適用</button>
+          </div>`);
+        qs("#addCatalogRowBtn").addEventListener("click", () => {
+          applyCatalogEdits(false);
+          state.catalog.push({});
+          showCatalogManager();
+        });
+        qs("#applyCatalogBtn").addEventListener("click", () => applyCatalogEdits(true));
+        qsa("[data-cat-delete]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            applyCatalogEdits(false);
+            state.catalog.splice(Number(button.dataset.catDelete), 1);
+            showCatalogManager();
+          });
+        });
+      }
+
+      function applyCatalogEdits(close) {
+        qsa("[data-cat-row]", qs("#dialogBody")).forEach(row => {
+          const item = state.catalog[Number(row.dataset.catRow)];
+          if (!item) return;
+          qsa("[data-cat-field]", row).forEach(input => {
+            const key = input.dataset.catField;
+            if (key === "maxNO" || key === "maxNC") item[key] = input.value === "" ? undefined : Number(input.value);
+            else item[key] = input.value;
+          });
+        });
+        if (close) {
+          closeDialog();
+          commitHistory("部品カタログを更新しました。");
+          render();
+        }
+      }
+
+      function showCatalogPicker() {
+        const element = selectedElement();
+        if (!element || !supportsElectricalAttributes(element)) {
+          setStatus("電気部品を選択してからカタログを開いてください。");
+          return;
+        }
+        const family = tagPrefix(element.type);
+        const items = (state.catalog || [])
+          .map((item, index) => ({ ...item, index }))
+          .filter(item => !family || !item.family || item.family === family);
+        const html = items.length
+          ? `<table class="report-table"><thead><tr><th>メーカー</th><th>品番</th><th>説明</th><th>定格</th><th></th></tr></thead>
+             <tbody>${items.map(item => `<tr><td>${escapeHtml(item.manufacturer || "")}</td><td>${escapeHtml(item.catalog || "")}</td><td>${escapeHtml(item.description || "")}</td><td>${escapeHtml(item.rating || "")}</td><td><button type="button" data-cat-pick="${item.index}">選択</button></td></tr>`).join("")}</tbody></table>`
+          : '<p class="muted">該当するカタログがありません。「部品カタログ」で登録してください。</p>';
+        openDialog("カタログ選択", html);
+        qsa("[data-cat-pick]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            const item = state.catalog[Number(button.dataset.catPick)];
+            const target = selectedElement();
+            if (!item || !target) return;
+            target.manufacturer = item.manufacturer || "";
+            target.catalog = item.catalog || "";
+            if (!target.description) target.description = item.description || "";
+            if (!target.rating) target.rating = item.rating || "";
+            closeDialog();
+            commitHistory("カタログを適用しました。");
+            render();
+          });
+        });
+      }
+
+      // ===== BOM(部品集計表) =====
+      function collectBomRows() {
+        const map = new Map();
+        state.pages.forEach(page => {
+          page.elements.forEach(element => {
+            if (!supportsElectricalAttributes(element)) return;
+            if (!tagPrefix(element.type)) return;
+            const key = [element.manufacturer || "", element.catalog || "", element.type].join("::");
+            const row = map.get(key) || {
+              type: paletteLabel(element.type),
+              manufacturer: element.manufacturer || "",
+              catalog: element.catalog || "",
+              description: element.description || "",
+              rating: element.rating || "",
+              qty: 0,
+              tags: []
+            };
+            row.qty += 1;
+            const tag = componentTag(element);
+            if (tag) row.tags.push(tag);
+            map.set(key, row);
+          });
+        });
+        return Array.from(map.values()).sort((a, b) =>
+          a.type.localeCompare(b.type) || a.manufacturer.localeCompare(b.manufacturer) || a.catalog.localeCompare(b.catalog));
+      }
+
+      function exportBomCsv() {
+        const headers = ["type", "manufacturer", "catalog", "description", "rating", "qty", "tags"];
+        const rows = collectBomRows();
+        const csv = [headers.join(","), ...rows.map(row => headers.map(h =>
+          csvCell(h === "tags" ? row.tags.join(" ") : row[h])).join(","))].join("\r\n");
+        download("electrical-bom.csv", csv, "text/csv;charset=utf-8");
+        setStatus("BOM CSVを書き出しました。");
+      }
+
+      function showBomTable() {
+        const rows = collectBomRows();
+        const html = rows.length
+          ? `<table class="report-table"><thead><tr><th>種別</th><th>メーカー</th><th>品番</th><th>説明</th><th>定格</th><th>数量</th><th>タグ</th></tr></thead>
+             <tbody>${rows.map(row => `<tr><td>${escapeHtml(row.type)}</td><td>${escapeHtml(row.manufacturer)}</td><td>${escapeHtml(row.catalog)}</td><td>${escapeHtml(row.description)}</td><td>${escapeHtml(row.rating)}</td><td>${row.qty}</td><td>${escapeHtml(row.tags.join(" "))}</td></tr>`).join("")}</tbody></table>
+             <div class="inline" style="justify-content:flex-end;margin-top:12px">
+               <button type="button" id="bomCsvBtn">CSV出力</button>
+               <button type="button" id="bomInsertBtn" class="primary">表として挿入</button>
+             </div>`
+          : '<p class="muted">集計対象の部品がありません。</p>';
+        openDialog("部品集計表(BOM)", html);
+        qs("#bomCsvBtn")?.addEventListener("click", exportBomCsv);
+        qs("#bomInsertBtn")?.addEventListener("click", () => {
+          const page = currentPage();
+          if (!page) return;
+          const body = collectBomRows().slice(0, 20).map(row =>
+            [row.type, row.manufacturer, row.catalog, row.rating, String(row.qty)].join("\t"));
+          if (!body.length) {
+            setStatus("挿入できるBOM行がありません。");
+            return;
+          }
+          const table = {
+            ...defaultElement("table", 22, 42),
+            rows: body.length + 1,
+            cols: 5,
+            w: Math.min(pageSize(page).w - 44, 170),
+            h: Math.max(28, (body.length + 1) * 6),
+            label: "部品集計表",
+            cellText: ["種別\tメーカー\t品番\t定格\t数量", ...body].join("\n"),
+            reportTable: true
+          };
+          page.elements.push(table);
+          selectSingle(table.id);
+          closeDialog();
+          commitHistory("BOM表を挿入しました。");
+          render();
+        });
+      }
+
+      // ===== 盤レイアウト連携 =====
+      const FOOTPRINT_SIZES = {
+        plcBlock: [46, 32], powerSupply: [42, 26], breaker: [16, 26], coil: [12, 22],
+        transformer: [36, 30], terminalStrip: [58, 14], motor: [30, 30], deviceBox: [28, 20]
+      };
+
+      function showPanelLayoutLinkDialog() {
+        const rows = collectReportRows().filter(row => row.record === "component" && row.tag);
+        if (!rows.length) {
+          openDialog("盤レイアウト連携", '<p class="muted">タグ付きの部品がありません。部品タグを採番してください。</p>');
+          return;
+        }
+        openDialog("盤レイアウト連携", `
+          <p class="muted">チェックした部品をフットプリント（矩形+タグ）として現在ページへ挿入します。</p>
+          <table class="report-table"><thead><tr><th></th><th>タグ</th><th>種別</th><th>ページ</th><th>設備</th><th>場所</th></tr></thead>
+          <tbody>${rows.map((row, index) => `<tr>
+            <td><input type="checkbox" data-panel-pick="${index}" checked style="width:auto;min-height:auto"></td>
+            <td>${escapeHtml(row.tag)}</td><td>${escapeHtml(paletteLabel(row.type))}</td>
+            <td>${escapeHtml(row.page)}</td><td>${escapeHtml(row.installation)}</td><td>${escapeHtml(row.location)}</td>
+          </tr>`).join("")}</tbody></table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="panelInsertBtn" class="primary">挿入</button>
+          </div>`);
+        qs("#panelInsertBtn").addEventListener("click", () => {
+          const picked = qsa("[data-panel-pick]", qs("#dialogBody"))
+            .filter(input => input.checked)
+            .map(input => rows[Number(input.dataset.panelPick)]);
+          insertPanelFootprints(picked);
+        });
+      }
+
+      function insertPanelFootprints(items) {
+        const page = currentPage();
+        if (!page || !items.length) return;
+        const cols = 4, pitchX = 44, pitchY = 30, x0 = 30, y0 = 50;
+        const created = items.map((row, index) => {
+          const size = FOOTPRINT_SIZES[row.type] || [18, 14];
+          return {
+            id: uid("el"), type: "rect",
+            x: x0 + (index % cols) * pitchX, y: y0 + Math.floor(index / cols) * pitchY,
+            w: size[0], h: size[1],
+            label: row.tag, panelRef: row.tag,
+            rotation: 0, stroke: state.settings.stroke, layer: "layout"
+          };
+        });
+        page.elements.push(...created);
+        setSelection(created.map(item => item.id));
+        closeDialog();
+        commitHistory(created.length + "個のフットプリントを挿入しました。");
+        render();
+      }
+
+      // ===== 標準パック外部化 =====
+      function exportStandardPack() {
+        const pack = {
+          packVersion: 1,
+          id: "pack-" + Date.now().toString(36),
+          label: prompt("標準パック名", "カスタム標準") || "カスタム標準",
+          grid: state.settings.grid,
+          wireNumberFormat: state.settings.wireNumberFormat,
+          componentTagFormat: state.settings.componentTagFormat,
+          componentTagPrefixes: deepClone(state.settings.componentTagPrefixes || {}),
+          wireTypes: deepClone(state.wireTypes),
+          layers: deepClone(state.layers),
+          frameVariant: currentPage()?.frameVariant || "ladder"
+        };
+        download("standard-pack.json", JSON.stringify(pack, null, 2), "application/json");
+        setStatus("標準パックを書き出しました。");
+      }
+
+      function importStandardPackFile(file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const pack = JSON.parse(reader.result);
+            if (!pack || pack.packVersion !== 1) throw new Error("packVersion が不正です。");
+            state.standardPacks = state.standardPacks || [];
+            state.standardPacks.push(pack);
+            state.settings.standard = pack.id;
+            applyStandardPack(pack);
+            commitHistory("標準パック「" + (pack.label || pack.id) + "」を適用しました。");
+            render();
+          } catch (error) {
+            setStatus("標準パックの取込に失敗しました: " + error.message);
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      function applyStandardPack(pack) {
+        if (pack.grid) state.settings.grid = pack.grid;
+        if (pack.wireNumberFormat) state.settings.wireNumberFormat = pack.wireNumberFormat;
+        if (pack.componentTagFormat) state.settings.componentTagFormat = pack.componentTagFormat;
+        if (pack.componentTagPrefixes) state.settings.componentTagPrefixes = deepClone(pack.componentTagPrefixes);
+        if (Array.isArray(pack.wireTypes) && pack.wireTypes.length) state.wireTypes = deepClone(pack.wireTypes);
+        if (Array.isArray(pack.layers) && pack.layers.length) state.layers = deepClone(pack.layers);
+        if (pack.frameVariant) {
+          const page = currentPage();
+          if (page) page.frameVariant = pack.frameVariant;
+        }
+      }
+
+      // ===== DXF取込 MVP(LINE/CIRCLE/TEXT/LWPOLYLINE) =====
+      function importDxfFile(file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const elements = dxfEntitiesToElements(String(reader.result || ""));
+            if (!elements.length) {
+              setStatus("DXFから取り込める要素がありません。");
+              return;
+            }
+            const page = currentPage();
+            page.elements.push(...elements);
+            setSelection(elements.map(el => el.id));
+            commitHistory("DXFから" + elements.length + "要素を取り込みました。");
+            render();
+          } catch (error) {
+            setStatus("DXF取込に失敗しました: " + error.message);
+          }
+        };
+        reader.readAsText(file);
+      }
+
+      function dxfEntitiesToElements(text) {
+        const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+        const page = currentPage();
+        const H = pageSize(page).h;
+        const flipY = y => round(H - Number(y || 0));
+        const out = [];
+        let inEntities = false;
+        let current = null;
+        const flush = () => {
+          if (!current) return;
+          const d = current.data;
+          if (current.name === "LINE" && d[10] !== undefined && d[11] !== undefined) {
+            out.push({ id: uid("el"), type: "line", points: [[round(d[10]), flipY(d[20])], [round(d[11]), flipY(d[21])]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke, layer: "symbols" });
+          } else if (current.name === "CIRCLE" && d[40] !== undefined) {
+            const r = Number(d[40]);
+            out.push({ ...defaultElement("circle", round(d[10] - r), round(flipY(d[20]) - r)), w: round(r * 2), h: round(r * 2), label: "" });
+          } else if (current.name === "TEXT" && d[1] !== undefined) {
+            out.push({ ...defaultElement("text", round(d[10] || 0), flipY(d[20])), text: String(d[1]), fontSize: Number(d[40] || 2.5) });
+          } else if (current.name === "LWPOLYLINE" && (current.pts || []).filter(pt => pt.length === 2).length >= 2) {
+            const pts = current.pts.filter(pt => pt.length === 2);
+            for (let i = 1; i < pts.length; i++) {
+              out.push({ id: uid("el"), type: "line", points: [[round(pts[i - 1][0]), flipY(pts[i - 1][1])], [round(pts[i][0]), flipY(pts[i][1])]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke, layer: "symbols" });
+            }
+          }
+          current = null;
+        };
+        for (let i = 0; i + 1 < lines.length; i += 2) {
+          const code = Number(lines[i].trim());
+          const value = lines[i + 1].trim();
+          if (code === 2 && value === "ENTITIES") {
+            inEntities = true;
+            continue;
+          }
+          if (code === 0) {
+            if (value === "ENDSEC") {
+              flush();
+              inEntities = false;
+              continue;
+            }
+            if (inEntities) {
+              flush();
+              current = { name: value, data: {}, pts: [] };
+              continue;
+            }
+          }
+          if (inEntities && current) {
+            if (current.name === "LWPOLYLINE" && code === 10) current.pts.push([Number(value)]);
+            else if (current.name === "LWPOLYLINE" && code === 20 && current.pts.length) current.pts[current.pts.length - 1].push(Number(value));
+            else if (current.data[code] === undefined) current.data[code] = isNaN(Number(value)) ? value : Number(value);
+          }
+        }
+        flush();
+        return out;
+      }
+
+      // ===== グループ化 =====
+      function groupSelected() {
+        const selected = selectedElements();
+        if (selected.length < 2) {
+          setStatus("グループ化するには2つ以上の要素を選択してください。");
+          return;
+        }
+        const groupId = uid("grp");
+        selected.forEach(element => { element.group = groupId; });
+        commitHistory(selected.length + "件をグループ化しました。");
+        render();
+      }
+
+      function ungroupSelected() {
+        const selected = selectedElements();
+        let count = 0;
+        selected.forEach(element => {
+          if (element.group) {
+            delete element.group;
+            count += 1;
+          }
+        });
+        if (!count) {
+          setStatus("グループ化された要素がありません。");
+          return;
+        }
+        commitHistory("グループを解除しました。");
+        render();
+      }
+
+      function expandSelectionToGroups() {
+        const page = currentPage();
+        if (!page) return;
+        const groups = new Set(selectedElements().map(el => el.group).filter(Boolean));
+        if (!groups.size) return;
+        setSelection(page.elements
+          .filter(el => selectedIds.includes(el.id) || groups.has(el.group))
+          .map(el => el.id));
+      }
+
+      // ===== 左右ミラー・等間隔複製 =====
+      function mirrorSelectedHorizontal() {
+        const selected = selectedElements();
+        if (!selected.length) return;
+        if (selected.some(isElementLocked)) {
+          setStatus("ロックされた要素はミラーできません。");
+          return;
+        }
+        const target = unionBounds(selected.map(elementBounds).filter(Boolean));
+        const axis = target.x + target.w / 2;
+        selected.forEach(element => {
+          if (element.points) {
+            element.points = element.points.map(point => [round(axis * 2 - point[0]), point[1]]);
+          } else {
+            const box = elementBounds(element);
+            element.x = round(axis * 2 - box.x - box.w);
+          }
+        });
+        commitHistory("左右ミラーしました。");
+        render();
+      }
+
+      function showArrayCopyDialog() {
+        openDialog("等間隔複製", `
+          <div class="row">
+            <div><label>複製数</label><input id="arrCount" type="number" min="1" step="1" value="3"></div>
+            <div><label>間隔X mm</label><input id="arrDx" type="number" step="0.5" value="0"></div>
+          </div>
+          <label>間隔Y mm</label><input id="arrDy" type="number" step="0.5" value="9.5">
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="arrApplyBtn" class="primary">複製</button>
+          </div>`);
+        qs("#arrApplyBtn").addEventListener("click", () => {
+          const page = currentPage();
+          const selected = selectedElements();
+          if (!page || !selected.length) {
+            setStatus("複製する要素を選択してください。");
+            return;
+          }
+          const count = Math.max(1, Math.floor(Number(qs("#arrCount").value || 1)));
+          const dx = Number(qs("#arrDx").value || 0);
+          const dy = Number(qs("#arrDy").value || 0);
+          const created = [];
+          for (let n = 1; n <= count; n++) {
+            selected.forEach(element => {
+              const copy = deepClone(element);
+              copy.id = uid("el");
+              copy.locked = false;
+              delete copy.group;
+              translateElement(copy, dx * n, dy * n);
+              created.push(copy);
+            });
+          }
+          page.elements.push(...created);
+          setSelection(created.map(el => el.id));
+          closeDialog();
+          commitHistory(created.length + "件を等間隔複製しました。");
+          render();
+        });
+      }
+
+      // ===== 配線の結合・分割 =====
+      function mergeSelectedWires() {
+        const page = currentPage();
+        const selected = selectedElements();
+        if (selected.length !== 2 || selected.some(el => el.type !== "wire")) {
+          setStatus("結合するには配線を2本選択してください。");
+          return;
+        }
+        const [a, b] = selected;
+        const pa = a.points || [];
+        const pb = b.points || [];
+        if (pa.length < 2 || pb.length < 2) return;
+        const near = (p, q) => Math.abs(p[0] - q[0]) < .6 && Math.abs(p[1] - q[1]) < .6;
+        let points = null;
+        if (near(pa[pa.length - 1], pb[0])) points = [...pa, ...pb.slice(1)];
+        else if (near(pa[pa.length - 1], pb[pb.length - 1])) points = [...pa, ...pb.slice(0, -1).reverse()];
+        else if (near(pa[0], pb[0])) points = [...pa.slice().reverse(), ...pb.slice(1)];
+        else if (near(pa[0], pb[pb.length - 1])) points = [...pb, ...pa.slice(1)];
+        if (!points) {
+          setStatus("端点が一致する配線を選択してください。");
+          return;
+        }
+        a.points = orthogonalizePoints(points);
+        page.elements = page.elements.filter(el => el.id !== b.id);
+        selectSingle(a.id);
+        commitHistory("配線を結合しました。");
+        render();
+      }
+
+      function splitSelectedWire() {
+        const page = currentPage();
+        const element = selectedElement();
+        if (!page || !element || element.type !== "wire") return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        const points = element.points || [];
+        if (points.length < 2) return;
+        let before;
+        let after;
+        if (points.length === 2) {
+          const mid = [round((points[0][0] + points[1][0]) / 2), round((points[0][1] + points[1][1]) / 2)];
+          before = [points[0], mid];
+          after = [mid, points[1]];
+        } else {
+          const cut = Math.floor(points.length / 2);
+          before = points.slice(0, cut + 1);
+          after = points.slice(cut);
+        }
+        const second = deepClone(element);
+        second.id = uid("el");
+        second.points = after;
+        second.hideWireNo = true;
+        element.points = before;
+        page.elements.push(second);
+        setSelection([element.id, second.id]);
+        commitHistory("配線を分割しました。");
         render();
       }
 
@@ -5510,6 +7318,97 @@
         printMode = "single";
       }
 
+      // ===== ワイヤーネット解析(同電位グループ) =====
+      function wireEndpointsOf(wire) {
+        const points = wire.points || [];
+        if (!points.length) return [];
+        return [points[0], points[points.length - 1]];
+      }
+
+      function wiresTouch(a, b) {
+        const ea = wireEndpointsOf(a);
+        const eb = wireEndpointsOf(b);
+        for (const p of ea) {
+          for (const q of eb) {
+            if (Math.abs(p[0] - q[0]) < .6 && Math.abs(p[1] - q[1]) < .6) return true;
+          }
+        }
+        const segsA = wireSegments(a);
+        const segsB = wireSegments(b);
+        for (const p of ea) {
+          if (segsB.some(segment => pointOnSegment(p[0], p[1], segment))) return true;
+        }
+        for (const q of eb) {
+          if (segsA.some(segment => pointOnSegment(q[0], q[1], segment))) return true;
+        }
+        return false;
+      }
+
+      // ページ内の配線を電気的な接続グループ(ネット)に分割する。
+      // 端点一致・T分岐(端点が他配線の線上)・接続点上の交差で結合する。
+      function buildWireNets(page) {
+        const wires = page.elements.filter(element => element.type === "wire");
+        const parent = new Map();
+        wires.forEach(wire => parent.set(wire.id, wire.id));
+        const find = id => {
+          while (parent.get(id) !== id) {
+            parent.set(id, parent.get(parent.get(id)));
+            id = parent.get(id);
+          }
+          return id;
+        };
+        const union = (a, b) => {
+          const ra = find(a);
+          const rb = find(b);
+          if (ra !== rb) parent.set(ra, rb);
+        };
+        for (let i = 0; i < wires.length; i++) {
+          for (let j = i + 1; j < wires.length; j++) {
+            if (wiresTouch(wires[i], wires[j])) union(wires[i].id, wires[j].id);
+          }
+        }
+        page.elements
+          .filter(element => element.type === "junction")
+          .forEach(junction => {
+            const touching = wires.filter(wire =>
+              wireSegments(wire).some(segment => pointOnSegment(junction.x || 0, junction.y || 0, segment)));
+            for (let k = 1; k < touching.length; k++) union(touching[0].id, touching[k].id);
+          });
+        const nets = new Map();
+        wires.forEach(wire => {
+          const root = find(wire.id);
+          const list = nets.get(root) || [];
+          list.push(wire);
+          nets.set(root, list);
+        });
+        return Array.from(nets.values());
+      }
+
+      function netSortKey(net) {
+        let best = Infinity;
+        net.forEach(wire => {
+          wireEndpointsOf(wire).forEach(point => {
+            const key = point[1] * 1000 + point[0];
+            if (key < best) best = key;
+          });
+        });
+        return best;
+      }
+
+      function netArrowLabels(page, net) {
+        const labels = new Set();
+        page.elements
+          .filter(element => element.type === "arrow" && element.label && !element.ladderRail)
+          .forEach(arrow => {
+            const points = arrow.points || [];
+            const touches = points.some(point =>
+              net.some(wire => wireSegments(wire).some(segment => pointOnSegment(point[0], point[1], segment))
+                || wireEndpointsOf(wire).some(end => Math.abs(end[0] - point[0]) < 4 && Math.abs(end[1] - point[1]) < 4)));
+            if (touches) labels.add(arrow.label);
+          });
+        return labels;
+      }
+
       function autoWireNumbers() {
         const format = state.settings.wireNumberFormat || "%S-%N";
         const allPages = confirm("全ページに線番を付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
@@ -5518,24 +7417,66 @@
         if (startInput === null) return;
         let next = Number(startInput || 1);
         const pages = allPages ? state.pages : [currentPage()];
-        let count = 0;
+        let netCount = 0;
+        const signalGroups = new Map(); // 信号矢印ラベル -> { value, members: [{net}] }
+        const numberedNets = [];
         pages.forEach(page => {
-          page.elements
-            .filter(element => element.type === "wire")
-            .forEach(element => {
-              if (wireStyle(element).noNumber) return;
-              if (element.fixedWireNo) return;
-              if (!overwrite && element.wireNo) return;
-              element.wireNo = formatWireNumber(format, page, next);
+          const nets = buildWireNets(page)
+            .map(net => ({ net, key: netSortKey(net) }))
+            .sort((a, b) => a.key - b.key)
+            .map(item => item.net);
+          nets.forEach(net => {
+            const members = net.filter(wire => !wireStyle(wire).noNumber && !wire.ladderRail);
+            if (!members.length) return;
+            const fixed = members.find(wire => wire.fixedWireNo && wire.wireNo);
+            const existing = members.find(wire => wire.wireNo);
+            let value = null;
+            if (fixed) value = fixed.wireNo;
+            else if (!overwrite && existing) value = existing.wireNo;
+            if (value === null) {
+              value = formatWireNumber(format, page, next, members[0]);
               next += 1;
-              count += 1;
+              netCount += 1;
+            }
+            members.forEach(wire => {
+              if (!wire.fixedWireNo) wire.wireNo = value;
             });
+            // ネット内は代表1本のみ表示(最長の配線)。他は自動的に非表示
+            const visible = members.slice().sort((a, b) => {
+              const lengthOf = wire => wireSegments(wire).reduce((sum, s) => sum + Math.hypot(s[2] - s[0], s[3] - s[1]), 0);
+              return lengthOf(b) - lengthOf(a);
+            });
+            visible.forEach((wire, index) => {
+              if (!wire.fixedWireNo) wire.hideWireNo = index !== 0;
+            });
+            const record = { page, net, members, fixed: Boolean(fixed) };
+            numberedNets.push(record);
+            netArrowLabels(page, net).forEach(label => {
+              const group = signalGroups.get(label) || { value: null, members: [] };
+              group.members.push(record);
+              if (group.value === null) group.value = value;
+              signalGroups.set(label, group);
+            });
+          });
         });
-        commitHistory(count + "本の配線に線番を付与しました。");
+        // 信号矢印ラベルで結ばれたネットはページをまたいで同一線番を共有する
+        let linked = 0;
+        signalGroups.forEach(group => {
+          if (group.members.length < 2 || group.value === null) return;
+          group.members.forEach(record => {
+            record.members.forEach(wire => {
+              if (!wire.fixedWireNo && wire.wireNo !== group.value) {
+                wire.wireNo = group.value;
+                linked += 1;
+              }
+            });
+          });
+        });
+        commitHistory(netCount + "ネットへ線番を付与しました。" + (linked ? "(信号リンクで" + linked + "本を共有)" : ""));
         render();
       }
 
-      function formatWireNumber(format, page, number) {
+      function formatWireNumber(format, page, number, element) {
         const pageIndex = state.pages.findIndex(item => item.id === page.id) + 1;
         return String(format || "%S-%N")
           .replaceAll("%S", page.title?.page || String(pageIndex))
@@ -5543,6 +7484,7 @@
           .replaceAll("%D", page.title?.drawingNo || "")
           .replaceAll("%I", page.title?.installation || "")
           .replaceAll("%L", page.title?.location || "")
+          .replaceAll("%R", element ? String(elementLadderRow(element)).padStart(2, "0") : "")
           .replaceAll("%N", String(number).padStart(2, "0"));
       }
 
@@ -5587,9 +7529,9 @@
               type: "junction",
               x: point.x,
               y: point.y,
-              w: 4,
-              h: 4,
-              r: 1.35,
+              w: 2,
+              h: 2,
+              r: 0.75,
               rotation: 0,
               stroke: state.settings.stroke
             });
@@ -5689,7 +7631,7 @@
         }
         const html = `
           <table class="report-table">
-            <thead><tr><th>ページ</th><th>種別</th><th>名称</th><th>端子数</th><th>開始</th><th>方向</th><th>形状</th><th>接頭辞</th></tr></thead>
+            <thead><tr><th>ページ</th><th>種別</th><th>名称</th><th>端子数</th><th>開始</th><th>方向</th><th>形状</th><th>接頭辞</th><th>ジャンパ</th></tr></thead>
             <tbody>
               ${rows.map(({ page, element }) => `
                 <tr data-terminal-row="${element.id}">
@@ -5701,6 +7643,7 @@
                   <td><select data-terminal-field="orientation"><option value="horizontal"${(element.orientation || "horizontal") === "horizontal" ? " selected" : ""}>横</option><option value="vertical"${element.orientation === "vertical" ? " selected" : ""}>縦</option></select></td>
                   <td><select data-terminal-field="terminalShape"><option value="circle"${(element.terminalShape || "circle") === "circle" ? " selected" : ""}>丸</option><option value="square"${element.terminalShape === "square" ? " selected" : ""}>角</option></select></td>
                   <td><input data-terminal-field="prefix" value="${escapeAttr(element.prefix || "")}"></td>
+                  <td><input data-terminal-field="jumpers" value="${escapeAttr(element.jumpers || "")}" placeholder="1-2;3-5"></td>
                 </tr>
               `).join("")}
             </tbody>
@@ -5779,6 +7722,7 @@
           .replaceAll("%D", page.title?.drawingNo || "")
           .replaceAll("%I", page.title?.installation || element.installation || "")
           .replaceAll("%L", page.title?.location || element.location || "")
+          .replaceAll("%R", String(elementLadderRow(element)).padStart(2, "0"))
           .replaceAll("%N", String(number).padStart(2, "0"));
       }
 
@@ -6331,9 +8275,27 @@
       }
 
       function showCrossReference() {
+        const xref = buildCrossRefCache();
+        const coilRows = [];
+        xref.coils.forEach((coil, tag) => {
+          const children = xref.contacts.get(tag) || [];
+          coilRows.push(`<tr>
+            <td>${escapeHtml(tag)}</td>
+            <td>${escapeHtml(coil.address)}</td>
+            <td>${children.length}</td>
+            <td>${children.map(item => `<button type="button" data-select-page="${item.page.id}" data-select-id="${item.element.id}">${escapeHtml(item.address)}${item.closed ? "(b)" : ""}</button>`).join(" ")}</td>
+            <td><button type="button" data-select-page="${coil.page.id}" data-select-id="${coil.element.id}">コイルへ</button></td>
+          </tr>`);
+        });
+        const coilHtml = coilRows.length
+          ? `<div class="panel-title">コイル→接点(頁+行アドレス)</div>
+             <table class="report-table"><thead><tr><th>タグ</th><th>コイル位置</th><th>接点数</th><th>接点位置</th><th></th></tr></thead><tbody>${coilRows.join("")}</tbody></table>`
+          : "";
         const groups = collectCrossReferences();
-        const html = groups.length
-          ? `<table class="report-table"><thead><tr><th>キー</th><th>分類</th><th>参照数</th><th>参照先</th></tr></thead><tbody>${groups.map(group => `<tr><td>${escapeHtml(group.key)}</td><td>${escapeHtml(group.kind)}</td><td>${group.items.length}</td><td>${group.items.map(item => `<button type="button" data-select-page="${item.pageId}" data-select-id="${item.id}" title="${escapeAttr(item.type)}">${escapeHtml(item.pageName)}:${escapeHtml(item.type)}</button>`).join(" ")}</td></tr>`).join("")}</tbody></table>`
+        const html = groups.length || coilRows.length
+          ? `${coilHtml}
+             <div class="panel-title" style="margin-top:12px">全参照一覧</div>
+             <table class="report-table"><thead><tr><th>キー</th><th>分類</th><th>参照数</th><th>参照先</th></tr></thead><tbody>${groups.map(group => `<tr><td>${escapeHtml(group.key)}</td><td>${escapeHtml(group.kind)}</td><td>${group.items.length}</td><td>${group.items.map(item => `<button type="button" data-select-page="${item.pageId}" data-select-id="${item.id}" title="${escapeAttr(item.type)}">${escapeHtml(item.pageName)}:${escapeHtml(item.type)}</button>`).join(" ")}</td></tr>`).join("")}</tbody></table>`
           : '<p class="muted">参照できる線番、部品タグ、信号矢印はありません。</p>';
         openDialog("クロスリファレンス", html);
         attachDialogSelection();
@@ -6550,7 +8512,7 @@
             }
             if (element.type === "arrow") {
               if (!element.label) {
-                issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "信号矢印の参照名が未入力です。", target: element.id });
+                if (!element.ladderRail) issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "信号矢印の参照名が未入力です。", target: element.id });
               } else {
                 const role = element.signalRole || "reference";
                 const group = arrows.get(element.label) || { source: [], destination: [], reference: [] };
@@ -6592,6 +8554,54 @@
             issues.push({ level: "注意", page: first.page, pageId: first.pageId, elementId: first.elementId, message: "同一部品種別で部品タグが重複しています。", target: first.type + " " + first.tag + " (" + pages + ")" });
           }
         });
+        const xref = buildCrossRefCache();
+        xref.coils.forEach((coil, tag) => {
+          const children = xref.contacts.get(tag) || [];
+          if (!children.length) {
+            issues.push({ level: "情報", page: coil.page.name, pageId: coil.page.id, elementId: coil.element.id, message: "コイルに対応する接点がありません。", target: tag });
+          }
+          const cat = (state.catalog || []).find(item => item.catalog && item.catalog === coil.element.catalog);
+          const maxNO = Number(cat?.maxNO ?? 4);
+          const maxNC = Number(cat?.maxNC ?? 4);
+          const usedNO = children.filter(c => !c.closed).length;
+          const usedNC = children.filter(c => c.closed).length;
+          if (usedNO > maxNO) issues.push({ level: "警告", page: coil.page.name, pageId: coil.page.id, elementId: coil.element.id, message: "a接点の使用数が上限を超えています(" + usedNO + "/" + maxNO + ")。", target: tag });
+          if (usedNC > maxNC) issues.push({ level: "警告", page: coil.page.name, pageId: coil.page.id, elementId: coil.element.id, message: "b接点の使用数が上限を超えています(" + usedNC + "/" + maxNC + ")。", target: tag });
+        });
+        xref.contacts.forEach((list, tag) => {
+          if (xref.coils.has(tag)) return;
+          if (list.every(item => item.element.type === "thermalRelay")) return;
+          const first = list[0];
+          issues.push({ level: "注意", page: first.page.name, pageId: first.page.id, elementId: first.element.id, message: "接点に対応するコイルがありません。", target: tag + "(" + list.length + "箇所)" });
+        });
+        const jumperTargets = [];
+        state.pages.forEach(page => {
+          page.elements.forEach(element => {
+            if (!["terminalStrip", "connector"].includes(element.type)) return;
+            const count = Math.max(1, Number(element.count || 1));
+            const start = Number(element.start || 1);
+            terminalJumperPairs(element).forEach(([a, b]) => {
+              if (a - start < 0 || b - start < 0 || a - start >= count || b - start >= count) {
+                jumperTargets.push({ page, element, pair: a + "-" + b });
+              }
+            });
+          });
+        });
+        jumperTargets.forEach(item => {
+          issues.push({ level: "警告", page: item.page.name, pageId: item.page.id, elementId: item.element.id, message: "ジャンパの端子番号が範囲外です。", target: (item.element.label || item.element.id) + " " + item.pair });
+        });
+        const hasFootprints = state.pages.some(page => page.elements.some(element => element.panelRef));
+        if (hasFootprints) {
+          const placed = new Set();
+          state.pages.forEach(page => page.elements.forEach(element => {
+            if (element.panelRef) placed.add(element.panelRef);
+          }));
+          xref.coils.forEach((coil, tag) => {
+            if (!placed.has(tag)) {
+              issues.push({ level: "情報", page: coil.page.name, pageId: coil.page.id, elementId: coil.element.id, message: "盤レイアウトに未配置です。", target: tag });
+            }
+          });
+        }
         return issues;
       }
 
@@ -6683,9 +8693,96 @@
         );
       }
 
+      function dxfLadderFrame(out, page, size) {
+        const L = 19, R = size.w - 19, T = 18, B = size.h - 24;
+        dxfRect(out, page, "FRAME", L, T, R - L, B - T);
+        for (let i = 0; i <= 20; i++) {
+          dxfText(out, page, "FRAME", 23.7, 27 + 9.5 * i + 1, 3, String(i).padStart(2, "0"));
+        }
+        if (page.name) dxfText(out, page, "FRAME", (L + R) / 2 - String(page.name).length * 1.05, 23.7, 3.5, page.name);
+        const tblTop = B - 49;
+        const xrefR = 105.8;
+        dxfRect(out, page, "FRAME", L, tblTop, xrefR - L, B - tblTop);
+        for (let i = 1; i < 13; i++) {
+          const x = L + (xrefR - L) * i / 13;
+          dxfLine(out, page, "FRAME", x, tblTop, x, B);
+        }
+        [tblTop + 5, B - 11, B - 5.5].forEach(y => dxfLine(out, page, "FRAME", L, y, xrefR, y));
+        const devTop = tblTop;
+        const devBottom = tblTop + 28.5;
+        dxfRect(out, page, "FRAME", xrefR, devTop, R - xrefR, devBottom - devTop);
+        const gw = (R - xrefR) / 2;
+        [0, 1].forEach(gi => {
+          const gx = xrefR + gi * gw;
+          dxfLine(out, page, "FRAME", gx + 11, devTop, gx + 11, devBottom);
+          dxfLine(out, page, "FRAME", gx + gw - 4.5, devTop, gx + gw - 4.5, devBottom);
+          dxfText(out, page, "FRAME", gx + 1, devTop + 2.2, 1.7, "機器符号");
+          dxfText(out, page, "FRAME", gx + 13, devTop + 2.2, 1.7, "機器符号内容");
+          dxfText(out, page, "FRAME", gx + gw - 3.6, devTop + 2.2, 1.7, "頁");
+        });
+        dxfLine(out, page, "FRAME", xrefR + gw, devTop, xrefR + gw, devBottom);
+        for (let i = 1; i <= 10; i++) {
+          const y = devTop + 2.6 + (devBottom - devTop - 2.6) * i / 10;
+          dxfLine(out, page, "FRAME", xrefR, y, R, y);
+        }
+        const t1 = devBottom, t2 = t1 + 6, t3 = t2 + 8, t4 = B;
+        dxfRect(out, page, "TITLE", xrefR, t1, R - xrefR, t4 - t1);
+        dxfLine(out, page, "TITLE", xrefR, t2, R, t2);
+        dxfLine(out, page, "TITLE", xrefR, t3, R, t3);
+        dxfLine(out, page, "TITLE", 137, t1, 137, t2);
+        dxfLine(out, page, "TITLE", 110, t2, 110, t4);
+        dxfLine(out, page, "TITLE", 177, t2, 177, t3);
+        dxfText(out, page, "TITLE", xrefR + 1.2, t1 + 2.4, 1.7, "客先機番");
+        if (page.title.installation) dxfText(out, page, "TITLE", xrefR + 6, (t1 + t2) / 2 + 1.8, 2.4, page.title.installation);
+        dxfText(out, page, "TITLE", 138.2, t1 + 2.4, 1.7, "装置区分");
+        if (page.title.facility) dxfText(out, page, "TITLE", 144, (t1 + t2) / 2 + 1.8, 2.4, page.title.facility);
+        dxfText(out, page, "TITLE", 106.6, t2 + 3.4, 1.9, "内");
+        dxfText(out, page, "TITLE", 106.6, t2 + 6.2, 1.9, "容");
+        if (page.title.title) dxfText(out, page, "TITLE", (110 + 177) / 2 - String(page.title.title).length * .96, (t2 + t3) / 2 + 1.1, 3.2, page.title.title);
+        dxfText(out, page, "TITLE", 183.2, t2 + 2.4, 1.7, "頁");
+        if (page.title.page) dxfText(out, page, "TITLE", 184 - String(page.title.page).length * 1.05, t3 - 1.2, 3.5, page.title.page);
+        dxfText(out, page, "TITLE", 106.6, t3 + 3, 1.9, "図");
+        dxfText(out, page, "TITLE", 106.6, t3 + 5.6, 1.9, "番");
+        dxfText(out, page, "TITLE", (110 + R) / 2 - String(page.title.drawingNo || "−").length * .78, (t3 + t4) / 2 + .9, 2.6, page.title.drawingNo || "−");
+        dxfText(out, page, "FRAME", L, size.h - 19.3, 1.9, "汎用図番:");
+        dxfText(out, page, "FRAME", 55, size.h - 19.3, 1.9, "図番:");
+        dxfText(out, page, "FRAME", 95, size.h - 19.3, 1.9, "出力日: " + (page.title.date || ""));
+        dxfText(out, page, "FRAME", 125, size.h - 19.3, 1.9, "更新日: " + (state.project.date || ""));
+        if (state.project.designer) dxfText(out, page, "FRAME", R - state.project.designer.length * 1.9, size.h - 19.3, 2.1, state.project.designer);
+        if (page.title.sideNote) {
+          dxfTextRotated(out, page, "FRAME", 17.3, size.h / 2, 2.2, page.title.sideNote, 90);
+        }
+        const colW = (xrefR - L) / 13;
+        pageCoilXrefColumns(page).forEach((col, i) => {
+          const x = L + colW * i;
+          dxfText(out, page, "FRAME", x + 0.6, tblTop + 3.1, 1.8, col.tag);
+          col.refs.slice(0, 12).forEach((ref, j) => {
+            const y = tblTop + 7.5 + j * 2.6;
+            dxfText(out, page, "FRAME", x + colW - 0.8 - String(ref.address).length * 1.06, y + .6, 1.7, ref.address);
+            if (ref.closed) {
+              const w = String(ref.address).length * 1.06;
+              dxfLine(out, page, "FRAME", x + colW - 0.8 - w, y + 1.1, x + colW - 0.8, y + 1.1);
+            }
+          });
+        });
+        const rowH = (28.5 - 2.6) / 10;
+        pageDeviceTableRows(page).forEach((row, index) => {
+          const gi = Math.floor(index / 10);
+          const gx = xrefR + gi * gw;
+          const y = devTop + 2.6 + (index % 10) * rowH + rowH * 0.7 + .6;
+          dxfText(out, page, "FRAME", gx + 0.6, y, 1.7, row.tag);
+          if (row.desc) dxfText(out, page, "FRAME", gx + 11.6, y, 1.7, row.desc);
+          if (row.page) dxfText(out, page, "FRAME", gx + gw - 3.2, y, 1.7, row.page);
+        });
+      }
+
       function dxfFrame(out, page) {
         const size = pageSize(page);
         const margin = frameMargin(size);
+        if (page.frameVariant === "ladder") {
+          dxfLadderFrame(out, page, size);
+          return;
+        }
         dxfRect(out, page, "FRAME", margin, margin, size.w - margin * 2, size.h - margin * 2);
         dxfRect(out, page, "FRAME", margin + 4, margin + 4, size.w - (margin + 4) * 2, size.h - (margin + 4) * 2);
         if (page.frameVariant !== "blank") {
@@ -6701,13 +8798,18 @@
 
       function dxfElement(out, page, element) {
         if (element.type === "underlayImage") return;
+        if (dxfGeoSymbol(out, page, element)) {
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
         if (element.type === "wire") {
           const layer = "WIRE_" + String(element.wireType || "control").toUpperCase();
           const points = element.points || [[0, 0], [20, 0]];
           dxfWireSegments(element).forEach(segment => dxfLine(out, page, layer, segment[0], segment[1], segment[2], segment[3]));
           if (element.wireNo) {
-            const mid = wireLabelPoint(points);
-            dxfText(out, page, "WIRENO", mid.x + 1.5, mid.y - 1.8, 2.4, element.wireNo);
+            const pos = wireNoAnchorPoint(element);
+            const dx = pos.anchor === "end" ? String(element.wireNo).length * 2.4 * .6 : 0;
+            dxfText(out, page, "WIRENO", pos.x - dx, pos.y + .8, 2.4, element.wireNo);
           }
           return;
         }
@@ -6726,12 +8828,36 @@
           const points = element.points || [[0, 0], [20, 0]];
           const a = points[0];
           const b = points[points.length - 1];
-          dxfLine(out, page, "SYMBOL", a[0], a[1], b[0], b[1]);
+          const style = element.arrowStyle || "open";
+          if (style !== "chevron") dxfLine(out, page, "SYMBOL", a[0], a[1], b[0], b[1]);
+          const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+          const emitHead = (tip, dirAngle) => {
+            const [len, half] = arrowHeadSpec(style);
+            const sgn = style === "fork" ? 1 : -1;
+            const q1 = [tip[0] + sgn * len * Math.cos(dirAngle - half), tip[1] + sgn * len * Math.sin(dirAngle - half)];
+            const q2 = [tip[0] + sgn * len * Math.cos(dirAngle + half), tip[1] + sgn * len * Math.sin(dirAngle + half)];
+            dxfLine(out, page, "SYMBOL", q1[0], q1[1], tip[0], tip[1]);
+            dxfLine(out, page, "SYMBOL", tip[0], tip[1], q2[0], q2[1]);
+            if (style === "solid") dxfLine(out, page, "SYMBOL", q1[0], q1[1], q2[0], q2[1]);
+          };
+          emitHead(b, angle);
+          if (element.arrowAtStart) emitHead(a, angle + Math.PI);
           if (element.label) dxfText(out, page, "TEXT", (a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 3, 2.4, element.label);
+          const note = arrowCounterpartNote(element);
+          if (note) dxfText(out, page, "TEXT", b[0] - note.length * 1.1, b[1] - 3, 1.8, note);
           return;
         }
         if (element.type === "text") {
           dxfText(out, page, "TEXT", element.x || 0, element.y || 0, element.fontSize || 3.5, element.text || "");
+          if (element.underline) {
+            const size = Number(element.fontSize || 3.5);
+            String(element.text || "").split("\n").forEach((line, index) => {
+              if (!line.trim()) return;
+              const w = line.length * size * 0.62;
+              const y = Number(element.y || 0) + index * size * 1.25 + size * 0.72;
+              dxfLine(out, page, "TEXT", Number(element.x || 0), y, Number(element.x || 0) + w, y);
+            });
+          }
           return;
         }
         if (element.type === "installationBox" || element.type === "locationBox") {
@@ -6775,6 +8901,36 @@
           const pitchSize = element.type === "connector" ? 7 : 8;
           const w = Number(element.w || (vertical ? 12 : count * pitchSize));
           const h = Number(element.h || (vertical ? count * pitchSize : 12));
+          if (element.type === "terminalStrip" && element.stripStyle === "unit" && vertical) {
+            const pitch = h / count;
+            dxfLineLocal(out, page, "SYMBOL", element, 0, 0, 0, h);
+            dxfLineLocal(out, page, "SYMBOL", element, w, 0, w, h);
+            [0, h].forEach(y => {
+              const wavePts = plcUnitWavePoints(w, y);
+              for (let i = 1; i < wavePts.length; i++) {
+                dxfLineLocal(out, page, "SYMBOL", element, wavePts[i - 1][0], wavePts[i - 1][1], wavePts[i][0], wavePts[i][1]);
+              }
+            });
+            for (let i = 0; i < count; i++) {
+              const cy = pitch * i + pitch / 2;
+              const r = Math.min(3.5, pitch * .37);
+              dxfCircleLocal(out, page, "SYMBOL", element, w / 2, cy, r);
+              const label = terminalLabel(element, i);
+              dxfTextLocal(out, page, "TEXT", element, w / 2 - label.length * .6, cy + .7, 2, label);
+            }
+            if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
+            const unitJumperStart = Number(element.start || 1);
+            terminalJumperPairs(element).forEach(([a, b]) => {
+              const ia = a - unitJumperStart;
+              const ib = b - unitJumperStart;
+              if (ia < 0 || ib < 0 || ia >= count || ib >= count) return;
+              const na = terminalStripNodeLocal(element, ia);
+              const nb = terminalStripNodeLocal(element, ib);
+              dxfQuadApproxLocal(out, page, "SYMBOL", element, na.x, na.y, na.x - 3.6, (na.y + nb.y) / 2, nb.x, nb.y);
+            });
+            dxfVisibleAttributes(out, page, element);
+            return;
+          }
           if (vertical) {
             const pitch = h / count;
             dxfLineLocal(out, page, "SYMBOL", element, w / 2, 0, w / 2, h);
@@ -6794,6 +8950,17 @@
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -3, 2.5, element.label);
           }
+          const jumperStart = Number(element.start || 1);
+          terminalJumperPairs(element).forEach(([a, b]) => {
+            const ia = a - jumperStart;
+            const ib = b - jumperStart;
+            if (ia < 0 || ib < 0 || ia >= count || ib >= count) return;
+            const na = terminalStripNodeLocal(element, ia);
+            const nb = terminalStripNodeLocal(element, ib);
+            const cx = (na.x + nb.x) / 2 + (vertical ? 3.6 : 0);
+            const cy = (na.y + nb.y) / 2 + (vertical ? 0 : 3.6);
+            dxfQuadApproxLocal(out, page, "SYMBOL", element, na.x, na.y, cx, cy, nb.x, nb.y);
+          });
           dxfVisibleAttributes(out, page, element);
           return;
         }
@@ -6826,6 +8993,18 @@
             });
             textY += rowHeights[rowIndex];
           });
+          const diagonals = tableDiagonalCells(element);
+          if (diagonals.length) {
+            const xs = [0];
+            colWidths.forEach(cw => xs.push(xs[xs.length - 1] + cw));
+            const ys = [0];
+            rowHeights.forEach(rh => ys.push(ys[ys.length - 1] + rh));
+            diagonals.forEach(([r, c]) => {
+              if (r >= 1 && r <= rows && c >= 1 && c <= cols) {
+                dxfLineLocal(out, page, "TABLE", element, xs[c - 1], ys[r], xs[c], ys[r - 1]);
+              }
+            });
+          }
           if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, -4, 2.5, element.label);
           dxfVisibleAttributes(out, page, element);
           return;
@@ -6930,6 +9109,28 @@
         }
         const box = elementBounds(element);
         if (["deviceBox", "plcBlock"].includes(element.type)) {
+          if (element.type === "plcBlock" && (element.plcStyle || "grid") === "unit") {
+            const rows = Math.max(1, Number(element.rows || 8));
+            const uw = 10.5;
+            const uh = rows * 9.5;
+            const labels = String(element.pinText || "").split(/\r?\n/);
+            dxfLineLocal(out, page, "SYMBOL", element, 0, 0, 0, uh);
+            dxfLineLocal(out, page, "SYMBOL", element, uw, 0, uw, uh);
+            [0, uh].forEach(y => {
+              const wavePts = plcUnitWavePoints(uw, y);
+              for (let i = 1; i < wavePts.length; i++) {
+                dxfLineLocal(out, page, "SYMBOL", element, wavePts[i - 1][0], wavePts[i - 1][1], wavePts[i][0], wavePts[i][1]);
+              }
+            });
+            for (let i = 0; i < rows; i++) {
+              const cy = 9.5 * i + 4.75;
+              dxfCircleLocal(out, page, "SYMBOL", element, uw / 2, cy, 3.5);
+              if (labels[i]) dxfTextLocal(out, page, "TEXT", element, uw / 2 - labels[i].length * .6, cy + .7, 2, labels[i]);
+            }
+            if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
+            dxfVisibleAttributes(out, page, element);
+            return;
+          }
           dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
           const textSize = element.type === "deviceBox" ? 2 : 2.5;
           dxfTextLocal(out, page, "TEXT", element, box.w / 2 - 6, box.h / 2, textSize, element.label || element.type);
@@ -6939,12 +9140,10 @@
             const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
             for (let i = 0; i < pins; i++) {
               const y = box.h * (i + 1) / (pins + 1);
-              dxfLineLocal(out, page, "SYMBOL", element, -5, y, 0, y);
-              dxfLineLocal(out, page, "SYMBOL", element, box.w, y, box.w + 5, y);
-              if (leftLabels[i]?.trim()) dxfTextLocal(out, page, "TEXT", element, 1.5, y + .55, 1.7, leftLabels[i].trim());
+              if (leftLabels[i]?.trim()) dxfTextLocal(out, page, "TEXT", element, 1.5, y + .55, 2.2, leftLabels[i].trim());
               if (rightLabels[i]?.trim()) {
                 const text = rightLabels[i].trim();
-                dxfTextLocal(out, page, "TEXT", element, box.w - 1.5 - text.length * .85, y + .55, 1.7, text);
+                dxfTextLocal(out, page, "TEXT", element, box.w - 1.5 - text.length * 1.1, y + .55, 2.2, text);
               }
             }
             dxfVisibleAttributes(out, page, element);
@@ -7513,9 +9712,6 @@
           paletteFilterText = event.target.value || "";
           renderPalette();
         });
-        qs("#symbolManagerBtn").addEventListener("click", showSymbolManager);
-        qs("#wireTypeManagerBtn").addEventListener("click", showWireTypeManager);
-        qs("#layerManagerBtn").addEventListener("click", showLayerManager);
         qs("#openBtn").addEventListener("click", () => qs("#fileInput").click());
         qs("#restoreBackupBtn").addEventListener("click", restoreLocalBackup);
         qs("#fileInput").addEventListener("change", event => {
@@ -7523,26 +9719,21 @@
           if (file) openProjectFile(file);
           event.target.value = "";
         });
-        qs("#terminalCsvBtn").addEventListener("click", () => qs("#terminalCsvInput").click());
         qs("#terminalCsvInput").addEventListener("change", event => {
           const file = event.target.files[0];
           if (file) importTerminalCsvFile(file);
           event.target.value = "";
         });
-        qs("#plcCsvBtn").addEventListener("click", () => qs("#plcCsvInput").click());
         qs("#plcCsvInput").addEventListener("change", event => {
           const file = event.target.files[0];
           if (file) importPlcCsvFile(file);
           event.target.value = "";
         });
-        qs("#underlayImageBtn").addEventListener("click", () => qs("#underlayInput").click());
-        qs("#selectUnderlayBtn").addEventListener("click", selectCurrentUnderlay);
         qs("#underlayInput").addEventListener("change", event => {
           const file = event.target.files[0];
           if (file) importUnderlayImageFile(file);
           event.target.value = "";
         });
-        qs("#underlayTwoUpBtn").addEventListener("click", () => qs("#underlayTwoUpInput").click());
         qs("#underlayTwoUpInput").addEventListener("change", async event => {
           for (const file of Array.from(event.target.files || [])) {
             await importTwoUpUnderlayImageFile(file);
@@ -7557,21 +9748,75 @@
         qs("#exportSvgBtn").addEventListener("click", exportSvg);
         qs("#exportPngBtn").addEventListener("click", exportPng);
         qs("#autoWireBtn").addEventListener("click", autoWireNumbers);
-        qs("#terminalNoBtn").addEventListener("click", renumberTerminals);
-        qs("#autoJunctionBtn").addEventListener("click", autoJunctions);
-        qs("#wireSequenceBtn").addEventListener("click", showWireSequenceDialog);
-        qs("#addRungBtn").addEventListener("click", addRungToCurrentPage);
-        qs("#wireColumnBtn").addEventListener("click", showWireColumnDialog);
-        qs("#wireRowBtn").addEventListener("click", showWireRowDialog);
-        qs("#terminalEditorBtn").addEventListener("click", showTerminalEditor);
-        qs("#tagComponentsBtn").addEventListener("click", autoTagComponents);
-        qs("#componentTagRulesBtn").addEventListener("click", showComponentTagRulesDialog);
-        qs("#crossRefBtn").addEventListener("click", showCrossReference);
-        qs("#reportCsvBtn").addEventListener("click", exportReportCsv);
-        qs("#copyReportBtn").addEventListener("click", showReportTable);
-        qs("#insertReportTableBtn").addEventListener("click", showInsertReportDialog);
         qs("#auditBtn").addEventListener("click", showAudit);
-        qs("#exportDxfBtn").addEventListener("click", exportDxf);
+        qs("#dxfImportInput").addEventListener("change", event => {
+          const file = event.target.files[0];
+          if (file) importDxfFile(file);
+          event.target.value = "";
+        });
+        qs("#packImportInput").addEventListener("change", event => {
+          const file = event.target.files[0];
+          if (file) importStandardPackFile(file);
+          event.target.value = "";
+        });
+        const MENU_ACTIONS = {
+          terminalNo: renumberTerminals,
+          tagComponents: autoTagComponents,
+          autoJunction: autoJunctions,
+          wireSequence: showWireSequenceDialog,
+          addRung: addRungToCurrentPage,
+          wireColumn: showWireColumnDialog,
+          wireRow: showWireRowDialog,
+          twistedPair: showTwistedPairDialog,
+          motorCircuit: showMotorCircuitDialog,
+          plcUnit: showPlcUnitBuilder,
+          panelLink: showPanelLayoutLinkDialog,
+          terminalEditor: showTerminalEditor,
+          tagRules: showComponentTagRulesDialog,
+          wireTypeManager: showWireTypeManager,
+          layerManager: showLayerManager,
+          catalog: showCatalogManager,
+          symbolManager: showSymbolManager,
+          crossRef: showCrossReference,
+          reportCsv: exportReportCsv,
+          reportTable: showReportTable,
+          insertReport: showInsertReportDialog,
+          bom: showBomTable,
+          terminalCsv: () => qs("#terminalCsvInput").click(),
+          plcCsv: () => qs("#plcCsvInput").click(),
+          importDxf: () => qs("#dxfImportInput").click(),
+          exportDxf: exportDxf,
+          exportPack: exportStandardPack,
+          importPack: () => qs("#packImportInput").click()
+        };
+        qs("#actionMenu").addEventListener("change", event => {
+          const action = MENU_ACTIONS[event.target.value];
+          event.target.value = "";
+          if (action) action();
+        });
+        const TEMPLATE_ACTIONS = {
+          facilityLadder: showFacilityLadderDialog,
+          plcInput: showPlcInputPageDialog,
+          terminalSheet: addSampleTerminalPage,
+          ladder: addLadderPage,
+          index: addIndexPage,
+          layout: addLayoutPage
+        };
+        qs("#templateMenu").addEventListener("change", event => {
+          const action = TEMPLATE_ACTIONS[event.target.value];
+          event.target.value = "";
+          if (action) action();
+        });
+        const UNDERLAY_ACTIONS = {
+          insert: () => qs("#underlayInput").click(),
+          twoUp: () => qs("#underlayTwoUpInput").click(),
+          select: selectCurrentUnderlay
+        };
+        qs("#underlayMenu").addEventListener("change", event => {
+          const action = UNDERLAY_ACTIONS[event.target.value];
+          event.target.value = "";
+          if (action) action();
+        });
         qs("#dialogClose").addEventListener("click", closeDialog);
         qs("#undoBtn").addEventListener("click", () => restoreHistory(historyIndex - 1));
         qs("#redoBtn").addEventListener("click", () => restoreHistory(historyIndex + 1));
@@ -7579,11 +9824,6 @@
         qs("#addPageBtn").addEventListener("click", addPage);
         qs("#duplicatePageBtn").addEventListener("click", duplicatePage);
         qs("#deletePageBtn").addEventListener("click", deletePage);
-        qs("#sampleTerminalPageBtn").addEventListener("click", addSampleTerminalPage);
-        qs("#indexPageBtn").addEventListener("click", addIndexPage);
-        qs("#ioPageBtn").addEventListener("click", addIoPage);
-        qs("#layoutPageBtn").addEventListener("click", addLayoutPage);
-        qs("#ladderPageBtn").addEventListener("click", addLadderPage);
         qs("#movePagePrevBtn").addEventListener("click", () => movePage(-1));
         qs("#movePageNextBtn").addEventListener("click", () => movePage(1));
         qsa("[data-tool]").forEach(button => {
@@ -7651,6 +9891,7 @@
         updatePageField("drawDate", (page, value) => { page.title.date = value; });
         updatePageField("pageInstallation", (page, value) => { page.title.installation = value; });
         updatePageField("pageLocation", (page, value) => { page.title.location = value; });
+        updatePageField("pageSideNote", (page, value) => { page.title.sideNote = value; });
 
         const svg = qs("#canvas");
         svg.addEventListener("dragover", event => {
@@ -7750,6 +9991,7 @@
             return;
           }
           if (!selectedIds.includes(targetId)) selectSingle(targetId);
+          expandSelectionToGroups();
           const element = selectedElement();
           if (isElementLocked(element)) {
             setStatus("ロックされた要素です。ロック解除すると移動できます。");
@@ -7813,6 +10055,21 @@
         if (dragState.mode === "move") {
           let dx = point.x - dragState.start.x;
           let dy = point.y - dragState.start.y;
+          if (state.settings.snap) {
+            const gridStep = Number(state.settings.grid || 2.5);
+            const rawDy = dy;
+            dx = Math.round(dx / gridStep) * gridStep;
+            dy = Math.round(dy / gridStep) * gridStep;
+            if (page && page.frameVariant === "ladder" && (dragState.originals || []).length) {
+              const box0 = elementBounds(dragState.originals[0]);
+              if (box0) {
+                const cy0 = box0.y + box0.h / 2;
+                const targetY = cy0 + rawDy;
+                const row = LADDER_GRID.top + LADDER_GRID.pitch * Math.round((targetY - LADDER_GRID.top) / LADDER_GRID.pitch);
+                if (Math.abs(row - targetY) <= 2.5) dy = round(row - cy0);
+              }
+            }
+          }
           const snapDelta = movementSnapDelta(dragState.originals || [], dx, dy);
           dx += snapDelta.dx;
           dy += snapDelta.dy;
