@@ -5840,14 +5840,25 @@
           pinText: addresses.join("\n")
         };
         page.elements.push(unit);
+        const feederX = 46.5;
+        if (withContacts && addresses.length) {
+          const yFirst = round(36.5);
+          const yLast = round(36.5 + 9.5 * (addresses.length - 1));
+          page.elements.push(defaultElement("junction", 32.5, yFirst));
+          page.elements.push({ ...defaultElement("wire", 32.5, yFirst), points: [[32.5, yFirst], [feederX, yFirst]] });
+          if (addresses.length > 1) {
+            page.elements.push({ ...defaultElement("wire", feederX, yFirst), points: [[feederX, yFirst], [feederX, yLast]] });
+          }
+        }
         addresses.forEach((address, i) => {
           const y = round(36.5 + 9.5 * i);
-          page.elements.push(defaultElement("junction", 32.5, y));
           if (withContacts) {
-            page.elements.push({ ...defaultElement("contactNO", 44, y - 2.2), label: "" });
-            page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [44, y]] });
-            page.elements.push({ ...defaultElement("wire", 52, y), points: [[52, y], [128.4, y]], wireNo: address, wireNoAlign: "end" });
+            page.elements.push(defaultElement("junction", feederX, y));
+            page.elements.push({ ...defaultElement("contactNO", 52, y - 2.2), label: "" });
+            page.elements.push({ ...defaultElement("wire", feederX, y), points: [[feederX, y], [52, y]] });
+            page.elements.push({ ...defaultElement("wire", 60, y), points: [[60, y], [128.4, y]], wireNo: address, wireNoAlign: "end" });
           } else {
+            page.elements.push(defaultElement("junction", 32.5, y));
             page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [128.4, y]], wireNo: address, wireNoAlign: "end" });
           }
           page.elements.push({ ...defaultElement("terminal", 0, 0), x: 128.4, y: round(y - 0.9), label: "" });
@@ -10515,3 +10526,4 @@
   </script>
 </body>
 </html>
+
