@@ -617,6 +617,7 @@
             </optgroup>
             <optgroup label="一括生成">
               <option value="rungCircuit">ラング回路（接点+コイル/ランプ）</option>
+              <option value="estopChain">非常停止チェーン</option>
               <option value="wireColumn">縦配線列</option>
               <option value="wireRow">横配線行</option>
               <option value="twistedPair">ツイストペア</option>
@@ -1844,7 +1845,8 @@
           height: h,
           class: "symbol-line",
           stroke,
-          fill: element.fill || "none"
+          fill: element.fill || "none",
+          "stroke-dasharray": element.dash || null
         }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
       }
@@ -4161,6 +4163,9 @@
               <option value="#fff"${fill === "#fff" ? " selected" : ""}>白（下を隠す）</option>
               <option value="#111820"${fill === "#111820" ? " selected" : ""}>黒</option>
             </select>
+            ${element.type === "rect" ? `
+            <label>枠線破線（例: 1.4 1.2）</label>
+            <input data-bind="dash" type="text" value="${escapeAttr(element.dash || "")}" placeholder="実線のまま=空欄">` : ""}
           `;
         }
         if (element.type === "line") {
@@ -6099,6 +6104,85 @@
         setSelection(created.map(el => el.id));
         closeDialog();
         commitHistory("モータ分岐回路を生成しました。");
+        render();
+      }
+
+      // ===== 非常停止チェーン生成(直列の非常停止PB+送り矢印+表示灯行) =====
+      function showEStopChainDialog() {
+        openDialog("非常停止チェーン生成", `
+          <p class="muted">設備標準ページへ、非常停止PB(キノコ)を直列にしたチェーンと、局ごとの表示灯行を生成します。</p>
+          <div class="row">
+            <div><label>局数</label><input id="esCount" type="number" min="1" max="4" step="1" value="3"></div>
+            <div><label>チェーン数</label><input id="esChains" type="number" min="1" max="2" step="1" value="2"></div>
+          </div>
+          <div class="row">
+            <div><label>タグ接頭辞</label><input id="esPrefix" value="PBE"></div>
+            <div><label>表示灯行を生成</label><select id="esLamps"><option value="on">する</option><option value="off">しない</option></select></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="esBuildBtn" class="primary">生成</button>
+          </div>`);
+        qs("#esBuildBtn").addEventListener("click", buildEStopChains);
+      }
+
+      function buildEStopChains() {
+        const page = currentPage();
+        if (!page) return;
+        const stations = Math.max(1, Math.min(4, Math.floor(Number(qs("#esCount").value || 3))));
+        const chains = Math.max(1, Math.min(2, Math.floor(Number(qs("#esChains").value || 2))));
+        const prefix = qs("#esPrefix").value || "PBE";
+        const withLamps = (qs("#esLamps").value || "on") === "on";
+        const created = [];
+        const stationX = i => 52 + 28 * i;
+        for (let c = 0; c < chains; c++) {
+          const y = round(LADDER_GRID.top + LADDER_GRID.pitch * (2 + 2 * c));
+          created.push(defaultElement("junction", 32.5, y));
+          let sx = 32.5;
+          for (let i = 0; i < stations; i++) {
+            const cx = stationX(i);
+            created.push({
+              ...defaultElement("pushButton", cx, round(y - 3.8)),
+              pbStyle: "emergency",
+              h: 6,
+              label: c === 0 ? prefix + (i + 1) : ""
+            });
+            created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), y], [round(cx), y]] });
+            sx = cx + 10;
+          }
+          created.push({
+            ...defaultElement("arrow", sx, y),
+            points: [[round(sx), y], [round(sx + 22), y]],
+            label: "",
+            arrowStyle: "open",
+            signalRole: "source"
+          });
+        }
+        if (withLamps) {
+          for (let i = 0; i < stations; i++) {
+            const y = round(LADDER_GRID.top + LADDER_GRID.pitch * (2 + 2 * chains + 2 * i));
+            created.push(defaultElement("junction", 32.5, y));
+            created.push({ ...defaultElement("contactNO", 52, round(y - 2.2)), label: prefix + (i + 1) });
+            created.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [52, y]] });
+            created.push({ ...defaultElement("lamp", 134, round(y - 2.2)), label: prefix + (i + 1), lampColor: "R" });
+            created.push({ ...defaultElement("wire", 60, y), points: [[60, y], [134, y]] });
+            created.push({ ...defaultElement("wire", 144, y), points: [[144, y], [146.5, y]] });
+          }
+          for (let i = 0; i < stations; i++) {
+            const top = round(LADDER_GRID.top + LADDER_GRID.pitch * 2 - 6.5);
+            const bottom = round(LADDER_GRID.top + LADDER_GRID.pitch * (2 + 2 * chains + 2 * i) + 5);
+            created.push({
+              ...defaultElement("rect", round(stationX(i) - 3), top),
+              w: 16,
+              h: bottom - top,
+              label: "",
+              dash: "1.4 1.2"
+            });
+          }
+        }
+        page.elements.push(...created);
+        setSelection(created.map(el => el.id));
+        closeDialog();
+        commitHistory("非常停止チェーンを生成しました。");
         render();
       }
 
@@ -8091,6 +8175,11 @@
       function collectReportRows() {
         const rows = [];
         state.pages.forEach((page, pageIndex) => {
+          const netIndexByWire = new Map();
+          buildWireNets(page).forEach((net, netIdx) => {
+            net.forEach(wire => netIndexByWire.set(wire.id, netIdx + 1));
+          });
+          const sheetNo = page.title?.page || String(pageIndex + 1);
           page.elements.forEach(element => {
             if (element.reportTable) return;
             if (element.type === "underlayImage") return;
@@ -8105,7 +8194,7 @@
             if (element.type === "wire") {
               const endpoints = wireEndpointNames(page, element);
               const gapCount = (element.gapAtMid ? 1 : 0) + (element.gapPoints?.length || 0);
-              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: endpoints.p0[0], y: endpoints.p0[1], x2: endpoints.p1[0], y2: endpoints.p1[1], detail: joinDetails([wireStyle(element).label, "from=" + endpoints.from, "to=" + endpoints.to, endpoints.manual ? "sequence=manual" : "", element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", gapCount ? "gap=true" : "", gapCount ? "gapCount=" + gapCount : "", noteDetail(element)]) });
+              rows.push({ record: "wire", ...base, name: element.wireNo || "", x: endpoints.p0[0], y: endpoints.p0[1], x2: endpoints.p1[0], y2: endpoints.p1[1], detail: joinDetails([wireStyle(element).label, "net=" + sheetNo + "-" + (netIndexByWire.get(element.id) || ""), "from=" + endpoints.from, "to=" + endpoints.to, endpoints.manual ? "sequence=manual" : "", element.fixedWireNo ? "fixed=true" : "", element.hideWireNo ? "hidden=true" : "", gapCount ? "gap=true" : "", gapCount ? "gapCount=" + gapCount : "", noteDetail(element)]) });
             } else if (element.type === "terminal") {
               rows.push({ record: "terminal", ...base, name: element.label || "", x: element.x || 0, y: element.y || 0, x2: "", y2: "", detail: joinDetails(["single", electricalAttributeDetail(element), noteDetail(element)]) });
             } else if (["terminalStrip", "connector"].includes(element.type)) {
@@ -9192,7 +9281,7 @@
         if (element.type === "rect") {
           const w = Number(element.w || 34);
           const h = Number(element.h || 22);
-          dxfRectLocal(out, page, "GEOMETRY", element, 0, 0, w, h);
+          dxfRectLocal(out, page, "GEOMETRY", element, 0, 0, w, h, dashLtypeName(element.dash));
           if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, h / 2, 2.6, element.label);
           dxfVisibleAttributes(out, page, element);
           return;
@@ -10085,6 +10174,7 @@
         });
         const MENU_ACTIONS = {
           rungCircuit: showRungCircuitDialog,
+          estopChain: showEStopChainDialog,
           terminalNo: renumberTerminals,
           tagComponents: autoTagComponents,
           autoJunction: autoJunctions,
@@ -10268,7 +10358,7 @@
             start: point,
             original: deepClone(element)
           };
-          svg.setPointerCapture(event.pointerId);
+          try { svg.setPointerCapture(event.pointerId); } catch (_) { /* 合成イベント等でキャプチャ不可の場合は無視 */ }
           event.stopPropagation();
           render();
           return;
@@ -10290,7 +10380,7 @@
             original: deepClone(element),
             originalBox: elementBounds(element)
           };
-          svg.setPointerCapture(event.pointerId);
+          try { svg.setPointerCapture(event.pointerId); } catch (_) { /* 合成イベント等でキャプチャ不可の場合は無視 */ }
           event.stopPropagation();
           render();
           return;
@@ -10302,7 +10392,7 @@
           currentPage().elements.push(element);
           selectSingle(element.id);
           dragState = { mode: "draw", elementId: element.id, start: point };
-          svg.setPointerCapture(event.pointerId);
+          try { svg.setPointerCapture(event.pointerId); } catch (_) { /* 合成イベント等でキャプチャ不可の場合は無視 */ }
           render();
           return;
         }
@@ -10339,12 +10429,12 @@
               .filter(item => item.type === "wire" && !currentSelectionIdSet().has(item.id))
               .map(item => deepClone(item))
           };
-          svg.setPointerCapture(event.pointerId);
+          try { svg.setPointerCapture(event.pointerId); } catch (_) { /* 合成イベント等でキャプチャ不可の場合は無視 */ }
           render();
         } else {
           if (!event.shiftKey) setSelection([]);
           dragState = { mode: "marquee", start: point, current: point, append: event.shiftKey, originalIds: [...selectedIds] };
-          svg.setPointerCapture(event.pointerId);
+          try { svg.setPointerCapture(event.pointerId); } catch (_) { /* 合成イベント等でキャプチャ不可の場合は無視 */ }
           render();
         }
       }
