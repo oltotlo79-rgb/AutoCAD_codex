@@ -1,5 +1,6 @@
 .codex_tmp/
 .vscode/
+test-results/
 *.tmp
 *.bak
 *.log

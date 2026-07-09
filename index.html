@@ -1174,9 +1174,9 @@
           terminal: `<svg ${common}><rect x="32" y="14" width="16" height="16" ${stroke}/><path ${stroke} d="M8 22h24M48 22h24"/></svg>`,
           strip: `<svg ${common}><path ${stroke} d="M10 24h60"/><circle cx="20" cy="24" r="6" ${thin}/><circle cx="35" cy="24" r="6" ${thin}/><circle cx="50" cy="24" r="6" ${thin}/><circle cx="65" cy="24" r="6" ${thin}/></svg>`,
           sheet: `<svg ${common}><path ${thin} d="M12 34h56M20 12v22M34 12v22M48 12v22M62 12v22"/><path ${stroke} d="M12 12h56"/></svg>`,
-          contactNO: `<svg ${common}><path ${stroke} d="M10 22h18M52 22h18M28 12v20M52 12v20M31 30l18-16"/></svg>`,
-          contactNC: `<svg ${common}><path ${stroke} d="M10 22h18M52 22h18M28 12v20M52 12v20M31 14l18 16M46 12l-12 20"/></svg>`,
-          pushButton: `<svg ${common}><path ${stroke} d="M10 25h18M52 25h18M28 15v20M52 15v20M33 31l14-12M40 9v10M32 9h16"/></svg>`,
+          contactNO: `<svg ${common}><path ${stroke} d="M40 4v10M40 30v10"/><circle cx="40" cy="17" r="3" ${thin}/><circle cx="40" cy="27" r="3" ${thin}/><path ${stroke} d="M43 27l10-8"/></svg>`,
+          contactNC: `<svg ${common}><path ${stroke} d="M40 4v10M40 30v10"/><circle cx="40" cy="17" r="3" ${thin}/><circle cx="40" cy="27" r="3" ${thin}/><path ${stroke} d="M43 27l10-10M52 27l-9-10"/></svg>`,
+          pushButton: `<svg ${common}><path ${stroke} d="M40 4v10M40 30v10M40 3v9M30 3h20"/><circle cx="40" cy="17" r="3" ${thin}/><circle cx="40" cy="27" r="3" ${thin}/><path ${stroke} d="M43 27l10-8"/></svg>`,
           coil: `<svg ${common}><path ${stroke} d="M8 22h14M58 22h14M22 12c10 0 10 20 0 20M58 12c-10 0-10 20 0 20"/></svg>`,
           fuse: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20"/><rect x="28" y="14" width="24" height="16" ${stroke}/></svg>`,
           breaker: `<svg ${common}><path ${stroke} d="M8 25h22M52 25h20M31 32l18-16"/><rect x="26" y="12" width="28" height="24" ${thin}/></svg>`,
@@ -1442,6 +1442,7 @@
         const g = svgEl("g", {
           class: "element",
           "data-id": element.id,
+          "data-type": element.type,
           cursor: "move",
           "pointer-events": element.type === "underlayImage" && element.locked ? "none" : null
         });
@@ -1789,6 +1790,14 @@
       }
 
       function drawContact(g, element, closed, stroke) {
+        if (element.orientation === "vertical") {
+          drawVerticalContact(g, element, closed, stroke);
+          return;
+        }
+        drawHorizontalContact(g, element, closed, stroke);
+      }
+
+      function drawHorizontalContact(g, element, closed, stroke) {
         const w = Number(element.w || 22);
         const h = Number(element.h || 14);
         g.appendChild(svgEl("line", { x1: 0, y1: h / 2, x2: 6, y2: h / 2, class: "symbol-line", stroke }));
@@ -1802,9 +1811,34 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      function drawVerticalContact(g, element, closed, stroke) {
+        const w = Number(element.w || 10);
+        const h = Number(element.h || 16);
+        const cx = w / 2;
+        const upper = Math.max(4.2, h * .34);
+        const lower = Math.min(h - 4.2, h * .66);
+        const r = Math.min(1.05, Math.max(.75, w * .1));
+        const bladeX = Math.min(w - 1, cx + Math.max(2.5, w * .34));
+        g.appendChild(svgEl("line", { x1: cx, y1: 0, x2: cx, y2: upper - r, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: cx, y1: lower + r, x2: cx, y2: h, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx, cy: upper, r, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("circle", { cx, cy: lower, r, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("line", { x1: cx + r, y1: lower - .2, x2: bladeX, y2: upper + (closed ? .2 : 2.4), class: "symbol-line", stroke }));
+        if (closed) {
+          g.appendChild(svgEl("line", { x1: bladeX - .1, y1: lower - .9, x2: cx + r, y2: upper + .9, class: "symbol-line", stroke }));
+        }
+        if (element.label) g.appendChild(textEl(element.label, -2.4, h / 2 + .8, { fontSize: 2.2, anchor: "end" }));
+      }
+
       function drawPushButton(g, element, stroke) {
         drawContact(g, element, false, stroke);
-        const w = Number(element.w || 22);
+        const w = Number(element.w || (element.orientation === "vertical" ? 10 : 22));
+        if (element.orientation === "vertical") {
+          const cx = w / 2;
+          g.appendChild(svgEl("line", { x1: cx, y1: -5, x2: cx, y2: 2, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: cx - 4, y1: -5, x2: cx + 4, y2: -5, class: "symbol-line", stroke }));
+          return;
+        }
         g.appendChild(svgEl("line", { x1: w / 2, y1: -8, x2: w / 2, y2: 2, class: "symbol-line", stroke }));
         g.appendChild(svgEl("line", { x1: w / 2 - 6, y1: -8, x2: w / 2 + 6, y2: -8, class: "symbol-line", stroke }));
       }
@@ -2482,6 +2516,16 @@
             </select>
           `;
         }
+        if (["contactNO", "contactNC", "pushButton"].includes(element.type)) {
+          const orientation = element.orientation || "horizontal";
+          return `
+            <label>接点方向</label>
+            <select data-bind="orientation">
+              <option value="vertical"${orientation === "vertical" ? " selected" : ""}>縦配線用（見本PDF風）</option>
+              <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横ラダー用</option>
+            </select>
+          `;
+        }
         if (["terminalStrip", "connector"].includes(element.type)) {
           const orientation = element.orientation || "horizontal";
           const shape = element.terminalShape || "circle";
@@ -2623,9 +2667,20 @@
           element[key] = value;
           if (key === "tag" && supportsElectricalAttributes(element) && !element.label) element.label = value;
           if (["orientation", "count"].includes(key) && ["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
+          if (key === "orientation" && ["contactNO", "contactNC", "pushButton"].includes(element.type)) resizeContactElementForOrientation(element);
         }
         if (save) commitHistory("要素を更新しました。");
         render();
+      }
+
+      function resizeContactElementForOrientation(element) {
+        if (element.orientation === "vertical") {
+          element.w = 10;
+          element.h = element.type === "pushButton" ? 18 : 16;
+          return;
+        }
+        element.w = 22;
+        element.h = 14;
       }
 
       function resizeTerminalElementForOrientation(element) {
@@ -2664,9 +2719,9 @@
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
           terminal: { ...base, w: 20, h: 10, label: "1" },
           terminalStrip: { ...base, w: 110, h: 12, count: 12, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "X1" },
-          contactNO: { ...base, w: 22, h: 14, label: "NO" },
-          contactNC: { ...base, w: 22, h: 14, label: "NC" },
-          pushButton: { ...base, w: 22, h: 14, label: "PB" },
+          contactNO: { ...base, w: 10, h: 16, label: "NO", orientation: "vertical" },
+          contactNC: { ...base, w: 10, h: 16, label: "NC", orientation: "vertical" },
+          pushButton: { ...base, w: 10, h: 18, label: "PB", orientation: "vertical" },
           coil: { ...base, w: 24, h: 14, label: "CR" },
           fuse: { ...base, w: 24, h: 10, label: "F" },
           breaker: { ...base, w: 26, h: 18, label: "CB" },
@@ -3753,6 +3808,9 @@
         page.elements.push(ladderWire([[cfg.leftRail, y], [cfg.rightRail, y]], "R" + rungNo, { ladderRung: true, rungNo }));
         if (!sample) return;
         const contact = defaultElement(index === 2 ? "contactNC" : "contactNO", cfg.leftRail + 20, y - 7);
+        contact.orientation = "horizontal";
+        contact.w = 22;
+        contact.h = 14;
         contact.label = index === 1 ? "PB01" : (index === 2 ? "PB02" : "LS01");
         contact.tag = contact.label;
         contact.description = index === 1 ? "起動" : (index === 2 ? "停止" : "位置検出");
@@ -5914,6 +5972,12 @@
           dxfVisibleAttributes(out, page, element);
           return;
         }
+        if (["contactNO", "contactNC", "pushButton"].includes(element.type)) {
+          dxfContactLocal(out, page, element, element.type === "contactNC");
+          if (element.type === "pushButton") dxfPushButtonActuatorLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
         const box = elementBounds(element);
         if (["deviceBox", "plcBlock"].includes(element.type)) {
           dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
@@ -5934,6 +5998,47 @@
         dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
         if (element.label) dxfTextLocal(out, page, "TEXT", element, 1, -3, 2.4, element.label);
         dxfVisibleAttributes(out, page, element);
+      }
+
+      function dxfContactLocal(out, page, element, closed) {
+        if (element.orientation === "vertical") {
+          const w = Number(element.w || 10);
+          const h = Number(element.h || 16);
+          const cx = w / 2;
+          const upper = Math.max(4.2, h * .34);
+          const lower = Math.min(h - 4.2, h * .66);
+          const r = Math.min(1.05, Math.max(.75, w * .1));
+          const bladeX = Math.min(w - 1, cx + Math.max(2.5, w * .34));
+          dxfLineLocal(out, page, "SYMBOL", element, cx, 0, cx, upper - r);
+          dxfLineLocal(out, page, "SYMBOL", element, cx, lower + r, cx, h);
+          dxfCircleLocal(out, page, "SYMBOL", element, cx, upper, r);
+          dxfCircleLocal(out, page, "SYMBOL", element, cx, lower, r);
+          dxfLineLocal(out, page, "SYMBOL", element, cx + r, lower - .2, bladeX, upper + (closed ? .2 : 2.4));
+          if (closed) dxfLineLocal(out, page, "SYMBOL", element, bladeX - .1, lower - .9, cx + r, upper + .9);
+          if (element.label) dxfTextLocal(out, page, "TEXT", element, -Math.max(5, String(element.label).length * 1.35), h / 2 + .8, 2.2, element.label);
+          return;
+        }
+        const w = Number(element.w || 22);
+        const h = Number(element.h || 14);
+        dxfLineLocal(out, page, "SYMBOL", element, 0, h / 2, 6, h / 2);
+        dxfLineLocal(out, page, "SYMBOL", element, w - 6, h / 2, w, h / 2);
+        dxfLineLocal(out, page, "SYMBOL", element, 6, 2, 6, h - 2);
+        dxfLineLocal(out, page, "SYMBOL", element, w - 6, 2, w - 6, h - 2);
+        dxfLineLocal(out, page, "SYMBOL", element, 8, h - 3, w - 8, 3);
+        if (closed) dxfLineLocal(out, page, "SYMBOL", element, w - 10, 2, 9, h - 2);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+      }
+
+      function dxfPushButtonActuatorLocal(out, page, element) {
+        const w = Number(element.w || (element.orientation === "vertical" ? 10 : 22));
+        if (element.orientation === "vertical") {
+          const cx = w / 2;
+          dxfLineLocal(out, page, "SYMBOL", element, cx, -5, cx, 2);
+          dxfLineLocal(out, page, "SYMBOL", element, cx - 4, -5, cx + 4, -5);
+          return;
+        }
+        dxfLineLocal(out, page, "SYMBOL", element, w / 2, -8, w / 2, 2);
+        dxfLineLocal(out, page, "SYMBOL", element, w / 2 - 6, -8, w / 2 + 6, -8);
       }
 
       function dxfVisibleAttributes(out, page, element) {
