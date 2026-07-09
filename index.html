@@ -830,6 +830,7 @@
         { type: "powerSupply", label: "電源", icon: "powerSupply" },
         { type: "ground", label: "接地", icon: "ground" },
         { type: "motor", label: "モータ", icon: "motor" },
+        { type: "fan", label: "ファン", icon: "fan" },
         { type: "resistor", label: "抵抗", icon: "resistor" },
         { type: "diode", label: "ダイオード", icon: "diode" },
         { type: "deviceBox", label: "機器箱", icon: "box" },
@@ -853,6 +854,7 @@
         powerSupply: "PS",
         ground: "E",
         motor: "M",
+        fan: "FAN",
         resistor: "R",
         diode: "D",
         deviceBox: "DEV",
@@ -1185,6 +1187,7 @@
           powerSupply: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M28 18h10M33 13v10M46 18h10M46 28h10"/></svg>`,
           ground: `<svg ${common}><path ${stroke} d="M40 8v14M26 22h28M31 29h18M36 36h8"/></svg>`,
           motor: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><circle cx="40" cy="22" r="14" ${stroke}/><path ${thin} d="M32 28V16l8 8 8-8v12"/></svg>`,
+          fan: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><circle cx="40" cy="22" r="14" ${stroke}/><path ${thin} d="M40 22c-7-8-2-14 7-10M40 22c10-2 13 6 6 12M40 22c-3 10-12 8-13-2"/></svg>`,
           resistor: `<svg ${common}><path ${stroke} d="M8 22h18M54 22h18"/><rect x="26" y="14" width="28" height="16" ${stroke}/></svg>`,
           diode: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20M28 12l24 10-24 10V12M52 12v20"/></svg>`,
           box: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M8 18h10M8 28h10M62 18h10M62 28h10"/></svg>`,
@@ -1470,6 +1473,7 @@
         if (element.type === "powerSupply") drawPowerSupply(g, element, stroke);
         if (element.type === "ground") drawGround(g, element, stroke);
         if (element.type === "motor") drawMotor(g, element, stroke);
+        if (element.type === "fan") drawFan(g, element, stroke);
         if (element.type === "resistor") drawResistor(g, element, stroke);
         if (element.type === "diode") drawDiode(g, element, stroke);
         if (element.type === "deviceBox") drawDeviceBox(g, element, stroke);
@@ -1909,6 +1913,21 @@
         g.appendChild(svgEl("circle", { cx: 0, cy: 0, r, class: "symbol-fill", stroke }));
         g.appendChild(textEl("M", 0, .3, { fontSize: 4, anchor: "middle" }));
         if (element.label) g.appendChild(textEl(element.label, 0, -r - 4, { fontSize: 2.4, anchor: "middle" }));
+      }
+
+      function drawFan(g, element, stroke) {
+        const w = Number(element.w || 16);
+        const h = Number(element.h || 16);
+        const r = Number(element.r || Math.min(w, h) * .38);
+        const cx = w / 2;
+        const cy = h / 2;
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: cx - r, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("line", { x1: cx + r, y1: cy, x2: w, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx, cy, r, class: "symbol-fill", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + cx + " " + cy + " C " + (cx - r * .6) + " " + (cy - r * .9) + " " + (cx - r * .05) + " " + (cy - r * 1.08) + " " + (cx + r * .56) + " " + (cy - r * .56), class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + cx + " " + cy + " C " + (cx + r * 1.05) + " " + (cy - r * .2) + " " + (cx + r * .85) + " " + (cy + r * .46) + " " + (cx + r * .12) + " " + (cy + r * .78), class: "symbol-line", stroke }));
+        g.appendChild(svgEl("path", { d: "M " + cx + " " + cy + " C " + (cx - r * .34) + " " + (cy + r * 1.02) + " " + (cx - r * .96) + " " + (cy + r * .62) + " " + (cx - r * .74) + " " + (cy - r * .2), class: "symbol-line", stroke }));
+        if (element.label) g.appendChild(textEl(element.label, cx, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
       function drawResistor(g, element, stroke) {
@@ -2753,6 +2772,7 @@
           powerSupply: { ...base, w: 34, h: 24, label: "PS" },
           ground: { ...base, w: 18, h: 18, label: "E" },
           motor: { ...base, w: 18, h: 18, r: 8, label: "M" },
+          fan: { ...base, w: 16, h: 16, r: 6, label: "FAN" },
           resistor: { ...base, w: 26, h: 10, label: "R" },
           diode: { ...base, w: 24, h: 16, label: "D" },
           deviceBox: { ...base, w: 46, h: 30, label: "機器", pins: 4, pinText: "1\n2\n3\n4" },
@@ -5709,7 +5729,7 @@
                 wireNos.set(element.wireNo, current + 1);
               }
             }
-            if (["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "ground", "motor", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
+            if (["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "ground", "motor", "fan", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
               issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "ラベルが未入力です。", target: element.type });
             }
             const prefix = tagPrefix(element.type);
@@ -6016,6 +6036,11 @@
           dxfVisibleAttributes(out, page, element);
           return;
         }
+        if (element.type === "fan") {
+          dxfFanLocal(out, page, element);
+          dxfVisibleAttributes(out, page, element);
+          return;
+        }
         const box = elementBounds(element);
         if (["deviceBox", "plcBlock"].includes(element.type)) {
           dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
@@ -6117,6 +6142,21 @@
         dxfLineLocal(out, page, "SYMBOL", element, bodyX + bodyW - 1.8, h / 2, w, h / 2);
         dxfLineLocal(out, page, "SYMBOL", element, bodyX + 2.5, h - 2.2, bodyX + bodyW - 2.5, 2.2);
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
+      }
+
+      function dxfFanLocal(out, page, element) {
+        const w = Number(element.w || 16);
+        const h = Number(element.h || 16);
+        const r = Number(element.r || Math.min(w, h) * .38);
+        const cx = w / 2;
+        const cy = h / 2;
+        dxfLineLocal(out, page, "SYMBOL", element, 0, cy, cx - r, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, cx + r, cy, w, cy);
+        dxfCircleLocal(out, page, "SYMBOL", element, cx, cy, r);
+        dxfEllipseApproxLocal(out, page, "SYMBOL", element, cx + r * .25, cy - r * .55, r * .36, r * .16);
+        dxfEllipseApproxLocal(out, page, "SYMBOL", element, cx + r * .36, cy + r * .45, r * .36, r * .16);
+        dxfEllipseApproxLocal(out, page, "SYMBOL", element, cx - r * .55, cy + r * .1, r * .36, r * .16);
+        if (element.label) dxfTextLocal(out, page, "TEXT", element, cx - String(element.label).length * .8, -3, 2.4, element.label);
       }
 
       function dxfVisibleAttributes(out, page, element) {
