@@ -711,7 +711,10 @@
             <button type="button" id="layoutPageBtn">配置</button>
           </div>
           <button type="button" id="ladderPageBtn" style="width:100%;margin-top:8px">ラダー</button>
-          <button type="button" id="underlayImageBtn" style="width:100%;margin-top:8px">下絵画像</button>
+          <div class="row" style="margin-top:8px">
+            <button type="button" id="underlayImageBtn">下絵画像</button>
+            <button type="button" id="selectUnderlayBtn">下絵選択</button>
+          </div>
           <button type="button" id="underlayTwoUpBtn" style="width:100%;margin-top:8px">2面下絵ページ</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="movePagePrevBtn">前へ</button>
@@ -1427,7 +1430,12 @@
       }
 
       function drawElement(svg, element) {
-        const g = svgEl("g", { class: "element", "data-id": element.id, cursor: "move" });
+        const g = svgEl("g", {
+          class: "element",
+          "data-id": element.id,
+          cursor: "move",
+          "pointer-events": element.type === "underlayImage" && element.locked ? "none" : null
+        });
         if (element.type !== "wire" && element.type !== "arrow") {
           g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")");
         }
@@ -4363,6 +4371,19 @@
         render();
       }
 
+      function selectCurrentUnderlay() {
+        const page = currentPage();
+        if (!page) return;
+        const underlay = page.elements.find(element => element.type === "underlayImage");
+        if (!underlay) {
+          setStatus("このページに下絵画像はありません。");
+          return;
+        }
+        selectSingle(underlay.id);
+        setStatus("下絵を選択しました。位置調整する場合はロック解除してください。");
+        render();
+      }
+
       function buildUnderlayImageElement(page, name, dataUrl, imageWidth, imageHeight, cropPreset) {
         const size = pageSize(page);
         const margin = 12;
@@ -6023,6 +6044,7 @@
           event.target.value = "";
         });
         qs("#underlayImageBtn").addEventListener("click", () => qs("#underlayInput").click());
+        qs("#selectUnderlayBtn").addEventListener("click", selectCurrentUnderlay);
         qs("#underlayInput").addEventListener("change", event => {
           const file = event.target.files[0];
           if (file) importUnderlayImageFile(file);
