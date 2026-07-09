@@ -2157,18 +2157,18 @@
       }
 
       function drawDeviceBox(g, element, stroke) {
-        const w = Number(element.w || 42);
-        const h = Number(element.h || 28);
+        const w = Number(element.w || 28);
+        const h = Number(element.h || 20);
         const pins = Math.max(0, Number(element.pins || 4));
         const labels = String(element.pinText || "").split(/\r?\n/);
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
-        multilineText(g, element.label || "機器", w / 2, h / 2 - 2, 3.8, { fontSize: 2.6, anchor: "middle" });
+        multilineText(g, element.label || "機器", w / 2, h / 2 - 1.2, 3.1, { fontSize: 2.1, anchor: "middle" });
         for (let i = 0; i < pins; i++) {
           const y = h * (i + 1) / (pins + 1);
-          g.appendChild(svgEl("line", { x1: -7, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
-          g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 7, y2: y, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: -5, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 5, y2: y, class: "symbol-line", stroke }));
           if (labels[i]) {
-            g.appendChild(textEl(labels[i], 2, y, { fontSize: 2.1 }));
+            g.appendChild(textEl(labels[i], 1.5, y, { fontSize: 1.8 }));
           }
         }
       }
@@ -3052,7 +3052,7 @@
           fan: { ...base, w: 14, h: 14, r: 5, label: "FAN" },
           resistor: { ...base, w: 12, h: 4.5, label: "R" },
           diode: { ...base, w: 12, h: 7, label: "D" },
-          deviceBox: { ...base, w: 46, h: 30, label: "機器", pins: 4, pinText: "1\n2\n3\n4" },
+          deviceBox: { ...base, w: 28, h: 20, label: "機器", pins: 4, pinText: "1\n2\n3\n4" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
           cableMarker: { ...base, w: 28, h: 12, label: "C" },
@@ -6596,10 +6596,11 @@
         const box = elementBounds(element);
         if (["deviceBox", "plcBlock"].includes(element.type)) {
           dxfRectLocal(out, page, "SYMBOL", element, 0, 0, box.w, box.h);
-          dxfTextLocal(out, page, "TEXT", element, box.w / 2 - 6, box.h / 2, 2.5, element.label || element.type);
+          const textSize = element.type === "deviceBox" ? 2 : 2.5;
+          dxfTextLocal(out, page, "TEXT", element, box.w / 2 - 6, box.h / 2, textSize, element.label || element.type);
           String(element.pinText || "").split(/\r?\n/).forEach((line, index) => {
             if (!line.trim()) return;
-            dxfTextLocal(out, page, "TEXT", element, 2, 5 + index * 4, 2, line.trim());
+            dxfTextLocal(out, page, "TEXT", element, 1.5, 4 + index * 3.5, element.type === "deviceBox" ? 1.7 : 2, line.trim());
           });
           dxfVisibleAttributes(out, page, element);
           return;
