@@ -557,6 +557,11 @@
             <option value="on">ON</option>
             <option value="off">OFF</option>
           </select>
+          <label for="underlayOutputToggle">下絵をPDF/SVG/PNGに含める</label>
+          <select id="underlayOutputToggle">
+            <option value="off">OFF</option>
+            <option value="on">ON</option>
+          </select>
           <p class="muted">左の部品をドラッグして用紙に配置します。配線は W ツールでドラッグ、部品は選択後に移動できます。</p>
         </div>
 
@@ -859,7 +864,8 @@
           componentTagPrefixes: {},
           currentWireType: "control",
           standard: "general",
-          currentLayer: "symbols"
+          currentLayer: "symbols",
+          outputUnderlays: false
         },
         layers: [
           { id: "frame", label: "図枠", visible: true, locked: true, color: "#141a20" },
@@ -945,6 +951,7 @@
         state.settings = state.settings || {};
         if (!state.settings.componentTagFormat) state.settings.componentTagFormat = "%F%N";
         if (!state.settings.componentTagPrefixes || typeof state.settings.componentTagPrefixes !== "object") state.settings.componentTagPrefixes = {};
+        if (typeof state.settings.outputUnderlays !== "boolean") state.settings.outputUnderlays = false;
         state.project = {
           title: "電気図面",
           drawingNo: "",
@@ -1208,7 +1215,8 @@
         svg.style.width = scaled ? (size.w * state.settings.zoom) + "px" : "100%";
         svg.style.height = scaled ? (size.h * state.settings.zoom) + "px" : "100%";
 
-        const visibleElements = page.elements.filter(isElementVisible);
+        const includeUnderlays = options.output === true ? state.settings.outputUnderlays === true : true;
+        const visibleElements = page.elements.filter(element => isElementVisible(element) && (includeUnderlays || element.type !== "underlayImage"));
         svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "#fff" }));
         visibleElements.filter(element => element.type === "underlayImage").forEach(element => drawElement(svg, element));
         if (options.grid !== false) drawGrid(svg, size);
@@ -2045,6 +2053,7 @@
         setValue("gridSize", state.settings.grid);
         setValue("snapToggle", state.settings.snap ? "on" : "off");
         setValue("objectSnapToggle", state.settings.objectSnap ? "on" : "off");
+        setValue("underlayOutputToggle", state.settings.outputUnderlays ? "on" : "off");
         setValue("wireNumberFormat", state.settings.wireNumberFormat || "%S-%N");
         setValue("componentTagFormat", state.settings.componentTagFormat || "%F%N");
         renderWireTypeSelect();
@@ -4071,7 +4080,7 @@
         const page = currentPage();
         const size = pageSize(page);
         const svg = svgEl("svg", { xmlns: svgNS, viewBox: "0 0 " + size.w + " " + size.h, width: size.w + "mm", height: size.h + "mm" });
-        drawPageSvg(svg, page, { selection: false, scaled: false, grid: false });
+        drawPageSvg(svg, page, { selection: false, scaled: false, grid: false, output: true });
         svg.style.width = null;
         svg.style.height = null;
         svg.setAttribute("width", size.w + "mm");
@@ -4312,7 +4321,7 @@
           sheet.style.width = size.w + "mm";
           sheet.style.height = size.h + "mm";
           const svg = svgEl("svg", { xmlns: svgNS, role: "img", "aria-label": page.name || "page" });
-          drawPageSvg(svg, page, { selection: false, scaled: false, grid: false });
+          drawPageSvg(svg, page, { selection: false, scaled: false, grid: false, output: true });
           sheet.appendChild(svg);
           container.appendChild(sheet);
         });
@@ -4345,7 +4354,7 @@
           height: drawH,
           viewBox: "0 0 " + size.w + " " + size.h
         });
-        drawPageSvg(nested, page, { selection: false, scaled: false, grid: false });
+        drawPageSvg(nested, page, { selection: false, scaled: false, grid: false, output: true });
         nested.style.width = null;
         nested.style.height = null;
         nested.setAttribute("x", x + (w - drawW) / 2);
@@ -5563,6 +5572,7 @@
       }
 
       function dxfElement(out, page, element) {
+        if (element.type === "underlayImage") return;
         if (element.type === "wire") {
           const layer = "WIRE_" + String(element.wireType || "control").toUpperCase();
           const points = element.points || [[0, 0], [20, 0]];
@@ -5889,6 +5899,11 @@
         qs("#objectSnapToggle").addEventListener("change", event => {
           state.settings.objectSnap = event.target.value === "on";
           commitHistory("端点スナップを変更しました。");
+          render();
+        });
+        qs("#underlayOutputToggle").addEventListener("change", event => {
+          state.settings.outputUnderlays = event.target.value === "on";
+          commitHistory("下絵の出力設定を変更しました。");
           render();
         });
         qs("#wireNumberFormat").addEventListener("change", event => {
