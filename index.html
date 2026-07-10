@@ -595,6 +595,138 @@
         box-shadow: none;
       }
     }
+
+    /* ================================================================
+       デザイン/アニメーション強化レイヤ
+       - 画面表示専用の装飾(印刷時は.appごと非表示のため出力へ影響しない)
+       - 再レンダリングで作り直されるDOM(パレット/タブ/右パネル)には
+         「登場アニメ」を付けない(操作のたびに再生されてしまうため)。
+         hover/focus遷移・イベント駆動(ダイアログ開閉/ステータス更新)・
+         無限ループ(選択枠の破線送り)のみを使う。
+       - すべてのモーションはprefers-reduced-motion: reduceで無効化される。
+       ================================================================ */
+    :root {
+      --ease: cubic-bezier(.2, .7, .3, 1);
+      --shadow-1: 0 1px 2px rgba(20, 31, 44, .05), 0 2px 8px rgba(20, 31, 44, .07);
+      --shadow-2: 0 2px 6px rgba(20, 31, 44, .08), 0 8px 22px rgba(20, 31, 44, .13);
+      --focus-ring: 0 0 0 3px rgba(15, 111, 99, .20);
+    }
+
+    /* --- 基本コントロール: 状態遷移とフォーカスリング --- */
+    button {
+      transition: background-color .16s var(--ease), border-color .16s var(--ease),
+                  color .16s var(--ease), box-shadow .16s var(--ease), transform .1s var(--ease);
+    }
+    button:hover { box-shadow: var(--shadow-1); }
+    button:active { transform: translateY(1px); box-shadow: none; }
+    button:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; transform: none; }
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    .palette-item:focus-visible {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: var(--focus-ring);
+    }
+    input, select, textarea {
+      transition: border-color .16s var(--ease), box-shadow .16s var(--ease);
+    }
+    button.primary { box-shadow: 0 2px 8px rgba(15, 111, 99, .26); }
+    button.primary:hover { background: #0c5f55; border-color: #0c5f55; box-shadow: 0 4px 14px rgba(15, 111, 99, .32); }
+    button.active { box-shadow: inset 0 0 0 1px var(--accent); }
+
+    /* --- 上部バー: わずかなグラデーションで面の重なりを表現 --- */
+    .topbar { background: linear-gradient(180deg, #ffffff, #fafcfd); }
+    .brand-mark { transition: transform .35s var(--ease); }
+    .brand:hover .brand-mark { transform: rotate(90deg); }
+
+    /* --- ページタブ: アクセント下線+ホバー浮き --- */
+    .page-tab { position: relative; transition: border-color .16s var(--ease), background-color .16s var(--ease), box-shadow .16s var(--ease); }
+    .page-tab:hover { box-shadow: var(--shadow-1); }
+    .page-tab.active::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 2px;
+      height: 2px;
+      border-radius: 2px;
+      background: var(--accent);
+    }
+
+    /* --- パレット: ホバーで浮き+アイコン微拡大(登場アニメは付けない) --- */
+    .palette-item {
+      transition: border-color .16s var(--ease), background-color .16s var(--ease),
+                  box-shadow .2s var(--ease), transform .2s var(--ease);
+    }
+    .palette-item:hover { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+    .palette-item:active { cursor: grabbing; transform: translateY(0) scale(.985); box-shadow: var(--shadow-1); }
+    .palette-icon { transition: transform .2s var(--ease); }
+    .palette-item:hover .palette-icon { transform: scale(1.09); }
+
+    /* --- 選択枠: 破線送り(マーチングアンツ)。ドラッグ中は再生成されるため実質静止=負荷なし --- */
+    .selection-box { animation: ants 1.2s linear infinite; }
+    @keyframes ants { to { stroke-dashoffset: -6.4; } }
+
+    /* --- ダイアログ: 背景フェード+本体ポップイン(開いた時のみ再生) --- */
+    .dialog-backdrop { animation: backdrop-in .18s ease-out; backdrop-filter: blur(2px); }
+    .dialog-backdrop.hidden { animation: none; }
+    .dialog { animation: dialog-in .2s var(--ease); }
+    @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes dialog-in {
+      from { opacity: 0; transform: translateY(10px) scale(.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* --- ステータス/キャンバスヒント: 更新時にJSが.popを付け直して1回だけ再生 --- */
+    .status { transition: color .2s var(--ease); }
+    .status.pop { animation: status-pop .3s var(--ease); }
+    @keyframes status-pop {
+      from { opacity: .25; transform: translateY(2px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .canvas-hint { transition: box-shadow .2s var(--ease); }
+    .canvas-hint.pop { animation: hint-pop .26s var(--ease); }
+    @keyframes hint-pop {
+      from { opacity: .3; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* --- その場編集ボックス: 出現ポップ(dblclickイベント時のみ生成) --- */
+    .inline-editor { animation: editor-pop .15s var(--ease); }
+    @keyframes editor-pop {
+      from { opacity: 0; transform: scale(.94); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    /* --- 一覧表・スウォッチ・折りたたみの触感 --- */
+    .report-table tbody tr { transition: background-color .12s var(--ease); }
+    .report-table tbody tr:hover { background: #f2f6fa; }
+    .swatch { transition: transform .14s var(--ease), box-shadow .14s var(--ease); }
+    .swatch:hover { transform: scale(1.12); box-shadow: var(--shadow-1); }
+    details.attr-panel summary { transition: color .14s var(--ease); }
+    details.attr-panel summary:hover { color: var(--accent); }
+
+    /* --- スクロールバー(細身・角丸でパネルに馴染ませる) --- */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: #c4cedb;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      background-clip: content-box;
+    }
+    ::-webkit-scrollbar-thumb:hover { background-color: #a7b5c4; }
+
+    /* --- モーション低減設定の尊重(全アニメ・遷移を実質停止) --- */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1517,6 +1649,10 @@
         const status = qs("#status");
         status.textContent = message;
         status.title = message;
+        // 更新を視覚的に知らせるワンショットアニメ(classを付け直して再生)
+        status.classList.remove("pop");
+        void status.offsetWidth;
+        status.classList.add("pop");
       }
 
       // アクティブツール/選択状態に応じた表示名(パレット種別・回路・ユーザー部品対応)。
@@ -1554,8 +1690,14 @@
         } else {
           text = "部品: 左パレットからドラッグ ／ 配線: W ／ 範囲選択: 空白からドラッグ ／ ズーム: Ctrl+ホイール";
         }
-        hint.textContent = text;
-        hint.title = text;
+        // 文言が変わった時だけワンショットのポップを再生(毎renderでの再生を防ぐ)
+        if (hint.textContent !== text) {
+          hint.textContent = text;
+          hint.title = text;
+          hint.classList.remove("pop");
+          void hint.offsetWidth;
+          hint.classList.add("pop");
+        }
       }
 
       // パレット「最近使用」: 配置した種別を新しい順に保持(セッション内)。
