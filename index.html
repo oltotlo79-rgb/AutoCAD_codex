@@ -6189,7 +6189,8 @@
               ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
             </div>
           </details>
-          <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:12px">ユーザー部品に登録</button>
+          <button type="button" id="selectSameTypeBtn" style="width:100%;margin-top:12px" title="このページにある同じ種類の部品をまとめて選択します（一括デザイン変更・一括線色・一括ロックと組み合わせて使えます）">同種をページ内全選択</button>
+          <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:8px">ユーザー部品に登録</button>
           <button type="button" id="toggleLockBtn" style="width:100%;margin-top:8px" ${isLayerLocked(element.layer || inferredLayerFor(element.type)) ? "disabled" : ""}>${isLayerLocked(element.layer || inferredLayerFor(element.type)) ? "レイヤロック中" : (element.locked ? "ロック解除" : "ロック")}</button>
           <div class="row" style="margin-top:8px">
             <button type="button" id="copyElementBtn">コピー</button>
@@ -6234,6 +6235,7 @@
           });
         });
         qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
+        qs("#selectSameTypeBtn", panel)?.addEventListener("click", selectAllOfSameType);
         qs("#toggleLockBtn", panel)?.addEventListener("click", toggleSelectedLock);
         qsa("[data-xref-jump]", panel).forEach(button => {
           button.addEventListener("click", () => {
@@ -11012,6 +11014,20 @@
         element.orthoFlip = !element.orthoFlip;
         commitHistory("配線の折れ向きを反転しました。");
         render();
+      }
+
+      // 選択中の要素と同じ種類(押しボタンは非常停止か否かも区別)をページ内で全選択する。
+      // 一括デザイン変更・一括線色・一括ロックの前段として使う。
+      function selectAllOfSameType() {
+        const page = currentPage();
+        const element = selectedElement();
+        if (!page || !element) return;
+        const keyOf = el => el.type === "pushButton" ? variantOptionsKeyFor(el) : el.type;
+        const want = keyOf(element);
+        const ids = page.elements.filter(el => keyOf(el) === want && isElementVisible(el)).map(el => el.id);
+        setSelection(ids);
+        render();
+        setStatus("同種の要素をページ内で " + ids.length + " 件選択しました。");
       }
 
       // ===== 多角形の編集操作 =====
