@@ -1149,7 +1149,10 @@
         { type: "mechanicalLink", label: "連動破線", icon: "mechanicalLink" },
         { type: "rect", label: "矩形", icon: "rect" },
         { type: "circle", label: "円", icon: "circle" },
+        { type: "ellipse", label: "楕円", icon: "ellipse" },
         { type: "arc", label: "円弧", icon: "arc" },
+        { type: "ellipseArc", label: "楕円弧", icon: "earc" },
+        { type: "polygon", label: "多角形", icon: "polygon" },
         { type: "cloud", label: "雲マーク", icon: "cloud" },
         { type: "installationBox", label: "設備枠", icon: "area" },
         { type: "locationBox", label: "場所枠", icon: "area" },
@@ -1288,6 +1291,7 @@
       // 要素種別→パレットカテゴリの対応表。未登録はdevice扱い。
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
+        arc: "basic", ellipse: "basic", ellipseArc: "basic", polygon: "basic",
         contactNO: "contact", contactNC: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact", flowSwitch: "contact", footSwitch: "contact",
         coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil", bell: "coil", beacon: "coil",
         disconnector: "power", outlet: "power",
@@ -1911,7 +1915,10 @@
           mechanicalLink: `<svg ${common}><path ${stroke} stroke-dasharray="5 4" d="M40 6v32"/><path ${thin} d="M28 14h24M28 30h24"/></svg>`,
           rect: `<svg ${common}><rect x="18" y="11" width="44" height="24" ${stroke}/></svg>`,
           circle: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
+          ellipse: `<svg ${common}><ellipse cx="40" cy="22" rx="21" ry="12" ${stroke} fill="none"/></svg>`,
           arc: `<svg ${common}><path d="M14 34 A26 26 0 0 1 66 34" ${stroke} fill="none"/></svg>`,
+          earc: `<svg ${common}><path d="M12 32 A28 15 0 0 1 68 32" ${stroke} fill="none"/></svg>`,
+          polygon: `<svg ${common}><path d="M40 5 L66 19 L57 40 L23 40 L14 19 Z" ${stroke} fill="none"/></svg>`,
           cloud: `<svg ${common}><path ${thin} d="M18 12 A6 6 0 0 0 30 12 A6 6 0 0 0 42 12 A6 6 0 0 0 54 12 A6 6 0 0 0 62 16 A6 6 0 0 0 62 30 A6 6 0 0 0 54 34 A6 6 0 0 0 42 34 A6 6 0 0 0 30 34 A6 6 0 0 0 18 34 A6 6 0 0 0 14 26 A6 6 0 0 0 18 12 Z"/></svg>`,
           area: `<svg ${common}><rect x="12" y="8" width="56" height="30" ${thin} stroke-dasharray="5 4"/><path ${thin} d="M12 17h56"/><path ${stroke} d="M20 13h18"/></svg>`,
           terminal: `<svg ${common}><path ${stroke} d="M8 22h24M48 22h24"/><circle cx="40" cy="22" r="8" ${thin}/></svg>`,
@@ -2495,7 +2502,8 @@
         if (element.type !== "underlayImage") {
           if (element.points && element.points.length > 1) {
             g.appendChild(svgEl("path", {
-              d: wirePath(element.points, element.orthoFlip),
+              // 多角形は閉パスでヒット(縁のみ。内側クリックで下の要素を選べる)
+              d: element.type === "polygon" ? polygonPath(element.points) : wirePath(element.points, element.orthoFlip),
               fill: "none", stroke: "#000", "stroke-opacity": 0,
               "stroke-width": 2.4, "pointer-events": "stroke"
             }));
@@ -2541,6 +2549,7 @@
         if (element.type === "rect") drawRectElement(g, element, stroke);
         if (element.type === "circle") drawCircleElement(g, element, stroke);
         if (element.type === "arc") drawArcElement(g, element, stroke);
+        if (element.type === "polygon") drawPolygonElement(g, element, stroke);
         if (element.type === "cloud") drawCloudElement(g, element, stroke);
         if (element.type === "installationBox" || element.type === "locationBox") drawAreaBox(g, element, stroke);
         if (element.type === "terminal") drawTerminal(g, element, stroke);
@@ -2880,6 +2889,29 @@
         return "M " + px(a0) + " " + py(a0) + " A " + rx + " " + ry + " 0 " + large + " 1 " + px(a1) + " " + py(a1);
       }
 
+      // 多角形の閉パス(頂点列→M..L..Z)。
+      function polygonPath(points) {
+        if (!points || points.length < 2) return "M 0 0";
+        return points.map((point, index) => (index ? "L " : "M ") + point[0] + " " + point[1]).join(" ") + " Z";
+      }
+
+      // 多角形要素の描画(頂点列は絶対座標。ラベルは重心へ)。
+      function drawPolygonElement(g, element, stroke) {
+        const points = element.points || [];
+        g.appendChild(svgEl("path", {
+          d: polygonPath(points),
+          class: "symbol-line",
+          stroke,
+          "stroke-width": element.strokeWidth || .32,
+          fill: element.fill || "none"
+        }));
+        if (element.label && points.length) {
+          const cx = points.reduce((sum, p) => sum + p[0], 0) / points.length;
+          const cy = points.reduce((sum, p) => sum + p[1], 0) / points.length;
+          g.appendChild(textEl(element.label, cx, cy, { fontSize: 2.6, anchor: "middle" }));
+        }
+      }
+
       // 円弧・楕円弧要素の描画。x/y/w/h=外接楕円の箱、a0/a1=開始/終了角(度)。
       function drawArcElement(g, element, stroke) {
         const w = Number(element.w || 16);
@@ -2890,6 +2922,23 @@
           stroke,
           fill: "none"
         }));
+      }
+
+      // 円弧・楕円弧の両端点(絶対座標)。移動スナップの基準・吸着先の両方で使う。
+      function arcEndpoints(element) {
+        const w = Number(element.w || 16);
+        const h = Number(element.h || 16);
+        const rx = w / 2;
+        const ry = h / 2;
+        const cx = Number(element.x || 0) + rx;
+        const cy = Number(element.y || 0) + ry;
+        const rad = d => d * Math.PI / 180;
+        const a0 = Number(element.a0 ?? 0);
+        const a1 = Number(element.a1 ?? 90);
+        return [
+          { x: round(cx + rx * Math.cos(rad(a0))), y: round(cy + ry * Math.sin(rad(a0))) },
+          { x: round(cx + rx * Math.cos(rad(a1))), y: round(cy + ry * Math.sin(rad(a1))) }
+        ];
       }
 
       // 設備枠/場所枠(破線枠+名称帯)の描画。枠内部品への属性一括適用の対象になる。
@@ -5618,7 +5667,7 @@
 
       // 要素の外接矩形(mm)。points系は点列から、その他はx/y/w/h(既定値で補完)。
       function elementBounds(element) {
-        if (element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "mechanicalLink" || element.type === "dimension") {
+        if (element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "mechanicalLink" || element.type === "dimension" || element.type === "polygon") {
           const points = element.points || [[0, 0], [0, 0]];
           const xs = points.map(p => p[0]);
           const ys = points.map(p => p[1]);
@@ -6003,6 +6052,10 @@
         qs("#removeWirePointBtn", panel)?.addEventListener("click", removeSelectedWirePoint);
         qs("#orthogonalizeWireBtn", panel)?.addEventListener("click", orthogonalizeSelectedWire);
         qs("#flipWireBendBtn", panel)?.addEventListener("click", flipSelectedWireBend);
+        qs("#polyRegenBtn", panel)?.addEventListener("click", regenerateSelectedPolygon);
+        qs("#polyAddPointBtn", panel)?.addEventListener("click", addSelectedPolygonPoint);
+        qs("#polyRemovePointBtn", panel)?.addEventListener("click", removeSelectedPolygonPoint);
+        qs("#polyExplodeBtn", panel)?.addEventListener("click", explodeSelectedPolygon);
         qs("#splitWireBtn", panel)?.addEventListener("click", splitSelectedWire);
         qs("#extendWireBtn", panel)?.addEventListener("click", extendSelectedWireEnd);
         qs("#trimWireBtn", panel)?.addEventListener("click", trimSelectedWireEnd);
@@ -6250,7 +6303,23 @@
               <div><label>開始角（0=右・時計回り）</label><input data-bind="a0" data-kind="number" type="number" step="5" value="${round(Number(element.a0 ?? 0))}"></div>
               <div><label>終了角（度）</label><input data-bind="a1" data-kind="number" type="number" step="5" value="${round(Number(element.a1 ?? 90))}"></div>
             </div>
-            <p class="muted">幅=高さなら円弧、異なれば楕円弧になります。開始角=終了角で全周(楕円)です。</p>
+            <p class="muted">幅=高さなら円弧、異なれば楕円弧になります。開始角=終了角で全周(楕円)です。弧の両端点は移動時に配線・端子・直線端点へ吸着します。</p>
+          `;
+        }
+        if (element.type === "polygon") {
+          const pointCount = element.points?.length || 0;
+          return `
+            <div class="row" style="margin-top:8px">
+              <div><label>辺数（3〜12）</label><input id="polySides" type="number" min="3" max="12" step="1" value="${Math.max(3, Math.min(12, Number(element.sides || pointCount || 6)))}"></div>
+              <div><label>外接半径 mm</label><input id="polyRadius" type="number" min="1" step="0.5" value="${round(Number(element.radius || 8))}"></div>
+            </div>
+            <button type="button" id="polyRegenBtn" style="width:100%;margin-top:8px">正多角形として作り直す</button>
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="polyAddPointBtn">頂点追加</button>
+              <button type="button" id="polyRemovePointBtn" ${pointCount <= 3 ? "disabled" : ""}>頂点削除</button>
+            </div>
+            <button type="button" id="polyExplodeBtn" style="width:100%;margin-top:8px">分解（直線にばらす）</button>
+            <p class="muted">頂点数: ${pointCount}。頂点は図面上のハンドルをドラッグで自由に動かせます（端子・配線・直線の端点へ吸着）。</p>
           `;
         }
         if (element.type === "underlayImage") {
@@ -6787,11 +6856,27 @@
         return Math.round(Number(value || 0) * 100) / 100;
       }
 
+      // 正多角形の頂点列(中心cx,cy・外接半径r・辺数n。頂点1つを真上に置く)。
+      function regularPolygonPoints(cx, cy, r, n) {
+        const count = Math.max(3, Math.min(12, Math.floor(Number(n) || 6)));
+        return Array.from({ length: count }, (_, index) => {
+          const angle = (-90 + 360 * index / count) * Math.PI / 180;
+          return [round(cx + r * Math.cos(angle)), round(cy + r * Math.sin(angle))];
+        });
+      }
+
       // 種別ごとの新規要素の既定値(寸法・ラベル・レイヤ)。新種別はここへ追加する。
       function defaultElement(type, x = 30, y = 30) {
         // 別名: パレットの「非常停止ボタン」は押しボタンの非常停止スタイルとして生成する。
         if (type === "pushButtonEmergency") {
           return { ...defaultElement("pushButton", x, y), pbStyle: "emergency", label: "PBE" };
+        }
+        // 別名: 楕円=幅高さ違いの円、楕円弧=幅高さ違いの円弧として生成する(機能は同一)。
+        if (type === "ellipse") {
+          return { ...defaultElement("circle", x, y), w: 24, h: 14 };
+        }
+        if (type === "ellipseArc") {
+          return { ...defaultElement("arc", x, y), w: 24, h: 12 };
         }
         const base = { id: uid("el"), type, x, y, rotation: 0, stroke: state.settings.stroke, layer: defaultLayerFor(type) };
         const defaults = {
@@ -6801,6 +6886,7 @@
           rect: { ...base, w: 34, h: 22, label: "" },
           circle: { ...base, w: 22, h: 22, label: "" },
           arc: { ...base, w: 16, h: 16, a0: 180, a1: 270, label: "" },
+          polygon: { id: uid("el"), type: "polygon", points: regularPolygonPoints(x, y, 8, 6), sides: 6, radius: 8, label: "", strokeWidth: .32, stroke: state.settings.stroke, layer: defaultLayerFor("polygon") },
           cloud: { ...base, w: 40, h: 20, label: "" },
           underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
@@ -6872,7 +6958,7 @@
       function defaultLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
-        if (type === "rect" || type === "circle" || type === "arc" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return state.settings.currentLayer || "layout";
+        if (type === "rect" || type === "circle" || type === "arc" || type === "polygon" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return state.settings.currentLayer || "layout";
         if (type === "mechanicalLink") return state.settings.currentLayer || "symbols";
         return state.settings.currentLayer || "symbols";
       }
@@ -6881,7 +6967,7 @@
       function inferredLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
-        if (type === "rect" || type === "circle" || type === "arc" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return "layout";
+        if (type === "rect" || type === "circle" || type === "arc" || type === "polygon" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return "layout";
         if (type === "mechanicalLink") return "symbols";
         return "symbols";
       }
@@ -6957,8 +7043,14 @@
         page.elements.forEach(element => {
           if (excludeIds.has(element.id)) return;
           if (!isElementVisible(element)) return;
-          if (element.type === "wire" || element.type === "line" || element.type === "mechanicalLink" || element.type === "arrow") {
+          if (element.type === "wire" || element.type === "line" || element.type === "mechanicalLink" || element.type === "arrow" || element.type === "polygon") {
+            // 多角形は各頂点が吸着先になる(配線・直線の端点も同様)
             (element.points || []).forEach(point => anchors.push({ x: point[0], y: point[1], elementId: element.id, kind: "point" }));
+            return;
+          }
+          if (element.type === "arc") {
+            // 円弧・楕円弧は両端点を吸着先にする
+            arcEndpoints(element).forEach(point => anchors.push({ ...point, elementId: element.id, kind: "point" }));
             return;
           }
           if (element.type === "junction") {
@@ -10725,6 +10817,95 @@
         render();
       }
 
+      // ===== 多角形の編集操作 =====
+      // 選択中の多角形を返す(ロック中はステータス表示してnull)。
+      function selectedEditablePolygon() {
+        const element = selectedElement();
+        if (!element || element.type !== "polygon") return null;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた多角形は変更できません。");
+          return null;
+        }
+        return element;
+      }
+
+      // 現在の重心を中心に、指定辺数・半径の正多角形として頂点列を作り直す。
+      function regenerateSelectedPolygon() {
+        const element = selectedEditablePolygon();
+        if (!element) return;
+        const sides = Math.max(3, Math.min(12, Math.floor(Number(qs("#polySides")?.value || element.sides || 6))));
+        const radius = Math.max(1, Number(qs("#polyRadius")?.value || element.radius || 8));
+        const points = element.points || [];
+        const cx = points.length ? points.reduce((sum, p) => sum + p[0], 0) / points.length : 30;
+        const cy = points.length ? points.reduce((sum, p) => sum + p[1], 0) / points.length : 30;
+        element.points = regularPolygonPoints(cx, cy, radius, sides);
+        element.sides = sides;
+        element.radius = radius;
+        commitHistory("正" + sides + "角形として作り直しました。");
+        render();
+      }
+
+      // 最長辺(閉じ辺含む)の中点へ頂点を1つ挿入する。
+      function addSelectedPolygonPoint() {
+        const element = selectedEditablePolygon();
+        if (!element) return;
+        const points = element.points || [];
+        if (points.length < 3) return;
+        let bestIndex = 0;
+        let bestLength = -1;
+        for (let i = 0; i < points.length; i++) {
+          const a = points[i];
+          const b = points[(i + 1) % points.length];
+          const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          if (length > bestLength) {
+            bestLength = length;
+            bestIndex = i;
+          }
+        }
+        const a = points[bestIndex];
+        const b = points[(bestIndex + 1) % points.length];
+        points.splice(bestIndex + 1, 0, [round((a[0] + b[0]) / 2), round((a[1] + b[1]) / 2)]);
+        element.points = points;
+        commitHistory("多角形へ頂点を追加しました。");
+        render();
+      }
+
+      // 最後の頂点を削除する(3頂点未満にはしない)。
+      function removeSelectedPolygonPoint() {
+        const element = selectedEditablePolygon();
+        if (!element || !element.points || element.points.length <= 3) return;
+        element.points = element.points.slice(0, -1);
+        commitHistory("多角形の頂点を削除しました。");
+        render();
+      }
+
+      // 多角形を辺ごとの直線要素へ分解する(ばらして個別編集できるように)。
+      function explodeSelectedPolygon() {
+        const page = currentPage();
+        const element = selectedEditablePolygon();
+        if (!page || !element) return;
+        const points = element.points || [];
+        if (points.length < 3) return;
+        const lines = points.map((a, index) => {
+          const b = points[(index + 1) % points.length];
+          return {
+            id: uid("el"),
+            type: "line",
+            points: [[a[0], a[1]], [b[0], b[1]]],
+            label: "",
+            strokeWidth: element.strokeWidth || .32,
+            dash: element.dash || "",
+            stroke: element.stroke || state.settings.stroke,
+            layer: element.layer || "layout"
+          };
+        });
+        const index = page.elements.findIndex(item => item.id === element.id);
+        page.elements.splice(index >= 0 ? index : page.elements.length, 1, ...lines);
+        setSelection(lines.map(line => line.id));
+        commitHistory("多角形を" + lines.length + "本の直線に分解しました。");
+        render();
+      }
+
       // 点列を直交化した新しい点列を返す。
       function orthogonalizePoints(points) {
         const result = [];
@@ -14037,6 +14218,20 @@
           }
           return;
         }
+        if (element.type === "polygon") {
+          const points = element.points || [];
+          for (let i = 0; i < points.length; i++) {
+            const a = points[i];
+            const b = points[(i + 1) % points.length];
+            dxfLine(out, page, "GEOMETRY", a[0], a[1], b[0], b[1]);
+          }
+          if (element.label && points.length) {
+            const cx = points.reduce((sum, p) => sum + p[0], 0) / points.length;
+            const cy = points.reduce((sum, p) => sum + p[1], 0) / points.length;
+            dxfText(out, page, "TEXT", cx, cy, 2.6, element.label);
+          }
+          return;
+        }
         if (element.type === "line" || element.type === "mechanicalLink") {
           const points = element.points || [[0, 0], [20, 0]];
           const a = points[0];
@@ -15620,6 +15815,7 @@
         element.x = Number(element.x || 0) + dx;
         element.y = Number(element.y || 0) + dy;
         if (element.type === "junction") return [{ x: element.x || 0, y: element.y || 0 }];
+        if (element.type === "arc") return arcEndpoints(element); // 弧は両端点を吸着基準にする
         if (element.type === "terminalStrip" || element.type === "connector") {
           const geo = terminalStripGeometry(element);
           return Array.from({ length: geo.nodes || geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
@@ -15673,7 +15869,8 @@
           : [finishedDrag.elementId].filter(Boolean);
         touchedIds.forEach(id => snapPointElementConnections(page?.elements.find(item => item.id === id), page));
         const element = selectedElement();
-        if (element && element.points) {
+        // ゼロ長の線・配線は破棄(多角形は始点≠終点が前提のため対象外)
+        if (element && element.points && element.type !== "polygon") {
           const a = element.points[0];
           const b = element.points[element.points.length - 1];
           if (Math.abs(a[0] - b[0]) < .5 && Math.abs(a[1] - b[1]) < .5) {
@@ -15769,7 +15966,14 @@
         if (!page) return [current];
         const kindOf = el => el.type === "text" ? "text" : (el.type === "wire" ? "wire" : "label");
         const want = kindOf(current);
-        const anchorOf = el => el.type === "wire" ? wireNoAnchorPoint(el) : { x: el.x || 0, y: el.y || 0 };
+        const anchorOf = el => {
+          if (el.type === "wire") return wireNoAnchorPoint(el);
+          if (el.points) {
+            const box = elementBounds(el);
+            return box ? { x: box.x + box.w / 2, y: box.y + box.h / 2 } : { x: 0, y: 0 };
+          }
+          return { x: el.x || 0, y: el.y || 0 };
+        };
         return page.elements
           .filter(el => kindOf(el) === want && !isElementLocked(el))
           .sort((a, b) => {
@@ -15811,7 +16015,13 @@
         const vb = svg.viewBox.baseVal;
         if (!vb || !vb.width) return;
         const pxPerMm = rect.width / vb.width;
-        const anchorMm = element.type === "wire" ? wireNoAnchorPoint(element) : { x: element.x || 0, y: element.y || 0 };
+        const boundsMid = () => {
+          const box = elementBounds(element);
+          return box ? { x: box.x + box.w / 2, y: box.y + box.h / 2 } : { x: 0, y: 0 };
+        };
+        const anchorMm = element.type === "wire"
+          ? wireNoAnchorPoint(element)
+          : (element.points ? boundsMid() : { x: element.x || 0, y: element.y || 0 });
         const cx = rect.left + (anchorMm.x - vb.x) * pxPerMm;
         const cy = rect.top + (anchorMm.y - vb.y) * pxPerMm;
         const input = document.createElement("input");
