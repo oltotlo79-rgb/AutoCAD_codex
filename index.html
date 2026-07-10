@@ -1581,7 +1581,16 @@
         }
         frame.appendChild(svgEl("rect", { x: margin, y: margin, width: size.w - margin * 2, height: size.h - margin * 2, class: "frame-thick" }));
         frame.appendChild(svgEl("rect", { x: margin + 4, y: margin + 4, width: size.w - (margin + 4) * 2, height: size.h - (margin + 4) * 2, class: "frame-line" }));
-        drawCoordinateNumbers(frame, size, margin);
+        // 表題欄と重ならないよう、図枠種別ごとに下辺目盛の除外開始位置を求める。
+        let rulerExclude;
+        if (page.frameVariant === "compact" || page.frameVariant === "index") {
+          rulerExclude = size.w - margin - Math.min(94, size.w - margin * 2 - 18);
+        } else if (page.frameVariant === "detailed") {
+          rulerExclude = size.w - margin - Math.min(124, size.w - margin * 2 - 12);
+        } else if (page.frameVariant === "side") {
+          rulerExclude = size.w - margin - Math.min(44, Math.max(34, size.w * .15));
+        }
+        drawCoordinateNumbers(frame, size, margin, rulerExclude);
         if (page.frameVariant === "compact") drawCompactTitle(frame, page, size, margin);
         if (page.frameVariant === "detailed") drawDetailedTitle(frame, page, size, margin);
         if (page.frameVariant === "side") drawSideTitle(frame, page, size, margin);
@@ -1594,23 +1603,21 @@
         return Math.min(size.w, size.h) >= 297 ? 10 : 8;
       }
 
-      // 図枠外周の座標目盛(数字/英字)を描画。
-      function drawCoordinateNumbers(frame, size, margin) {
-        const left = margin + 5;
-        const bottom = size.h - margin - 5;
-        const top = margin + 5;
-        const usableW = size.w - margin * 2 - 10;
-        const usableH = size.h - margin * 2 - 10;
-        const count = 20;
-        for (let i = 0; i <= count; i++) {
-          const x = left + usableW * i / count;
-          frame.appendChild(svgEl("line", { x1: x, y1: bottom - 1.7, x2: x, y2: bottom + 1.7, class: "frame-light" }));
-          frame.appendChild(textEl(String(i).padStart(2, "0"), x, bottom + 4.2, { fontSize: 2, anchor: "middle" }));
+      // 図枠外周の座標目盛を描画。目盛は太グリッド(10mm)の絶対座標に一致させ、
+      // ラベルは「mm座標÷10」(例: x=120mm → 12)。bottomExcludeFromX以降の下辺目盛は
+      // 表題欄と重なるため描かない。
+      function drawCoordinateNumbers(frame, size, margin, bottomExcludeFromX) {
+        const rulerX = margin + 5;
+        const rulerY = size.h - margin - 5;
+        const start = Math.ceil((margin + 5) / MAJOR_GRID_MM) * MAJOR_GRID_MM;
+        for (let x = start; x <= size.w - margin - 5; x += MAJOR_GRID_MM) {
+          if (bottomExcludeFromX !== undefined && x > bottomExcludeFromX - 3) break;
+          frame.appendChild(svgEl("line", { x1: x, y1: rulerY - 1.7, x2: x, y2: rulerY + 1.7, class: "frame-light" }));
+          frame.appendChild(textEl(String(Math.round(x / MAJOR_GRID_MM)).padStart(2, "0"), x, rulerY + 4.2, { fontSize: 2, anchor: "middle" }));
         }
-        for (let i = 0; i <= count; i++) {
-          const y = bottom - usableH * i / count;
-          frame.appendChild(svgEl("line", { x1: left - 1.7, y1: y, x2: left + 1.7, y2: y, class: "frame-light" }));
-          frame.appendChild(textEl(String(i).padStart(2, "0"), left - 4.2, y, { fontSize: 2, anchor: "middle", transform: "rotate(-90 " + (left - 4.2) + " " + y + ")" }));
+        for (let y = start; y <= size.h - margin - 5; y += MAJOR_GRID_MM) {
+          frame.appendChild(svgEl("line", { x1: rulerX - 1.7, y1: y, x2: rulerX + 1.7, y2: y, class: "frame-light" }));
+          frame.appendChild(textEl(String(Math.round(y / MAJOR_GRID_MM)).padStart(2, "0"), rulerX - 4.2, y, { fontSize: 2, anchor: "middle", transform: "rotate(-90 " + (rulerX - 4.2) + " " + y + ")" }));
         }
       }
 
