@@ -3768,6 +3768,8 @@
         qs("#removeWirePointBtn", panel)?.addEventListener("click", removeSelectedWirePoint);
         qs("#orthogonalizeWireBtn", panel)?.addEventListener("click", orthogonalizeSelectedWire);
         qs("#splitWireBtn", panel)?.addEventListener("click", splitSelectedWire);
+        qs("#extendWireBtn", panel)?.addEventListener("click", extendSelectedWireEnd);
+        qs("#trimWireBtn", panel)?.addEventListener("click", trimSelectedWireEnd);
         qs("#catalogPickBtn", panel)?.addEventListener("click", showCatalogPicker);
         qs("#mirrorBtn", panel)?.addEventListener("click", mirrorSelectedHorizontal);
         qs("#arrayCopyBtn", panel)?.addEventListener("click", showArrayCopyDialog);
@@ -3910,6 +3912,10 @@
               <button type="button" id="removeWirePointBtn" ${pointCount <= 2 ? "disabled" : ""}>中間点削除</button>
             </div>
             <button type="button" id="orthogonalizeWireBtn" style="width:100%;margin-top:8px">直交整形</button>
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="extendWireBtn">終点を延長</button>
+              <button type="button" id="trimWireBtn">終点をトリム</button>
+            </div>
             <button type="button" id="splitWireBtn" style="width:100%;margin-top:8px">配線を分割</button>
             <button type="button" id="toggleWireGapBtn" style="width:100%;margin-top:8px">${element.gapAtMid ? "中央ギャップ解除" : "中央ギャップ追加"}</button>
             <div class="row" style="margin-top:8px">
@@ -7015,6 +7021,85 @@
         render();
       }
 
+      // 終点側の線分を軸方向に伸ばし、最初に交差する他配線まで延長する
+      function extendSelectedWireEnd() {
+        const page = currentPage();
+        const element = selectedElement();
+        if (!page || !element || element.type !== "wire") return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        const points = element.points || [];
+        if (points.length < 2) return;
+        const a = points[points.length - 2];
+        const b = points[points.length - 1];
+        const horizontal = Math.abs(a[1] - b[1]) < .01;
+        const vertical = Math.abs(a[0] - b[0]) < .01;
+        if (!horizontal && !vertical) {
+          setStatus("斜めの区間は延長できません。先に直交整形してください。");
+          return;
+        }
+        const size = pageSize(page);
+        const dir = horizontal ? Math.sign(b[0] - a[0]) || 1 : Math.sign(b[1] - a[1]) || 1;
+        const ray = horizontal
+          ? [b[0], b[1], dir > 0 ? size.w : 0, b[1]]
+          : [b[0], b[1], b[0], dir > 0 ? size.h : 0];
+        let best = null;
+        page.elements.forEach(other => {
+          if (other.id === element.id || other.type !== "wire") return;
+          wireSegments(other).forEach(segment => {
+            const hit = segmentIntersection(ray, segment);
+            if (!hit) return;
+            const dist = horizontal ? (hit.x - b[0]) * dir : (hit.y - b[1]) * dir;
+            if (dist > .3 && (!best || dist < best.dist)) best = { hit, dist };
+          });
+        });
+        if (!best) {
+          setStatus("延長先の配線が見つかりません。");
+          return;
+        }
+        points[points.length - 1] = [round(best.hit.x), round(best.hit.y)];
+        commitHistory("配線を延長しました。");
+        render();
+      }
+
+      // 終点側の線分を、他配線との最初の交差位置まで切り詰める
+      function trimSelectedWireEnd() {
+        const page = currentPage();
+        const element = selectedElement();
+        if (!page || !element || element.type !== "wire") return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        const points = element.points || [];
+        if (points.length < 2) return;
+        const a = points[points.length - 2];
+        const b = points[points.length - 1];
+        const segment = [a[0], a[1], b[0], b[1]];
+        const horizontal = Math.abs(a[1] - b[1]) < .01;
+        const dir = horizontal ? Math.sign(b[0] - a[0]) || 1 : Math.sign(b[1] - a[1]) || 1;
+        let best = null;
+        page.elements.forEach(other => {
+          if (other.id === element.id || other.type !== "wire") return;
+          wireSegments(other).forEach(otherSegment => {
+            const hit = segmentIntersection(segment, otherSegment);
+            if (!hit) return;
+            const dist = horizontal ? (hit.x - a[0]) * dir : (hit.y - a[1]) * dir;
+            const full = horizontal ? (b[0] - a[0]) * dir : (b[1] - a[1]) * dir;
+            if (dist > .3 && dist < full - .3 && (!best || dist < best.dist)) best = { hit, dist };
+          });
+        });
+        if (!best) {
+          setStatus("トリムできる交差がありません。");
+          return;
+        }
+        points[points.length - 1] = [round(best.hit.x), round(best.hit.y)];
+        commitHistory("配線をトリムしました。");
+        render();
+      }
+
       function splitSelectedWire() {
         const page = currentPage();
         const element = selectedElement();
@@ -8660,13 +8745,48 @@
             <input id="searchQuery" placeholder="線番、タグ、説明、品番、端子名">
             <button type="button" id="runSearchBtn" class="primary">検索</button>
           </div>
+          <label for="replaceValue" style="margin-top:10px">置換後の文字列（一括置換用）</label>
+          <div class="inline">
+            <input id="replaceValue" placeholder="置換後">
+            <button type="button" id="runReplaceBtn">一括置換</button>
+          </div>
           <div id="searchResults" style="margin-top:12px"></div>
         `;
         openDialog("図面検索", html);
         qs("#runSearchBtn").addEventListener("click", runSearch);
+        qs("#runReplaceBtn").addEventListener("click", runReplaceAll);
         qs("#searchQuery").addEventListener("keydown", event => {
           if (event.key === "Enter") runSearch();
         });
+      }
+
+      function runReplaceAll() {
+        const query = qs("#searchQuery").value;
+        const replacement = qs("#replaceValue").value;
+        if (!query) {
+          setStatus("置換する検索語を入力してください。");
+          return;
+        }
+        const fields = ["wireNo", "label", "text", "tag", "note", "cellText", "pinText", "rightPinText", "terminalLabels", "description", "fromOverride", "toOverride"];
+        let count = 0;
+        state.pages.forEach(page => {
+          page.elements.forEach(element => {
+            fields.forEach(field => {
+              const value = element[field];
+              if (typeof value === "string" && value.includes(query)) {
+                element[field] = value.replaceAll(query, replacement);
+                count += 1;
+              }
+            });
+          });
+        });
+        if (!count) {
+          setStatus("置換対象が見つかりませんでした。");
+          return;
+        }
+        commitHistory(count + "箇所を置換しました。");
+        render();
+        runSearch();
       }
 
       function runSearch() {
