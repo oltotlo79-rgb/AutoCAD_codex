@@ -481,6 +481,12 @@
       padding: 16px;
     }
 
+    /* 印刷プレビュー等の広幅ダイアログ(openDialogの{wide:true}で有効化) */
+    .dialog.wide {
+      width: min(1100px, calc(100vw - 32px));
+      max-height: calc(100vh - 32px);
+    }
+
     .dialog-header {
       display: flex;
       align-items: center;
@@ -609,6 +615,7 @@
         <button type="button" id="helpBtn" title="使い方とショートカット">ヘルプ</button>
         <button type="button" id="titleBatchBtn" title="全ページの表題欄を一括更新">表題欄</button>
         <span class="tool-sep" aria-hidden="true"></span>
+        <button type="button" id="printPreviewBtn" title="印刷イメージを画面で確認">プレビュー</button>
         <button type="button" id="printBtn" title="全ページをPDF印刷">PDF印刷</button>
         <button type="button" id="printTwoUpBtn" title="A3縦に2ページずつ面付けして印刷">A3面付</button>
         <button type="button" id="exportSvgBtn" title="現在ページをSVG出力">SVG</button>
@@ -10974,6 +10981,68 @@
         syncPrintSheets();
       }
 
+      // ===== 画面内印刷プレビュー =====
+      // 印刷と同条件(output=true: グリッド・選択枠・ガイド・下絵設定を反映)で全ページを
+      // ダイアログ内に並べる。印刷ダイアログを開く前に仕上がりを確認するための機能。
+      function showPrintPreview() {
+        const pages = state.pages || [];
+        if (!pages.length) return;
+        openDialog("印刷プレビュー", `
+          <div class="inline" style="justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+            <span class="muted">全${pages.length}ページ。印刷・PDF出力と同じ内容です（グリッドや選択枠は含まれません）。</span>
+            <span class="inline" style="gap:8px">
+              <label style="margin:0">倍率</label>
+              <select id="previewZoom" style="width:auto">
+                <option value="fit" selected>幅に合わせる</option>
+                <option value="0.75">75%</option>
+                <option value="1">100%</option>
+                <option value="1.5">150%</option>
+                <option value="2">200%</option>
+              </select>
+              <button type="button" id="previewPrintBtn" class="primary">このまま印刷</button>
+            </span>
+          </div>
+          <div id="previewPages" style="display:flex;flex-direction:column;gap:16px;align-items:center;background:#e8ecf1;padding:16px;border-radius:6px;overflow:auto"></div>
+        `, { wide: true });
+        const host = qs("#previewPages");
+        const renderPreviewPages = () => {
+          const zoomValue = qs("#previewZoom").value;
+          host.innerHTML = "";
+          pages.forEach((page, index) => {
+            const size = pageSize(page);
+            const card = document.createElement("div");
+            card.style.cssText = "background:#fff;box-shadow:0 2px 12px rgba(20,31,44,.22);flex:none";
+            const svg = svgEl("svg", {});
+            drawPageSvg(svg, page, { selection: false, grid: false, scaled: false, output: true });
+            if (zoomValue === "fit") {
+              // ダイアログ内幅いっぱい(A3横などもはみ出さない)
+              card.style.width = "100%";
+              svg.style.width = "100%";
+            } else {
+              // mm→px(96dpi)×倍率の実寸基準
+              const widthPx = Math.round(size.w / 25.4 * 96 * Number(zoomValue));
+              card.style.width = widthPx + "px";
+              svg.style.width = widthPx + "px";
+            }
+            svg.style.height = "auto";
+            svg.style.display = "block";
+            card.appendChild(svg);
+            const caption = document.createElement("div");
+            caption.className = "muted";
+            caption.style.cssText = "text-align:center;font-size:11px;padding:4px 0;border-top:1px solid #e3e8ee";
+            caption.textContent = (index + 1) + " / " + pages.length + "　" + (page.name || "") + "　" + size.w + "×" + size.h + "mm";
+            card.appendChild(caption);
+            host.appendChild(card);
+          });
+        };
+        renderPreviewPages();
+        qs("#previewZoom").addEventListener("change", renderPreviewPages);
+        qs("#previewPrintBtn").addEventListener("click", () => {
+          closeDialog();
+          printProject();
+        });
+      }
+
       // 等倍印刷(全ページ)を実行。
       function printProject() {
         printMode = "single";
@@ -11994,7 +12063,7 @@
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
               <li><b>正式な保存はJSON</b>（上部「保存」）。再編集・受け渡しはこれ一択</li>
               <li>自動バックアップから「復元」可／複数図面は機能メニュー「プロジェクト管理」でブラウザ内に保存・切替</li>
-              <li>出力: <b>PDF印刷</b>（全頁）・A3面付・SVG/PNG（現在頁）・<b>DXF</b>（現在頁/全頁、取込も可）</li>
+              <li>出力: <b>プレビュー</b>（印刷前の画面確認）・<b>PDF印刷</b>（全頁）・A3面付・SVG/PNG（現在頁）・<b>DXF</b>（現在頁/全頁、取込も可）</li>
               <li>設定一式（書式・カタログ・ユーザー部品等）は「標準パック」でJSON持ち運び</li>
             </ul>`)}
 
@@ -12920,9 +12989,10 @@
       }
 
       // 共通ダイアログを開く(タイトル+HTML本文を差し込み)。
-      function openDialog(title, html) {
+      function openDialog(title, html, opts = {}) {
         qs("#dialogTitle").textContent = title;
         qs("#dialogBody").innerHTML = html;
+        qs("#dialogBackdrop .dialog")?.classList.toggle("wide", opts.wide === true);
         qs("#dialogBackdrop").classList.remove("hidden");
       }
 
@@ -14177,6 +14247,7 @@
         qs("#helpBtn").addEventListener("click", showHelpDialog);
         qs("#titleBatchBtn").addEventListener("click", showTitleBatchDialog);
         qs("#printBtn").addEventListener("click", printProject);
+        qs("#printPreviewBtn").addEventListener("click", showPrintPreview);
         qs("#printTwoUpBtn").addEventListener("click", printProjectTwoUp);
         qs("#exportSvgBtn").addEventListener("click", exportSvg);
         qs("#exportPngBtn").addEventListener("click", exportPng);
