@@ -973,6 +973,7 @@
         { type: "breaker", label: "遮断器", icon: "breaker" },
         { type: "lamp", label: "ランプ", icon: "lamp" },
         { type: "buzzer", label: "ブザー", icon: "buzzer" },
+        { type: "meter", label: "計器(V/A)", icon: "coil" },
         { type: "solenoidValve", label: "ソレノイド弁", icon: "solenoidValve" },
         { type: "sensor", label: "センサ", icon: "sensor" },
         { type: "powerSupply", label: "電源", icon: "powerSupply" },
@@ -980,6 +981,8 @@
         { type: "ground", label: "接地", icon: "ground" },
         { type: "motor", label: "モータ", icon: "motor" },
         { type: "fan", label: "ファン", icon: "fan" },
+        { type: "inductor", label: "リアクトル", icon: "coil" },
+        { type: "heater", label: "ヒータ", icon: "resistor" },
         { type: "resistor", label: "抵抗", icon: "resistor" },
         { type: "capacitor", label: "コンデンサ", icon: "capacitor" },
         { type: "diode", label: "ダイオード", icon: "diode" },
@@ -1017,6 +1020,9 @@
         sensor: "SEN",
         powerSupply: "PS",
         transformer: "T",
+        meter: "",
+        inductor: "L",
+        heater: "H",
         ground: "E",
         motor: "M",
         fan: "FAN",
@@ -1052,8 +1058,8 @@
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
         contactNO: "contact", contactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact",
-        coil: "coil", lamp: "coil", buzzer: "coil",
-        powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power",
+        coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil",
+        powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power", inductor: "power", heater: "power",
         fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect",
         terminal: "terminal", terminalStrip: "terminal", terminalSheet: "terminal", connector: "terminal", junction: "terminal", cableMarker: "terminal", cableBundle: "terminal", terminalBox: "terminal",
         deviceBox: "device", plcBlock: "device", installationBox: "device", locationBox: "device", table: "device",
@@ -1957,6 +1963,38 @@
           g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")");
         }
         const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
+        // クリック当たり判定を広げる不可視ヒット領域。細線シンボルでも掴みやすくする。
+        // 枠系(設備枠/矩形等)は内部の部品を選べるように縁のみ、他は外接矩形全体を対象にする。
+        if (element.type !== "underlayImage") {
+          if (element.points && element.points.length > 1) {
+            g.appendChild(svgEl("path", {
+              d: wirePath(element.points),
+              fill: "none", stroke: "#000", "stroke-opacity": 0,
+              "stroke-width": 2.4, "pointer-events": "stroke"
+            }));
+          } else if (!element.points) {
+            const hitW = Number(element.w || defaultElement(element.type).w || 4);
+            const hitH = Number(element.h || defaultElement(element.type).h || 4);
+            if (["installationBox", "locationBox", "rect", "cloud"].includes(element.type)) {
+              g.appendChild(svgEl("rect", {
+                x: 0, y: 0, width: hitW, height: hitH,
+                fill: "none", stroke: "#000", "stroke-opacity": 0,
+                "stroke-width": 2.4, "pointer-events": "stroke"
+              }));
+            } else if (element.type === "circle") {
+              g.appendChild(svgEl("ellipse", {
+                cx: hitW / 2, cy: hitH / 2, rx: hitW / 2, ry: hitH / 2,
+                fill: "none", stroke: "#000", "stroke-opacity": 0,
+                "stroke-width": 2.4, "pointer-events": "stroke"
+              }));
+            } else {
+              g.appendChild(svgEl("rect", {
+                x: -0.8, y: -0.8, width: hitW + 1.6, height: hitH + 1.6,
+                fill: "none", stroke: "none", "pointer-events": "all"
+              }));
+            }
+          }
+        }
         if (drawGeoSymbol(g, element, stroke)) {
           drawVisibleAttributes(g, element);
           svg.appendChild(g);
@@ -3310,13 +3348,13 @@
             { t: "line", p: [6.0, 2.2, 8, 2.2] },
             { t: "circle", p: [2.6, 2.2, 0.6], fill: "white" },
             { t: "circle", p: [5.4, 2.2, 0.6], fill: "white" },
-            { t: "line", p: [5.9, 1.75, 2.9, 0.5] },
+            { t: "line", p: [3.14, 1.94, 6.1, 0.55] },
             { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [4, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
-        // b接点デザイン2: 円端子+閉じ線(先端に止め)。
+        // b接点デザイン2: 円端子+閉じ線(可動線が右円の上を通り、先端の止めに当たる)。
         contactNCJis: {
           w: 8, h: 4.4,
           anchors: [[0, 2.2], [8, 2.2]],
@@ -3325,8 +3363,8 @@
             { t: "line", p: [6.0, 2.2, 8, 2.2] },
             { t: "circle", p: [2.6, 2.2, 0.6], fill: "white" },
             { t: "circle", p: [5.4, 2.2, 0.6], fill: "white" },
-            { t: "line", p: [5.9, 1.75, 2.7, 0.6] },
-            { t: "line", p: [2.3, 1.05, 3.1, 0.25] },
+            { t: "line", p: [3.18, 2.04, 6.3, 1.15] },
+            { t: "line", p: [6.15, 0.62, 6.45, 1.68] },
             { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [4, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
@@ -3567,6 +3605,56 @@
             { t: "text", p: [2, 6.6], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // 接地デザイン2: 横棒3本式(長→短)。寸法・接続点は斜線ハッチ版と共通。
+        groundBars: {
+          w: 4, h: 5,
+          anchors: [[2, 0]],
+          prims: [
+            { t: "line", p: [2, 0, 2, 2.4] },
+            { t: "line", p: [0.6, 2.4, 3.4, 2.4] },
+            { t: "line", p: [1.2, 3.4, 2.8, 3.4] },
+            { t: "line", p: [1.7, 4.4, 2.3, 4.4] },
+            { t: "text", p: [2, 6.6], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 計器(電圧計/電流計など): 円+中央にラベル文字(V/A等)。
+        meter: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.1, 2.2] },
+            { t: "line", p: [6.9, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.9], fill: "white" },
+            { t: "text", p: [5, 2.2], size: 2.2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -1.6], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        // リアクトル(インダクタ): 山形コブ3個。
+        inductor: {
+          w: 10, h: 3,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 2.6, 3] },
+            { t: "arc", p: [3.3, 3, 0.7, 180, 360] },
+            { t: "arc", p: [4.7, 3, 0.7, 180, 360] },
+            { t: "arc", p: [6.1, 3, 0.7, 180, 360] },
+            { t: "line", p: [6.8, 3, 10, 3] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // ヒータ: 箱+斜線2本。
+        heater: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.0, 2.2] },
+            { t: "line", p: [7.0, 2.2, 10, 2.2] },
+            { t: "rect", p: [3.0, 0.7, 4.0, 3.0], fill: "white" },
+            { t: "line", p: [3.9, 3.7, 4.9, 0.7] },
+            { t: "line", p: [5.1, 3.7, 6.1, 0.7] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         // 端子小円は実測⌀1.1→r0.55。アンカーは中心のみ(グリッド整合のため。
         // 配線は中心まで届くが白抜き円が内側を隠すので、見た目は縁で止まる)。
         terminal: {
@@ -3694,7 +3782,10 @@
           case "pressureSwitch": return "pressureSwitch";
           case "motor": return "motor";
           case "transformer": return "transformer";
-          case "ground": return "ground";
+          case "meter": return "meter";
+          case "inductor": return "inductor";
+          case "heater": return "heater";
+          case "ground": return variant === "bars" ? "groundBars" : "ground";
           case "terminal": return (element.terminalShape || "circle") === "circle" ? "terminal" : null;
           case "resistor": return (element.resistorStyle || "box") === "varistor" ? "varistor" : "resistor";
           case "connector": return element.connStyle === "pair" ? "connectorPair" : null;
@@ -4204,9 +4295,27 @@
 
       // 右パネル下部「選択中の要素」を構築。共通(位置寸法)+種別固有(specificFields)+電気属性+
       // スタイル/メモのアコーディオンで構成。入力はdata-bind属性経由でupdateSelectedFromInputへ流れる。
+      // 直近で自動スクロールした選択ID(選択が変わった時だけ右パネルをスクロールするため)。
+      let lastScrolledSelectionId = null;
+
       function renderSelectionPanel() {
         const panel = qs("#selectionPanel");
         const selected = selectedElements();
+        // 部品を選択したら、右パネルを「選択中の要素」セクションへ自動スクロールする
+        // (編集欄が下に隠れていて見つからない問題の対策。選択が変わった時のみ)。
+        if (selectedId && selectedId !== lastScrolledSelectionId) {
+          lastScrolledSelectionId = selectedId;
+          // rAFはタブ非表示時に停止するためsetTimeoutで確実に実行する
+          setTimeout(() => {
+            const inspector = qs(".inspector");
+            const panelNow = qs("#selectionPanel");
+            if (!inspector || !panelNow) return;
+            const delta = panelNow.getBoundingClientRect().top - inspector.getBoundingClientRect().top;
+            if (delta > 40) inspector.scrollTop += delta - 6;
+          }, 0);
+        } else if (!selectedId) {
+          lastScrolledSelectionId = null;
+        }
         if (selected.length > 1) {
           panel.innerHTML = `
             <div class="panel-title">複数選択: ${selected.length}件</div>
@@ -4527,6 +4636,7 @@
         contactNO: [["standard", "縦バー（設備標準）"], ["jis", "円端子＋開き線"]],
         contactNC: [["standard", "縦バー＋斜線（設備標準）"], ["jis", "円端子＋閉じ線"]],
         coil: [["standard", "円（設備標準）"], ["box", "箱形"]],
+        ground: [["standard", "斜線ハッチ（設備標準）"], ["bars", "横棒3本"]],
         pushButtonEmergency: [["standard", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]]
       };
 
@@ -4617,6 +4727,7 @@
           const orientation = element.orientation || "horizontal";
           const pbStyle = element.pbStyle || "momentary";
           return `
+            ${symbolVariantSelectHtml(element)}
             <label>接点方向</label>
             <select data-bind="orientation">
               <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横向き標準</option>
@@ -4630,10 +4741,9 @@
             </select>` : `
             <label>参照番号(空欄=コイルから自動)</label>
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
-            ${symbolVariantSelectHtml(element)}
           `;
         }
-        if (element.type === "coil") {
+        if (element.type === "coil" || element.type === "ground") {
           return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
@@ -4974,6 +5084,18 @@
         const key = input.dataset.bind;
         const value = input.type === "checkbox" ? input.checked : (input.dataset.kind === "number" ? Number(input.value) : input.value);
         const pointMatch = key.match(/^p(\d+)(x|y)$/);
+        // 形状・向き・デザイン等の切替で要素寸法が変わる可能性のあるキー。
+        // 切替の前後で第1接続ピンの絶対位置を保存し、寸法変更によるピンのズレを常に打ち消す。
+        const GEOMETRY_KEYS = ["orientation", "pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "terminalShape", "connStyle", "blockContact", "symbolVariant", "count", "stripStyle", "levels", "plcStyle", "rows", "pins"];
+        const firstPinOf = target => {
+          if (target.points) return null;
+          if ((target.type === "terminalStrip" || target.type === "connector") && target.connStyle !== "pair") {
+            return terminalStripNodeGlobal(target, 0);
+          }
+          const anchors = elementConnectionAnchors(target);
+          return anchors && anchors.length ? anchors[0] : null;
+        };
+        const pinBefore = !pointMatch && GEOMETRY_KEYS.includes(key) ? firstPinOf(element) : null;
         if (pointMatch && element.points?.[Number(pointMatch[1])]) {
           element.points[Number(pointMatch[1])][pointMatch[2] === "x" ? 0 : 1] = value;
         } else {
@@ -5002,6 +5124,14 @@
             } else if (key === "plcStyle") {
               element.w = 50;
               element.h = Math.max(2, Number(element.rows || 8)) * 6 + 10;
+            }
+          }
+          // 第1ピンを切替前の位置へ戻す(配線・グリッドとの整合を維持)
+          if (pinBefore) {
+            const pinAfter = firstPinOf(element);
+            if (pinAfter && (Math.abs(pinAfter.x - pinBefore.x) > 0.001 || Math.abs(pinAfter.y - pinBefore.y) > 0.001)) {
+              element.x = round(Number(element.x || 0) + (pinBefore.x - pinAfter.x));
+              element.y = round(Number(element.y || 0) + (pinBefore.y - pinAfter.y));
             }
           }
         }
@@ -5112,6 +5242,9 @@
           sensor: { ...base, w: 24, h: 14, label: "SEN" },
           powerSupply: { ...base, w: 34, h: 24, label: "PS" },
           transformer: { ...base, w: 14, h: 17, label: "Tr1" },
+          meter: { ...base, w: 10, h: 4.4, label: "V" },
+          inductor: { ...base, w: 10, h: 3, label: "L" },
+          heater: { ...base, w: 10, h: 4.4, label: "H" },
           ground: { ...base, w: 4, h: 5, label: "E" },
           motor: { ...base, w: 16, h: 16, label: "M" },
           fan: { ...base, w: 14, h: 14, r: 5, label: "FAN" },
@@ -5320,7 +5453,7 @@
           add(w / 2, h);
           return anchors;
         }
-        if (["coil", "fuse", "breaker", "lamp", "buzzer", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
+        if (["coil", "fuse", "breaker", "lamp", "buzzer", "meter", "inductor", "heater", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
           add(0, h / 2);
           add(w, h / 2);
           return anchors;
@@ -5398,6 +5531,9 @@
           "motor",
           "fan",
           "transformer",
+          "meter",
+          "inductor",
+          "heater",
           "solenoidValve",
           "sensor",
           "powerSupply",
@@ -5430,6 +5566,9 @@
           "capacitor",
           "diode",
           "thermalRelay",
+          "meter",
+          "inductor",
+          "heater",
           "motor",
           "fan"
         ]);
@@ -13157,7 +13296,7 @@
       initProject();
 
       // 自動テスト用の内部フック(通常操作では使用しない)。接続点のグリッド整合検証などに使う。
-      window.__edsTest = { defaultElementAtPlacement, elementConnectionAnchors, defaultElement };
+      window.__edsTest = { defaultElementAtPlacement, elementConnectionAnchors, defaultElement, SYMBOL_GEO };
     })();
   </script>
 </body>
