@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Electrical Drawing Studio</title>
   <style>
+    /* ===== デザイントークン(配色・影・フォント) ===== */
     :root {
       --bg: #eef1f4;
       --panel: #ffffff;
@@ -122,6 +123,7 @@
       grid-template-rows: 48px 40px minmax(0, 1fr);
     }
 
+    /* ===== 上部ツールバー・ページタブ(共通の帯スタイル) ===== */
     .topbar,
     .tabbar {
       background: var(--panel);
@@ -204,12 +206,14 @@
       color: #064e45;
     }
 
+    /* ===== 3カラムレイアウト(左パレット/中央キャンバス/右パネル) ===== */
     .shell {
       min-height: 0;
       display: grid;
       grid-template-columns: 260px minmax(0, 1fr) 304px;
     }
 
+    /* ===== 左パネル(部品パレット)・右パネル共通のスクロール領域 ===== */
     .palette,
     .inspector {
       min-height: 0;
@@ -295,6 +299,7 @@
       padding-top: 12px;
     }
 
+    /* ===== 中央キャンバス ===== */
     .workspace {
       min-width: 0;
       min-height: 0;
@@ -400,6 +405,7 @@
 
     .danger { color: var(--danger); }
 
+    /* ===== 共通ダイアログ ===== */
     .dialog-backdrop {
       position: fixed;
       inset: 0;
@@ -436,6 +442,7 @@
       font-size: 16px;
     }
 
+    /* ===== ダイアログ内の一覧表 ===== */
     .report-table {
       width: 100%;
       border-collapse: collapse;
@@ -475,6 +482,7 @@
       outline-offset: 2px;
     }
 
+    /* ===== 印刷用シート(通常時は非表示) ===== */
     .print-sheets { display: none; }
 
     #fileInput,
@@ -485,6 +493,7 @@
     #dxfImportInput,
     #packImportInput { display: none; }
 
+    /* ===== 印刷時: 画面UIを隠して印刷シートのみ表示 ===== */
     @media print {
       @page { margin: 0; }
       @page a4p { size: 210mm 297mm; margin: 0; }
@@ -531,6 +540,7 @@
 </head>
 <body>
   <div class="app">
+    <!-- 上部ツールバー: 新規/開く/復元/保存・検索・ヘルプ・表題欄・印刷/出力・ツール切替 -->
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"></span>
@@ -561,9 +571,12 @@
       <div class="status" id="status">A4縦の図枠付きページを作成しました。</div>
     </header>
 
+    <!-- ページタブ(renderTabs()が中身を生成。ダブルクリックで改名) -->
     <nav class="tabbar" id="tabbar" aria-label="ページタブ"></nav>
 
+    <!-- 本体3カラム。左=パレット/設定/機能メニュー、中央=SVGキャンバス、右=ページ設定/選択編集 -->
     <main class="shell">
+      <!-- 左パネル: 部品パレット(renderPalette)・表示設定・配線/レイヤ・自動処理/機能メニュー -->
       <aside class="palette">
         <div class="panel-title">部品パレット</div>
         <button type="button" id="selectOnlyBtn" data-tool="select" style="width:100%;margin-bottom:8px">選択</button>
@@ -681,12 +694,14 @@
         </div>
       </aside>
 
+      <!-- 中央: 図面キャンバス。drawPageSvg()がSVGを再構築し、pointerイベントで作図/選択する -->
       <section class="workspace" id="workspace">
         <div class="stage">
           <svg id="canvas" class="drawing-page" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="図面キャンバス"></svg>
         </div>
       </section>
 
+      <!-- 右パネル: ページ設定・表題欄・テンプレート/下絵メニュー・選択中要素の編集(renderSelectionPanel) -->
       <aside class="inspector">
         <div class="panel-title">ページ設定</div>
         <label for="drawingStandard">標準</label>
@@ -793,6 +808,7 @@
     </main>
   </div>
 
+  <!-- 非表示のファイル入力群(機能メニュー等から .click() で起動する) -->
   <input id="fileInput" type="file" accept=".json,application/json">
   <input id="terminalCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
   <input id="plcCsvInput" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values">
@@ -800,7 +816,9 @@
   <input id="underlayTwoUpInput" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" multiple>
   <input id="dxfImportInput" type="file" accept=".dxf,application/dxf">
   <input id="packImportInput" type="file" accept=".json,application/json">
+  <!-- 印刷専用シート(printProject()が組み立て、@media printでのみ表示) -->
   <div id="printSheets" class="print-sheets"></div>
+  <!-- 共通ダイアログ(openDialog()がタイトルと本文を差し込む) -->
   <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
     <div class="dialog">
       <div class="dialog-header">
@@ -814,19 +832,69 @@
 
   <script>
     (() => {
+      /* =====================================================================
+       * Electrical Drawing Studio — 単一HTMLの電気図面作図ツール
+       * =====================================================================
+       * ■ アーキテクチャ概要
+       *  - 依存ライブラリなしの単一ファイル(HTML+CSS+JS)。このIIFEが全ロジックを持つ。
+       *  - 単一の状態オブジェクト state が「唯一の真実」。保存(JSON)・Undo履歴・
+       *    自動バックアップ(localStorage)はすべて state の JSON スナップショット。
+       *  - 描画は SVG。render() → drawPageSvg() → drawElement()/図枠描画 の一方向フロー。
+       *    state を変更したら commitHistory() + render() を呼ぶのが基本パターン。
+       *
+       * ■ 座標系と単位
+       *  - すべて mm 単位・用紙左上原点・y軸下向き。round()で0.01mm精度に丸める。
+       *  - DXF出力時のみ cadY() で y軸を反転(CADはy上向き)。角度はスクリーン時計回り度
+       *    で統一し、DXFのARCへは dxfArcLocal() が反時計回りへ変換する。
+       *
+       * ■ 主要データ構造
+       *  - state.pages[]      : ページ(用紙/図枠/表題欄/elements[])
+       *  - page.elements[]    : 図面要素。共通キー: id/type/x/y/w/h/rotation/layer、
+       *                         線もの(wire/line/arrow等)は points[[x,y],...] を持つ。
+       *  - state.settings     : グリッド/スナップ/線番書式/タグ書式/監査ルール/帳票列など
+       *  - state.customSymbols: ユーザー部品(テンプレート要素列)
+       *  - state.catalog      : 部品カタログ / state.plcModules : PLCプリセット
+       *
+       * ■ シンボルの単一定義(SYMBOL_GEO)
+       *  - 主要電気シンボルの形状は SYMBOL_GEO に一元定義し、SVG(drawGeoSymbol)と
+       *    DXF(dxfGeoSymbol)と接続点(geoAnchors)を同じプリミティブ列から導出する。
+       *  - geoKeyFor() が対象種別を決める。対象は固定寸法でリサイズ不可。
+       *    対象外のバリエーションは従来の drawXxx()/dxfXxxLocal() が描く。
+       *
+       * ■ 電気的な仕組み
+       *  - ネット: buildWireNets() が端点一致/T分岐/接続点で配線を結合し、
+       *    線番採番(autoWireNumbers)・ネットリスト・監査が共用する。
+       *  - クロス参照: buildCrossRefCache() がタグでコイル(親)と接点(子)を対応付け、
+       *    接点下のアドレス表示と設備標準図枠の表へ反映する。アドレス=シート+行2桁。
+       *
+       * ■ コメント規約(このファイル内の統一基準)
+       *  1) 日本語で、定義の直上に同インデントの // 一行要約(体言止め/「〜する。」)。
+       *     必要な場合のみ2〜3行目に規約・単位・呼び出し関係を補足する。
+       *  2) セクション見出しは // ===== 名称 ===== 。
+       *  3) 内容は「何をするか」と「重要な前提(座標系・単位・いつ呼ぶか)」のみ。
+       *     実装の逐語説明・自明な繰り返しは書かない。
+       *  4) 型の目安: 定数=用途 / 描画系「〜を描画。」/ ダイアログ系「〜ダイアログを開く。」/
+       *     build系「ダイアログ入力から〜を生成。」/ dxf系「〜のDXF出力。」
+       * ===================================================================== */
+
+      // 用紙サイズ定義(mm)。portrait/landscapeの[幅,高さ]。全座標系はmm単位・左上原点・y下向き。
       const PAPER = {
         A4: { portrait: [210, 297], landscape: [297, 210] },
         A3: { portrait: [297, 420], landscape: [420, 297] }
       };
 
+      // 図面標準プリセット(標準セレクタの選択肢)。applyStandard()でグリッド等へ反映。
       const STANDARDS = [
         { id: "general", label: "汎用", grid: 2.5, wireNumberFormat: "%S-%N", componentTagFormat: "%F%N", frameVariant: "detailed" },
         { id: "toyota-draft", label: "トヨタ標準（仮）", grid: 2.5, wireNumberFormat: "%S-%N", componentTagFormat: "%F%N", frameVariant: "detailed" }
       ];
 
+      // 端点・接続点スナップの吸着半径(mm)。
       const SNAP_RADIUS_MM = 4;
+      // 太グリッド(メジャーグリッド)の間隔(mm)。
       const MAJOR_GRID_MM = 10;
 
+      // 表題欄一括更新ダイアログで扱うフィールド定義(キーと表示名)。
       const TITLE_FIELDS = [
         { key: "title", label: "図名" },
         { key: "facility", label: "設備" },
@@ -836,6 +904,7 @@
         { key: "date", label: "日付" }
       ];
 
+      // 表題欄マッピングの参照元候補(手入力/プロジェクト値/ページ名/頁番号など)。
       const TITLE_SOURCE_OPTIONS = [
         { value: "project.title", label: "プロジェクト: 図名" },
         { value: "project.facility", label: "プロジェクト: 設備" },
@@ -850,6 +919,7 @@
         { value: "keep", label: "既存値を保持" }
       ];
 
+      // 表題欄フィールド→参照元の既定マッピング。page.titleへ流し込む際にresolveTitleSource()が解決する。
       const DEFAULT_TITLE_MAP = {
         title: "project.title",
         facility: "project.facility",
@@ -859,6 +929,7 @@
         date: "project.date"
       };
 
+      // 電気属性のうち図面上に表示可能な項目の定義(タグ/説明/品番など)。
       const ATTRIBUTE_DISPLAY_FIELDS = [
         { key: "tag", prop: "showAttrTag", label: "タグ", prefix: "TAG" },
         { key: "description", prop: "showAttrDescription", label: "説明", prefix: "DESC" },
@@ -870,6 +941,7 @@
         { key: "item", prop: "showAttrItem", label: "項目", prefix: "ITEM" }
       ];
 
+      // 部品パレットの全項目定義(type=要素種別, label=表示名, icon=iconSvg()のキー)。
       const PALETTE = [
         { type: "text", label: "文字", icon: "text" },
         { type: "wire", label: "配線", icon: "wire" },
@@ -921,6 +993,7 @@
         { type: "junction", label: "接続点", icon: "dot" }
       ];
 
+      // 部品種別→タグ接頭辞(%F)の既定表。ユーザー上書きは settings.componentTagPrefixes。
       const DEFAULT_TAG_PREFIXES = {
         contactNO: "CR",
         contactNC: "CR",
@@ -955,6 +1028,7 @@
         arrow: "REF"
       };
 
+      // パレットのカテゴリ(アコーディオン)定義。表示順もこの配列順。
       const PALETTE_GROUPS = [
         { id: "basic", label: "基本図形" },
         { id: "contact", label: "接点・スイッチ" },
@@ -967,6 +1041,7 @@
         { id: "custom", label: "ユーザー部品" }
       ];
 
+      // 要素種別→パレットカテゴリの対応表。未登録はdevice扱い。
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
         contactNO: "contact", contactNC: "contact", contactBlock: "contact", pushButton: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact",
@@ -978,13 +1053,22 @@
         arrow: "annotation", positionMark: "annotation", polarityMark: "annotation", cloud: "annotation"
       };
 
+      // 開いているパレットカテゴリのid集合(セッション内で開閉状態を保持)。
       const paletteOpenGroups = new Set(["basic", "contact", "custom"]);
 
+      // document.querySelectorの短縮形。
       const qs = (selector, root = document) => root.querySelector(selector);
+      // querySelectorAllを配列で返す短縮形。
       const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+      // SVG名前空間URI(createElementNS用)。
       const svgNS = "http://www.w3.org/2000/svg";
+      // 今日の日付(YYYY-MM-DD)。新規ページ・改訂の既定値に使用。
       const today = new Date().toISOString().slice(0, 10);
 
+      // アプリ全体の状態(単一の真実)。JSON保存/読込・Undo履歴・自動バックアップは全てこのオブジェクトの
+      // JSON.stringifyスナップショットで行う。pages[].elements[]が図面要素の本体。
+      // settings=描画/採番設定、layers=レイヤ定義、wireTypes=配線種別、customSymbols=ユーザー部品、
+      // catalog=部品カタログ、plcModules=PLCプリセット、project=表題欄などのプロジェクト情報。
       const state = {
         app: "Electrical Drawing Studio",
         version: "0.1.0",
@@ -1041,24 +1125,29 @@
       let pageCounter = 1;
       let printMode = "single";
 
+      // ランダム+時刻ベースの一意ID生成(要素・ページ・部品などの識別子)。
       function uid(prefix = "id") {
         return prefix + "-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
       }
 
+      // JSON往復による深いコピー(関数や循環参照は不可の前提)。
       function deepClone(value) {
         return JSON.parse(JSON.stringify(value));
       }
 
+      // アクティブページを返す(見つからなければ先頭ページ)。
       function currentPage() {
         return state.pages.find(page => page.id === state.activePageId) || state.pages[0];
       }
 
+      // ページの用紙寸法{w,h}をmmで返す。
       function pageSize(page) {
         const paper = PAPER[page.size] || PAPER.A4;
         const pair = paper[page.orientation] || paper.portrait;
         return { w: pair[0], h: pair[1] };
       }
 
+      // 新規ページオブジェクトを生成(図枠種別・表題欄の既定値込み)。stateへは呼び出し側がpushする。
       function createPage(options = {}) {
         const id = uid("page");
         const index = pageCounter++;
@@ -1084,6 +1173,7 @@
         };
       }
 
+      // 読込・復元したstateに不足キーを補う(後方互換のための正規化)。新しい配列/設定はここに追加する。
       function ensureProjectDefaults() {
         state.settings = state.settings || {};
         if (!state.settings.componentTagFormat) state.settings.componentTagFormat = "%F%N";
@@ -1108,6 +1198,7 @@
         return state.project;
       }
 
+      // アプリ初期化: 既定1ページを作って履歴をリセットし初回描画。
       function initProject() {
         ensureProjectDefaults();
         state.pages = [createPage({ name: "P1", frameVariant: "detailed", title: "電気図面" })];
@@ -1119,6 +1210,7 @@
         render();
       }
 
+      // 全ページの表題欄の頁番号/総頁数を振り直す(ページ追加・削除・並替後に呼ぶ)。
       function syncPageTotals() {
         const total = String(state.pages.length);
         state.pages.forEach((page, index) => {
@@ -1127,12 +1219,15 @@
         });
       }
 
+      // Undo履歴を破棄して現在stateを初期スナップショットとして積む。
       function resetHistory() {
         history = [];
         historyIndex = -1;
         commitHistory("初期化");
       }
 
+      // Undo履歴へ現在stateのスナップショットを積み、localStorageへ自動バックアップする。
+      // 変更を伴う操作は必ず最後にこれを呼ぶ(直前と同一なら何もしない)。reasonはステータスバー表示。
       function commitHistory(reason = "") {
         syncPageTotals();
         const snapshot = JSON.stringify(state);
@@ -1143,11 +1238,12 @@
         try {
           localStorage.setItem("electricalDrawingStudio.backup", snapshot);
         } catch (_) {
-          // Local backup can fail in restrictive browser modes.
+          // プライベートモード等ではlocalStorageが使えないことがあるため失敗は無視する。
         }
         setStatus(reason || "変更を記録しました。");
       }
 
+      // 履歴インデックスのスナップショットへstateを差し替える(Undo/Redoの実体)。
       function restoreHistory(index) {
         if (index < 0 || index >= history.length) return;
         const restored = JSON.parse(history[index]);
@@ -1158,10 +1254,12 @@
         render();
       }
 
+      // 画面右上のステータスバーへメッセージを表示。
       function setStatus(message) {
         qs("#status").textContent = message;
       }
 
+      // SVG要素を属性・子要素つきで生成するヘルパ。null/undefinedの属性はスキップ。
       function svgEl(tag, attrs = {}, children = []) {
         const el = document.createElementNS(svgNS, tag);
         Object.entries(attrs).forEach(([key, value]) => {
@@ -1171,6 +1269,7 @@
         return el;
       }
 
+      // SVGテキスト要素を生成(既定: 中央ベースライン)。fontSize/anchor/transformをattrsで指定。
       function textEl(text, x, y, attrs = {}) {
         return svgEl("text", {
           x,
@@ -1183,6 +1282,7 @@
         }, [document.createTextNode(text || "")]);
       }
 
+      // 改行つき文字列をtspanの並びとして描画(行送りはlineHeight)。
       function multilineText(parent, text, x, y, lineHeight, attrs = {}) {
         const lines = String(text || "").split("\n");
         const group = svgEl("text", {
@@ -1202,6 +1302,8 @@
         parent.appendChild(group);
       }
 
+      // 左パネルの部品パレットを再構築。検索文字列があればフラット表示、無ければカテゴリ別アコーディオン。
+      // ユーザー部品(customSymbols)は type=custom:<id> の項目として合流する。
       function renderPalette() {
         const grid = qs("#paletteGrid");
         grid.innerHTML = "";
@@ -1268,6 +1370,7 @@
         });
       }
 
+      // パレット用のインラインSVGアイコン集。キーはPALETTE[].icon。
       function iconSvg(name) {
         const common = 'class="palette-icon" viewBox="0 0 80 44" fill="none" xmlns="http://www.w3.org/2000/svg"';
         const stroke = 'stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"';
@@ -1324,6 +1427,7 @@
         return map[name] || map.box;
       }
 
+      // 上部ページタブを再構築(クリック=切替、ダブルクリック=ページ名変更、+ページ=追加)。
       function renderTabs() {
         const tabbar = qs("#tabbar");
         tabbar.innerHTML = "";
@@ -1355,6 +1459,8 @@
         tabbar.appendChild(add);
       }
 
+      // 全体再描画のエントリポイント。クロス参照キャッシュを無効化し、パレット/タブ/キャンバス/右パネルを更新。
+      // state変更後はcommitHistory()と併せてこれを呼ぶのが基本パターン。
       function render() {
         crossRefCache = null;
         renderPalette();
@@ -1367,6 +1473,8 @@
         syncPrintSheets();
       }
 
+      // 1ページ分のSVGを組み立てる中核。options: selection=選択枠, scaled=画面表示用ズーム, grid=グリッド,
+      // output=出力用(下絵や補助を除外)。印刷/SVG/PNG出力もこの関数を共用する。
       function drawPageSvg(svg, page, options = {}) {
         const size = pageSize(page);
         const scaled = options.scaled !== false;
@@ -1400,28 +1508,34 @@
         }
       }
 
+      // レイヤidからレイヤ定義を返す。
       function layerFor(id) {
         return (state.layers || []).find(layer => layer.id === id) || null;
       }
 
+      // レイヤ表示フラグ(未定義レイヤはtrue)。
       function isLayerVisible(id) {
         const layer = layerFor(id || "symbols");
         return layer ? layer.visible !== false : true;
       }
 
+      // レイヤロックフラグ。
       function isLayerLocked(id) {
         const layer = layerFor(id || "symbols");
         return layer ? layer.locked === true : false;
       }
 
+      // 要素の所属レイヤが表示中か。
       function isElementVisible(element) {
         return isLayerVisible(element.layer || inferredLayerFor(element.type));
       }
 
+      // 要素自身のlockedまたは所属レイヤのロックで編集不可か。
       function isElementLocked(element) {
         return Boolean(element.locked || isLayerLocked(element.layer || inferredLayerFor(element.type)));
       }
 
+      // 作図補助グリッド(細+太)をパターンとして敷く。印刷・出力には含めない。
       function drawGrid(svg, size) {
         const step = state.settings.grid || 2.5;
         const defs = svgEl("defs");
@@ -1456,6 +1570,7 @@
         svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#majorGridPattern)", opacity: .48 }));
       }
 
+      // 図枠の振り分け: frameVariantに応じて各図枠描画関数を呼ぶ。
       function drawFrame(svg, page, size) {
         const margin = frameMargin(size);
         const frame = svgEl("g", { class: "frame" });
@@ -1474,10 +1589,12 @@
         svg.appendChild(frame);
       }
 
+      // 図枠の余白(mm)。用紙サイズによらず固定。
       function frameMargin(size) {
         return Math.min(size.w, size.h) >= 297 ? 10 : 8;
       }
 
+      // 図枠外周の座標目盛(数字/英字)を描画。
       function drawCoordinateNumbers(frame, size, margin) {
         const left = margin + 5;
         const bottom = size.h - margin - 5;
@@ -1497,6 +1614,7 @@
         }
       }
 
+      // 簡易表題欄(右下小型)を描画。
       function drawCompactTitle(frame, page, size, margin) {
         const w = Math.min(94, size.w - margin * 2 - 18);
         const h = 32;
@@ -1517,6 +1635,7 @@
         frame.appendChild(textEl(page.title.page + " / " + page.title.total, x + 20, y + 28, { fontSize: 2.5 }));
       }
 
+      // 詳細表題欄(右下+改訂欄つき)を描画。project.revisionsの末尾5件を改訂欄へ表示。
       function drawDetailedTitle(frame, page, size, margin) {
         const w = Math.min(124, size.w - margin * 2 - 12);
         const h = 48;
@@ -1551,6 +1670,7 @@
         frame.appendChild(textEl(page.title.page + " / " + page.title.total, x + 20, y + 44, { fontSize: 2.5 }));
       }
 
+      // 側帯型表題欄(左側縦帯)を描画。
       function drawSideTitle(frame, page, size, margin) {
         const w = Math.min(44, Math.max(34, size.w * .15));
         const x = size.w - margin - w;
@@ -1574,6 +1694,7 @@
         frame.appendChild(textEl("改訂履歴", x + w / 2, revY + 4, { fontSize: 2.2, anchor: "middle" }));
       }
 
+      // 目次ページ用の図枠を描画。
       function drawIndexFrame(frame, page, size, margin) {
         drawCompactTitle(frame, page, size, margin);
         const x = margin + 18;
@@ -1663,6 +1784,7 @@
         fillLadderDeviceTable(frame, page, size);
       }
 
+      // 設備標準図枠の左下クロス参照表に載せるコイル列(タグ+接点アドレス一覧)を集計。
       function pageCoilXrefColumns(page) {
         const data = crossRefData();
         const cols = [];
@@ -1675,6 +1797,7 @@
         return cols.slice(0, 13);
       }
 
+      // 設備標準図枠: 左下クロス参照表へコイル→接点位置を記入(b接点は下線)。
       function fillLadderXrefTable(frame, page, size) {
         const L = 19;
         const xrefR = 105.8;
@@ -1695,6 +1818,7 @@
         });
       }
 
+      // 設備標準図枠の右下機器符号表に載せる行(タグ一覧)を集計。
       function pageDeviceTableRows(page) {
         const data = crossRefData();
         const seen = new Set();
@@ -1714,6 +1838,7 @@
         return rows.slice(0, 20);
       }
 
+      // 設備標準図枠: 右下機器符号表へ機器タグを自動記入。
       function fillLadderDeviceTable(frame, page, size) {
         const xrefR = 105.8;
         const R = size.w - 19;
@@ -1731,6 +1856,7 @@
         });
       }
 
+      // 等分/指定比率の横罫線群を描画(表題欄・表用の下請け)。
       function drawRows(parent, x, y, w, h, rowHeights) {
         let yy = y;
         rowHeights.slice(0, -1).forEach(row => {
@@ -1739,6 +1865,7 @@
         });
       }
 
+      // 等分/指定比率の縦罫線群を描画。
       function drawCols(parent, x, y, w, h, colWidths) {
         let xx = x;
         colWidths.slice(0, -1).forEach(col => {
@@ -1747,6 +1874,8 @@
         });
       }
 
+      // 要素1個の描画ディスパッチャ。まずdrawGeoSymbol(SYMBOL_GEO定義)を試し、処理されなければ
+      // 種別ごとのdrawXxx()へ振り分ける。g要素にdata-id属性を付け、クリック判定にも使う。
       function drawElement(svg, element) {
         const g = svgEl("g", {
           class: "element",
@@ -1810,6 +1939,7 @@
         svg.appendChild(g);
       }
 
+      // 電気属性(タグ/説明など)のうち表示ONの行を要素脇へ描画。位置はattrX/attrYで調整可。
       function drawVisibleAttributes(g, element) {
         if (!supportsElectricalAttributes(element)) return;
         const lines = visibleAttributeLines(element);
@@ -1824,6 +1954,7 @@
         });
       }
 
+      // 表示対象の属性行(文字列配列)を組み立てる。
       function visibleAttributeLines(element) {
         return ATTRIBUTE_DISPLAY_FIELDS
           .filter(field => element[field.prop])
@@ -1834,11 +1965,13 @@
           .filter(Boolean);
       }
 
+      // 属性キー→表示文字列(タグはcomponentTag()経由)。
       function electricalAttributeValue(element, key) {
         if (key === "tag") return componentTag(element);
         return element[key] || "";
       }
 
+      // 文字要素の描画(複数行・回転・下線対応)。
       function drawText(g, element) {
         multilineText(g, element.text || "文字", 0, 0, (element.fontSize || 3.5) * 1.25, {
           fontSize: element.fontSize || 3.5,
@@ -1857,6 +1990,7 @@
         }
       }
 
+      // 下絵画像の描画(透明度・クロップ表示・ロック時は淡色枠)。
       function drawUnderlayImage(g, element) {
         const w = Number(element.w || 100);
         const h = Number(element.h || 70);
@@ -1885,6 +2019,7 @@
         }
       }
 
+      // 下絵クロッププリセット(全体/上下左右半分)→表示領域の対応。
       function underlayCropRect(preset) {
         const map = {
           top: { x: 0, y: 0, w: 1, h: .5 },
@@ -1895,6 +2030,7 @@
         return map[preset] || { x: 0, y: 0, w: 1, h: 1 };
       }
 
+      // 配線の描画。折れ点列をポリラインで結び、線番文字(位置=wireNoAnchorPoint)とギャップを描く。
       function drawWire(g, element, stroke) {
         const points = element.points || [[0, 0], [20, 0]];
         const path = wirePath(points);
@@ -1916,6 +2052,7 @@
         }
       }
 
+      // 配線の交差ギャップ(ホップ)位置一覧を返す(gapAtMid/gapPoints)。
       function wireGapMarkers(element) {
         const markers = [];
         const seen = new Set();
@@ -1941,6 +2078,7 @@
         return markers;
       }
 
+      // 交差ギャップ1個(半円ホップ)を描画。
       function drawWireGap(g, gap) {
         const segment = gap.segment;
         const horizontal = Math.abs(segment[1] - segment[3]) <= Math.abs(segment[0] - segment[2]);
@@ -1954,6 +2092,7 @@
         }));
       }
 
+      // 矩形要素の描画(塗り/破線/ラベル対応)。
       function drawRectElement(g, element, stroke) {
         const w = Number(element.w || 30);
         const h = Number(element.h || 18);
@@ -1990,6 +2129,7 @@
         return arcs;
       }
 
+      // 雲マーク(改訂範囲)の描画。cloudScallopArcs()の半円弧列をパスとして並べる。
       function drawCloudElement(g, element, stroke) {
         const w = Number(element.w || 40);
         const h = Number(element.h || 20);
@@ -2004,6 +2144,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
       }
 
+      // 直線の波形(破断線)表示用の制御点列を生成(2次ベジェの連なり)。
       function waveLinePoints(a, b) {
         const dx = b[0] - a[0];
         const dy = b[1] - a[1];
@@ -2026,6 +2167,7 @@
         return quads;
       }
 
+      // 直線要素の描画(線種プリセット/波形/太さ対応)。
       function drawLineElement(g, element, stroke) {
         const points = element.points || [[0, 0], [20, 0]];
         const a = points[0];
@@ -2062,6 +2204,7 @@
         }
       }
 
+      // 円・楕円要素の描画(w≠hで楕円、塗り対応)。
       function drawCircleElement(g, element, stroke) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 18);
@@ -2077,6 +2220,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
       }
 
+      // 設備枠/場所枠(破線枠+名称帯)の描画。枠内部品への属性一括適用の対象になる。
       function drawAreaBox(g, element, stroke) {
         const w = Number(element.w || 90);
         const h = Number(element.h || 60);
@@ -2104,6 +2248,7 @@
         g.appendChild(textEl(prefix + ": " + label, 2, 4.8, { fontSize: 2.5 }));
       }
 
+      // 配線の見た目(色/太さ/破線)をwireTypes定義から解決。
       function wireStyle(element) {
         const type = (state.wireTypes || []).find(item => item.id === element.wireType) || (state.wireTypes || [])[0];
         return {
@@ -2115,6 +2260,7 @@
         };
       }
 
+      // 2点間の直交L字経路(中間点1つ)を返す。配線作図時の既定経路。
       function orthogonalPath(a, b) {
         if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
           return "M " + a[0] + " " + a[1] + " L " + b[0] + " " + b[1];
@@ -2122,21 +2268,25 @@
         return "M " + a[0] + " " + a[1] + " L " + a[0] + " " + b[1] + " L " + b[0] + " " + b[1];
       }
 
+      // L字経路の中間点。
       function pathMid(a, b) {
         return { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 };
       }
 
+      // 折れ点列→SVGパス文字列。
       function wirePath(points) {
         if (!points || points.length < 2) return "M 0 0 L 20 0";
         if (points.length === 2) return orthogonalPath(points[0], points[1]);
         return points.map((point, index) => (index ? "L " : "M ") + point[0] + " " + point[1]).join(" ");
       }
 
+      // 線番ラベルの既定位置(最長セグメント中央)を返す。
       function wireLabelPoint(points) {
         const segment = wireMidSegment(points);
         return pathMid([segment[0], segment[1]], [segment[2], segment[3]]);
       }
 
+      // 折れ点列中の最長セグメントを返す(線番配置・ギャップ既定位置用)。
       function wireMidSegment(points) {
         const segments = wireSegments({ points });
         if (!segments.length) return [0, 0, 20, 0];
@@ -2150,6 +2300,7 @@
         return segments[segments.length - 1];
       }
 
+      // 端子台のスタイル(unit/pill)・段数・端子数から node配置などの幾何情報を計算。
       function terminalStripGeometry(element) {
         const count = Math.max(1, Number(element.count || 8));
         const vertical = element.orientation === "vertical";
@@ -2183,11 +2334,13 @@
           : { x: geo.pitch * index + geo.pitch / 2, y: geo.h / 2 };
       }
 
+      // 端子台のn番端子の絶対座標(配線吸着・プラン表で使用)。
       function terminalStripNodeGlobal(element, index) {
         const node = terminalStripNodeLocal(element, index);
         return localAnchor(element, node.x, node.y);
       }
 
+      // 端子台のn番端子の表示名(prefix+開始番号、2段はprefix2/start2)。
       function terminalLabel(element, index) {
         const custom = String(element.terminalLabels || "").split(/\r?\n/);
         if (custom[index] && custom[index].trim()) return custom[index].trim();
@@ -2199,6 +2352,7 @@
         return (element.prefix || "") + String(Number(element.start || 1) + index);
       }
 
+      // 単独端子(小円/角)の描画。SYMBOL_GEO対象外の形状(square等)用フォールバック。
       function drawTerminal(g, element, stroke) {
         const label = element.label || "1";
         const w = Number(element.w || 10);
@@ -2220,6 +2374,7 @@
         g.appendChild(textEl(label, cx, cy + .12, { fontSize: 1.8, anchor: "middle" }));
       }
 
+      // 端子台の描画(ユニット列=波形破断線+端子円/旧ピル形、2段対応、ジャンパ弧つき)。
       function drawTerminalStrip(g, element, stroke) {
         const geo = terminalStripGeometry(element);
         if (geo.unit) {
@@ -2305,6 +2460,7 @@
         });
       }
 
+      // 端子1点(円/角)の描画プリミティブ。
       function drawTerminalNode(g, cx, cy, r, shape, stroke) {
         if (shape === "square") {
           g.appendChild(svgEl("rect", { x: cx - r, y: cy - r, width: r * 2, height: r * 2, class: "terminal-dot", stroke }));
@@ -2313,6 +2469,7 @@
         g.appendChild(svgEl("circle", { cx, cy, r, class: "terminal-dot", stroke }));
       }
 
+      // a/b接点の描画入口。向き(横/縦)で分岐。標準形状はSYMBOL_GEOが先に処理するためここは補助経路。
       function drawContact(g, element, closed, stroke) {
         if (element.orientation === "vertical") {
           drawVerticalContact(g, element, closed, stroke);
@@ -2321,6 +2478,7 @@
         drawHorizontalContact(g, element, closed, stroke);
       }
 
+      // 横向き接点の描画(縦バー2本+リード、bは斜線)。
       function drawHorizontalContact(g, element, closed, stroke) {
         const w = Number(element.w || 10);
         const h = Number(element.h || 7);
@@ -2339,6 +2497,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // 縦向き接点の描画。
       function drawVerticalContact(g, element, closed, stroke) {
         const w = Number(element.w || 10);
         const h = Number(element.h || 16);
@@ -2358,6 +2517,7 @@
         if (element.label) g.appendChild(textEl(element.label, -2.4, h / 2 + .8, { fontSize: 2.2, anchor: "end" }));
       }
 
+      // 接点ブロック(箱+内部接点)の描画。
       function drawContactBlock(g, element, stroke) {
         const w = Number(element.w || 14);
         const h = Number(element.h || 12);
@@ -2384,6 +2544,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.8, anchor: "middle" }));
       }
 
+      // 押しボタンの描画(標準/非常停止キノコ)。SYMBOL_GEOのフォールバック。
       function drawPushButton(g, element, stroke) {
         drawContact(g, element, false, stroke);
         const w = Number(element.w || (element.orientation === "vertical" ? 8 : 10));
@@ -2399,6 +2560,7 @@
         g.appendChild(svgEl("line", { x1: Math.max(0, cx - 4), y1: 0, x2: Math.min(w, cx + 4), y2: 0, class: "symbol-line", stroke }));
       }
 
+      // 切替スイッチの描画フォールバック。
       function drawSelectorSwitch(g, element, stroke) {
         drawContact(g, element, false, stroke);
         const w = Number(element.w || 12);
@@ -2410,6 +2572,7 @@
         if (element.label) g.appendChild(textEl(element.label, cx, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // リミットスイッチの描画フォールバック。
       function drawLimitSwitch(g, element, stroke) {
         drawContact(g, element, false, stroke);
         const w = Number(element.w || 12);
@@ -2421,6 +2584,7 @@
         if (element.label) g.appendChild(textEl(element.label, cx, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // ヒューズ(箱+貫通線)の描画。
       function drawFuse(g, element, stroke) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 4.5);
@@ -2446,6 +2610,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // 遮断器の描画フォールバック(標準形状はSYMBOL_GEO)。
       function drawBreaker(g, element, stroke) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 7);
@@ -2475,6 +2640,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // コイルの描画フォールバック(標準は無印円のSYMBOL_GEO)。
       function drawCoil(g, element, stroke) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 6);
@@ -2489,6 +2655,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // 電源(丸+極性)の描画。
       function drawPowerSupply(g, element, stroke) {
         const w = Number(element.w || 34);
         const h = Number(element.h || 24);
@@ -2498,6 +2665,7 @@
         g.appendChild(textEl(element.label || "PS", w / 2, h - 5, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // トランス(コイル2組)の描画。
       function drawTransformer(g, element, stroke) {
         const w = Number(element.w || 24);
         const h = Number(element.h || 16);
@@ -2515,6 +2683,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // 接地の描画フォールバック(標準は縦線+斜めハッチのSYMBOL_GEO)。
       function drawGround(g, element, stroke) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 14);
@@ -2526,6 +2695,7 @@
         if (element.label) g.appendChild(textEl(element.label, cx, h + 4, { fontSize: 2.3, anchor: "middle" }));
       }
 
+      // モータの描画フォールバック(標準は円内タグ+端子小円のSYMBOL_GEO)。
       function drawMotor(g, element, stroke) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 18);
@@ -2539,6 +2709,7 @@
         if (element.label) g.appendChild(textEl(element.label, cx, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // ファン(円+羽根)の描画。
       function drawFan(g, element, stroke) {
         const w = Number(element.w || 16);
         const h = Number(element.h || 16);
@@ -2554,6 +2725,7 @@
         if (element.label) g.appendChild(textEl(element.label, cx, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // 抵抗(箱形)の描画フォールバック(標準/バリスタはSYMBOL_GEO)。
       function drawResistor(g, element, stroke) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 6);
@@ -2565,6 +2737,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // コンデンサ(平行2線)の描画。
       function drawCapacitor(g, element, stroke) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 7);
@@ -2578,6 +2751,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // ダイオード(三角+バー)の描画。
       function drawDiode(g, element, stroke) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 10);
@@ -2590,6 +2764,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // サーマルリレーの描画フォールバック(標準は○✕○のSYMBOL_GEO)。
       function drawThermalRelay(g, element, stroke) {
         drawHorizontalContact(g, element, false, stroke);
         const w = Number(element.w || 12);
@@ -2599,6 +2774,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // 表示灯の描画。丸形パイロットはSYMBOL_GEO、筒形はdrawCylinderLamp()。
       function drawLamp(g, element, stroke) {
         const w = Number(element.w || 10);
         const h = Number(element.h || 10);
@@ -2616,6 +2792,7 @@
         if (element.label) g.appendChild(textEl(element.label, cx, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // 筒形表示灯(角胴+口金)の描画。
       function drawCylinderLamp(g, element, stroke, w, h) {
         const cy = h / 2;
         const bodyX = Math.max(3.5, w * .3);
@@ -2629,6 +2806,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // ブザーの描画(ホーン形)。スピーカー形はdrawSpeakerBuzzer()。
       function drawBuzzer(g, element, stroke) {
         const w = Number(element.w || 14);
         const h = Number(element.h || 9);
@@ -2647,6 +2825,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // スピーカー形ブザーの描画。
       function drawSpeakerBuzzer(g, element, stroke, w, h) {
         const cy = h / 2;
         g.appendChild(svgEl("path", { d: "M 0 " + cy + " H " + (w * .24) + " L " + (w * .62) + " 2.2 V " + (h - 2.2) + " L " + (w * .24) + " " + cy, class: "symbol-line", stroke }));
@@ -2655,6 +2834,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
+      // 電磁弁(箱+ばね/コイル)の描画。
       function drawSolenoidValve(g, element, stroke) {
         const w = Number(element.w || 26);
         const h = Number(element.h || 16);
@@ -2670,6 +2850,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // センサ(丸+リード)の描画。
       function drawSensor(g, element, stroke) {
         const w = Number(element.w || 24);
         const h = Number(element.h || 14);
@@ -2683,6 +2864,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // 機器箱(汎用ボックス)の描画。pins/pinText/rightPinTextで左右の端子番号文字を表示。
       function drawDeviceBox(g, element, stroke) {
         const w = Number(element.w || 28);
         const h = Number(element.h || 20);
@@ -2702,6 +2884,7 @@
         }
       }
 
+      // PLCブロックの描画。plcStyle=unitはdrawPlcUnitColumn(ユニット列)、boxは端子文字つき箱。
       function drawPlcBlock(g, element, stroke) {
         if ((element.plcStyle || "grid") === "unit") {
           drawPlcUnitColumn(g, element, stroke);
@@ -2721,6 +2904,7 @@
         }
       }
 
+      // コネクタの描画(pair形状はSYMBOL_GEO、その他はここ)。
       function drawConnector(g, element, stroke) {
         const count = Math.max(1, Number(element.count || 8));
         const vertical = element.orientation === "vertical";
@@ -2748,6 +2932,7 @@
         }
       }
 
+      // ケーブルマーカ(小判形ラベル)の描画。
       function drawCableMarker(g, element, stroke) {
         const w = Number(element.w || 28);
         const h = Number(element.h || 12);
@@ -2756,6 +2941,7 @@
         g.appendChild(textEl(element.label || "C", w / 2, h / 2, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // ケーブル束(束線+結束マーク)の描画。
       function drawCableBundle(g, element, stroke) {
         const w = Number(element.w || 32);
         const h = Number(element.h || 18);
@@ -2771,6 +2957,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
+      // 端子箱(箱+端子行)の描画。
       function drawTerminalBox(g, element, stroke) {
         const w = Number(element.w || 22);
         const h = Number(element.h || 18);
@@ -2787,6 +2974,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, h + 4, { fontSize: 2.2, anchor: "middle" }));
       }
 
+      // 表の描画。colWidths/rowHeights(カンマ区切り比率)、cellText(タブ区切り)、斜線セル対応。
       function drawTable(g, element, stroke) {
         const rows = Math.max(1, Number(element.rows || 6));
         const cols = Math.max(1, Number(element.cols || 4));
@@ -2821,6 +3009,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -4, { fontSize: 2.5, anchor: "middle" }));
       }
 
+      // 表の列幅/行高の比率文字列を実寸配列へ変換(不足分は等分)。
       function tableSizes(value, count, total) {
         const values = String(value || "").split(/[,\s]+/).map(Number).filter(number => Number.isFinite(number) && number > 0);
         if (values.length !== count) return Array.from({ length: count }, () => total / count);
@@ -2829,6 +3018,7 @@
         return values.map(number => total * number / sum);
       }
 
+      // 表のセル文字と斜線セルを描画。
       function drawTableCells(g, element, rows, cols, colWidths, rowHeights) {
         const text = String(element.cellText || "");
         if (!text.trim()) return;
@@ -2846,10 +3036,12 @@
         });
       }
 
+      // 信号矢印の矢頭形状(開き/塗り/フォーク/シェブロン)の定義を返す。
       function arrowHeadSpec(style) {
         return { open: [3, .35], solid: [3.4, .26], fork: [3.2, .44], chevron: [2.2, .49] }[style] || [3, .35];
       }
 
+      // 信号矢印の描画(始点側矢頭・ラベル・相手頁注記arrowCounterpartNote対応)。
       function drawArrow(g, element, stroke) {
         const points = element.points || [[element.x || 0, element.y || 0], [(element.x || 0) + 30, element.y || 0]];
         const a = points[0];
@@ -2882,6 +3074,7 @@
         }
       }
 
+      // 接続点(塗り小円)の描画。ネット結合の見た目でもある。
       function drawJunction(g, element, stroke) {
         g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: Number(element.r || 0.75), fill: stroke }));
       }
@@ -2929,22 +3122,26 @@
       // ===== ラダー行グリッドと行アドレス(頁番号+行番号2桁) =====
       const LADDER_GRID = { top: 27, pitch: 9.5, rows: 20 };
 
+      // y座標→最寄りの行番号(00-20)。
       function ladderRowAt(y) {
         const row = Math.round((y - LADDER_GRID.top) / LADDER_GRID.pitch);
         return Math.max(0, Math.min(LADDER_GRID.rows, row));
       }
 
+      // 要素の代表y→行番号。クロス参照のアドレス計算に使用。
       function elementLadderRow(element) {
         const box = elementBounds(element);
         if (!box) return 0;
         return ladderRowAt(box.y + box.h / 2);
       }
 
+      // ページのシート番号(表題欄page値または並び順)。
       function pageSheetNumber(page) {
         const n = Number(page.title?.page);
         return Number.isFinite(n) && n > 0 ? n : state.pages.indexOf(page) + 1;
       }
 
+      // クロス参照アドレス文字列 = シート番号+行番号2桁(例: 頁2行05→"205")。
       function elementAddress(page, element) {
         return String(pageSheetNumber(page)) + String(elementLadderRow(element)).padStart(2, "0");
       }
@@ -2952,14 +3149,18 @@
       // ===== コイル↔接点クロスリファレンス =====
       let crossRefCache = null;
 
+      // クロス参照で「親(コイル)」として扱う種別集合。
       function coilTypes() {
         return new Set(["coil"]);
       }
 
+      // クロス参照で「子(接点)」として扱う種別集合。
       function contactChildTypes() {
         return new Set(["contactNO", "contactNC", "contactBlock", "thermalRelay"]);
       }
 
+      // 全ページを走査してタグ→コイル/接点の対応表を構築(1 render中は使い回すキャッシュ)。
+      // 接点下の自動参照番号・図枠クロス参照表・監査(コイル/接点ルール)が共用する。
       function buildCrossRefCache() {
         const coils = new Map();
         const contacts = new Map();
@@ -2984,11 +3185,13 @@
         return { coils, contacts };
       }
 
+      // クロス参照キャッシュを取得(未構築なら構築)。render()冒頭でnull化される。
       function crossRefData() {
         if (!crossRefCache) crossRefCache = buildCrossRefCache();
         return crossRefCache;
       }
 
+      // 接点に表示する親コイルのアドレス(手動refNoが優先、無ければキャッシュから自動)。
       function contactAutoRefNo(element) {
         if (element.refNo) return String(element.refNo);
         const tag = componentTag(element);
@@ -3296,6 +3499,8 @@
         }
       };
 
+      // 要素→SYMBOL_GEOキーの解決。ここでnull以外を返す種別は設備標準の固定形状で描かれ、
+      // 角ハンドルでのリサイズ対象外になる(canResizeElement参照)。バリエーション(筒形ランプ等)はnull。
       function geoKeyFor(element) {
         switch (element.type) {
           case "contactNO": return "contactNO";
@@ -3321,11 +3526,13 @@
         }
       }
 
+      // 要素に対応するSYMBOL_GEO定義(無ければnull)。
       function geoFor(element) {
         const key = geoKeyFor(element);
         return key ? SYMBOL_GEO[key] || null : null;
       }
 
+      // geoシンボルの本体寸法(縦向きは幅高を入替)。
       function geoBodySize(element) {
         const geo = geoFor(element);
         if (!geo) return null;
@@ -3333,6 +3540,8 @@
         return { w: vertical ? geo.h : geo.w, h: vertical ? geo.w : geo.h };
       }
 
+      // geo定義のローカル座標→要素ローカル座標への変換。縦向きは90度回転し、
+      // 要素枠(w/h)が本体より大きい場合は中央寄せする(旧データ互換のため)。
       function geoMapPoint(geo, element, x, y) {
         const vertical = element.orientation === "vertical";
         const bw = vertical ? geo.h : geo.w;
@@ -3343,6 +3552,7 @@
         return [x + ox, y + oy];
       }
 
+      // geo定義のプリミティブ列(line/pline/rect/circle/arc/text)を要素ローカル座標へ展開。
       function geoPrims(element) {
         const geo = geoFor(element);
         if (!geo) return [];
@@ -3377,6 +3587,7 @@
         });
       }
 
+      // geoのtextプリミティブのfield指定(label/refNo/descLine/catalog/lampColor)を実値へ解決。
       function geoTextValue(element, prim) {
         if (prim.field === "refNo" && contactChildTypes().has(element.type)) {
           return contactAutoRefNo(element);
@@ -3391,6 +3602,7 @@
         return prim.value === undefined ? "" : String(prim.value);
       }
 
+      // 中心・半径・開始/終了角(度, スクリーン座標系, 時計回り)からSVG円弧パスを生成。DXF側はdxfArcLocalが同じ角度規約。
       function svgArcPath(cx, cy, r, a0, a1) {
         const rad = d => d * Math.PI / 180;
         const x0 = cx + r * Math.cos(rad(a0));
@@ -3401,6 +3613,7 @@
         return "M " + round(x0) + " " + round(y0) + " A " + r + " " + r + " 0 " + large + " 1 " + round(x1) + " " + round(y1);
       }
 
+      // SYMBOL_GEO定義による描画。対応要素ならgへ描いてtrue、対象外ならfalseを返す。
       function drawGeoSymbol(g, element, stroke) {
         const geo = geoFor(element);
         if (!geo) return false;
@@ -3424,6 +3637,7 @@
         return true;
       }
 
+      // SYMBOL_GEO定義によるDXF出力(SVGと同一のプリミティブ列から生成=見た目の単一定義)。
       function dxfGeoSymbol(out, page, element) {
         const geo = geoFor(element);
         if (!geo) return false;
@@ -3452,6 +3666,7 @@
         return true;
       }
 
+      // ARCエンティティ出力。スクリーン角(時計回り)→CAD角(反時計回り)へ変換(start=-a1, end=-a0)。
       function dxfArcLocal(out, page, layer, element, cx, cy, r, a0, a1) {
         const c = localPoint(element, cx, cy);
         const rot = Number(element.rotation || 0);
@@ -3460,6 +3675,7 @@
         out.push("0", "ARC", "8", layer, "10", round(c[0]), "20", round(cadY(page, c[1])), "40", round(r), "50", round(s), "51", round(e));
       }
 
+      // 2次ベジェを8分割の折れ線でDXF近似出力。
       function dxfQuadApproxLocal(out, page, layer, element, x0, y0, cx, cy, x1, y1) {
         const steps = 8;
         let prev = [x0, y0];
@@ -3473,10 +3689,12 @@
         }
       }
 
+      // 回転角つきTEXTエンティティ出力。
       function dxfTextRotated(out, page, layer, x, y, size, text, angle) {
         out.push("0", "TEXT", "8", layer, "10", round(x), "20", round(cadY(page, y)), "40", round(size), "1", String(text || ""), "50", String(angle));
       }
 
+      // geoシンボルの接続点(配線吸着点)一覧。geo定義のanchors配列をローカル→絶対座標へ変換。
       function geoAnchors(element) {
         const geo = geoFor(element);
         if (!geo) return null;
@@ -3486,6 +3704,7 @@
         });
       }
 
+      // geoシンボルの向き変更時にw/hを本体寸法へ合わせ直す。
       function resizeGeoElementForOrientation(element) {
         const size = geoBodySize(element);
         if (!size) return false;
@@ -3534,6 +3753,7 @@
         return match ? { prefix: match[1], digits: match[2] } : null;
       }
 
+      // 開始アドレス(例X000)から16進連番でn個のアドレス配列を生成。
       function plcAddressSequence(start, count) {
         const parts = splitPlcAddress(start);
         if (!parts) return Array.from({ length: count }, (_, i) => String(start) + i);
@@ -3563,6 +3783,7 @@
         return [[0, y], [1.8, y - 1.6], [3.6, y - 1.6], [w / 2, y], [w / 2 + 1.65, y + 1.6], [w - 1.8, y + 1.6], [w, y]];
       }
 
+      // PLCユニット列(縦カラム+上下波形破断線+アドレス円)の描画。行ピッチ9.5mm固定。
       function drawPlcUnitColumn(g, element, stroke) {
         const rows = Math.max(1, Number(element.rows || 8));
         const w = 10.5;
@@ -3583,6 +3804,7 @@
         if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
       }
 
+      // 選択枠・リサイズハンドル・点編集ハンドルの描画(選択中のみ)。
       function drawSelection(svg) {
         const selected = selectedElements();
         const boxes = selected.map(elementBounds).filter(Boolean);
@@ -3629,10 +3851,12 @@
         }
       }
 
+      // 角ハンドルリサイズ可否。points系/接続点/geoシンボル(固定形状)は不可。
       function canResizeElement(element) {
         return !!element && !element.points && element.type !== "junction" && !geoFor(element);
       }
 
+      // ドラッグ範囲選択の矩形を描画。
       function drawMarquee(svg) {
         if (!dragState || dragState.mode !== "marquee") return;
         const rect = normalizedRect(dragState.start, dragState.current || dragState.start);
@@ -3646,6 +3870,7 @@
         }));
       }
 
+      // 2点から正規化矩形{x,y,w,h}を作る。
       function normalizedRect(a, b) {
         const x1 = Math.min(a.x, b.x);
         const y1 = Math.min(a.y, b.y);
@@ -3654,10 +3879,12 @@
         return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
       }
 
+      // 矩形同士の交差判定。
       function boundsIntersect(a, b) {
         return a.x <= b.x + b.w && a.x + a.w >= b.x && a.y <= b.y + b.h && a.y + a.h >= b.y;
       }
 
+      // 複数矩形の外接矩形。
       function unionBounds(boxes) {
         const minX = Math.min(...boxes.map(box => box.x));
         const minY = Math.min(...boxes.map(box => box.y));
@@ -3666,6 +3893,7 @@
         return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
       }
 
+      // 要素の外接矩形(mm)。points系は点列から、その他はx/y/w/h(既定値で補完)。
       function elementBounds(element) {
         if (element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "mechanicalLink" || element.type === "dimension") {
           const points = element.points || [[0, 0], [0, 0]];
@@ -3684,21 +3912,25 @@
         return { x: Number(element.x || 0), y: Number(element.y || 0), w, h };
       }
 
+      // 選択IDリストを更新(先頭が主選択selectedId)。
       function setSelection(ids) {
         selectedIds = Array.from(new Set(ids.filter(Boolean)));
         selectedId = selectedIds.length ? selectedIds[0] : null;
       }
 
+      // 単一選択に置き換え。
       function selectSingle(id) {
         setSelection(id ? [id] : []);
       }
 
+      // Shiftクリック用の選択トグル。
       function toggleSelection(id) {
         if (!id) return;
         if (selectedIds.includes(id)) setSelection(selectedIds.filter(item => item !== id));
         else setSelection([...selectedIds, id]);
       }
 
+      // 選択中の要素オブジェクト配列(現在ページ内)。
       function selectedElements() {
         const page = currentPage();
         if (!page) return [];
@@ -3706,10 +3938,12 @@
         return ids.map(id => page.elements.find(element => element.id === id)).filter(Boolean);
       }
 
+      // 主選択の要素(なければnull)。
       function selectedElement() {
         return selectedElements()[0] || null;
       }
 
+      // 右パネル全体(ページ設定+選択パネル)を現在stateへ同期。
       function syncInspector() {
         const page = currentPage();
         if (!page) return;
@@ -3741,6 +3975,7 @@
         renderSelectionPanel();
       }
 
+      // ズーム倍率を許容範囲へ丸める。
       function clampZoom(value) {
         const input = qs("#zoomRange");
         const min = Number(input?.min || .8);
@@ -3749,6 +3984,7 @@
         return Math.max(min, Math.min(max, Number.isFinite(zoom) ? zoom : 3.2));
       }
 
+      // ズーム設定+再描画(save=trueで履歴にも記録)。
       function setZoom(value, save = false) {
         state.settings.zoom = clampZoom(value);
         setValue("zoomRange", state.settings.zoom);
@@ -3756,6 +3992,7 @@
         render();
       }
 
+      // 標準セレクタの選択肢を構築(組込+取込済み標準パック)。
       function renderStandardSelect() {
         const select = qs("#drawingStandard");
         if (!select) return;
@@ -3764,6 +4001,7 @@
         if (select.innerHTML !== html) select.innerHTML = html;
       }
 
+      // 配線種別セレクタを構築。
       function renderWireTypeSelect() {
         const select = qs("#currentWireType");
         if (!select) return;
@@ -3771,6 +4009,7 @@
         if (select.innerHTML !== html) select.innerHTML = html;
       }
 
+      // 作図レイヤセレクタを構築。
       function renderLayerSelect() {
         const select = qs("#currentLayer");
         if (!select) return;
@@ -3778,11 +4017,14 @@
         if (select.innerHTML !== html) select.innerHTML = html;
       }
 
+      // input/selectへ値を設定(フォーカス中は上書きしない)。
       function setValue(id, value) {
         const el = qs("#" + id);
         if (el && el.value !== String(value ?? "")) el.value = value ?? "";
       }
 
+      // 右パネル下部「選択中の要素」を構築。共通(位置寸法)+種別固有(specificFields)+電気属性+
+      // スタイル/メモのアコーディオンで構成。入力はdata-bind属性経由でupdateSelectedFromInputへ流れる。
       function renderSelectionPanel() {
         const panel = qs("#selectionPanel");
         const selected = selectedElements();
@@ -3981,6 +4223,7 @@
         qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
       }
 
+      // 選択パネル内の操作ボタン群(複製/削除/回転/整列/グループ等)へハンドラを付ける。
       function attachSelectionActionButtons(panel) {
         qs("#copyElementBtn", panel)?.addEventListener("click", copySelected);
         qs("#pasteElementBtn", panel)?.addEventListener("click", pasteClipboard);
@@ -4004,10 +4247,12 @@
         });
       }
 
+      // レイヤ選択肢のHTMLを生成。
       function layerOptions(current) {
         return (state.layers || []).map(layer => `<option value="${escapeAttr(layer.id)}"${current === layer.id ? " selected" : ""}>${escapeHtml(layer.label)}</option>`).join("");
       }
 
+      // 要素種別→日本語表示名(PALETTE定義から)。
       function paletteLabel(type) {
         if (String(type).startsWith("custom:")) {
           const id = String(type).slice("custom:".length);
@@ -4017,6 +4262,7 @@
         return (PALETTE.find(item => item.type === type) || { label: type }).label;
       }
 
+      // 位置・寸法など全要素共通の編集フィールド定義。
       function normalFields(element) {
         return `
           <div class="row">
@@ -4032,6 +4278,7 @@
         `;
       }
 
+      // 配線専用フィールド(線番/種別/ギャップ/FROM/TO等)。
       function wireFields(element) {
         const points = element.points || [[0, 0], [20, 0]];
         const options = (state.wireTypes || []).map(type => `<option value="${escapeAttr(type.id)}"${element.wireType === type.id ? " selected" : ""}>${escapeHtml(type.label)}</option>`).join("");
@@ -4050,6 +4297,7 @@
         `;
       }
 
+      // ラベル/文字系フィールド。
       function labelFields(element) {
         if (element.type === "text") {
           return `
@@ -4095,6 +4343,7 @@
         `;
       }
 
+      // 種別固有の編集フィールド(接点方向、端子台段数、表の行列、下絵クロップ等)を返す大型分岐。
       function specificFields(element) {
         if (element.type === "wire") {
           const pointCount = element.points?.length || 2;
@@ -4436,11 +4685,13 @@
         return "";
       }
 
+      // 信号矢印の役割(発信/受信)表示名。
       function signalRoleLabel(role) {
         const labels = { source: "発信元", destination: "受信先", reference: "参照" };
         return labels[role || "reference"] || labels.reference;
       }
 
+      // 電気属性(タグ/説明/設備/場所/メーカー/品番/定格/項目)の編集フィールド定義。
       function electricalAttributeFields(element) {
         if (!supportsElectricalAttributes(element)) return "";
         return `
@@ -4473,6 +4724,7 @@
         `;
       }
 
+      // 属性の図面表示ON/OFFと位置・サイズ調整UIの定義。
       function attributeDisplayControls(element) {
         const defaults = attributeDisplayDefaults(element);
         const checkboxes = ATTRIBUTE_DISPLAY_FIELDS.map(field => `<label><input data-bind="${escapeAttr(field.prop)}" type="checkbox" ${element[field.prop] ? "checked" : ""} style="width:auto;min-height:auto"> ${escapeHtml(field.label)}</label>`);
@@ -4492,6 +4744,7 @@
         `;
       }
 
+      // 属性表示の既定(表示項目・位置)。
       function attributeDisplayDefaults(element) {
         const w = Number(element.w || defaultElement(element.type).w || 18);
         const h = Number(element.h || defaultElement(element.type).h || 10);
@@ -4502,11 +4755,13 @@
         };
       }
 
+      // 電気属性を持てる種別か(帳票・カタログ・タグ採番の対象判定)。
       function supportsElectricalAttributes(element) {
         if (!element) return false;
         return !["text", "wire", "line", "rect", "circle", "underlayImage", "installationBox", "locationBox", "table", "arrow", "junction", "positionMark", "polarityMark", "mechanicalLink", "dimension"].includes(element.type);
       }
 
+      // 右パネル入力→選択要素への反映(data-bindのキーで分岐)。save=trueで履歴記録。
       function updateSelectedFromInput(input, save = true) {
         const element = selectedElement();
         if (!element) return;
@@ -4548,6 +4803,7 @@
         render();
       }
 
+      // 接点の向き変更時にw/hを入れ替える(旧経路互換)。
       function resizeContactElementForOrientation(element) {
         if (element.orientation === "vertical") {
           element.w = 10;
@@ -4558,6 +4814,7 @@
         element.h = element.type === "pushButton" ? 12 : 10;
       }
 
+      // 保護素子(ヒューズ等)の向き変更時の寸法調整。
       function resizeProtectiveElementForOrientation(element) {
         if (element.type === "fuse") {
           element.w = element.orientation === "vertical" ? 4.5 : 12;
@@ -4570,6 +4827,7 @@
         }
       }
 
+      // 端子台の向き変更時の寸法調整。
       function resizeTerminalElementForOrientation(element) {
         const count = Math.max(1, Number(element.count || 8));
         if (element.type === "terminalStrip" && element.stripStyle === "unit" && element.orientation === "vertical") {
@@ -4587,6 +4845,7 @@
         }
       }
 
+      // 単独端子の向き変更時の寸法調整。
       function resizeSingleTerminalForOrientation(element) {
         if (element.orientation === "vertical") {
           element.w = 6;
@@ -4597,18 +4856,22 @@
         element.h = 6;
       }
 
+      // HTML特殊文字のエスケープ(ダイアログ組み立て用)。
       function escapeHtml(text) {
         return String(text).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
       }
 
+      // 属性値用エスケープ(escapeHtml+引用符)。
       function escapeAttr(text) {
         return escapeHtml(text).replace(/\n/g, " ");
       }
 
+      // mm座標を0.01mm精度へ丸める(座標比較の安定化)。
       function round(value) {
         return Math.round(Number(value || 0) * 100) / 100;
       }
 
+      // 種別ごとの新規要素の既定値(寸法・ラベル・レイヤ)。新種別はここへ追加する。
       function defaultElement(type, x = 30, y = 30) {
         const base = { id: uid("el"), type, x, y, rotation: 0, stroke: state.settings.stroke, layer: defaultLayerFor(type) };
         const defaults = {
@@ -4664,6 +4927,7 @@
         return deepClone(defaults[type] || defaults.deviceBox);
       }
 
+      // 種別→既定レイヤ(settings.currentLayerを優先しつつ推定)。
       function defaultLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
@@ -4672,6 +4936,7 @@
         return state.settings.currentLayer || "symbols";
       }
 
+      // 種別→推定レイヤ(配線=wires、注記=notes等)。
       function inferredLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
@@ -4680,6 +4945,7 @@
         return "symbols";
       }
 
+      // ポインタイベント→用紙mm座標へ変換(getScreenCTMの逆行列)。raw指定でスナップなしの生座標。
       function canvasPoint(event, options = {}) {
         const svg = qs("#canvas");
         const point = svg.createSVGPoint();
@@ -4690,12 +4956,15 @@
         return snapPoint(transformed.x, transformed.y, options);
       }
 
+      // 1値をグリッドへスナップ(設定OFF時は素通し)。
       function snap(value) {
         if (!state.settings.snap) return value;
         const grid = Number(state.settings.grid || 2.5);
         return Math.round(value / grid) * grid;
       }
 
+      // 座標スナップの本体。優先順: 接続点/端点吸着(objectSnap) → 設備標準ページの行磁気(9.5mmピッチ) → グリッド。
+      // optionsで接続点限定(connectionOnly)などを制御。
       function snapPoint(x, y, options = {}) {
         const gridPoint = { x: snap(x), y: snap(y) };
         const activePage = currentPage();
@@ -4716,10 +4985,12 @@
         return segmentSnap || gridPoint;
       }
 
+      // 選択中ID集合をSetで返す(スナップ除外などの下請け)。
       function currentSelectionIdSet() {
         return new Set(selectedIds.length ? selectedIds : (selectedId ? [selectedId] : []));
       }
 
+      // 端点スナップ候補(配線端点・図形角など)を収集。excludeIdsは除外(自分自身への吸着防止)。
       function collectSnapAnchors(page, excludeIds = new Set()) {
         if (!page) return [];
         const anchors = collectConnectionAnchors(page, excludeIds);
@@ -4738,6 +5009,7 @@
         return anchors;
       }
 
+      // 接続点スナップ候補(端子・シンボル接続点・端子台ノード)を収集。
       function collectConnectionAnchors(page, excludeIds = new Set()) {
         if (!page) return [];
         const anchors = [];
@@ -4764,6 +5036,7 @@
         return anchors;
       }
 
+      // 候補点群から半径内で最も近い1点を返す。
       function closestAnchor(anchors, x, y, radius = SNAP_RADIUS_MM) {
         let best = null;
         anchors.forEach(anchor => {
@@ -4773,6 +5046,7 @@
         return best;
       }
 
+      // 既存配線セグメント上への吸着点(垂線の足)を探す。
       function closestSegmentSnapPoint(page, x, y, activeIds = new Set(selectedIds.length ? selectedIds : (selectedId ? [selectedId] : []))) {
         if (!page) return null;
         let best = null;
@@ -4789,6 +5063,7 @@
         return best ? { x: round(best.x), y: round(best.y) } : null;
       }
 
+      // 点→線分への最近点を計算。
       function closestPointOnSegment(x, y, segment) {
         const [x1, y1, x2, y2] = segment;
         const dx = x2 - x1;
@@ -4799,6 +5074,7 @@
         return { x: x1 + dx * t, y: y1 + dy * t };
       }
 
+      // 要素種別ごとの接続点(配線が刺さる点)一覧。geoシンボルはgeoAnchors()を使用。
       function elementConnectionAnchors(element) {
         const fromGeo = geoAnchors(element);
         if (fromGeo) return fromGeo;
@@ -4877,6 +5153,7 @@
         return anchors;
       }
 
+      // 要素ローカル座標の接続点→絶対座標(回転考慮)。
       function localAnchor(element, x, y) {
         const angle = Number(element.rotation || 0) * Math.PI / 180;
         return {
@@ -4885,6 +5162,7 @@
         };
       }
 
+      // クリック点を中心に配置する種別集合(インライン部品など)。
       function centerPlacedTypes() {
         return new Set([
           "terminal",
@@ -4914,6 +5192,7 @@
         ]);
       }
 
+      // 既存配線上へ置いた時に配線を自動分割する種別集合。
       function wireBreakingTypes() {
         return new Set([
           "contactNO",
@@ -4939,6 +5218,7 @@
         ]);
       }
 
+      // 配置時の新規要素を生成(中心合わせ・向き自動判定込み)。
       function defaultElementAtPlacement(type, x, y) {
         const element = defaultElement(type, x, y);
         autoOrientElementForPlacement(element, x, y);
@@ -4955,6 +5235,7 @@
         return element;
       }
 
+      // 配置先の近傍配線の向きから要素の縦横を自動決定。
       function autoOrientElementForPlacement(element, x, y) {
         if (!["fuse", "breaker", "resistor"].includes(element.type)) return;
         const segment = closestAxisSegment(currentPage(), x, y);
@@ -4963,6 +5244,7 @@
         if (!resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
       }
 
+      // 配置点近傍の水平/垂直配線セグメントを探す(向き自動判定の下請け)。
       function closestAxisSegment(page, x, y) {
         if (!page) return null;
         let best = null;
@@ -4981,6 +5263,7 @@
         return best;
       }
 
+      // パレット種別を用紙へ配置する入口。配線分割・スナップ・履歴記録まで行う。
       function placeElement(type, x, y) {
         const page = currentPage();
         if (!page) return;
@@ -5003,6 +5286,7 @@
         render();
       }
 
+      // インライン部品の左右端子位置で既存配線を2本へ分割(部品を線が貫通しないように)。
       function breakWiresForInlineElement(page, element) {
         if (!page || !element || !wireBreakingTypes().has(element.type)) return;
         const anchors = elementConnectionAnchors(element);
@@ -5060,6 +5344,7 @@
         if (changed) page.elements = replacement;
       }
 
+      // ユーザー部品(単品/回路スニペット)を配置。テンプレート列を相対座標のままオフセット展開。
       function placeCustomSymbol(id, x, y) {
         const symbol = (state.customSymbols || []).find(item => item.id === id);
         const page = currentPage();
@@ -5084,6 +5369,7 @@
         render();
       }
 
+      // 端子配線セット(既定値)を現在ページへ配置。
       function addTerminalSheet(page, x, y) {
         addReferenceTerminalWiringSet(page, x, y, {
           title: "",
@@ -5094,6 +5380,7 @@
         setSelection([]);
       }
 
+      // 端子配線セットの本体生成(横配線+端子小円+ユニット列端子台、線番は終点寄せ)。
       function addReferenceTerminalWiringSet(page, x, y, options = {}) {
         // 端子台配線図の型:
         // 左から横配線 → 端子小円 → ユニット列端子台(波形破断線+端子円)、線番は終点寄せ表示
@@ -5134,6 +5421,7 @@
         }
       }
 
+      // 端子配線セット用の端子台要素を生成。
       function referenceTerminalStrip(x, y, w, h, count, start, label, orientation = "horizontal") {
         return {
           ...defaultElement("terminalStrip", x, y),
@@ -5152,6 +5440,7 @@
         };
       }
 
+      // 横向き端子1個を生成。
       function horizontalTerminalAt(cx, cy, label, shape = "square") {
         const w = 9;
         const h = 6;
@@ -5169,6 +5458,7 @@
         };
       }
 
+      // 縦向き端子1個を生成。
       function verticalTerminalAt(cx, cy, label, shape = "square") {
         const w = 6;
         const h = 10;
@@ -5186,6 +5476,7 @@
         };
       }
 
+      // 文字要素を生成(座標・サイズ・回転・幅)。テンプレート生成系で多用。
       function textElement(x, y, text, fontSize = 2.4, rotation = 0, w = 24) {
         return {
           id: uid("el"),
@@ -5202,6 +5493,7 @@
         };
       }
 
+      // アクティブツール切替(select/wire/種別名/custom:id)。パレットの強調表示も更新。
       function setActiveTool(tool) {
         activeTool = tool;
         qsa("[data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === tool));
@@ -5210,6 +5502,7 @@
         setStatus(tool === "select" ? "選択ツールです。" : paletteLabel(tool) + "を配置できます。");
       }
 
+      // 配置モードを抜けて選択ツールへ戻る(Escや配置完了時)。
       function cancelPlacementMode(clearSelection = false) {
         activeTool = "select";
         if (clearSelection) setSelection([]);
@@ -5218,6 +5511,7 @@
         setStatus("選択ツールです。");
       }
 
+      // 標準プリセット/標準パックを適用(グリッド・線番書式など)。
       function applyStandard(id) {
         const pack = (state.standardPacks || []).find(item => item.id === id);
         if (pack) {
@@ -5235,6 +5529,7 @@
         if (page && !page.frameVariant) page.frameVariant = standard.frameVariant;
       }
 
+      // 用紙全体が収まるようズームを自動調整。
       function fitPageToWorkspace() {
         const page = currentPage();
         if (!page) return;
@@ -5247,6 +5542,7 @@
         render();
       }
 
+      // 空ページを追加してアクティブ化。
       function addPage() {
         const base = currentPage();
         const page = createPage({
@@ -5262,6 +5558,7 @@
         render();
       }
 
+      // 現在ページを複製(要素IDは振り直し)。
       function duplicatePage() {
         const page = currentPage();
         if (!page) return;
@@ -5276,6 +5573,7 @@
         render();
       }
 
+      // 現在ページを削除(最後の1枚は不可)。
       function deletePage() {
         if (state.pages.length <= 1) {
           setStatus("最後の1ページは削除できません。");
@@ -5289,6 +5587,7 @@
         render();
       }
 
+      // 現在ページを前後へ並び替え。
       function movePage(delta) {
         const index = state.pages.findIndex(page => page.id === state.activePageId);
         const next = index + delta;
@@ -5302,6 +5601,7 @@
         render();
       }
 
+      // 端子接続図ページ(端子配線セット入り)をテンプレートとして追加。
       function addSampleTerminalPage() {
         const page = createPage({
           name: "端子接続図" + (state.pages.length + 1),
@@ -5330,6 +5630,7 @@
         render();
       }
 
+      // 端子CSV/TSVを読み込み、端子接続図ページ群を生成する入口。
       function importTerminalCsvFile(file) {
         const reader = new FileReader();
         reader.addEventListener("load", () => {
@@ -5349,6 +5650,7 @@
         reader.readAsArrayBuffer(file);
       }
 
+      // PLC I/O CSV/TSVを読み込み、PLC接続図ページ群を生成する入口。
       function importPlcCsvFile(file) {
         const reader = new FileReader();
         reader.addEventListener("load", () => {
@@ -5368,23 +5670,25 @@
         reader.readAsArrayBuffer(file);
       }
 
+      // CSVバイト列をUTF-8/Shift_JIS判定つきで文字列化。
       function decodeTextBuffer(buffer) {
         const bytes = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).buffer;
         const candidates = [];
         try {
           candidates.push(new TextDecoder("utf-8").decode(bytes));
         } catch (_) {
-          // TextDecoder can fail on older browsers.
+          // 旧ブラウザではTextDecoderが失敗することがある。
         }
         try {
           candidates.push(new TextDecoder("shift_jis").decode(bytes));
         } catch (_) {
-          // Shift_JIS is optional in some environments.
+          // 環境によってはShift_JISデコーダが無いことがある。
         }
         if (!candidates.length) return "";
         return candidates.sort((a, b) => textDecodeScore(b) - textDecodeScore(a))[0].replace(/^\uFEFF/, "");
       }
 
+      // デコード結果の妥当性スコア(文字化け判定)。
       function textDecodeScore(text) {
         const bad = (text.match(/\uFFFD/g) || []).length * 20;
         const japanese = (text.match(/[ぁ-んァ-ン一-龠]/g) || []).length;
@@ -5392,6 +5696,7 @@
         return japanese * 3 + ascii - bad;
       }
 
+      // CSV/TSVパーサ(引用符・改行対応、区切りはタブ/カンマ自動判定)。
       function parseDelimitedRows(text) {
         const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
         const sample = source.split("\n").slice(0, 5).join("\n");
@@ -5433,6 +5738,7 @@
         return rows.map(cells => cells.map(cell => cell.trim())).filter(cells => cells.some(Boolean));
       }
 
+      // 端子CSVの見出し(和英エイリアス対応)を正規化して行オブジェクト化。
       function normalizeTerminalCsvRows(rows) {
         if (!rows.length) return [];
         const aliases = {
@@ -5463,6 +5769,7 @@
         }).filter(row => row.terminal || row.wireNo || row.signal || row.dest || row.note);
       }
 
+      // PLC CSVの見出しを正規化して行オブジェクト化。
       function normalizePlcCsvRows(rows) {
         if (!rows.length) return [];
         const aliases = {
@@ -5492,21 +5799,25 @@
         }).filter(row => row.address || row.signal || row.wireNo || row.device || row.note);
       }
 
+      // 入出力表記(in/out/入力/出力)をinput/outputへ正規化。
       function normalizeIoDirection(text) {
         const value = normalizeHeader(text);
         if (value.startsWith("o") || value.includes("out") || value.includes("出力")) return "output";
         return "input";
       }
 
+      // 見出し文字列の正規化(小文字化・空白除去)。
       function normalizeHeader(text) {
         return String(text || "").toLowerCase().replace(/[()\[\]{} 　._\-\/\\:：]/g, "");
       }
 
+      // 見出し行からエイリアス一致する列番号を探す。
       function findHeaderIndex(headers, aliases) {
         const normalizedAliases = aliases.map(normalizeHeader);
         return headers.findIndex(header => normalizedAliases.includes(header));
       }
 
+      // 端子CSV行を17行/頁で分割し、端子接続図ページ群を生成。
       function addTerminalCsvPages(rows, fileName) {
         const perPage = 17;
         const created = [];
@@ -5570,6 +5881,7 @@
         });
       }
 
+      // PLC CSV行を17点/頁で分割し、PLC接続図ページ群を生成。
       function addPlcCsvPages(rows, fileName) {
         const perPage = 17;
         const created = [];
@@ -5630,12 +5942,14 @@
         });
       }
 
+      // 配列の最頻値(CSVのユニット名決定などに使用)。
       function mostCommon(values) {
         const counts = new Map();
         values.forEach(value => counts.set(value, (counts.get(value) || 0) + 1));
         return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
       }
 
+      // 目次ページ(空の目次表つき)をテンプレートとして追加。
       function addIndexPage() {
         const page = createPage({
           name: "目次" + (state.pages.length + 1),
@@ -5665,6 +5979,7 @@
         render();
       }
 
+      // 汎用ラダーページ(左右母線+ラング)をテンプレートとして追加。
       function addLadderPage() {
         const page = createPage({
           name: "ラダー" + (state.pages.length + 1),
@@ -5698,6 +6013,7 @@
         render();
       }
 
+      // 現在のラダーページへラング(横1行)を追加。
       function addRungToCurrentPage() {
         const page = currentPage();
         if (!page) return;
@@ -5715,6 +6031,7 @@
         render();
       }
 
+      // 縦配線列の一括生成ダイアログを開く。
       function showWireColumnDialog() {
         const page = currentPage();
         if (!page) return;
@@ -5742,6 +6059,7 @@
         qs("#applyWireColumnBtn").addEventListener("click", applyWireColumnDialog);
       }
 
+      // ダイアログ入力から縦配線列(本数/ピッチ/線番連番)を生成。
       function applyWireColumnDialog() {
         const page = currentPage();
         if (!page) return;
@@ -5777,6 +6095,7 @@
         render();
       }
 
+      // 横配線行の一括生成ダイアログを開く。
       function showWireRowDialog() {
         const page = currentPage();
         if (!page) return;
@@ -5804,6 +6123,7 @@
         qs("#applyWireRowBtn").addEventListener("click", applyWireRowDialog);
       }
 
+      // ダイアログ入力から横配線行を生成。
       function applyWireRowDialog() {
         const page = currentPage();
         if (!page) return;
@@ -5839,6 +6159,7 @@
         render();
       }
 
+      // 汎用ラダーページの母線位置・行ピッチ設定を返す。
       function ladderConfig(page) {
         const size = pageSize(page);
         const portrait = size.h >= size.w;
@@ -5849,11 +6170,13 @@
         return { leftRail, rightRail, startY, endY, pitch: portrait ? 14 : 12 };
       }
 
+      // 母線が無ければ追加(汎用ラダー用)。
       function ensureLadderRails(page, cfg) {
         if (page.elements.some(element => element.ladderRail)) return;
         addLadderRails(page, cfg);
       }
 
+      // 左右母線(P1/N1縦線)を生成。
       function addLadderRails(page, cfg) {
         page.elements.push(ladderWire([[cfg.leftRail, cfg.startY - 10], [cfg.leftRail, cfg.endY + 6]], "L", { ladderRail: "left" }));
         page.elements.push(ladderWire([[cfg.rightRail, cfg.startY - 10], [cfg.rightRail, cfg.endY + 6]], "N", { ladderRail: "right" }));
@@ -5861,12 +6184,14 @@
         page.elements.push(ladderText("N", cfg.rightRail + 2, cfg.startY - 17, 3, "middle"));
       }
 
+      // ラング1行分(横配線+線番)を生成。
       function addLadderRungElements(page, cfg, y, index) {
         const rungNo = String(index).padStart(3, "0");
         page.elements.push(ladderText(rungNo, cfg.leftRail - 18, y, 2.6, "end"));
         page.elements.push(ladderWire([[cfg.leftRail, y], [cfg.rightRail, y]], "R" + rungNo, { ladderRung: true, rungNo }));
       }
 
+      // ラダー用配線要素の生成ヘルパ。
       function ladderWire(points, wireNo, extra = {}) {
         return {
           id: uid("el"),
@@ -5880,6 +6205,7 @@
         };
       }
 
+      // ラダー用文字要素の生成ヘルパ。
       function ladderText(text, x, y, fontSize, anchor = "start") {
         return {
           id: uid("el"),
@@ -5897,6 +6223,7 @@
         };
       }
 
+      // 既存ラングのy座標一覧(次のラング位置決め用)。
       function collectLadderRungYs(page) {
         return page.elements
           .filter(element => element.ladderRung && element.points?.length)
@@ -5905,6 +6232,7 @@
           .sort((a, b) => a - b);
       }
 
+      // 機器配置図ページ(盤外形枠つき)をテンプレートとして追加。
       function addLayoutPage() {
         const page = createPage({
           name: "配置" + (state.pages.length + 1),
@@ -5960,6 +6288,7 @@
         return items;
       }
 
+      // 設備ラダーページ追加ダイアログを開く(レール名/注記)。
       function showFacilityLadderDialog() {
         openDialog("設備ラダーページ", `
           <label>左レール名（カンマ区切り・右から順に配置）</label>
@@ -5974,6 +6303,7 @@
         qs("#ladBuildBtn").addEventListener("click", addFacilityLadderPage);
       }
 
+      // ダイアログ入力から設備標準ラダーページ(複数左レール+右レール)を追加。
       function addFacilityLadderPage() {
         const rails = String(qs("#ladRails")?.value || "P1").split(",").map(s => s.trim()).filter(Boolean);
         const rightName = String(qs("#ladRight")?.value || "N1").trim() || "N1";
@@ -6010,10 +6340,12 @@
         { label: "出力8点 Y000", direction: "output", unit: "UNIT-1", start: "Y000", count: 8 }
       ];
 
+      // PLCモジュールプリセット(組込+プロジェクト保存分)を結合して返す。
       function allPlcModulePresets() {
         return [...PLC_MODULE_PRESETS, ...(state.plcModules || [])];
       }
 
+      // PLC入出力回路ページ追加ダイアログを開く(プリセット選択/保存、種別で開始アドレス自動切替)。
       function showPlcInputPageDialog() {
         const presetOptions = allPlcModulePresets()
           .map((preset, index) => `<option value="${index}">${escapeHtml(preset.label || "プリセット" + (index + 1))}</option>`)
@@ -6071,6 +6403,7 @@
         qs("#plcInBuildBtn").addEventListener("click", addPlcInputCircuitPage);
       }
 
+      // PLC出力回路ページを生成(ユニット列左置き→端子→線番付き配線→コイル→右レール)。
       function addPlcOutputCircuitPage(unitName, addresses) {
         const count = addresses.length;
         const page = createPage({
@@ -6108,6 +6441,7 @@
         render();
       }
 
+      // ダイアログ入力からPLC入力回路ページを生成(フィーダ母線+接点+端子+ユニット列右置き)。出力指定時はaddPlcOutputCircuitPageへ委譲。
       function addPlcInputCircuitPage() {
         const unitName = qs("#plcInUnit")?.value || "PLC";
         const direction = qs("#plcInDir")?.value || "input";
@@ -6187,6 +6521,7 @@
         qs("#ilBuildBtn").addEventListener("click", buildInterlockPage);
       }
 
+      // ダイアログ入力からインターロック接続ページを生成(実線盤枠+一点鎖線相手枠+境界端子+送受矢印)。
       function buildInterlockPage() {
         const leftName = qs("#ilLeftName").value || "制御盤";
         const rightName = qs("#ilRightName").value || "相手設備";
@@ -6316,6 +6651,7 @@
         qs("#twBuildBtn").addEventListener("click", buildTwistedPairFromDialog);
       }
 
+      // ツイストペア表現(導体+交差線+楕円束マーク+シールド破線)の要素列を生成(配置は呼び出し側)。
       function makeTwistedPairElements(options) {
         const count = Math.max(2, Math.min(8, Math.floor(Number(options.count || 4))));
         const pitch = Number(options.pitch || 6.3);
@@ -6348,6 +6684,7 @@
         return created;
       }
 
+      // ダイアログ入力からツイストペアを現在ページへ生成。
       function buildTwistedPairFromDialog() {
         const page = currentPage();
         if (!page) return;
@@ -6390,6 +6727,7 @@
         qs("#mcBuildBtn").addEventListener("click", buildMotorBranchFromDialog);
       }
 
+      // モータ分岐回路(遮断器3極+MC接点+サーマル+モータ+接地)の要素列を生成(配置は呼び出し側)。
       function makeMotorBranchElements(options) {
         const x0 = Number(options.x0 || 40);
         const y0 = Number(options.y0 || 65);
@@ -6455,6 +6793,7 @@
         return created;
       }
 
+      // ダイアログ入力からモータ分岐回路を現在ページへ生成。
       function buildMotorBranchFromDialog() {
         const page = currentPage();
         if (!page) return;
@@ -6494,6 +6833,7 @@
         qs("#esBuildBtn").addEventListener("click", buildEStopChains);
       }
 
+      // ダイアログ入力から非常停止チェーン(キノコPB直列+送り矢印+局別表示灯+点線局枠)を生成。
       function buildEStopChains() {
         const page = currentPage();
         if (!page) return;
@@ -6573,6 +6913,7 @@
         qs("#poBuildBtn").addEventListener("click", buildPowerOnCircuit);
       }
 
+      // ダイアログ入力から電源投入回路(切替スイッチ行+準備PB+自己保持並列)を生成。
       function buildPowerOnCircuit() {
         const page = currentPage();
         if (!page) return;
@@ -6637,6 +6978,7 @@
         qs("#bkBuildBtn").addEventListener("click", buildBrakeCircuits);
       }
 
+      // ブレーキ/整流回路の行(接点→整流器箱→コイル→右レール)の要素列を生成(配置は呼び出し側)。
       function makeBrakeCircuitElements(options) {
         const row0 = Math.max(0, Math.min(19, Math.floor(Number(options.row0 || 2))));
         const count = Math.max(1, Math.min(4, Math.floor(Number(options.count || 2))));
@@ -6666,6 +7008,7 @@
         return created;
       }
 
+      // ダイアログ入力からブレーキ/整流回路を現在ページへ生成。
       function buildBrakeCircuits() {
         const page = currentPage();
         if (!page) return;
@@ -6708,6 +7051,8 @@
         qs("#acBuildBtn").addEventListener("click", buildAcPowerPage);
       }
 
+      // ダイアログ入力からAC電源回路ページを一括生成。電源レール群+レールからのタップ線+モータ分岐+
+      // ブレーキ/整流回路(省略可)+ツイストペア(省略可)をmake系関数の合成で配置する。
       function buildAcPowerPage() {
         const rails = String(qs("#acRails")?.value || "R01,S01,T01").split(",").map(s => s.trim()).filter(Boolean);
         const rightName = String(qs("#acRight")?.value || "E").trim() || "E";
@@ -6794,6 +7139,7 @@
         qs("#rcBuildBtn").addEventListener("click", buildRungCircuits);
       }
 
+      // ダイアログ入力からラング回路(左レール→直列接点→コイル/ランプ→右レール)を行単位で生成。
       function buildRungCircuits() {
         const page = currentPage();
         if (!page) return;
@@ -6875,6 +7221,7 @@
         }).sort((a, b) => a.name.localeCompare(b.name));
       }
 
+      // ネットリスト(ページ間統合)ダイアログを開く(CSV出力・要素ジャンプつき)。
       function showNetlist() {
         const nets = buildProjectNetlist();
         const html = nets.length
@@ -6992,6 +7339,7 @@
         });
       }
 
+      // カタログの汎用サンプル品目(「サンプル追加」で投入。実在の型式は含めない)。
       const CATALOG_SAMPLE_ITEMS = [
         { family: "CR", manufacturer: "汎用", catalog: "RY-DC24", description: "補助リレー DC24V", rating: "DC24V", maxNO: 4, maxNC: 4 },
         { family: "CR", manufacturer: "汎用", catalog: "TM-DC24", description: "タイマリレー DC24V", rating: "DC24V", maxNO: 2, maxNC: 2 },
@@ -7003,6 +7351,7 @@
         { family: "M", manufacturer: "汎用", catalog: "IM-04", description: "三相誘導モータ 0.4kW", rating: "AC200V" }
       ];
 
+      // 汎用カタログ品目サンプルを重複なしで投入。
       function addCatalogSampleItems() {
         if (!Array.isArray(state.catalog)) state.catalog = [];
         let added = 0;
@@ -7014,6 +7363,7 @@
         setStatus(added ? `サンプル品目を${added}件追加しました。` : "サンプル品目は追加済みです。");
       }
 
+      // 部品カタログをcatalog.csvへ出力(BOM付きUTF-8、Excel互換)。
       function exportCatalogCsv() {
         const header = ["family", "manufacturer", "catalog", "description", "rating", "maxNO", "maxNC"];
         const lines = [header.join(",")];
@@ -7027,6 +7377,7 @@
         setStatus("カタログCSVを書き出しました。");
       }
 
+      // カタログCSVの見出し(和英エイリアス)を正規化して品目配列へ変換。
       function normalizeCatalogCsvRows(rows) {
         if (!rows.length) return [];
         const aliases = {
@@ -7064,6 +7415,7 @@
         }).filter(item => item.catalog || item.description);
       }
 
+      // カタログCSVを取込(品番一致は上書き、他は追加)。
       function importCatalogCsvFile(file) {
         const reader = new FileReader();
         reader.onload = () => {
@@ -7092,6 +7444,7 @@
         reader.readAsText(file);
       }
 
+      // カタログ管理ダイアログの編集内容をstate.catalogへ反映(close=trueで確定+履歴)。
       function applyCatalogEdits(close) {
         qsa("[data-cat-row]", qs("#dialogBody")).forEach(row => {
           const item = state.catalog[Number(row.dataset.catRow)];
@@ -7109,6 +7462,7 @@
         }
       }
 
+      // 選択部品へ適用するカタログ選択ダイアログを開く(種別接頭辞で絞込)。
       function showCatalogPicker() {
         const element = selectedElement();
         if (!element || !supportsElectricalAttributes(element)) {
@@ -7167,6 +7521,7 @@
           a.type.localeCompare(b.type) || a.manufacturer.localeCompare(b.manufacturer) || a.catalog.localeCompare(b.catalog));
       }
 
+      // BOM(部品集計表)をCSVへ出力。
       function exportBomCsv() {
         const headers = ["type", "manufacturer", "catalog", "description", "rating", "qty", "tags"];
         const rows = collectBomRows();
@@ -7176,6 +7531,7 @@
         setStatus("BOM CSVを書き出しました。");
       }
 
+      // BOMダイアログを開く(メーカー×品番×種別で数量集計、CSV出力/表挿入つき)。
       function showBomTable() {
         const rows = collectBomRows();
         const html = rows.length
@@ -7255,6 +7611,7 @@
         return out;
       }
 
+      // 端子台プラン表ダイアログを開く(端子ごとの線番/接続先/ジャンパ、CSV出力/表挿入つき)。
       function showTerminalPlan() {
         const rows = collectTerminalPlanRows();
         const html = rows.length
@@ -7305,6 +7662,7 @@
         transformer: [36, 30], terminalStrip: [58, 14], motor: [30, 30], deviceBox: [28, 20]
       };
 
+      // 盤レイアウト連携ダイアログを開く(タグ付き部品→フットプリント挿入の選択)。
       function showPanelLayoutLinkDialog() {
         const rows = collectReportRows().filter(row => row.record === "component" && row.tag);
         if (!rows.length) {
@@ -7330,6 +7688,7 @@
         });
       }
 
+      // 選択したタグ部品のフットプリント(矩形+タグ)を機器配置ページへ挿入。
       function insertPanelFootprints(items) {
         const page = currentPage();
         if (!page || !items.length) return;
@@ -7374,6 +7733,7 @@
         setStatus("標準パックを書き出しました。");
       }
 
+      // 標準パックJSONを読み込み・検証して適用(packVersion=1のみ)。
       function importStandardPackFile(file) {
         const reader = new FileReader();
         reader.onload = () => {
@@ -7393,6 +7753,8 @@
         reader.readAsText(file);
       }
 
+      // 標準パックをstateへ反映。設定値は上書き、ユーザー部品はID重複スキップ、カタログは品番一致を上書き統合、
+      // PLCプリセットはラベル重複スキップ。新しいパック項目はexportStandardPack()と対で追加する。
       function applyStandardPack(pack) {
         if (pack.grid) state.settings.grid = pack.grid;
         if (pack.wireNumberFormat) state.settings.wireNumberFormat = pack.wireNumberFormat;
@@ -7455,6 +7817,7 @@
         reader.readAsText(file);
       }
 
+      // DXFテキストからLINE/CIRCLE/TEXT/LWPOLYLINE/ARC(12分割折れ線)を要素配列へ変換(トレース用)。
       function dxfEntitiesToElements(text) {
         const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
         const page = currentPage();
@@ -7542,6 +7905,7 @@
         render();
       }
 
+      // 選択要素のグループ解除(groupIdを除去)。
       function ungroupSelected() {
         const selected = selectedElements();
         let count = 0;
@@ -7559,6 +7923,7 @@
         render();
       }
 
+      // 選択に含まれる要素のグループ仲間まで選択を拡張(グループ単位の移動・削除用)。
       function expandSelectionToGroups() {
         const page = currentPage();
         if (!page) return;
@@ -7591,6 +7956,7 @@
         render();
       }
 
+      // 配列複写ダイアログを開き、選択要素を行×列で等間隔複製。
       function showArrayCopyDialog() {
         openDialog("等間隔複製", `
           <div class="row">
@@ -7738,6 +8104,7 @@
         render();
       }
 
+      // 選択配線を中点(または指定点)で2本へ分割。
       function splitSelectedWire() {
         const page = currentPage();
         const element = selectedElement();
@@ -7770,6 +8137,7 @@
         render();
       }
 
+      // 選択要素を削除(ロック中は除外)。
       function deleteSelected() {
         const page = currentPage();
         const selected = selectedElements();
@@ -7786,6 +8154,7 @@
         render();
       }
 
+      // 選択要素を少しずらして複製。
       function duplicateSelected() {
         const page = currentPage();
         const selected = selectedElements();
@@ -7807,6 +8176,7 @@
         render();
       }
 
+      // 選択要素をアプリ内クリップボードへコピー。
       function copySelected() {
         const selected = selectedElements();
         if (!selected.length) return;
@@ -7814,6 +8184,7 @@
         setStatus(selected.length + "件の要素をコピーしました。Ctrl+Vで貼り付けできます。");
       }
 
+      // アプリ内クリップボードから貼り付け(IDは振り直し)。
       function pasteClipboard() {
         if (!clipboardElement) {
           setStatus("貼り付ける要素がありません。");
@@ -7840,6 +8211,7 @@
         render();
       }
 
+      // 選択要素を描画順で1つ前面へ。
       function bringSelectedForward() {
         const page = currentPage();
         const ids = new Set(selectedElements().map(element => element.id));
@@ -7855,6 +8227,7 @@
         render();
       }
 
+      // 選択要素を描画順で1つ背面へ。
       function sendSelectedBackward() {
         const page = currentPage();
         const ids = new Set(selectedElements().map(element => element.id));
@@ -7902,6 +8275,7 @@
         render();
       }
 
+      // 指定回転ダイアログを開く(角度90/180/270+回転中心=選択枠中心/座標指定)。
       function showRotateAboutDialog() {
         const selected = selectedElements();
         if (!selected.length) {
@@ -7944,6 +8318,7 @@
         });
       }
 
+      // 選択要素のロック/解除を切替。
       function toggleSelectedLock() {
         const element = selectedElement();
         if (!element) return;
@@ -7952,6 +8327,7 @@
         render();
       }
 
+      // 選択配線の中央ギャップ(ホップ)を切替。
       function toggleSelectedWireGap() {
         const element = selectedElement();
         if (!element || element.type !== "wire") return;
@@ -7964,6 +8340,7 @@
         render();
       }
 
+      // 選択配線と他配線の交差点すべてへギャップを追加。
       function addIntersectionGapsToSelectedWire() {
         const page = currentPage();
         const element = selectedElement();
@@ -7999,6 +8376,7 @@
         render();
       }
 
+      // 選択配線のギャップを全消去。
       function clearSelectedWireGaps() {
         const element = selectedElement();
         if (!element || element.type !== "wire") return;
@@ -8014,11 +8392,13 @@
         render();
       }
 
+      // 線分端点が指定点の近傍かを判定。
       function segmentEndpointNear(segment, x, y) {
         return (Math.abs(segment[0] - x) < .6 && Math.abs(segment[1] - y) < .6)
           || (Math.abs(segment[2] - x) < .6 && Math.abs(segment[3] - y) < .6);
       }
 
+      // 選択配線へ折れ点を追加(L字なら既存折れ位置へ)。
       function addSelectedWirePoint() {
         const element = selectedElement();
         if (!element || element.type !== "wire") return;
@@ -8039,6 +8419,7 @@
         render();
       }
 
+      // 選択配線の最後の折れ点を削除。
       function removeSelectedWirePoint() {
         const element = selectedElement();
         if (!element || element.type !== "wire" || !element.points || element.points.length <= 2) return;
@@ -8051,6 +8432,7 @@
         render();
       }
 
+      // 選択配線を水平/垂直だけの経路へ整形(直交整形ボタン)。
       function orthogonalizeSelectedWire() {
         const element = selectedElement();
         if (!element || element.type !== "wire") return;
@@ -8069,6 +8451,7 @@
         render();
       }
 
+      // 点列を直交化した新しい点列を返す。
       function orthogonalizePoints(points) {
         const result = [];
         const addPoint = point => {
@@ -8090,6 +8473,7 @@
         return result;
       }
 
+      // 設備枠/場所枠の名称を枠内の部品の設備/場所属性へ一括適用。
       function applySelectedAreaAttributes() {
         const area = selectedElement();
         if (!area || !["installationBox", "locationBox"].includes(area.type)) return;
@@ -8120,6 +8504,7 @@
         render();
       }
 
+      // 選択部品の設備/場所属性をコピー。
       function copySelectedInstallLocation() {
         const element = selectedElement();
         if (!element || !supportsElectricalAttributes(element)) return;
@@ -8135,6 +8520,7 @@
         render();
       }
 
+      // コピー済み設備/場所属性を選択部品群へ貼付。
       function pasteInstallLocationToSelection() {
         if (!installLocationClipboard) {
           setStatus("貼り付ける設備/場所属性がありません。");
@@ -8160,6 +8546,7 @@
         render();
       }
 
+      // 選択要素群をユーザー部品(回路スニペット)として登録(相対座標へ正規化)。
       function registerSelectedAsSymbol() {
         const selected = selectedElements();
         if (!selected.length) {
@@ -8184,6 +8571,7 @@
         render();
       }
 
+      // 要素を原点基準の相対座標テンプレートへ変換(ユーザー部品登録の下請け)。
       function normalizeSymbolTemplate(element, originX, originY) {
         const template = deepClone(element);
         delete template.id;
@@ -8197,6 +8585,7 @@
         return template;
       }
 
+      // 選択要素を指定量だけ平行移動(矢印キー移動)。
       function moveSelected(dx, dy) {
         const selected = selectedElements();
         if (!selected.length) return;
@@ -8207,6 +8596,7 @@
         selected.forEach(element => translateElement(element, dx, dy));
       }
 
+      // 要素1個の平行移動(points系/x,y系の両対応)。
       function translateElement(element, dx, dy) {
         if (element.points) {
           element.points = element.points.map(point => [round(point[0] + dx), round(point[1] + dy)]);
@@ -8216,6 +8606,7 @@
         }
       }
 
+      // 選択要素の整列(左/右/上/下/中央)。
       function alignSelected(mode) {
         const selected = selectedElements();
         if (selected.length < 2) {
@@ -8243,6 +8634,7 @@
         render();
       }
 
+      // 選択要素の等間隔分布(横/縦)。
       function distributeSelected(axis) {
         const selected = selectedElements();
         if (selected.length < 3) {
@@ -8268,10 +8660,12 @@
         render();
       }
 
+      // 矩形の中心座標(軸指定)。
       function centerOfBox(box, axis) {
         return axis === "x" ? box.x + box.w / 2 : box.y + box.h / 2;
       }
 
+      // 現在ページを出力用SVG文字列へシリアライズ(SVG保存・PNG変換の元)。
       function serializeActiveSvg() {
         const page = currentPage();
         const size = pageSize(page);
@@ -8284,6 +8678,7 @@
         return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(svg);
       }
 
+      // Blob+aタグクリックによるファイルダウンロード共通処理。
       function download(filename, content, type) {
         const blob = new Blob([content], { type });
         const url = URL.createObjectURL(blob);
@@ -8296,6 +8691,7 @@
         URL.revokeObjectURL(url);
       }
 
+      // state全体をJSONファイルとして保存(ファイル名にタイムスタンプ)。
       function saveProject() {
         ensureProjectDefaults();
         syncPageTotals();
@@ -8304,6 +8700,7 @@
         setStatus("JSONを保存しました。");
       }
 
+      // localStorage自動バックアップからの復元(確認ダイアログつき)。
       function restoreLocalBackup() {
         let snapshot = "";
         try {
@@ -8335,6 +8732,7 @@
       // ===== ブラウザ内プロジェクト管理(localStorageへ複数図面を名前付き保存) =====
       const PROJECT_STORE_KEY = "electricalDrawingStudio.projects";
 
+      // ブラウザ内プロジェクト保管庫(localStorage)を読み出す(壊れていれば空)。
       function readProjectStore() {
         try {
           const parsed = JSON.parse(localStorage.getItem(PROJECT_STORE_KEY) || "{}");
@@ -8344,6 +8742,7 @@
         }
       }
 
+      // プロジェクト保管庫を書き戻す(容量超過は失敗を通知してfalse)。
       function writeProjectStore(store) {
         try {
           localStorage.setItem(PROJECT_STORE_KEY, JSON.stringify(store));
@@ -8354,11 +8753,13 @@
         }
       }
 
+      // 保存済みプロジェクト一覧を保存日時の新しい順で返す。
       function projectStoreEntries() {
         return Object.values(readProjectStore())
           .sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")));
       }
 
+      // 現在の図面を保管庫へ保存(existingId指定で上書き)。メタ(名称/頁数/日時)+スナップショットを持つ。
       function storeCurrentProject(label, existingId) {
         ensureProjectDefaults();
         syncPageTotals();
@@ -8376,6 +8777,7 @@
         return true;
       }
 
+      // 保管庫のプロジェクトを確認の上で読込(現在内容は置換、履歴はリセット)。
       function loadStoredProject(id) {
         const entry = readProjectStore()[id];
         if (!entry) return;
@@ -8396,6 +8798,7 @@
         }
       }
 
+      // プロジェクト管理ダイアログを開く(新規保存/読込/上書き/改名/削除)。
       function showProjectManager() {
         const entries = projectStoreEntries();
         const rows = entries.map(entry => `
@@ -8454,14 +8857,17 @@
           }));
       }
 
+      // 下絵画像1枚を現在ページへ挿入する入口。
       function importUnderlayImageFile(file) {
         return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addUnderlayImageElement(file.name, dataUrl, imageWidth, imageHeight));
       }
 
+      // A3二面スキャン画像→A4縦2ページの下絵ページ生成の入口。
       function importTwoUpUnderlayImageFile(file) {
         return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addTwoUpUnderlayPages(file.name, dataUrl, imageWidth, imageHeight));
       }
 
+      // 画像ファイルをdataURL化し寸法を得てコールバックへ渡す共通処理。
       function readUnderlayImageFile(file, onLoad) {
         return new Promise(resolve => {
           if (!file || !String(file.type || "").startsWith("image/")) {
@@ -8499,6 +8905,7 @@
         });
       }
 
+      // 下絵画像要素を現在ページへ追加(用紙内へ収まる寸法で配置、初期ロック)。
       function addUnderlayImageElement(name, dataUrl, imageWidth, imageHeight) {
         const page = currentPage();
         if (!page) return;
@@ -8539,6 +8946,7 @@
         render();
       }
 
+      // A3横スキャンを90度回転→左右半分の2枚のdataURLへ分割(canvas使用)。
       function rotatedA3TwoUpImages(dataUrl) {
         return new Promise((resolve, reject) => {
           const image = new Image();
@@ -8579,6 +8987,7 @@
         });
       }
 
+      // ロック中でも下絵を選択状態にする(位置調整の入口)。
       function selectCurrentUnderlay() {
         const page = currentPage();
         if (!page) return;
@@ -8592,6 +9001,7 @@
         render();
       }
 
+      // 下絵画像要素オブジェクトを生成(ページ寸法へフィット)。
       function buildUnderlayImageElement(page, name, dataUrl, imageWidth, imageHeight, cropPreset) {
         const size = pageSize(page);
         const margin = 12;
@@ -8622,6 +9032,7 @@
         };
       }
 
+      // JSONファイルを読み込みstateへ復元(検証+履歴リセット)。
       function openProjectFile(file) {
         const reader = new FileReader();
         reader.onload = () => {
@@ -8650,11 +9061,13 @@
         reader.readAsText(file);
       }
 
+      // 現在ページをSVGファイルへ出力。
       function exportSvg() {
         download((currentPage().name || "page") + ".svg", serializeActiveSvg(), "image/svg+xml");
         setStatus("SVGを書き出しました。");
       }
 
+      // 現在ページをPNGへ出力(SVG→canvas経由、3倍解像度)。
       function exportPng() {
         const svg = serializeActiveSvg();
         const page = currentPage();
@@ -8684,6 +9097,7 @@
         setStatus("PNGを書き出しました。");
       }
 
+      // 印刷用シートDOM(全ページ)を構築(等倍1面/ A3二面付けはprintModeで切替)。
       function syncPrintSheets() {
         const container = qs("#printSheets");
         container.innerHTML = "";
@@ -8704,6 +9118,7 @@
         });
       }
 
+      // A3二面付けの印刷シートを構築(A4縦2頁を横並び)。
       function syncPrintSheetsTwoUp(container) {
         for (let i = 0; i < state.pages.length; i += 2) {
           const sheet = document.createElement("div");
@@ -8719,6 +9134,7 @@
         }
       }
 
+      // 二面付けシートへ1ページ分のSVGを配置。
       function addTwoUpPageSvg(parent, page, x, y, w, h) {
         const size = pageSize(page);
         const scale = Math.min(w / size.w, h / size.h);
@@ -8741,10 +9157,12 @@
         parent.appendChild(nested);
       }
 
+      // 印刷直前にシートを最新化。
       function renderPrintSheets() {
         syncPrintSheets();
       }
 
+      // 等倍印刷(全ページ)を実行。
       function printProject() {
         printMode = "single";
         renderPrintSheets();
@@ -8752,6 +9170,7 @@
         window.print();
       }
 
+      // A3二面付け印刷を実行。
       function printProjectTwoUp() {
         printMode = "two-up";
         renderPrintSheets();
@@ -8767,6 +9186,7 @@
         return [points[0], points[points.length - 1]];
       }
 
+      // 配線同士の電気的接触判定(端点一致±0.6mm/端点が相手線分上=T分岐)。
       function wiresTouch(a, b) {
         const ea = wireEndpointsOf(a);
         const eb = wireEndpointsOf(b);
@@ -8826,6 +9246,7 @@
         return Array.from(nets.values());
       }
 
+      // ネットの並び順キー(最上端点のy優先)。線番採番の順序を安定化。
       function netSortKey(net) {
         let best = Infinity;
         net.forEach(wire => {
@@ -8837,6 +9258,7 @@
         return best;
       }
 
+      // ネットに接している信号矢印ラベル集合(ページ間ネット統合のキー)。
       function netArrowLabels(page, net) {
         const labels = new Set();
         page.elements
@@ -8851,6 +9273,8 @@
         return labels;
       }
 
+      // 線番自動採番の本体。ページごとにbuildWireNets()でネット化し、ネット単位で同一線番を割当。
+      // 代表(最長)1本のみ表示し他はhideWireNo。固定線番(wireNoFixed)とnoNumber種別は尊重する。
       function autoWireNumbers() {
         const format = state.settings.wireNumberFormat || "%S-%N";
         const allPages = confirm("全ページに線番を付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
@@ -8918,6 +9342,7 @@
         render();
       }
 
+      // 線番書式(%S=シート,%N=連番,%R=行番号2桁)を展開。
       function formatWireNumber(format, page, number, element) {
         const pageIndex = state.pages.findIndex(item => item.id === page.id) + 1;
         return String(format || "%S-%N")
@@ -8930,6 +9355,7 @@
           .replaceAll("%N", String(number).padStart(2, "0"));
       }
 
+      // 端子番号の振り直し(端子台ごとに開始番号から連番)。
       function renumberTerminals() {
         const page = currentPage();
         const selected = selectedElement();
@@ -8958,6 +9384,7 @@
         render();
       }
 
+      // T分岐へ接続点を自動生成(全ページ/現在ページを確認で選択)。既存接続点の近傍はスキップ。
       function autoJunctions() {
         const allPages = confirm("全ページで接続点を生成しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
         const pages = allPages ? state.pages : [currentPage()];
@@ -8984,6 +9411,7 @@
         render();
       }
 
+      // 接続点を置くべきT分岐点(端点が他配線の線分中間に接触)を検出。
       function detectJunctionPoints(page) {
         const wires = page.elements.filter(element => element.type === "wire");
         const segments = [];
@@ -9015,6 +9443,7 @@
         });
       }
 
+      // 配線の折れ点列→線分配列。
       function wireSegments(wire) {
         const points = wire.points || [[0, 0], [20, 0]];
         if (points.length > 2) {
@@ -9036,6 +9465,7 @@
         ];
       }
 
+      // 線分同士の交点(直交前提の簡易判定)。
       function segmentIntersection(a, b) {
         const aVertical = Math.abs(a[0] - a[2]) < .001;
         const bVertical = Math.abs(b[0] - b[2]) < .001;
@@ -9048,18 +9478,22 @@
         return null;
       }
 
+      // 値が区間内(端を含む)かの判定。
       function between(value, a, b) {
         return value >= Math.min(a, b) - .001 && value <= Math.max(a, b) + .001;
       }
 
+      // 座標→重複判定用の文字列キー(0.1mm量子化)。
       function pointKey(x, y) {
         return round(x) + "," + round(y);
       }
 
+      // 指定点近傍に既存接続点があるか。
       function hasJunctionNear(page, x, y) {
         return page.elements.some(element => element.type === "junction" && Math.abs((element.x || 0) - x) < .6 && Math.abs((element.y || 0) - y) < .6);
       }
 
+      // 端子台エディタダイアログを開く(端子数/開始/接頭辞/ジャンパ等の一覧編集)。
       function showTerminalEditor() {
         const rows = [];
         state.pages.forEach(page => {
@@ -9098,6 +9532,7 @@
         qs("#applyTerminalEditorBtn").addEventListener("click", applyTerminalEditor);
       }
 
+      // 端子台エディタの入力を要素へ反映。
       function applyTerminalEditor() {
         qsa("[data-terminal-row]").forEach(row => {
           const element = findElementById(row.dataset.terminalRow);
@@ -9117,6 +9552,7 @@
         render();
       }
 
+      // 全ページから要素IDで検索し{page,element}を返す。
       function findElementById(id) {
         for (const page of state.pages) {
           const element = page.elements.find(item => item.id === id);
@@ -9125,6 +9561,7 @@
         return null;
       }
 
+      // 部品タグ自動採番(種別接頭辞+書式、タグ固定は尊重)。
       function autoTagComponents() {
         const format = state.settings.componentTagFormat || "%F%N";
         const allPages = confirm("全ページの部品タグを付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
@@ -9153,6 +9590,7 @@
         render();
       }
 
+      // 部品タグ書式(%F=接頭辞,%N=連番,%S=シート,%R=行)を展開。
       function formatComponentTag(format, page, element, prefix, number) {
         const pageIndex = state.pages.findIndex(item => item.id === page.id) + 1;
         const raw = String(format || "%F%N");
@@ -9168,12 +9606,14 @@
           .replaceAll("%N", String(number).padStart(2, "0"));
       }
 
+      // 種別→タグ接頭辞(ユーザー上書き優先、空文字は採番対象外)。
       function tagPrefix(type) {
         const custom = state.settings.componentTagPrefixes || {};
         if (Object.prototype.hasOwnProperty.call(custom, type)) return custom[type] || "";
         return DEFAULT_TAG_PREFIXES[type] || "";
       }
 
+      // 部品タグ規則(種別ごとの接頭辞)編集ダイアログを開く。
       function showComponentTagRulesDialog() {
         const custom = state.settings.componentTagPrefixes || {};
         const rows = Object.keys(DEFAULT_TAG_PREFIXES).map(type => {
@@ -9203,6 +9643,7 @@
         qs("#applyComponentTagRulesBtn").addEventListener("click", applyComponentTagRules);
       }
 
+      // タグ規則ダイアログの入力をsettingsへ反映。
       function applyComponentTagRules() {
         const prefixes = {};
         qsa("[data-tag-prefix-type]", qs("#dialogBody")).forEach(input => {
@@ -9216,6 +9657,7 @@
         render();
       }
 
+      // タグ規則を既定値へ戻す。
       function resetComponentTagRules() {
         state.settings.componentTagPrefixes = {};
         closeDialog();
@@ -9223,10 +9665,12 @@
         render();
       }
 
+      // 要素の表示用タグ(tag属性、無ければlabel)。
       function componentTag(element) {
         return element.tag || element.label || "";
       }
 
+      // 帳票CSV用に電気属性を列オブジェクトへ展開。
       function electricalAttributeColumns(element) {
         return {
           tag: element.tag || "",
@@ -9240,6 +9684,7 @@
         };
       }
 
+      // 電気属性を「キー=値」連結の詳細文字列へ整形。
       function electricalAttributeDetail(element) {
         const labels = {
           tag: "tag",
@@ -9257,14 +9702,17 @@
           .join("; ");
       }
 
+      // 属性メモの詳細文字列(note=...)。
       function noteDetail(element) {
         return element.note ? "note=" + String(element.note).replace(/\r?\n/g, " / ") : "";
       }
 
+      // 詳細断片を「 / 」で連結(空は除外)。
       function joinDetails(parts) {
         return parts.filter(part => String(part || "").trim()).join("; ");
       }
 
+      // 帳票の全行を収集(部品/配線/端子を種別recordつきで列挙)。CSV・一覧・表挿入が共用。
       function collectReportRows() {
         const rows = [];
         state.pages.forEach((page, pageIndex) => {
@@ -9327,6 +9775,7 @@
         return rows;
       }
 
+      // 部品1個の詳細文字列(種別+属性)。
       function componentDetail(element) {
         const details = [electricalAttributeDetail(element), noteDetail(element)];
         if (element.fixedTag) details.unshift("fixedTag=true");
@@ -9338,6 +9787,7 @@
         return joinDetails(details);
       }
 
+      // 配線両端の自動FROM/TO名(近傍要素名)を推定。
       function wireEndpointNames(page, element) {
         const p0 = element.points?.[0] || [0, 0];
         const p1 = element.points?.[element.points.length - 1] || [0, 0];
@@ -9356,6 +9806,7 @@
         };
       }
 
+      // 指定点から4mm以内で最も近い要素の表示名(タグ/文字/線番)。
       function nearestElementName(page, x, y, selfId) {
         let best = null;
         page.elements.forEach(element => {
@@ -9372,6 +9823,7 @@
         return best?.name || "";
       }
 
+      // 配線順序(FROM/TO)ダイアログを開く(自動推定の確認+手動上書き、全ページFrom-To CSVつき)。
       function showWireSequenceDialog() {
         const page = currentPage();
         const wires = (page?.elements || []).filter(element => element.type === "wire");
@@ -9401,6 +9853,7 @@
         qs("#wireFromToCsvBtn")?.addEventListener("click", exportWireFromToCsv);
       }
 
+      // 全ページの配線From-To行(手動上書き優先)を収集。
       function collectWireFromToRows() {
         const rows = [];
         state.pages.forEach(page => {
@@ -9420,6 +9873,7 @@
         return rows;
       }
 
+      // 配線From-To一覧をwire-from-to.csvへ出力。
       function exportWireFromToCsv() {
         const rows = collectWireFromToRows();
         if (!rows.length) {
@@ -9432,6 +9886,7 @@
         setStatus(`From-To一覧CSVを書き出しました（${rows.length}行）。`);
       }
 
+      // 配線順序ダイアログの手動FROM/TOを要素へ反映。
       function applyWireSequenceDialog() {
         const page = currentPage();
         if (!page) return;
@@ -9447,6 +9902,7 @@
         render();
       }
 
+      // 全要素帳票をelectrical-report.csvへ出力(列は固定の英語キー)。
       function exportReportCsv() {
         const headers = ["record", "page", "sheet", "type", "id", "tag", "name", "description", "installation", "location", "manufacturer", "catalog", "rating", "item", "x", "y", "x2", "y2", "detail"];
         const rows = collectReportRows();
@@ -9458,6 +9914,7 @@
         setStatus("帳票CSVを書き出しました。");
       }
 
+      // 図面要素一覧ダイアログを開く(要素ジャンプつき)。
       function showReportTable() {
         const rows = collectReportRows();
         const html = `<table class="report-table"><thead><tr><th>種別</th><th>ページ</th><th>名称</th><th>詳細</th><th>選択</th></tr></thead><tbody>${rows.map(row => {
@@ -9474,6 +9931,7 @@
         wire: ["ページ", "線番", "FROM", "TO", "詳細"],
         terminal: ["ページ", "端子", "種別", "詳細"]
       };
+      // 帳票種別ごとの既定列(列選択が未保存のときに使用)。
       const REPORT_DEFAULT_COLUMNS = {
         all: ["種別", "ページ", "タグ/名称", "詳細"],
         component: ["ページ", "タグ/名称", "説明", "品番"],
@@ -9481,6 +9939,7 @@
         terminal: ["ページ", "端子", "種別", "詳細"]
       };
 
+      // 帳票表挿入ダイアログを開く(種別/行数/フィルタ/列構成チェック)。列選択はsettings.reportColumnsへ保存。
       function showInsertReportDialog() {
         const html = `
           <label for="insertReportKind">帳票種別</label>
@@ -9526,6 +9985,7 @@
         });
       }
 
+      // ダイアログ入力から帳票行を絞り込み、表要素として現在ページへ挿入。
       function insertReportTableFromDialog() {
         const page = currentPage();
         if (!page) return;
@@ -9549,6 +10009,7 @@
         render();
       }
 
+      // 帳票行を種別・設備・場所で絞り込む。
       function filterReportRows(kind, filters = {}) {
         let rows = collectReportRows();
         if (kind !== "all") rows = rows.filter(row => row.record === kind);
@@ -9557,6 +10018,7 @@
         return rows;
       }
 
+      // 帳票行→表要素(ヘッダ行+タブ区切りセル)を構築。列はreportHeaders()に従う。
       function buildReportTableElement(page, kind, title, rows) {
         const headers = reportHeaders(kind);
         const body = rows.map(row => headers.map(header => reportCellValue(row, header)).join("\t"));
@@ -9591,6 +10053,7 @@
         return [...(REPORT_DEFAULT_COLUMNS[kind] || REPORT_DEFAULT_COLUMNS.all)];
       }
 
+      // 帳票行×列名→セル文字列(タブ・改行は無害化)。列を増やす時はこの対応表へ追加する。
       function reportCellValue(row, header) {
         const from = detailValue(row.detail, "from");
         const to = detailValue(row.detail, "to");
@@ -9613,11 +10076,13 @@
         return String(map[header] || "").replace(/\t/g, " ").replace(/\r?\n/g, " / ");
       }
 
+      // 詳細文字列から「key=値」を取り出す。
       function detailValue(detail, key) {
         const match = String(detail || "").match(new RegExp(key + "=([^;]*)"));
         return match ? match[1].trim() : "";
       }
 
+      // クイックガイド(はじめの5ステップ+ショートカット表)を開く。
       function showHelpDialog() {
         openDialog("使い方（クイックガイド）", `
           <div class="panel-title">はじめの5ステップ</div>
@@ -9649,6 +10114,7 @@
         `);
       }
 
+      // 検索・置換ダイアログを開く(線番/タグ/文字/属性メモ対象)。
       function showSearchDialog() {
         const html = `
           <label for="searchQuery">検索語</label>
@@ -9671,6 +10137,7 @@
         });
       }
 
+      // 検索一致箇所を一括置換(対象フィールドを走査)。
       function runReplaceAll() {
         const query = qs("#searchQuery").value;
         const replacement = qs("#replaceValue").value;
@@ -9700,6 +10167,7 @@
         runSearch();
       }
 
+      // 検索を実行し一致要素の一覧(ジャンプつき)を表示。
       function runSearch() {
         const query = qs("#searchQuery").value.trim().toLowerCase();
         const results = query ? findElements(query) : [];
@@ -9710,6 +10178,7 @@
         attachDialogSelection();
       }
 
+      // 検索語に一致する要素を全ページから収集。
       function findElements(query) {
         const results = [];
         state.pages.forEach(page => {
@@ -9904,6 +10373,7 @@
         if (editing) buildPreview();
       }
 
+      // ユーザー部品のプレビューSVG(外接枠にフィット)を生成。
       function symbolPreviewSvg(symbol) {
         const templates = (symbol.templates || [symbol.template]).filter(Boolean);
         if (!templates.length) return "";
@@ -9926,6 +10396,7 @@
         return svg.outerHTML;
       }
 
+      // ユーザー部品管理ダイアログを開く(プレビュー/編集/改名/削除)。編集はスクリプト表現可能な部品のみ。
       function showSymbolManager() {
         const symbols = state.customSymbols || [];
         const html = symbols.length
@@ -9958,12 +10429,14 @@
         });
       }
 
+      // ユーザー部品の内容要約(単品=種別名/複数=n要素の回路)。
       function symbolSummary(symbol) {
         const templates = (symbol.templates || [symbol.template]).filter(Boolean);
         if (templates.length > 1) return templates.length + "要素の回路";
         return paletteLabel(templates[0]?.type || "");
       }
 
+      // 配線種別管理ダイアログを開く(色/太さ/破線/線番対象の編集)。
       function showWireTypeManager() {
         const html = `
           <table class="report-table">
@@ -9990,6 +10463,7 @@
         qs("#applyWireTypeBtn").addEventListener("click", applyWireTypeManager);
       }
 
+      // 配線種別を1件追加。
       function addWireTypeFromDialog() {
         const id = prompt("配線種別ID（半角英数字）", "wire" + ((state.wireTypes || []).length + 1));
         if (!id) return;
@@ -10009,6 +10483,7 @@
         render();
       }
 
+      // 配線種別ダイアログの編集をstateへ反映。
       function applyWireTypeManager() {
         qsa("[data-wire-type-row]", qs("#dialogBody")).forEach(row => {
           const type = (state.wireTypes || []).find(item => item.id === row.dataset.wireTypeRow);
@@ -10024,6 +10499,7 @@
         render();
       }
 
+      // レイヤ管理ダイアログを開く(表示/ロック/色)。
       function showLayerManager() {
         const html = `
           <table class="report-table">
@@ -10047,6 +10523,7 @@
         qs("#applyLayerManagerBtn").addEventListener("click", applyLayerManager);
       }
 
+      // レイヤダイアログの編集をstateへ反映。
       function applyLayerManager() {
         qsa("[data-layer-row]", qs("#dialogBody")).forEach(row => {
           const layer = layerFor(row.dataset.layerRow);
@@ -10061,6 +10538,7 @@
         render();
       }
 
+      // 要素の検索対象文字列(ラベル+線番+属性連結)。
       function elementSearchText(element) {
         return [
           element.type,
@@ -10083,6 +10561,7 @@
         ].filter(Boolean).join(" ");
       }
 
+      // クロスリファレンスダイアログを開く(線番/信号/タグの使用箇所+コイル→接点一覧)。
       function showCrossReference() {
         const xref = buildCrossRefCache();
         const coilRows = [];
@@ -10110,6 +10589,7 @@
         attachDialogSelection();
       }
 
+      // 表題欄一括更新ダイアログを開く(値+マッピング編集)。
       function showTitleBatchDialog() {
         const p = ensureProjectDefaults();
         const map = p.titleMap || DEFAULT_TITLE_MAP;
@@ -10142,6 +10622,7 @@
         qs("#applyTitleBatchBtn").addEventListener("click", () => applyTitleBatch("all"));
       }
 
+      // 表題欄マッピング編集行のHTMLを生成。
       function titleMapRows(map) {
         return TITLE_FIELDS.map(field => `
           <tr>
@@ -10151,6 +10632,7 @@
         `).join("");
       }
 
+      // マッピング参照元セレクトのHTMLを生成。
       function titleSourceOptions(current) {
         return TITLE_SOURCE_OPTIONS.map(option => {
           const selected = option.value === current ? " selected" : "";
@@ -10158,6 +10640,7 @@
         }).join("");
       }
 
+      // 一括更新ダイアログの入力値を収集。
       function titleBatchValues() {
         return {
           title: qs("#batchTitle").value,
@@ -10169,6 +10652,7 @@
         };
       }
 
+      // マッピングセレクトの選択値を収集。
       function titleMapValues() {
         const map = { ...DEFAULT_TITLE_MAP };
         qsa("[data-title-map]", qs("#dialogBody")).forEach(select => {
@@ -10177,6 +10661,7 @@
         return map;
       }
 
+      // 表題欄一括更新を実行(scope=current/all、空欄のみ更新オプション対応)。
       function applyTitleBatch(scope = "all") {
         const values = titleBatchValues();
         const map = titleMapValues();
@@ -10199,6 +10684,7 @@
         render();
       }
 
+      // マッピング参照元(手入力/プロジェクト値/ページ名/頁番号)→実際の値へ解決。
       function resolveTitleSource(page, source, values, index, total) {
         if (source === "keep") return { apply: false, value: "" };
         if (source === "empty") return { apply: true, value: "" };
@@ -10213,6 +10699,7 @@
         return { apply: false, value: "" };
       }
 
+      // 線番・信号・タグの使用箇所を全ページから収集。
       function collectCrossReferences() {
         const map = new Map();
         state.pages.forEach(page => {
@@ -10230,6 +10717,7 @@
         return Array.from(map.values()).sort((a, b) => a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key));
       }
 
+      // 要素1個からクロス参照キー(線番/ラベル/タグ)を抽出。
       function crossRefEntries(element) {
         const entries = [];
         if (element.type === "wire" && element.wireNo) entries.push({ kind: "線番", key: element.wireNo });
@@ -10241,6 +10729,7 @@
         return entries;
       }
 
+      // ダイアログ内の[data-select-page/-id]ボタンへ「該当要素へジャンプ」動作を付ける。
       function attachDialogSelection() {
         qsa("[data-select-id]", qs("#dialogBody")).forEach(button => {
           button.addEventListener("click", () => {
@@ -10255,12 +10744,14 @@
         });
       }
 
+      // CSVセルのエスケープ(引用符・改行対応)。
       function csvCell(value) {
         const text = String(value ?? "");
         if (/[",\r\n]/.test(text)) return '"' + text.replaceAll('"', '""') + '"';
         return text;
       }
 
+      // 図面監査のルール一覧(key/label)。ON/OFFはsettings.auditRules(既定は全ON)。
       const AUDIT_RULES = [
         { key: "wireNo", label: "未採番配線" },
         { key: "net", label: "ネット整合" },
@@ -10271,11 +10762,13 @@
         { key: "panel", label: "盤配置" }
       ];
 
+      // 監査ルールが有効か(未設定はtrue)。
       function auditRuleOn(key) {
         const rules = state.settings.auditRules || {};
         return rules[key] !== false;
       }
 
+      // 図面監査ダイアログを開く(ルールのトグル+指摘一覧+要素ジャンプ)。
       function showAudit() {
         const issues = auditProject();
         const ruleControls = AUDIT_RULES.map(rule =>
@@ -10295,11 +10788,15 @@
         });
       }
 
+      // 監査指摘行のジャンプボタンHTMLを生成。
       function auditSelectionButton(issue) {
         if (!issue.elementId) return "";
         return `<button type="button" data-select-page="${escapeAttr(issue.pageId || "")}" data-select-id="${escapeAttr(issue.elementId)}">選択</button>`;
       }
 
+      // 図面監査の本体。ルール別に全ページを走査し指摘を収集する:
+      // wireNo=未採番配線 / net=同一ネット内の線番不整合 / emptyLabel=空ラベル / offPage=用紙外 /
+      // floating=未接続端点 / relay=コイルと接点の対応+接点数上限 / panel=盤配置(タグ部品とフットプリントの対応)。
       function auditProject() {
         const issues = [];
         const arrows = new Map();
@@ -10453,6 +10950,7 @@
         return issues;
       }
 
+      // 未接続の配線端点(部品にも他配線にも届いていない)を検出。レール(ladderRail)は除外。
       function auditFloatingWireEnds(page) {
         const issues = [];
         const endpointCounts = new Map();
@@ -10482,6 +10980,7 @@
         return issues;
       }
 
+      // 指定点近傍に接続先(要素の接続点や配線)があるか。
       function hasConnectionTargetNear(page, x, y, selfId) {
         return page.elements.some(element => {
           if (element.id === selfId) return false;
@@ -10497,22 +10996,26 @@
         });
       }
 
+      // 点が線分上(許容0.45mm)にあるかの判定。ネット結合・T分岐検出の基礎。
       function pointOnSegment(x, y, segment) {
         const vertical = Math.abs(segment[0] - segment[2]) < .001;
         if (vertical) return Math.abs(x - segment[0]) < .6 && between(y, segment[1], segment[3]);
         return Math.abs(y - segment[1]) < .6 && between(x, segment[0], segment[2]);
       }
 
+      // 共通ダイアログを開く(タイトル+HTML本文を差し込み)。
       function openDialog(title, html) {
         qs("#dialogTitle").textContent = title;
         qs("#dialogBody").innerHTML = html;
         qs("#dialogBackdrop").classList.remove("hidden");
       }
 
+      // 共通ダイアログを閉じる。
       function closeDialog() {
         qs("#dialogBackdrop").classList.add("hidden");
       }
 
+      // 現在ページをDXFファイルへ出力。
       function exportDxf() {
         const page = currentPage();
         const dxf = buildDxf(page);
@@ -10520,6 +11023,7 @@
         setStatus("DXFを書き出しました。");
       }
 
+      // 全ページを連番ファイル名で順次DXF出力(400ms間隔、複数DL許可が必要な場合あり)。
       function exportDxfAllPages() {
         state.pages.forEach((page, index) => {
           setTimeout(() => {
@@ -10529,6 +11033,7 @@
         setStatus("全" + state.pages.length + "ページのDXFを書き出しています（ブラウザが複数ダウンロードの許可を求める場合があります）。");
       }
 
+      // 1ページ分のDXF文字列を構築(HEADER+TABLES+ENTITIES)。
       function buildDxf(page) {
         const out = [];
         dxfHeader(out);
@@ -10538,6 +11043,7 @@
         return out.join("\n") + "\n";
       }
 
+      // 破線パターン文字列→DXF線種名(DASHED/CENTER/PHANTOM/DOTTED)。
       function dashLtypeName(dash) {
         const value = String(dash || "").trim();
         if (!value) return null;
@@ -10547,6 +11053,7 @@
         return "DASHED";
       }
 
+      // DXFのHEADER/TABLESセクション(単位mm、LTYPE定義同梱)を出力。
       function dxfHeader(out) {
         out.push(
           "0", "SECTION",
@@ -10571,6 +11078,7 @@
         );
       }
 
+      // 設備標準図枠のDXF出力(行番号・クロス参照表・機器符号表・表題欄をSVGと同レイアウトで)。
       function dxfLadderFrame(out, page, size) {
         const L = 19, R = size.w - 19, T = 18, B = size.h - 24;
         dxfRect(out, page, "FRAME", L, T, R - L, B - T);
@@ -10654,6 +11162,7 @@
         });
       }
 
+      // 図枠のDXF出力振り分け(frameVariant別)。
       function dxfFrame(out, page) {
         const size = pageSize(page);
         const margin = frameMargin(size);
@@ -10674,6 +11183,8 @@
         }
       }
 
+      // 要素1個のDXF出力ディスパッチャ。まずdxfGeoSymbol(SYMBOL_GEO)を試し、残りを種別別のdxfXxxLocalへ。
+      // 座標系: 要素ローカルmm→localPoint()で回転込みの用紙絶対座標→cadY()でy軸反転(CADはy上向き)。
       function dxfElement(out, page, element) {
         if (element.type === "underlayImage") return;
         if (dxfGeoSymbol(out, page, element)) {
@@ -11114,6 +11625,7 @@
         dxfVisibleAttributes(out, page, element);
       }
 
+      // a/b接点のDXF出力(SYMBOL_GEO非対象の向き・変種用)。
       function dxfContactLocal(out, page, element, closed) {
         if (element.orientation === "vertical") {
           const w = Number(element.w || 10);
@@ -11147,6 +11659,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // 接点ブロックのDXF出力。
       function dxfContactBlockLocal(out, page, element) {
         const w = Number(element.w || 14);
         const h = Number(element.h || 12);
@@ -11164,6 +11677,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.8, element.label);
       }
 
+      // 端子のDXF出力。
       function dxfTerminalLocal(out, page, element) {
         const label = element.label || "1";
         const w = Number(element.w || 10);
@@ -11185,6 +11699,7 @@
         dxfTextLocal(out, page, "TEXT", element, cx - String(label).length * .5, cy + .6, 1.8, label);
       }
 
+      // 押しボタン操作部のDXF出力。
       function dxfPushButtonActuatorLocal(out, page, element) {
         const w = Number(element.w || (element.orientation === "vertical" ? 8 : 10));
         const h = Number(element.h || (element.orientation === "vertical" ? 14 : 8));
@@ -11199,6 +11714,7 @@
         dxfLineLocal(out, page, "SYMBOL", element, Math.max(0, cx - 4), 0, Math.min(w, cx + 4), 0);
       }
 
+      // 切替スイッチ操作部のDXF出力。
       function dxfSelectorSwitchActuatorLocal(out, page, element) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 9);
@@ -11208,6 +11724,7 @@
         dxfLineLocal(out, page, "SYMBOL", element, cx, 1, cx, Math.max(2.8, h / 2 - 1));
       }
 
+      // リミットスイッチ操作部のDXF出力。
       function dxfLimitSwitchActuatorLocal(out, page, element) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 8);
@@ -11217,6 +11734,7 @@
         dxfCircleLocal(out, page, "SYMBOL", element, cx + 4.8, 1, .8);
       }
 
+      // ヒューズのDXF出力。
       function dxfFuseLocal(out, page, element) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 4.5);
@@ -11242,6 +11760,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // 遮断器のDXF出力。
       function dxfBreakerLocal(out, page, element) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 7);
@@ -11271,6 +11790,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // コイルのDXF出力。
       function dxfCoilLocal(out, page, element) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 6);
@@ -11285,6 +11805,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // 表示灯のDXF出力(筒形対応)。
       function dxfLampLocal(out, page, element) {
         const w = Number(element.w || 10);
         const h = Number(element.h || 10);
@@ -11314,6 +11835,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, cx - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // ブザーのDXF出力。
       function dxfBuzzerLocal(out, page, element) {
         const w = Number(element.w || 14);
         const h = Number(element.h || 9);
@@ -11346,6 +11868,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // 電磁弁のDXF出力。
       function dxfSolenoidValveLocal(out, page, element) {
         const w = Number(element.w || 26);
         const h = Number(element.h || 16);
@@ -11363,6 +11886,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // センサのDXF出力。
       function dxfSensorLocal(out, page, element) {
         const w = Number(element.w || 24);
         const h = Number(element.h || 14);
@@ -11378,6 +11902,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // ケーブル束のDXF出力。
       function dxfCableBundleLocal(out, page, element) {
         const w = Number(element.w || 32);
         const h = Number(element.h || 18);
@@ -11388,6 +11913,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // 端子箱のDXF出力。
       function dxfTerminalBoxLocal(out, page, element) {
         const w = Number(element.w || 22);
         const h = Number(element.h || 18);
@@ -11402,6 +11928,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // 接地のDXF出力。
       function dxfGroundLocal(out, page, element) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 14);
@@ -11413,6 +11940,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, cx - String(element.label).length * .8, h + 4, 2.3, element.label);
       }
 
+      // モータのDXF出力。
       function dxfMotorLocal(out, page, element) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 18);
@@ -11426,6 +11954,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, cx - String(element.label).length * .8, -3, 2.4, element.label);
       }
 
+      // 抵抗のDXF出力。
       function dxfResistorLocal(out, page, element) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 6);
@@ -11437,6 +11966,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
       }
 
+      // コンデンサのDXF出力。
       function dxfCapacitorLocal(out, page, element) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 7);
@@ -11450,6 +11980,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
+      // ダイオードのDXF出力。
       function dxfDiodeLocal(out, page, element) {
         const w = Number(element.w || 18);
         const h = Number(element.h || 10);
@@ -11464,6 +11995,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
       }
 
+      // サーマルリレーのDXF出力。
       function dxfThermalRelayLocal(out, page, element) {
         dxfContactLocal(out, page, element, false);
         const w = Number(element.w || 12);
@@ -11475,6 +12007,7 @@
         dxfLineLocal(out, page, "SYMBOL", element, w * .63, y - 1.7, w * .88, y);
       }
 
+      // ファンのDXF出力。
       function dxfFanLocal(out, page, element) {
         const w = Number(element.w || 16);
         const h = Number(element.h || 16);
@@ -11490,6 +12023,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, cx - String(element.label).length * .8, -3, 2.4, element.label);
       }
 
+      // トランスのDXF出力。
       function dxfTransformerLocal(out, page, element) {
         const w = Number(element.w || 24);
         const h = Number(element.h || 16);
@@ -11507,6 +12041,7 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .8, -3, 2.4, element.label);
       }
 
+      // 表示中の電気属性文字のDXF出力。
       function dxfVisibleAttributes(out, page, element) {
         if (!supportsElectricalAttributes(element)) return;
         const lines = visibleAttributeLines(element);
@@ -11517,16 +12052,19 @@
         });
       }
 
+      // 画面y(下向き)→CAD y(上向き)への反転変換。
       function cadY(page, y) {
         return pageSize(page).h - y;
       }
 
+      // 配線をDXF用線分列へ展開(ギャップで分割)。
       function dxfWireSegments(element) {
         const gaps = wireGapMarkers(element);
         if (!gaps.length) return wireSegments(element);
         return wireSegments(element).flatMap(segment => splitSegmentForDxfGaps(segment, gaps));
       }
 
+      // 1線分をギャップ位置で複数線分へ分割。
       function splitSegmentForDxfGaps(segment, gaps) {
         const vertical = Math.abs(segment[0] - segment[2]) < .001;
         const fixed = vertical ? segment[0] : segment[1];
@@ -11563,22 +12101,26 @@
         return pieces.map(([a, b]) => vertical ? [fixed, a, fixed, b] : [a, fixed, b, fixed]);
       }
 
+      // LINEエンティティ出力(絶対座標、線種指定可)。
       function dxfLine(out, page, layer, x1, y1, x2, y2, ltype) {
         out.push("0", "LINE", "8", layer);
         if (ltype) out.push("6", ltype);
         out.push("10", round(x1), "20", round(cadY(page, y1)), "11", round(x2), "21", round(cadY(page, y2)));
       }
 
+      // TEXTエンティティ出力(絶対座標)。
       function dxfText(out, page, layer, x, y, size, text) {
         String(text || "").split("\n").forEach((line, index) => {
           out.push("0", "TEXT", "8", layer, "10", round(x), "20", round(cadY(page, y + index * size * 1.25)), "40", round(size), "1", line);
         });
       }
 
+      // CIRCLEエンティティ出力(絶対座標)。
       function dxfCircle(out, page, layer, x, y, r) {
         out.push("0", "CIRCLE", "8", layer, "10", round(x), "20", round(cadY(page, y)), "40", round(r));
       }
 
+      // 矩形をLINE4本で出力(絶対座標)。
       function dxfRect(out, page, layer, x, y, w, h) {
         dxfLine(out, page, layer, x, y, x + w, y);
         dxfLine(out, page, layer, x + w, y, x + w, y + h);
@@ -11586,6 +12128,7 @@
         dxfLine(out, page, layer, x, y + h, x, y);
       }
 
+      // 要素ローカルmm座標→回転を考慮した用紙絶対座標。dxfXxxLocal系の共通変換。
       function localPoint(element, x, y) {
         const angle = Number(element.rotation || 0) * Math.PI / 180;
         const cos = Math.cos(angle);
@@ -11596,22 +12139,26 @@
         ];
       }
 
+      // 要素ローカル座標指定のLINE出力。
       function dxfLineLocal(out, page, layer, element, x1, y1, x2, y2, ltype) {
         const a = localPoint(element, x1, y1);
         const b = localPoint(element, x2, y2);
         dxfLine(out, page, layer, a[0], a[1], b[0], b[1], ltype);
       }
 
+      // 要素ローカル座標指定のTEXT出力。
       function dxfTextLocal(out, page, layer, element, x, y, size, text) {
         const p = localPoint(element, x, y);
         dxfText(out, page, layer, p[0], p[1], size, text);
       }
 
+      // 要素ローカル座標指定のCIRCLE出力。
       function dxfCircleLocal(out, page, layer, element, x, y, r) {
         const p = localPoint(element, x, y);
         dxfCircle(out, page, layer, p[0], p[1], r);
       }
 
+      // 要素ローカル座標指定の矩形出力(線種指定可)。
       function dxfRectLocal(out, page, layer, element, x, y, w, h, ltype) {
         dxfLineLocal(out, page, layer, element, x, y, x + w, y, ltype);
         dxfLineLocal(out, page, layer, element, x + w, y, x + w, y + h, ltype);
@@ -11619,6 +12166,7 @@
         dxfLineLocal(out, page, layer, element, x, y + h, x, y, ltype);
       }
 
+      // 端子1点(円/角)のDXF出力。
       function dxfTerminalNodeLocal(out, page, layer, element, cx, cy, r, shape) {
         if (shape === "square") {
           dxfRectLocal(out, page, layer, element, cx - r, cy - r, r * 2, r * 2);
@@ -11627,6 +12175,7 @@
         dxfCircleLocal(out, page, layer, element, cx, cy, r);
       }
 
+      // 楕円を折れ線近似でDXF出力。
       function dxfEllipseApproxLocal(out, page, layer, element, cx, cy, rx, ry) {
         const steps = 32;
         let prev = null;
@@ -11638,6 +12187,7 @@
         }
       }
 
+      // ページ設定入力(用紙/向き/図枠/図名等)の変更をstateへ反映する共通ハンドラ。
       function updatePageField(id, apply) {
         qs("#" + id).addEventListener("change", event => {
           const page = currentPage();
@@ -11648,6 +12198,8 @@
         });
       }
 
+      // 全UIイベントの一括登録(起動時に1回)。上部ツールバー、左パネル(パレット/表示/機能メニュー)、
+      // 右パネル(ページ設定/テンプレート/下絵)、キャンバスのpointer/キーボード、ファイル入力を配線する。
       function attachEvents() {
         qs("#newProjectBtn").addEventListener("click", () => {
           if (confirm("現在の内容を破棄して新規作成しますか？")) initProject();
@@ -11878,6 +12430,7 @@
         window.addEventListener("keydown", onKeyDown);
       }
 
+      // Ctrl+ホイールでズーム(カーソル位置基準)。
       function onCanvasWheel(event) {
         if (!event.ctrlKey && !event.metaKey) return;
         event.preventDefault();
@@ -11885,6 +12438,8 @@
         setZoom(state.settings.zoom + delta, false);
       }
 
+      // キャンバス押下の入口。優先順: 点編集ハンドル → リサイズハンドル → 作図ツール(配線/直線等の開始) →
+      // 部品配置 → 要素選択(移動開始) → 空白(範囲選択開始)。選択はevent.targetのdata-id基準。
       function onCanvasPointerDown(event) {
         const svg = qs("#canvas");
         const point = canvasPoint(event, { connectionOnly: activeTool === "wire", raw: activeTool === "select" });
@@ -11986,6 +12541,8 @@
         }
       }
 
+      // ドラッグ中の処理。dragState.modeで分岐: draw=配線/直線の終点更新(直交スナップ)、move=選択移動
+      // (グリッド/行スナップした差分で全要素+接続配線端点を追従)、resize/point/marqueeも同様。
       function onCanvasPointerMove(event) {
         if (!dragState) return;
         const page = currentPage();
@@ -12052,6 +12609,7 @@
         }
       }
 
+      // 部品移動に合わせ、部品接続点に刺さっていた配線端点を追従させる。
       function syncAttachedWireEndpoints(page, originals, wireOriginals, dx, dy) {
         const pairs = [];
         originals.forEach(original => {
@@ -12085,6 +12643,7 @@
         });
       }
 
+      // 移動追従で使う要素の接続点一覧(配線を除く)。
       function componentConnectionAnchors(element) {
         if (!element || element.points) return [];
         if (element.type === "terminalStrip" || element.type === "connector") {
@@ -12095,6 +12654,7 @@
         return elementConnectionAnchors(element);
       }
 
+      // 移動差分をグリッド/設備標準行ピッチへスナップした値に補正(設置後のズレ防止)。
       function movementSnapDelta(originals, dx, dy) {
         if (!state.settings.objectSnap || !originals.length) return { dx: 0, dy: 0 };
         const page = currentPage();
@@ -12119,6 +12679,7 @@
         return best ? { dx: best.dx, dy: best.dy } : { dx: 0, dy: 0 };
       }
 
+      // 移動後の接続点位置を計算(追従判定用)。
       function movedElementAnchors(original, dx, dy) {
         const element = deepClone(original);
         if (element.points) {
@@ -12138,6 +12699,7 @@
         return box ? [{ x: box.x + box.w / 2, y: box.y + box.h / 2 }] : [];
       }
 
+      // 移動後の要素の接続点を近傍の配線端点へ吸着。
       function snapPointElementConnections(element, page) {
         if (!element || !page || !element.points?.length || !state.settings.objectSnap) return;
         const excludeIds = new Set([element.id]);
@@ -12151,6 +12713,7 @@
         });
       }
 
+      // 接続点候補への吸着(半径内で最近点)。
       function snapConnectionPoint(page, x, y, excludeIds = new Set()) {
         const anchor = closestAnchor(collectConnectionAnchors(page, excludeIds), x, y);
         if (anchor) return { x: anchor.x, y: anchor.y };
@@ -12158,13 +12721,14 @@
         return segment || { x, y };
       }
 
+      // ドラッグ確定。mode別に履歴記録し、marqueeなら範囲内要素を選択。
       function onCanvasPointerUp(event) {
         if (!dragState) return;
         const finishedDrag = dragState;
         try {
           qs("#canvas").releasePointerCapture(event.pointerId);
         } catch (_) {
-          // The pointer may already be released by the browser.
+          // ブラウザ側で既にポインタ解放済みの場合があるため失敗は無視する。
         }
         if (dragState.mode === "marquee") {
           applyMarqueeSelection(dragState);
@@ -12191,6 +12755,7 @@
         render();
       }
 
+      // 範囲選択の確定(交差する表示中要素を選択、Shiftで追加)。
       function applyMarqueeSelection(marquee) {
         const page = currentPage();
         if (!page) return;
@@ -12214,6 +12779,7 @@
         }
       }
 
+      // 角ハンドルドラッグによるリサイズ確定処理(最小寸法クランプ)。
       function applyResizeDrag(point) {
         const page = currentPage();
         const element = page?.elements.find(item => item.id === dragState.elementId);
@@ -12246,6 +12812,7 @@
         element.h = round(h);
       }
 
+      // 折れ点ハンドルのドラッグ反映。
       function applyPointDrag(point) {
         const page = currentPage();
         const element = page?.elements.find(item => item.id === dragState.elementId);
@@ -12253,6 +12820,7 @@
         element.points[dragState.pointIndex] = [round(point.x), round(point.y)];
       }
 
+      // ダブルクリック編集(文字=本文、配線=線番、他=ラベルのプロンプト)。
       function onCanvasDoubleClick(event) {
         const targetElement = event.target.closest("[data-id]");
         if (!targetElement) return;
@@ -12283,6 +12851,8 @@
         }
       }
 
+      // キーボードショートカット。S/V=選択 W=配線 T=文字 L=直線 R=矩形 C=円、Ctrl+C/V/D/Z/Y/S、
+      // Delete=削除、矢印=1mm移動(Shiftで5mm)、Esc=配置キャンセル。入力欄フォーカス中は無視。
       function onKeyDown(event) {
         const tag = document.activeElement?.tagName;
         const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
