@@ -1873,7 +1873,7 @@
         if (!hint) return;
         let text = "";
         if (activeTool === "wire") {
-          text = "配線: 始点から終点へドラッグ（端子・接点へ自動吸着／直交配線）。Shift で折れ向き反転、Esc で選択へ戻る";
+          text = "配線: 始点から終点へドラッグ（端子・接点へ自動吸着／直交配線）。Shift=折れ反転／スペース=コの字切替、Esc で選択へ戻る";
         } else if (activeTool === "line") {
           text = "直線: ドラッグで作図（任意角度）。Esc で選択へ戻る";
         } else if (activeTool === "mechanicalLink") {
@@ -12986,7 +12986,7 @@
                 <tr><td>+ / − / 0</td><td>拡大 / 縮小 / 全体表示</td><td>Ctrl+ホイール</td><td>カーソル位置でズーム</td></tr>
                 <tr><td>検索でEnter</td><td>先頭候補を配置モード</td><td>Esc</td><td>配置終了 / 選択解除</td></tr>
                 <tr><td>ダブルクリック</td><td>その場編集（線番/ラベル/文字）</td><td>その場編集中のTab</td><td>確定して次の要素へ</td></tr>
-                <tr><td>配線ドラッグ中Shift</td><td>L字の折れ向き反転</td><td></td><td></td></tr>
+                <tr><td>配線ドラッグ中Shift</td><td>L字の折れ向き反転</td><td>配線ドラッグ中スペース</td><td>L字⇔コの字を巡回</td></tr>
               </tbody>
             </table>`)}
 
@@ -15902,9 +15902,13 @@
         const element = selectedElement();
         if (!element) return;
         if (dragState.mode === "draw") {
-          element.points[element.points.length - 1] = [point.x, point.y];
-          // Shiftを押しながらドラッグでL字の折れ向きを反転(配線のみ)
-          if (element.type === "wire") element.orthoFlip = event.shiftKey === true;
+          if (element.type === "wire") {
+            // 配線: Shift=折れ向き反転、スペース=L字/コの字(Z)巡回(onKeyDown側でbendCycle更新)
+            dragState.lastPoint = [point.x, point.y];
+            rebuildDrawingWire(element, dragState, event.shiftKey === true);
+          } else {
+            element.points[element.points.length - 1] = [point.x, point.y];
+          }
           render({ light: true });
           return;
         }
@@ -15949,6 +15953,31 @@
           syncAttachedWireEndpoints(page, dragState.originals || [], dragState.attachedWires || [], dx, dy);
           updateAlignGuides(page);
           render({ light: true });
+        }
+      }
+
+      // 作図中の配線の点列を現在の折れモードで組み立て直す。
+      // bendCycle: 0=L字(縦→横) 1=L字(横→縦) 2=コの字(横→縦→横) 3=コの字(縦→横→縦)。
+      // Shiftは現在モードの向き反転(L⇔逆L、コ⇔逆コ)。コの字は実点3セグメントとして
+      // pointsへ直接構築するため、確定後は通常の多点配線(線番・分割・DXF等)として扱われる。
+      function rebuildDrawingWire(element, drag, shift) {
+        const a = element.points[0];
+        const b = drag.lastPoint || element.points[element.points.length - 1];
+        const straight = Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001;
+        let mode = ["L", "L2", "Z", "Z2"][(drag.bendCycle || 0) % 4];
+        if (shift) mode = { L: "L2", L2: "L", Z: "Z2", Z2: "Z" }[mode];
+        if (straight || mode === "L" || mode === "L2") {
+          element.points = [a, [b[0], b[1]]];
+          element.orthoFlip = !straight && mode === "L2";
+          return;
+        }
+        element.orthoFlip = false;
+        if (mode === "Z") {
+          const midX = round((a[0] + b[0]) / 2);
+          element.points = [a, [midX, a[1]], [midX, b[1]], [b[0], b[1]]];
+        } else {
+          const midY = round((a[1] + b[1]) / 2);
+          element.points = [a, [a[0], midY], [b[0], midY], [b[0], b[1]]];
         }
       }
 
@@ -16367,6 +16396,18 @@
           return;
         }
         if (editing) return;
+        // 配線ドラッグ中のスペース: L字⇔コの字(Z)の折れ形状を巡回
+        if (event.key === " " && dragState && dragState.mode === "draw") {
+          const drawing = selectedElement();
+          if (drawing && drawing.type === "wire") {
+            event.preventDefault();
+            dragState.bendCycle = ((dragState.bendCycle || 0) + 1) % 4;
+            rebuildDrawingWire(drawing, dragState, false);
+            render({ light: true });
+            setStatus(["L字（縦→横）", "L字（横→縦）", "コの字（横→縦→横）", "コの字（縦→横→縦）"][dragState.bendCycle] + "で作図中（スペースで切替）");
+            return;
+          }
+        }
         if (!event.ctrlKey && !event.metaKey && !event.altKey) {
           const toolShortcuts = { s: "select", v: "select", w: "wire", t: "text", l: "line", r: "rect", c: "circle" };
           const tool = toolShortcuts[event.key.toLowerCase()];
