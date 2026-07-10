@@ -317,6 +317,27 @@
     }
 
     /* ===== 中央キャンバス ===== */
+    /* キャンバス上部の操作ヒント(現在のツールで何ができるかを常時案内) */
+    .canvas-hint {
+      position: sticky;
+      top: 8px;
+      z-index: 5;
+      width: max-content;
+      max-width: 92%;
+      margin: 0 auto -28px;
+      padding: 4px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .93);
+      color: var(--muted);
+      font-size: 12px;
+      pointer-events: none;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 2px 8px rgba(20, 31, 44, .08);
+    }
+
     .workspace {
       min-width: 0;
       min-height: 0;
@@ -718,6 +739,7 @@
 
       <!-- 中央: 図面キャンバス。drawPageSvg()がSVGを再構築し、pointerイベントで作図/選択する -->
       <section class="workspace" id="workspace">
+        <div id="canvasHint" class="canvas-hint" aria-live="polite"></div>
         <div class="stage">
           <svg id="canvas" class="drawing-page" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="図面キャンバス"></svg>
         </div>
@@ -1093,6 +1115,7 @@
 
       // パレットのカテゴリ(アコーディオン)定義。表示順もこの配列順。
       const PALETTE_GROUPS = [
+        { id: "recent", label: "最近使用" },
         { id: "basic", label: "基本図形" },
         { id: "contact", label: "接点・スイッチ" },
         { id: "coil", label: "コイル・表示" },
@@ -1210,7 +1233,7 @@
         }
       ];
 
-      const paletteOpenGroups = new Set(["basic", "contact", "custom"]);
+      const paletteOpenGroups = new Set(["recent", "basic", "contact", "custom"]);
 
       // document.querySelectorの短縮形。
       const qs = (selector, root = document) => root.querySelector(selector);
@@ -1418,6 +1441,55 @@
         status.title = message;
       }
 
+      // アクティブツール/選択状態に応じた表示名(パレット種別・回路・ユーザー部品対応)。
+      function toolDisplayLabel(tool) {
+        if (String(tool).startsWith("circuit:")) {
+          return BUILTIN_CIRCUITS.find(c => "circuit:" + c.id === tool)?.label || "回路";
+        }
+        if (String(tool).startsWith("custom:")) {
+          return (state.customSymbols || []).find(s => "custom:" + s.id === tool)?.label || "ユーザー部品";
+        }
+        return paletteLabel(tool) || tool;
+      }
+
+      // キャンバス上部のヒントピルを現在の状態に合わせて更新する(初心者向けの常時ガイド)。
+      function updateCanvasHint() {
+        const hint = qs("#canvasHint");
+        if (!hint) return;
+        let text = "";
+        if (activeTool === "wire") {
+          text = "配線: 始点から終点へドラッグ（端子・接点へ自動吸着／直交配線）。Esc で選択へ戻る";
+        } else if (activeTool === "line") {
+          text = "直線: ドラッグで作図（任意角度）。Esc で選択へ戻る";
+        } else if (activeTool === "mechanicalLink") {
+          text = "連動破線: ドラッグで作図。Esc で選択へ戻る";
+        } else if (activeTool === "dimension") {
+          text = "寸法: 測りたい2点をドラッグ（実寸を自動記入）。Esc で選択へ戻る";
+        } else if (activeTool === "arrow") {
+          text = "信号矢印: ドラッグで作図。ラベルに信号名を入れると相手頁と自動参照。Esc で戻る";
+        } else if (activeTool !== "select") {
+          text = toolDisplayLabel(activeTool) + ": 用紙をクリックで配置（連続配置可）。Esc で終了";
+        } else if (selectedIds.length > 1) {
+          text = "複数選択中: ドラッグで一括移動 ／ Ctrl+D 複製 ／ Delete 削除 ／ 右パネルで整列・回転";
+        } else if (selectedIds.length === 1) {
+          text = "選択中: ドラッグで移動 ／ Ctrl+D 複製 ／ Delete 削除 ／ 編集は右パネル（デザイン・タグ）";
+        } else {
+          text = "部品: 左パレットからドラッグ ／ 配線: W ／ 範囲選択: 空白からドラッグ ／ ズーム: Ctrl+ホイール";
+        }
+        hint.textContent = text;
+        hint.title = text;
+      }
+
+      // パレット「最近使用」: 配置した種別を新しい順に保持(セッション内)。
+      const recentPaletteTypes = [];
+      function noteRecentPaletteType(type) {
+        if (!type || type === "select") return;
+        const index = recentPaletteTypes.indexOf(type);
+        if (index >= 0) recentPaletteTypes.splice(index, 1);
+        recentPaletteTypes.unshift(type);
+        if (recentPaletteTypes.length > 6) recentPaletteTypes.pop();
+      }
+
       // SVG要素を属性・子要素つきで生成するヘルパ。null/undefinedの属性はスキップ。
       function svgEl(tag, attrs = {}, children = []) {
         const el = document.createElementNS(svgNS, tag);
@@ -1468,6 +1540,12 @@
         grid.innerHTML = "";
         const filter = paletteFilterText.trim().toLowerCase();
         const allItems = [
+          ...recentPaletteTypes.map(type => ({
+            type,
+            label: toolDisplayLabel(type),
+            icon: "box",
+            group: "recent"
+          })),
           ...PALETTE,
           ...BUILTIN_CIRCUITS.map(circuit => ({
             type: "circuit:" + circuit.id,
@@ -1702,6 +1780,7 @@
         drawPageSvg(svg, page, { selection: true, scaled: true, grid: true });
         syncInspector();
         syncPrintSheets();
+        updateCanvasHint();
       }
 
       // 1ページ分のSVGを組み立てる中核。options: selection=選択枠, scaled=画面表示用ズーム, grid=グリッド,
@@ -1728,14 +1807,29 @@
           drawMarquee(svg);
         }
         if (options.selection && !page.elements.length) {
+          // 空ページの「はじめかた」カード(画面表示のみ。印刷・出力には含まれない)
           const cx = size.w / 2;
           const cy = size.h / 2;
-          [["左のパレットから部品をドラッグして配置できます", -4], ["右の「テンプレートからページ追加」から始めるのも簡単です", 3]].forEach(([msg, dy]) => {
-            const hint = textEl(msg, cx, cy + dy, { fontSize: 3, anchor: "middle" });
-            hint.setAttribute("style", "fill:#a5b0bd");
-            hint.setAttribute("pointer-events", "none");
-            svg.appendChild(hint);
+          const card = svgEl("g", { "pointer-events": "none" });
+          card.appendChild(svgEl("rect", {
+            x: cx - 52, y: cy - 26, width: 104, height: 52, rx: 3,
+            fill: "#f7fafc", stroke: "#c3ccd6", "stroke-width": 0.4
+          }));
+          const title = textEl("はじめかた", cx, cy - 19, { fontSize: 4, anchor: "middle" });
+          title.setAttribute("style", "fill:#5b626b; font-weight:bold");
+          card.appendChild(title);
+          [
+            ["1. 右の「テンプレートからページ追加」で骨組みを作る", -10],
+            ["2. 左のパレットから部品をドラッグして配置", -3],
+            ["3. W キー(または「配線」)でドラッグして配線", 4],
+            ["回路ライブラリ(パレット下部)なら1クリックで回路ごと配置", 13],
+            ["困ったら上部の「ヘルプ」へ", 20]
+          ].forEach(([msg, dy], index) => {
+            const hint = textEl(msg, cx - 47, cy + dy, { fontSize: index < 3 ? 2.9 : 2.4, anchor: "start" });
+            hint.setAttribute("style", index < 3 ? "fill:#66727f" : "fill:#93a0ad");
+            card.appendChild(hint);
           });
+          svg.appendChild(card);
         }
       }
 
@@ -6706,6 +6800,7 @@
       function placeElement(type, x, y) {
         const page = currentPage();
         if (!page) return;
+        noteRecentPaletteType(type);
         if (String(type).startsWith("custom:")) {
           placeCustomSymbol(type.slice("custom:".length), x, y);
           return;
@@ -6976,7 +7071,8 @@
         qsa("[data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === tool));
         qs("#selectOnlyBtn")?.classList.toggle("active", tool === "select");
         renderPalette();
-        setStatus(tool === "select" ? "選択ツールです。" : paletteLabel(tool) + "を配置できます。");
+        setStatus(tool === "select" ? "選択ツールです。" : toolDisplayLabel(tool) + "を配置できます。");
+        updateCanvasHint();
       }
 
       // 配置モードを抜けて選択ツールへ戻る(Escや配置完了時)。
@@ -11648,6 +11744,7 @@
               <tr><td>Ctrl+C / V / D</td><td>コピー / 貼付 / 複製</td><td>Delete</td><td>削除</td></tr>
               <tr><td>Ctrl+Z / Y</td><td>元に戻す / やり直し</td><td>矢印キー</td><td>1mm移動（Shiftで5mm）</td></tr>
               <tr><td>Ctrl+S</td><td>JSON保存</td><td>Shift+クリック</td><td>複数選択</td></tr>
+              <tr><td>+ / − / 0</td><td>拡大 / 縮小 / 全体表示</td><td>検索でEnter</td><td>先頭候補を配置モードに</td></tr>
             </tbody>
           </table>
           <p class="muted" style="margin-top:10px">詳しくは docs/manual.md（取扱説明書）を参照してください。</p>
@@ -13753,6 +13850,21 @@
           paletteFilterText = event.target.value || "";
           renderPalette();
         });
+        // 検索ボックスで Enter → 最初の候補を即配置モードに(キーボードだけで配置まで進める)
+        qs("#paletteFilter").addEventListener("keydown", event => {
+          if (event.key === "Enter") {
+            const first = qs("#paletteGrid .palette-item");
+            if (first) {
+              setActiveTool(first.dataset.type);
+              setStatus(toolDisplayLabel(first.dataset.type) + "を配置できます。用紙をクリックしてください。");
+            }
+            event.preventDefault();
+          } else if (event.key === "Escape") {
+            event.target.value = "";
+            paletteFilterText = "";
+            renderPalette();
+          }
+        });
         qs("#openBtn").addEventListener("click", () => qs("#fileInput").click());
         qs("#restoreBackupBtn").addEventListener("click", restoreLocalBackup);
         qs("#fileInput").addEventListener("change", event => {
@@ -14427,6 +14539,22 @@
           if (tool) {
             event.preventDefault();
             setActiveTool(tool);
+            return;
+          }
+          // ズーム: + / - / 0(全体表示)
+          if (event.key === "+" || event.key === "=") {
+            event.preventDefault();
+            setZoom(state.settings.zoom * 1.25, true);
+            return;
+          }
+          if (event.key === "-") {
+            event.preventDefault();
+            setZoom(state.settings.zoom / 1.25, true);
+            return;
+          }
+          if (event.key === "0") {
+            event.preventDefault();
+            fitPageToWorkspace();
             return;
           }
         }
