@@ -338,6 +338,21 @@
       box-shadow: 0 2px 8px rgba(20, 31, 44, .08);
     }
 
+    /* その場編集ボックス(ダブルクリック編集)。位置はJSがfixedで算出する */
+    .inline-editor {
+      position: fixed;
+      z-index: 60;
+      min-width: 56px;
+      padding: 2px 6px;
+      border: 1.5px solid var(--accent, #2563eb);
+      border-radius: 4px;
+      background: #fff;
+      color: #16202b;
+      font-family: inherit;
+      box-shadow: 0 3px 12px rgba(20, 31, 44, .25);
+      outline: none;
+    }
+
     .workspace {
       min-width: 0;
       min-height: 0;
@@ -1486,7 +1501,7 @@
         } else if (selectedIds.length > 1) {
           text = "複数選択中: ドラッグで一括移動 ／ Ctrl+D 複製 ／ Delete 削除 ／ 右パネルで整列・回転";
         } else if (selectedIds.length === 1) {
-          text = "選択中: ドラッグで移動 ／ Ctrl+D 複製 ／ Delete 削除 ／ 編集は右パネル（デザイン・タグ）";
+          text = "選択中: ドラッグで移動 ／ ダブルクリックでその場編集 ／ Ctrl+D 複製 ／ Delete 削除 ／ 詳細は右パネル";
         } else {
           text = "部品: 左パレットからドラッグ ／ 配線: W ／ 範囲選択: 空白からドラッグ ／ ズーム: Ctrl+ホイール";
         }
@@ -11833,11 +11848,13 @@
           ${section("配線のコツ", `
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
               <li><b>W</b>→始点から終点へドラッグ。自動で直交（L字）配線になり、端子・接点ピンへ吸着</li>
+              <li>L字の折れ向きはドラッグ中に<b>Shift</b>で反転（作図後は選択パネルの「折れ向き反転」）</li>
               <li>部品を動かすと<b>接続済み配線の端点が追従</b></li>
               <li>T分岐の黒丸は機能メニュー「<b>接続点生成</b>」で一括追加</li>
               <li>交差を飛び越す表現は選択して「<b>配線ギャップ</b>」（交差一括追加も可）</li>
               <li>編集: 中間点追加/削除・直交整形・<b>分割/結合/終点延長/トリム</b>（選択パネルのボタン）</li>
               <li><b>線番</b>は「線番採番」で自動付与（同電位ネットは同じ番号、代表1本のみ表示）</li>
+              <li><b>ダブルクリックでその場編集</b>: 配線=線番、部品=ラベル、文字=本文。Enter確定・Esc取消・<b>Tabで次の要素へ連続入力</b></li>
             </ul>`)}
 
           ${section("シンボルデザイン（JIS/IEC切替）", `
@@ -11897,6 +11914,8 @@
                 <tr><td>Ctrl+S</td><td>JSON保存</td><td>Shift+クリック</td><td>複数選択</td></tr>
                 <tr><td>+ / − / 0</td><td>拡大 / 縮小 / 全体表示</td><td>Ctrl+ホイール</td><td>カーソル位置でズーム</td></tr>
                 <tr><td>検索でEnter</td><td>先頭候補を配置モード</td><td>Esc</td><td>配置終了 / 選択解除</td></tr>
+                <tr><td>ダブルクリック</td><td>その場編集（線番/ラベル/文字）</td><td>その場編集中のTab</td><td>確定して次の要素へ</td></tr>
+                <tr><td>配線ドラッグ中Shift</td><td>L字の折れ向き反転</td><td></td><td></td></tr>
               </tbody>
             </table>`)}
 
@@ -14643,35 +14662,131 @@
         element.points[dragState.pointIndex] = [round(point.x), round(point.y)];
       }
 
-      // ダブルクリック編集(文字=本文、配線=線番、他=ラベルのプロンプト)。
+      // ===== その場編集(ダブルクリック: 文字=本文、配線=線番、他=ラベル) =====
+      // 図面上にフローティング入力を重ねて直接編集する。Enter=確定 / Esc=取消 /
+      // Tab・Shift+Tab=確定して同種の次(前)要素へ移動(線番・タグの連続入力用)。
+      let inlineEdit = null; // { input, element, field, cleanup }
+
+      // 要素種別→編集対象フィールドと表示名。
+      function inlineEditFieldFor(element) {
+        if (element.type === "text") return { field: "text", title: "文字" };
+        if (element.type === "wire") return { field: "wireNo", title: "線番" };
+        return { field: "label", title: "ラベル" };
+      }
+
+      // Tab移動の巡回対象(同種フィールドを持つ非ロック要素を上→下、左→右順で)。
+      function inlineEditCandidates(current) {
+        const page = currentPage();
+        if (!page) return [current];
+        const kindOf = el => el.type === "text" ? "text" : (el.type === "wire" ? "wire" : "label");
+        const want = kindOf(current);
+        const anchorOf = el => el.type === "wire" ? wireNoAnchorPoint(el) : { x: el.x || 0, y: el.y || 0 };
+        return page.elements
+          .filter(el => kindOf(el) === want && !isElementLocked(el))
+          .sort((a, b) => {
+            const pa = anchorOf(a);
+            const pb = anchorOf(b);
+            return (pa.y - pb.y) || (pa.x - pb.x);
+          });
+      }
+
+      // 編集を閉じる。commit=trueなら値が変わっていた場合のみ履歴に積んで反映。
+      function closeInlineEdit(commit) {
+        if (!inlineEdit) return;
+        const { input, element, field, cleanup } = inlineEdit;
+        inlineEdit = null;
+        cleanup?.();
+        const value = input.value;
+        input.remove();
+        if (!commit) return;
+        const before = element[field] === undefined || element[field] === null ? "" : String(element[field]);
+        if (value === before) return;
+        element[field] = value;
+        commitHistory(field === "text" ? "文字を更新しました。" : field === "wireNo" ? "線番を更新しました。" : "ラベルを更新しました。");
+        render();
+      }
+
+      // 要素のそば(配線は線番位置、他は基準点)にフローティング入力を開く。
+      function startInlineEdit(element) {
+        if (!element) return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた要素は編集できません。ロック解除してから編集してください。");
+          return;
+        }
+        closeInlineEdit(true);
+        const { field, title } = inlineEditFieldFor(element);
+        selectSingle(element.id);
+        const svg = qs("#canvas");
+        if (!svg) return;
+        const rect = svg.getBoundingClientRect();
+        const vb = svg.viewBox.baseVal;
+        if (!vb || !vb.width) return;
+        const pxPerMm = rect.width / vb.width;
+        const anchorMm = element.type === "wire" ? wireNoAnchorPoint(element) : { x: element.x || 0, y: element.y || 0 };
+        const cx = rect.left + (anchorMm.x - vb.x) * pxPerMm;
+        const cy = rect.top + (anchorMm.y - vb.y) * pxPerMm;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "inline-editor";
+        input.value = element[field] === undefined || element[field] === null ? "" : String(element[field]);
+        input.placeholder = title;
+        input.title = title + "（Enter=確定 / Esc=取消 / Tab=次へ / Shift+Tab=前へ）";
+        const fontPx = Math.max(11, Math.min(22, 3.2 * pxPerMm));
+        input.style.fontSize = fontPx + "px";
+        const fitWidth = () => {
+          input.style.width = Math.round(Math.max(56, (input.value.length + 2) * fontPx * .62)) + "px";
+        };
+        fitWidth();
+        input.style.left = Math.round(Math.min(Math.max(cx, 8), window.innerWidth - 120)) + "px";
+        input.style.top = Math.round(Math.min(Math.max(cy - fontPx * .9, 8), window.innerHeight - 48)) + "px";
+        // スクロール・ズーム・リサイズで位置がずれるため、その時点の値で確定して閉じる
+        const onViewChange = () => closeInlineEdit(true);
+        const scrollHost = qs(".workspace") || window;
+        scrollHost.addEventListener("scroll", onViewChange, { passive: true });
+        window.addEventListener("resize", onViewChange);
+        document.body.appendChild(input);
+        inlineEdit = {
+          input, element, field,
+          cleanup() {
+            scrollHost.removeEventListener("scroll", onViewChange);
+            window.removeEventListener("resize", onViewChange);
+          }
+        };
+        input.focus();
+        input.select();
+        input.addEventListener("input", fitWidth);
+        // 入力中のキーはアプリ側ショートカット(Ctrl+Z等)へ流さない
+        input.addEventListener("keydown", ev => {
+          ev.stopPropagation();
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            closeInlineEdit(true);
+          } else if (ev.key === "Escape") {
+            ev.preventDefault();
+            closeInlineEdit(false);
+          } else if (ev.key === "Tab") {
+            ev.preventDefault();
+            const dir = ev.shiftKey ? -1 : 1;
+            const list = inlineEditCandidates(element);
+            const index = list.findIndex(el => el.id === element.id);
+            const next = list.length ? list[(index + dir + list.length) % list.length] : null;
+            closeInlineEdit(true);
+            if (next && next.id !== element.id) startInlineEdit(next);
+          }
+        });
+        input.addEventListener("blur", () => closeInlineEdit(true));
+        setStatus(title + "をその場で編集中: Enter=確定 / Esc=取消 / Tab=次の要素へ");
+      }
+
+      // ダブルクリックでその場編集を開始。
       function onCanvasDoubleClick(event) {
         const targetElement = event.target.closest("[data-id]");
         if (!targetElement) return;
         selectSingle(targetElement.dataset.id);
         const element = selectedElement();
         if (!element) return;
-        if (element.type === "text") {
-          const text = prompt("文字を入力", element.text || "");
-          if (text !== null) {
-            element.text = text;
-            commitHistory("文字を更新しました。");
-            render();
-          }
-        } else if (element.type === "wire") {
-          const text = prompt("線番を入力", element.wireNo || "");
-          if (text !== null) {
-            element.wireNo = text;
-            commitHistory("線番を更新しました。");
-            render();
-          }
-        } else {
-          const text = prompt("ラベルを入力", element.label || "");
-          if (text !== null) {
-            element.label = text;
-            commitHistory("ラベルを更新しました。");
-            render();
-          }
-        }
+        event.preventDefault();
+        startInlineEdit(element);
       }
 
       // キーボードショートカット。S/V=選択 W=配線 T=文字 L=直線 R=矩形 C=円、Ctrl+C/V/D/Z/Y/S、
