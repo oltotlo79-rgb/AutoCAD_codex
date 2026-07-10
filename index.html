@@ -239,6 +239,24 @@
       gap: 8px;
     }
 
+    details.palette-group {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 6px 8px 8px;
+      margin-top: 8px;
+    }
+
+    details.palette-group summary {
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      color: #334150;
+      user-select: none;
+    }
+
+    details.palette-group .palette-grid { margin-top: 8px; }
+
     .palette-item {
       min-height: 66px;
       border: 1px solid var(--line);
@@ -523,7 +541,8 @@
         <button type="button" id="openBtn" title="JSONを開く">開く</button>
         <button type="button" id="restoreBackupBtn" title="ブラウザ内の自動保存を復元">復元</button>
         <button type="button" id="saveBtn" class="primary" title="JSONで保存">保存</button>
-        <button type="button" id="searchBtn" title="線番・タグ・文字を検索">検索</button>
+        <button type="button" id="searchBtn" title="線番・タグ・文字を検索/置換">検索</button>
+        <button type="button" id="helpBtn" title="使い方とショートカット">ヘルプ</button>
         <button type="button" id="titleBatchBtn" title="全ページの表題欄を一括更新">表題欄</button>
         <button type="button" id="printBtn" title="全ページをPDF印刷">PDF印刷</button>
         <button type="button" id="printTwoUpBtn" title="A3縦に2ページずつ面付けして印刷">A3面付</button>
@@ -549,7 +568,7 @@
         <div class="panel-title">部品パレット</div>
         <button type="button" id="selectOnlyBtn" data-tool="select" style="width:100%;margin-bottom:8px">選択</button>
         <input id="paletteFilter" type="search" placeholder="部品検索" aria-label="部品検索">
-        <div class="palette-grid" id="paletteGrid"></div>
+        <div id="paletteGrid"></div>
 
         <div class="section">
           <div class="panel-title">表示</div>
@@ -633,6 +652,8 @@
               <option value="layerManager">レイヤ管理</option>
               <option value="catalog">部品カタログ</option>
               <option value="symbolManager">ユーザー部品管理</option>
+              <option value="symbolBuilder">シンボルビルダー（簡易）</option>
+              <option value="revisionHistory">改訂履歴</option>
             </optgroup>
             <optgroup label="帳票・確認">
               <option value="crossRef">クロスリファレンス</option>
@@ -885,6 +906,7 @@
         { type: "terminalBox", label: "端子箱", icon: "terminalBox" },
         { type: "table", label: "表", icon: "table" },
         { type: "arrow", label: "信号矢印", icon: "arrow" },
+        { type: "dimension", label: "寸法", icon: "dimension" },
         { type: "positionMark", label: "ポジション表示", icon: "positionMark" },
         { type: "polarityMark", label: "極性マーク", icon: "polarityMark" },
         { type: "junction", label: "接続点", icon: "dot" }
@@ -923,6 +945,31 @@
         terminalBox: "TB",
         arrow: "REF"
       };
+
+      const PALETTE_GROUPS = [
+        { id: "basic", label: "基本図形" },
+        { id: "contact", label: "接点・スイッチ" },
+        { id: "coil", label: "コイル・表示" },
+        { id: "power", label: "電源・負荷" },
+        { id: "protect", label: "保護・素子" },
+        { id: "terminal", label: "端子・接続" },
+        { id: "device", label: "機器・枠・表" },
+        { id: "annotation", label: "注釈・マーク" },
+        { id: "custom", label: "ユーザー部品" }
+      ];
+
+      const PALETTE_GROUP_BY_TYPE = {
+        text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
+        contactNO: "contact", contactNC: "contact", contactBlock: "contact", pushButton: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact",
+        coil: "coil", lamp: "coil", buzzer: "coil",
+        powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power",
+        fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect",
+        terminal: "terminal", terminalStrip: "terminal", terminalSheet: "terminal", connector: "terminal", junction: "terminal", cableMarker: "terminal", cableBundle: "terminal", terminalBox: "terminal",
+        deviceBox: "device", plcBlock: "device", installationBox: "device", locationBox: "device", table: "device",
+        arrow: "annotation", positionMark: "annotation", polarityMark: "annotation"
+      };
+
+      const paletteOpenGroups = new Set(["basic", "contact", "custom"]);
 
       const qs = (selector, root = document) => root.querySelector(selector);
       const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -1043,6 +1090,7 @@
           ...(state.project || {})
         };
         state.project.titleMap = { ...DEFAULT_TITLE_MAP, ...(state.project.titleMap || {}) };
+        if (!Array.isArray(state.project.revisions)) state.project.revisions = [];
         if (!Array.isArray(state.catalog)) state.catalog = [];
         if (!Array.isArray(state.standardPacks)) state.standardPacks = [];
         return state.project;
@@ -1146,28 +1194,30 @@
         const grid = qs("#paletteGrid");
         grid.innerHTML = "";
         const filter = paletteFilterText.trim().toLowerCase();
-        const items = [
+        const allItems = [
           ...PALETTE,
           ...(state.customSymbols || []).map(symbol => ({
             type: "custom:" + symbol.id,
             label: symbol.label,
-            icon: "box"
+            icon: "box",
+            group: "custom"
           }))
-        ].filter(item => {
+        ];
+        const matches = allItems.filter(item => {
           if (!filter) return true;
           return String(item.label || "").toLowerCase().includes(filter)
             || String(item.type || "").toLowerCase().includes(filter);
         });
-        if (!items.length) {
-          grid.innerHTML = '<div class="muted" style="grid-column:1/-1">該当する部品がありません。</div>';
+        if (!matches.length) {
+          grid.innerHTML = '<div class="muted">該当する部品がありません。</div>';
           return;
         }
-        items.forEach(item => {
+        const makeItem = item => {
           const button = document.createElement("div");
           button.className = "palette-item" + (activeTool === item.type ? " active" : "");
           button.draggable = true;
           button.dataset.type = item.type;
-          button.title = item.label + "を配置";
+          button.title = item.label + "を配置（ドラッグ or クリック→用紙クリック）";
           button.innerHTML = iconSvg(item.icon) + '<div class="palette-label">' + item.label + "</div>";
           button.addEventListener("dragstart", event => {
             event.dataTransfer.setData("text/plain", item.type);
@@ -1176,7 +1226,33 @@
           button.addEventListener("click", () => {
             setActiveTool(item.type);
           });
-          grid.appendChild(button);
+          return button;
+        };
+        if (filter) {
+          const flat = document.createElement("div");
+          flat.className = "palette-grid";
+          matches.forEach(item => flat.appendChild(makeItem(item)));
+          grid.appendChild(flat);
+          return;
+        }
+        PALETTE_GROUPS.forEach(group => {
+          const items = matches.filter(item => (item.group || PALETTE_GROUP_BY_TYPE[item.type] || "device") === group.id);
+          if (!items.length) return;
+          const details = document.createElement("details");
+          details.className = "palette-group";
+          details.open = paletteOpenGroups.has(group.id);
+          const summary = document.createElement("summary");
+          summary.textContent = group.label + "（" + items.length + "）";
+          details.appendChild(summary);
+          const inner = document.createElement("div");
+          inner.className = "palette-grid";
+          items.forEach(item => inner.appendChild(makeItem(item)));
+          details.appendChild(inner);
+          details.addEventListener("toggle", () => {
+            if (details.open) paletteOpenGroups.add(group.id);
+            else paletteOpenGroups.delete(group.id);
+          });
+          grid.appendChild(details);
         });
       }
 
@@ -1229,6 +1305,7 @@
           terminalBox: `<svg ${common}><rect x="22" y="10" width="36" height="24" ${stroke}/><path ${thin} d="M8 18h14M8 27h14M58 18h14M58 27h14M32 10v24M44 10v24"/></svg>`,
           table: `<svg ${common}><rect x="12" y="10" width="56" height="26" ${stroke}/><path ${thin} d="M12 18h56M12 27h56M30 10v26M50 10v26"/></svg>`,
           arrow: `<svg ${common}><path ${stroke} d="M10 22h50M50 12l12 10-12 10"/></svg>`,
+          dimension: `<svg ${common}><path ${stroke} d="M14 34V12M66 34V12M14 24h52"/><path d="M14 24l8-3v6zM66 24l-8-3v6z" fill="currentColor"/></svg>`,
           dot: `<svg ${common}><path ${stroke} d="M8 22h64M40 8v28"/><circle cx="40" cy="22" r="5" fill="currentColor"/></svg>`
         };
         return map[name] || map.box;
@@ -1290,6 +1367,16 @@
         if (options.selection) {
           drawSelection(svg);
           drawMarquee(svg);
+        }
+        if (options.selection && !page.elements.length) {
+          const cx = size.w / 2;
+          const cy = size.h / 2;
+          [["左のパレットから部品をドラッグして配置できます", -4], ["右の「テンプレートからページ追加」から始めるのも簡単です", 3]].forEach(([msg, dy]) => {
+            const hint = textEl(msg, cx, cy + dy, { fontSize: 3, anchor: "middle" });
+            hint.setAttribute("style", "fill:#a5b0bd");
+            hint.setAttribute("pointer-events", "none");
+            svg.appendChild(hint);
+          });
         }
       }
 
@@ -1422,7 +1509,14 @@
         frame.appendChild(svgEl("line", { x1: revX, y1: y, x2: revX, y2: y + h, class: "frame-line" }));
         frame.appendChild(textEl("REV", revX + 14, y + 4, { fontSize: 2.1, anchor: "middle" }));
         for (let i = 1; i < 6; i++) frame.appendChild(svgEl("line", { x1: revX, y1: y + 8 * i, x2: x + w, y2: y + 8 * i, class: "frame-light" }));
-        frame.appendChild(textEl(page.title.revision || "", revX + 14, y + 12, { fontSize: 2.4, anchor: "middle" }));
+        const revisions = (state.project.revisions || []).slice(-5);
+        if (revisions.length) {
+          revisions.forEach((entry, index) => {
+            frame.appendChild(textEl(((entry.rev || "") + " " + (entry.date || "")).trim(), revX + 14, y + 12 + 8 * index, { fontSize: 2, anchor: "middle" }));
+          });
+        } else {
+          frame.appendChild(textEl(page.title.revision || "", revX + 14, y + 12, { fontSize: 2.4, anchor: "middle" }));
+        }
         frame.appendChild(textEl("図名", x + 2, y + 4, { fontSize: 2.2 }));
         frame.appendChild(textEl(page.title.title, x + 20, y + 4, { fontSize: 2.7 }));
         frame.appendChild(textEl("設備", x + 2, y + 12, { fontSize: 2.2 }));
@@ -1641,7 +1735,7 @@
           cursor: "move",
           "pointer-events": element.type === "underlayImage" && element.locked ? "none" : null
         });
-        if (element.type !== "wire" && element.type !== "arrow") {
+        if (element.type !== "wire" && element.type !== "arrow" && element.type !== "dimension") {
           g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")");
         }
         const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
@@ -1689,6 +1783,7 @@
         if (element.type === "terminalBox") drawTerminalBox(g, element, stroke);
         if (element.type === "table") drawTable(g, element, stroke);
         if (element.type === "arrow") drawArrow(g, element, stroke);
+        if (element.type === "dimension") drawDimension(g, element, stroke);
         if (element.type === "junction") drawJunction(g, element, stroke);
         drawVisibleAttributes(g, element);
         svg.appendChild(g);
@@ -2736,6 +2831,46 @@
         g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: Number(element.r || 0.75), fill: stroke }));
       }
 
+      // ===== 寸法記入(直線寸法・水平/垂直自動) =====
+      function drawDimension(g, element, stroke) {
+        const pts = element.points || [[0, 0], [30, 0]];
+        const a = pts[0];
+        const b = pts[pts.length - 1];
+        const horizontal = Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]);
+        const off = Math.abs(Number(element.dimOffset ?? 6)) || 6;
+        const seg = (x1, y1, x2, y2) => g.appendChild(svgEl("line", { x1, y1, x2, y2, class: "symbol-line", stroke }));
+        const tri = (tip, angle) => {
+          const L = 2.6;
+          const H = .28;
+          const q1 = [tip[0] - L * Math.cos(angle - H), tip[1] - L * Math.sin(angle - H)];
+          const q2 = [tip[0] - L * Math.cos(angle + H), tip[1] - L * Math.sin(angle + H)];
+          g.appendChild(svgEl("path", { d: "M " + q1[0] + " " + q1[1] + " L " + tip[0] + " " + tip[1] + " L " + q2[0] + " " + q2[1] + " Z", fill: stroke, stroke: "none" }));
+        };
+        if (horizontal) {
+          const y = Math.min(a[1], b[1]) - off;
+          const x1 = Math.min(a[0], b[0]);
+          const x2 = Math.max(a[0], b[0]);
+          seg(a[0], a[1], a[0], y - 1.4);
+          seg(b[0], b[1], b[0], y - 1.4);
+          seg(x1, y, x2, y);
+          tri([x1, y], Math.PI);
+          tri([x2, y], 0);
+          const value = element.label || String(round(x2 - x1));
+          g.appendChild(textEl(value, (x1 + x2) / 2, y - 1.8, { fontSize: 2.4, anchor: "middle" }));
+        } else {
+          const x = Math.min(a[0], b[0]) - off;
+          const y1 = Math.min(a[1], b[1]);
+          const y2 = Math.max(a[1], b[1]);
+          seg(a[0], a[1], x - 1.4, a[1]);
+          seg(b[0], b[1], x - 1.4, b[1]);
+          seg(x, y1, x, y2);
+          tri([x, y1], -Math.PI / 2);
+          tri([x, y2], Math.PI / 2);
+          const value = element.label || String(round(y2 - y1));
+          g.appendChild(textEl(value, x - 1.8, (y1 + y2) / 2, { fontSize: 2.4, anchor: "middle", transform: "rotate(-90 " + (x - 1.8) + " " + ((y1 + y2) / 2) + ")" }));
+        }
+      }
+
       // ===== ラダー行グリッドと行アドレス(頁番号+行番号2桁) =====
       const LADDER_GRID = { top: 27, pitch: 9.5, rows: 20 };
 
@@ -3477,7 +3612,7 @@
       }
 
       function elementBounds(element) {
-        if (element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "mechanicalLink") {
+        if (element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "mechanicalLink" || element.type === "dimension") {
           const points = element.points || [[0, 0], [0, 0]];
           const xs = points.map(p => p[0]);
           const ys = points.map(p => p[1]);
@@ -3700,7 +3835,7 @@
           return;
         }
         const typeName = paletteLabel(element.type);
-        const isWireLike = element.type === "wire" || element.type === "arrow" || element.type === "line";
+        const isWireLike = element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "dimension";
         panel.innerHTML = `
           <div class="panel-title">選択中: ${typeName}</div>
           ${isWireLike ? wireFields(element) : normalFields(element)}
@@ -4211,6 +4346,13 @@
             <input data-bind="dash" type="text" value="${escapeAttr(element.dash || "")}" placeholder="実線のまま=空欄">` : ""}
           `;
         }
+        if (element.type === "dimension") {
+          return `
+            <label>寸法線オフセット mm</label>
+            <input data-bind="dimOffset" data-kind="number" type="number" step="0.5" value="${round(element.dimOffset ?? 6)}">
+            <p class="muted">寸法値は2点間の実寸(mm)を自動表示します。「ラベル」に入力すると上書きできます。</p>
+          `;
+        }
         if (element.type === "line") {
           const lineKind = element.lineKind || "straight";
           return `
@@ -4304,7 +4446,7 @@
 
       function supportsElectricalAttributes(element) {
         if (!element) return false;
-        return !["text", "wire", "line", "rect", "circle", "underlayImage", "installationBox", "locationBox", "table", "arrow", "junction", "positionMark", "polarityMark", "mechanicalLink"].includes(element.type);
+        return !["text", "wire", "line", "rect", "circle", "underlayImage", "installationBox", "locationBox", "table", "arrow", "junction", "positionMark", "polarityMark", "mechanicalLink", "dimension"].includes(element.type);
       }
 
       function updateSelectedFromInput(input, save = true) {
@@ -4457,6 +4599,7 @@
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", colWidths: "", rowHeights: "", tableFontSize: 2.2, cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 2, h: 2, r: 0.75, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", arrowStyle: "open", arrowAtStart: false, stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
+          dimension: { id: uid("el"), type: "dimension", points: [[x, y], [x + 30, y]], label: "", dimOffset: 6, stroke: state.settings.stroke, layer: "notes" },
           wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireNoAlign: "mid", fixedWireNo: false, hideWireNo: false, gapAtMid: false, fromOverride: "", toOverride: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
         };
         return deepClone(defaults[type] || defaults.deviceBox);
@@ -8738,6 +8881,36 @@
         return match ? match[1].trim() : "";
       }
 
+      function showHelpDialog() {
+        openDialog("使い方（クイックガイド）", `
+          <div class="panel-title">はじめの5ステップ</div>
+          <ol style="margin:6px 0 12px;padding-left:20px;line-height:1.8">
+            <li>右パネルの<b>「テンプレートからページ追加」</b>で骨組みを作る（設備ラダー／PLC入力回路など）</li>
+            <li>左の<b>部品パレット</b>から部品をドラッグして配置（カテゴリをクリックで開閉、検索も可）</li>
+            <li><b>W</b>キーまたは「配線」で配線をドラッグ作図（端子・接点へ自動吸着）</li>
+            <li>部品を選択して右パネルで<b>タグ・線番・属性</b>を編集（コイルと接点を同じタグにすると自動で相互参照）</li>
+            <li>「線番採番」→「監査」→上部の<b>PDF印刷</b>で仕上げ</li>
+          </ol>
+          <div class="panel-title">よく使う機能の場所</div>
+          <p class="muted" style="margin:6px 0 12px">
+            自動処理・帳票・取込出力は左パネルの<b>機能メニュー</b>に、
+            ページ雛形は右パネルの<b>テンプレート</b>に、下絵操作は<b>下絵</b>プルダウンにまとまっています。
+          </p>
+          <div class="panel-title">キーボードショートカット</div>
+          <table class="report-table">
+            <tbody>
+              <tr><td>S / V</td><td>選択ツール</td><td>W</td><td>配線</td></tr>
+              <tr><td>T</td><td>文字</td><td>L</td><td>直線</td></tr>
+              <tr><td>R</td><td>矩形</td><td>C</td><td>円</td></tr>
+              <tr><td>Ctrl+C / V / D</td><td>コピー / 貼付 / 複製</td><td>Delete</td><td>削除</td></tr>
+              <tr><td>Ctrl+Z / Y</td><td>元に戻す / やり直し</td><td>矢印キー</td><td>1mm移動（Shiftで5mm）</td></tr>
+              <tr><td>Ctrl+S</td><td>JSON保存</td><td>Shift+クリック</td><td>複数選択</td></tr>
+            </tbody>
+          </table>
+          <p class="muted" style="margin-top:10px">詳しくは docs/manual.md（取扱説明書）を参照してください。</p>
+        `);
+      }
+
       function showSearchDialog() {
         const html = `
           <label for="searchQuery">検索語</label>
@@ -8816,6 +8989,132 @@
           });
         });
         return results;
+      }
+
+      // ===== シンボルビルダー(簡易・テキスト定義) =====
+      // 1行1プリミティブ: line x1 y1 x2 y2 / rect x y w h / circle cx cy r /
+      // text x y サイズ 文字列 / anchor x y (接続点=小端子として生成)
+      function parseSymbolScript(text) {
+        const templates = [];
+        const errors = [];
+        String(text || "").split(/\r?\n/).forEach((rawLine, index) => {
+          const line = rawLine.trim();
+          if (!line || line.startsWith("#")) return;
+          const parts = line.split(/[\s,]+/);
+          const cmd = (parts[0] || "").toLowerCase();
+          const nums = parts.slice(1).map(Number);
+          const base = { label: "", rotation: 0, stroke: state.settings.stroke, layer: "symbols" };
+          if (cmd === "line" && nums.length >= 4 && nums.slice(0, 4).every(Number.isFinite)) {
+            templates.push({ ...base, type: "line", points: [[nums[0], nums[1]], [nums[2], nums[3]]], strokeWidth: .32, dash: "" });
+          } else if (cmd === "rect" && nums.length >= 4 && nums.slice(0, 4).every(Number.isFinite)) {
+            templates.push({ ...base, type: "rect", x: nums[0], y: nums[1], w: nums[2], h: nums[3] });
+          } else if (cmd === "circle" && nums.length >= 3 && nums.slice(0, 3).every(Number.isFinite)) {
+            templates.push({ ...base, type: "circle", x: nums[0] - nums[2], y: nums[1] - nums[2], w: nums[2] * 2, h: nums[2] * 2 });
+          } else if (cmd === "text" && nums.length >= 3 && Number.isFinite(nums[0]) && Number.isFinite(nums[1]) && parts.length >= 5) {
+            templates.push({ ...base, type: "text", x: nums[0], y: nums[1], w: 24, h: 5, text: parts.slice(4).join(" "), fontSize: Number.isFinite(nums[2]) && nums[2] > 0 ? nums[2] : 2.5, layer: "notes" });
+          } else if (cmd === "anchor" && nums.length >= 2 && nums.slice(0, 2).every(Number.isFinite)) {
+            templates.push({ ...base, type: "terminal", x: nums[0] - 0.9, y: nums[1] - 0.9, w: 1.8, h: 1.8, orientation: "horizontal", terminalShape: "circle" });
+          } else {
+            errors.push((index + 1) + "行目: " + rawLine);
+          }
+        });
+        return { templates, errors };
+      }
+
+      // ===== 改訂履歴管理 =====
+      function showRevisionHistory() {
+        const revisions = state.project.revisions || [];
+        const rows = revisions.map((entry, index) => `
+          <tr data-rev-row="${index}">
+            <td><input data-rev-field="rev" value="${escapeAttr(entry.rev || "")}" style="width:56px"></td>
+            <td><input data-rev-field="date" value="${escapeAttr(entry.date || "")}" style="width:110px"></td>
+            <td><input data-rev-field="note" value="${escapeAttr(entry.note || "")}"></td>
+            <td><button type="button" data-rev-delete="${index}">削除</button></td>
+          </tr>`).join("");
+        openDialog("改訂履歴", `
+          <p class="muted">プロジェクト全体の改訂履歴です。図枠「詳細: 右下+改訂欄」の改訂欄に最新5件が表示され、
+          最新の改訂記号は表題欄一括更新の「改訂」既定値になります。</p>
+          <table class="report-table">
+            <thead><tr><th>改訂</th><th>日付</th><th>内容</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="addRevisionBtn">行追加</button>
+            <button type="button" id="applyRevisionBtn" class="primary">適用</button>
+          </div>`);
+        const collect = () => {
+          const list = [];
+          qsa("[data-rev-row]", qs("#dialogBody")).forEach(row => {
+            const entry = {};
+            qsa("[data-rev-field]", row).forEach(input => { entry[input.dataset.revField] = input.value; });
+            if (entry.rev || entry.date || entry.note) list.push(entry);
+          });
+          return list;
+        };
+        qs("#addRevisionBtn").addEventListener("click", () => {
+          state.project.revisions = collect();
+          state.project.revisions.push({ rev: "", date: state.project.date || today, note: "" });
+          showRevisionHistory();
+        });
+        qs("#applyRevisionBtn").addEventListener("click", () => {
+          state.project.revisions = collect();
+          const latest = state.project.revisions[state.project.revisions.length - 1];
+          if (latest && latest.rev) state.project.revision = latest.rev;
+          closeDialog();
+          commitHistory("改訂履歴を更新しました。");
+          render();
+        });
+      }
+
+      function showSymbolBuilder() {
+        openDialog("シンボルビルダー（簡易）", `
+          <p class="muted">1行に1プリミティブを書きます（座標はmm・左上原点）。<br>
+          <code>line x1 y1 x2 y2</code> ／ <code>rect x y 幅 高</code> ／ <code>circle cx cy r</code> ／
+          <code>text x y サイズ 文字列</code> ／ <code>anchor x y</code>（配線が吸着する接続点） ／ <code>#</code> はコメント</p>
+          <label>部品名</label>
+          <input id="sbName" value="新しい部品">
+          <label>定義</label>
+          <textarea id="sbScript" style="min-height:140px;font-family:var(--mono)">
+# 例: 箱と左右リード+接続点
+anchor 0 6
+line 0 6 4 6
+rect 4 0 12 12
+line 16 6 20 6
+anchor 20 6</textarea>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="sbPreviewBtn">プレビュー</button>
+            <button type="button" id="sbSaveBtn" class="primary">パレットへ登録</button>
+          </div>
+          <div id="sbPreviewArea" style="margin-top:10px"></div>`);
+        const buildPreview = () => {
+          const parsed = parseSymbolScript(qs("#sbScript").value);
+          const area = qs("#sbPreviewArea");
+          if (parsed.errors.length) {
+            area.innerHTML = '<p class="danger">解釈できない行があります:<br>' + parsed.errors.map(escapeHtml).join("<br>") + "</p>";
+            return null;
+          }
+          if (!parsed.templates.length) {
+            area.innerHTML = '<p class="muted">プリミティブがありません。</p>';
+            return null;
+          }
+          area.innerHTML = symbolPreviewSvg({ templates: parsed.templates });
+          return parsed.templates;
+        };
+        qs("#sbPreviewBtn").addEventListener("click", buildPreview);
+        qs("#sbSaveBtn").addEventListener("click", () => {
+          const templates = buildPreview();
+          if (!templates) return;
+          const label = qs("#sbName").value || "ユーザー部品";
+          state.customSymbols.push({
+            id: uid("sym"),
+            label,
+            template: deepClone(templates[0]),
+            templates: deepClone(templates)
+          });
+          closeDialog();
+          commitHistory("シンボルビルダーで部品を登録しました。");
+          render();
+        });
       }
 
       function symbolPreviewSvg(symbol) {
@@ -9619,6 +9918,46 @@
           if (element.label) dxfText(out, page, "TEXT", (a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 3, 2.4, element.label);
           const note = arrowCounterpartNote(element);
           if (note) dxfText(out, page, "TEXT", b[0] - note.length * 1.1, b[1] - 3, 1.8, note);
+          return;
+        }
+        if (element.type === "dimension") {
+          const pts = element.points || [[0, 0], [30, 0]];
+          const a = pts[0];
+          const b = pts[pts.length - 1];
+          const horizontal = Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]);
+          const off = Math.abs(Number(element.dimOffset ?? 6)) || 6;
+          const tri = (tip, angle) => {
+            const L = 2.6;
+            const H = .28;
+            const q1 = [tip[0] - L * Math.cos(angle - H), tip[1] - L * Math.sin(angle - H)];
+            const q2 = [tip[0] - L * Math.cos(angle + H), tip[1] - L * Math.sin(angle + H)];
+            dxfLine(out, page, "DIM", q1[0], q1[1], tip[0], tip[1]);
+            dxfLine(out, page, "DIM", tip[0], tip[1], q2[0], q2[1]);
+            dxfLine(out, page, "DIM", q1[0], q1[1], q2[0], q2[1]);
+          };
+          if (horizontal) {
+            const y = Math.min(a[1], b[1]) - off;
+            const x1 = Math.min(a[0], b[0]);
+            const x2 = Math.max(a[0], b[0]);
+            dxfLine(out, page, "DIM", a[0], a[1], a[0], y - 1.4);
+            dxfLine(out, page, "DIM", b[0], b[1], b[0], y - 1.4);
+            dxfLine(out, page, "DIM", x1, y, x2, y);
+            tri([x1, y], Math.PI);
+            tri([x2, y], 0);
+            const value = element.label || String(round(x2 - x1));
+            dxfText(out, page, "DIM", (x1 + x2) / 2 - value.length * .72, y - 1, 2.4, value);
+          } else {
+            const x = Math.min(a[0], b[0]) - off;
+            const y1 = Math.min(a[1], b[1]);
+            const y2 = Math.max(a[1], b[1]);
+            dxfLine(out, page, "DIM", a[0], a[1], x - 1.4, a[1]);
+            dxfLine(out, page, "DIM", b[0], b[1], x - 1.4, b[1]);
+            dxfLine(out, page, "DIM", x, y1, x, y2);
+            tri([x, y1], -Math.PI / 2);
+            tri([x, y2], Math.PI / 2);
+            const value = element.label || String(round(y2 - y1));
+            dxfTextRotated(out, page, "DIM", x - 1, (y1 + y2) / 2 + value.length * .72, 2.4, value, 90);
+          }
           return;
         }
         if (element.type === "text") {
@@ -10520,6 +10859,7 @@
         });
         qs("#saveBtn").addEventListener("click", saveProject);
         qs("#searchBtn").addEventListener("click", showSearchDialog);
+        qs("#helpBtn").addEventListener("click", showHelpDialog);
         qs("#titleBatchBtn").addEventListener("click", showTitleBatchDialog);
         qs("#printBtn").addEventListener("click", printProject);
         qs("#printTwoUpBtn").addEventListener("click", printProjectTwoUp);
@@ -10558,6 +10898,8 @@
           layerManager: showLayerManager,
           catalog: showCatalogManager,
           symbolManager: showSymbolManager,
+          symbolBuilder: showSymbolBuilder,
+          revisionHistory: showRevisionHistory,
           crossRef: showCrossReference,
           reportCsv: exportReportCsv,
           reportTable: showReportTable,
@@ -10754,7 +11096,7 @@
           return;
         }
         const targetElement = event.target.closest("[data-id]");
-        if (activeTool === "wire" || activeTool === "arrow" || activeTool === "line" || activeTool === "mechanicalLink") {
+        if (activeTool === "wire" || activeTool === "arrow" || activeTool === "line" || activeTool === "mechanicalLink" || activeTool === "dimension") {
           const element = defaultElement(activeTool, point.x, point.y);
           element.points = [[point.x, point.y], [point.x, point.y]];
           currentPage().elements.push(element);
