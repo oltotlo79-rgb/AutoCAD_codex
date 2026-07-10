@@ -1268,11 +1268,49 @@
 
       // アプリ全体の状態(単一の真実)。JSON保存/読込・Undo履歴・自動バックアップは全てこのオブジェクトの
       // JSON.stringifyスナップショットで行う。pages[].elements[]が図面要素の本体。
+      // ===== プロジェクトJSONのスキーマ版数と移行(マイグレーション) =====
+      // 保存データにschemaVersion(整数)を記録し、古い版のJSON/バックアップ/ブラウザ内保存を
+      // 読み込むときはMIGRATIONSで1段ずつ現行版へ引き上げる。versionは人間向けの表示文字列で、
+      // 互換判定にはschemaVersionのみを使う。
+      // 将来データ構造を変えるとき: SCHEMA_VERSIONを+1し、MIGRATIONSへ「旧版数: 変換関数」を1件追加する。
+      const SCHEMA_VERSION = 2;
+      const MIGRATIONS = {
+        // 1→2: schemaVersion欄の導入。構造変更はないが、欠落しがちな頁下位欄を補完する。
+        1: data => {
+          (data.pages || []).forEach(page => {
+            if (!page.title || typeof page.title !== "object") page.title = {};
+            if (!Array.isArray(page.elements)) page.elements = [];
+          });
+          return data;
+        }
+      };
+
+      // 読み込んだプロジェクトデータを現行スキーマへ移行して返す。
+      function migrateProjectData(data) {
+        if (!data || typeof data !== "object") return data;
+        let version = Math.floor(Number(data.schemaVersion || 1));
+        if (version > SCHEMA_VERSION) {
+          // 新しいアプリで保存されたデータ。読み込みは試みる(前方互換は保証外)。
+          // 呼び出し元が直後に成功メッセージを出すため、警告は後から上書き表示する。
+          setTimeout(() => setStatus("注意: このデータは新しい形式(版" + version + ")で保存されています。表示が崩れる場合は新しい版のアプリを使用してください。"), 50);
+          return data;
+        }
+        while (version < SCHEMA_VERSION) {
+          const step = MIGRATIONS[version];
+          if (!step) break;
+          data = step(data) || data;
+          version += 1;
+        }
+        data.schemaVersion = SCHEMA_VERSION;
+        return data;
+      }
+
       // settings=描画/採番設定、layers=レイヤ定義、wireTypes=配線種別、customSymbols=ユーザー部品、
       // catalog=部品カタログ、plcModules=PLCプリセット、project=表題欄などのプロジェクト情報。
       const state = {
         app: "Electrical Drawing Studio",
         version: "0.1.0",
+        schemaVersion: SCHEMA_VERSION,
         activePageId: "",
         settings: {
           zoom: 3.2,
@@ -1416,6 +1454,7 @@
       function syncPageTotals() {
         const total = String(state.pages.length);
         state.pages.forEach((page, index) => {
+          if (!page.title || typeof page.title !== "object") page.title = {};
           page.title.page = String(index + 1);
           page.title.total = total;
         });
@@ -10534,9 +10573,10 @@
         }
         if (!confirm("ブラウザ内の自動保存データを復元しますか？\n現在の画面内容は置き換わります。")) return;
         try {
-          const restored = JSON.parse(snapshot);
+          const restored = migrateProjectData(JSON.parse(snapshot));
           if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
           Object.assign(state, restored);
+          state.schemaVersion = SCHEMA_VERSION;
           ensureProjectDefaults();
           setSelection([]);
           pageCounter = state.pages.length + 1;
@@ -10602,9 +10642,10 @@
         if (!entry) return;
         if (!confirm("プロジェクト「" + (entry.label || "") + "」を読み込みますか？\n現在の画面内容は置き換わります（必要ならJSON保存してください）。")) return;
         try {
-          const restored = JSON.parse(entry.snapshot);
+          const restored = migrateProjectData(JSON.parse(entry.snapshot));
           if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
           Object.assign(state, restored);
+          state.schemaVersion = SCHEMA_VERSION;
           ensureProjectDefaults();
           setSelection([]);
           pageCounter = state.pages.length + 1;
@@ -10856,8 +10897,9 @@
         const reader = new FileReader();
         reader.onload = () => {
           try {
-            const loaded = JSON.parse(reader.result);
+            const loaded = migrateProjectData(JSON.parse(reader.result));
             if (!loaded.pages || !Array.isArray(loaded.pages)) throw new Error("pages が見つかりません。");
+            state.schemaVersion = SCHEMA_VERSION;
             state.app = loaded.app || state.app;
             state.version = loaded.version || state.version;
             state.settings = { ...state.settings, ...(loaded.settings || {}) };
