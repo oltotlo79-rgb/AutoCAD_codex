@@ -648,6 +648,7 @@
               <option value="panelLink">盤レイアウト連携</option>
             </optgroup>
             <optgroup label="一覧・管理">
+              <option value="projects">プロジェクト管理（ブラウザ内保存）</option>
               <option value="terminalEditor">端子台エディタ</option>
               <option value="tagRules">部品タグ規則</option>
               <option value="wireTypeManager">配線種別管理</option>
@@ -1102,6 +1103,8 @@
         if (!state.settings.auditRules || typeof state.settings.auditRules !== "object") state.settings.auditRules = {};
         if (!Array.isArray(state.catalog)) state.catalog = [];
         if (!Array.isArray(state.standardPacks)) state.standardPacks = [];
+        if (!Array.isArray(state.plcModules)) state.plcModules = [];
+        if (!state.settings.reportColumns || typeof state.settings.reportColumns !== "object") state.settings.reportColumns = {};
         return state.project;
       }
 
@@ -5999,8 +6002,27 @@
       }
 
       // ===== PLC入出力回路ページ(設備標準の型) =====
+      // 組込プリセット。プロジェクト保存のプリセットは state.plcModules に追加される。
+      const PLC_MODULE_PRESETS = [
+        { label: "入力16点 X000", direction: "input", unit: "UNIT-1", start: "X000", count: 16 },
+        { label: "入力8点 X000", direction: "input", unit: "UNIT-1", start: "X000", count: 8 },
+        { label: "出力16点 Y000", direction: "output", unit: "UNIT-1", start: "Y000", count: 16 },
+        { label: "出力8点 Y000", direction: "output", unit: "UNIT-1", start: "Y000", count: 8 }
+      ];
+
+      function allPlcModulePresets() {
+        return [...PLC_MODULE_PRESETS, ...(state.plcModules || [])];
+      }
+
       function showPlcInputPageDialog() {
+        const presetOptions = allPlcModulePresets()
+          .map((preset, index) => `<option value="${index}">${escapeHtml(preset.label || "プリセット" + (index + 1))}</option>`)
+          .join("");
         openDialog("PLC入出力回路ページ", `
+          <div class="row">
+            <div><label>モジュールプリセット</label><select id="plcPreset"><option value="">（手動入力）</option>${presetOptions}</select></div>
+            <div style="display:flex;align-items:flex-end"><button type="button" id="plcPresetSaveBtn" style="width:100%">現在値をプリセット保存</button></div>
+          </div>
           <div class="row">
             <div><label>種別</label><select id="plcInDir">
               <option value="input">入力（接点→ユニット）</option>
@@ -6019,6 +6041,28 @@
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="plcInBuildBtn" class="primary">ページ追加</button>
           </div>`);
+        qs("#plcPreset").addEventListener("change", () => {
+          const preset = allPlcModulePresets()[Number(qs("#plcPreset").value)];
+          if (!preset) return;
+          qs("#plcInDir").value = preset.direction === "output" ? "output" : "input";
+          qs("#plcInUnit").value = preset.unit || "UNIT-1";
+          qs("#plcInStart").value = preset.start || (preset.direction === "output" ? "Y000" : "X000");
+          qs("#plcInCount").value = String(Math.max(1, Math.min(17, Number(preset.count || 16))));
+        });
+        qs("#plcPresetSaveBtn").addEventListener("click", () => {
+          const label = prompt("プリセット名", (qs("#plcInDir").value === "output" ? "出力" : "入力") + qs("#plcInCount").value + "点 " + qs("#plcInStart").value);
+          if (!label) return;
+          state.plcModules.push({
+            label,
+            direction: qs("#plcInDir").value,
+            unit: qs("#plcInUnit").value,
+            start: qs("#plcInStart").value,
+            count: Math.max(1, Math.min(17, Math.floor(Number(qs("#plcInCount").value || 16))))
+          });
+          commitHistory("PLCモジュールプリセットを保存しました。");
+          showPlcInputPageDialog();
+          qs("#plcPreset").value = String(allPlcModulePresets().length - 1);
+        });
         qs("#plcInDir").addEventListener("change", () => {
           const startInput = qs("#plcInStart");
           if (qs("#plcInDir").value === "output" && /^X/i.test(startInput.value)) startInput.value = "Y000";
@@ -7320,8 +7364,10 @@
           wireTypes: deepClone(state.wireTypes),
           layers: deepClone(state.layers),
           auditRules: deepClone(state.settings.auditRules || {}),
+          reportColumns: deepClone(state.settings.reportColumns || {}),
           customSymbols: deepClone(state.customSymbols || []),
           catalog: deepClone(state.catalog || []),
+          plcModules: deepClone(state.plcModules || []),
           frameVariant: currentPage()?.frameVariant || "ladder"
         };
         download("standard-pack.json", JSON.stringify(pack, null, 2), "application/json");
@@ -7355,6 +7401,15 @@
         if (Array.isArray(pack.wireTypes) && pack.wireTypes.length) state.wireTypes = deepClone(pack.wireTypes);
         if (Array.isArray(pack.layers) && pack.layers.length) state.layers = deepClone(pack.layers);
         if (pack.auditRules && typeof pack.auditRules === "object") state.settings.auditRules = deepClone(pack.auditRules);
+        if (pack.reportColumns && typeof pack.reportColumns === "object") state.settings.reportColumns = deepClone(pack.reportColumns);
+        if (Array.isArray(pack.plcModules)) {
+          state.plcModules = state.plcModules || [];
+          pack.plcModules.forEach(preset => {
+            if (!preset || !preset.label) return;
+            if (state.plcModules.some(item => item.label === preset.label)) return;
+            state.plcModules.push(deepClone(preset));
+          });
+        }
         if (Array.isArray(pack.customSymbols)) {
           state.customSymbols = state.customSymbols || [];
           pack.customSymbols.forEach(symbol => {
@@ -8275,6 +8330,128 @@
         } catch (error) {
           setStatus("復元に失敗しました: " + error.message);
         }
+      }
+
+      // ===== ブラウザ内プロジェクト管理(localStorageへ複数図面を名前付き保存) =====
+      const PROJECT_STORE_KEY = "electricalDrawingStudio.projects";
+
+      function readProjectStore() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(PROJECT_STORE_KEY) || "{}");
+          return parsed && typeof parsed === "object" ? parsed : {};
+        } catch (_) {
+          return {};
+        }
+      }
+
+      function writeProjectStore(store) {
+        try {
+          localStorage.setItem(PROJECT_STORE_KEY, JSON.stringify(store));
+          return true;
+        } catch (error) {
+          setStatus("ブラウザ内プロジェクトの保存に失敗しました（容量超過の可能性）: " + error.message);
+          return false;
+        }
+      }
+
+      function projectStoreEntries() {
+        return Object.values(readProjectStore())
+          .sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")));
+      }
+
+      function storeCurrentProject(label, existingId) {
+        ensureProjectDefaults();
+        syncPageTotals();
+        const store = readProjectStore();
+        const id = existingId || uid("proj");
+        store[id] = {
+          id,
+          label: label || state.project.title || "無題",
+          savedAt: new Date().toISOString(),
+          pages: state.pages.length,
+          snapshot: JSON.stringify(state)
+        };
+        if (!writeProjectStore(store)) return false;
+        setStatus("プロジェクト「" + store[id].label + "」をブラウザ内へ保存しました。");
+        return true;
+      }
+
+      function loadStoredProject(id) {
+        const entry = readProjectStore()[id];
+        if (!entry) return;
+        if (!confirm("プロジェクト「" + (entry.label || "") + "」を読み込みますか？\n現在の画面内容は置き換わります（必要ならJSON保存してください）。")) return;
+        try {
+          const restored = JSON.parse(entry.snapshot);
+          if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
+          Object.assign(state, restored);
+          ensureProjectDefaults();
+          setSelection([]);
+          pageCounter = state.pages.length + 1;
+          resetHistory();
+          render();
+          setStatus("プロジェクト「" + (entry.label || "") + "」を読み込みました。");
+          closeDialog();
+        } catch (error) {
+          setStatus("プロジェクトの読込に失敗しました: " + error.message);
+        }
+      }
+
+      function showProjectManager() {
+        const entries = projectStoreEntries();
+        const rows = entries.map(entry => `
+          <tr>
+            <td>${escapeHtml(entry.label || "")}</td>
+            <td>${entry.pages || "?"}</td>
+            <td>${escapeHtml(String(entry.savedAt || "").replace("T", " ").slice(0, 16))}</td>
+            <td>
+              <button type="button" data-proj-load="${escapeAttr(entry.id)}">読込</button>
+              <button type="button" data-proj-overwrite="${escapeAttr(entry.id)}">上書き</button>
+              <button type="button" data-proj-rename="${escapeAttr(entry.id)}">改名</button>
+              <button type="button" data-proj-delete="${escapeAttr(entry.id)}">削除</button>
+            </td>
+          </tr>`).join("");
+        openDialog("プロジェクト管理（ブラウザ内保存）", `
+          <p class="muted">このブラウザの localStorage に複数の図面を名前付きで保存し、切り替えできます。
+          ブラウザのデータ消去で失われるため、恒久保存には従来どおり JSON 保存を併用してください。</p>
+          <div class="row">
+            <div><label>保存名</label><input id="projSaveName" value="${escapeAttr(state.project.title || "無題")}"></div>
+            <div style="display:flex;align-items:flex-end"><button type="button" id="projSaveBtn" class="primary" style="width:100%">現在の図面を新規保存</button></div>
+          </div>
+          ${entries.length
+            ? `<table class="report-table" style="margin-top:10px"><thead><tr><th>名称</th><th>頁数</th><th>保存日時</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table>`
+            : '<p class="muted" style="margin-top:10px">保存済みプロジェクトはまだありません。</p>'}
+        `);
+        qs("#projSaveBtn").addEventListener("click", () => {
+          if (storeCurrentProject(qs("#projSaveName").value.trim())) showProjectManager();
+        });
+        qsa("[data-proj-load]", qs("#dialogBody")).forEach(button =>
+          button.addEventListener("click", () => loadStoredProject(button.dataset.projLoad)));
+        qsa("[data-proj-overwrite]", qs("#dialogBody")).forEach(button =>
+          button.addEventListener("click", () => {
+            const entry = readProjectStore()[button.dataset.projOverwrite];
+            if (!entry) return;
+            if (!confirm("プロジェクト「" + (entry.label || "") + "」を現在の図面で上書きしますか？")) return;
+            if (storeCurrentProject(entry.label, entry.id)) showProjectManager();
+          }));
+        qsa("[data-proj-rename]", qs("#dialogBody")).forEach(button =>
+          button.addEventListener("click", () => {
+            const store = readProjectStore();
+            const entry = store[button.dataset.projRename];
+            if (!entry) return;
+            const label = prompt("プロジェクト名", entry.label || "");
+            if (!label) return;
+            entry.label = label;
+            if (writeProjectStore(store)) showProjectManager();
+          }));
+        qsa("[data-proj-delete]", qs("#dialogBody")).forEach(button =>
+          button.addEventListener("click", () => {
+            const store = readProjectStore();
+            const entry = store[button.dataset.projDelete];
+            if (!entry) return;
+            if (!confirm("プロジェクト「" + (entry.label || "") + "」を削除しますか？（元に戻せません）")) return;
+            delete store[button.dataset.projDelete];
+            if (writeProjectStore(store)) showProjectManager();
+          }));
       }
 
       function importUnderlayImageFile(file) {
@@ -9290,6 +9467,20 @@
         attachDialogSelection();
       }
 
+      // 帳票種別ごとの選択可能な列の一覧(先頭側=既定でON)。
+      const REPORT_COLUMN_POOL = {
+        all: ["種別", "ページ", "タグ/名称", "詳細", "設備", "場所"],
+        component: ["ページ", "タグ/名称", "説明", "品番", "メーカー", "定格", "設備", "場所"],
+        wire: ["ページ", "線番", "FROM", "TO", "詳細"],
+        terminal: ["ページ", "端子", "種別", "詳細"]
+      };
+      const REPORT_DEFAULT_COLUMNS = {
+        all: ["種別", "ページ", "タグ/名称", "詳細"],
+        component: ["ページ", "タグ/名称", "説明", "品番"],
+        wire: ["ページ", "線番", "FROM", "TO"],
+        terminal: ["ページ", "端子", "種別", "詳細"]
+      };
+
       function showInsertReportDialog() {
         const html = `
           <label for="insertReportKind">帳票種別</label>
@@ -9307,12 +9498,32 @@
             <div><label for="insertReportInstallation">設備フィルタ</label><input id="insertReportInstallation" placeholder="例: 盤内"></div>
             <div><label for="insertReportLocation">場所フィルタ</label><input id="insertReportLocation" placeholder="例: LOC-A"></div>
           </div>
+          <label style="margin-top:8px">列構成（チェックした列のみ挿入。設定はプロジェクトへ保存）</label>
+          <div id="insertReportColumns" class="inline" style="flex-wrap:wrap"></div>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="runInsertReportBtn" class="primary">現在ページへ挿入</button>
           </div>
         `;
         openDialog("帳票表挿入", html);
-        qs("#runInsertReportBtn").addEventListener("click", insertReportTableFromDialog);
+        const renderColumns = () => {
+          const kind = qs("#insertReportKind").value;
+          const selected = reportHeaders(kind);
+          qs("#insertReportColumns").innerHTML = (REPORT_COLUMN_POOL[kind] || []).map(column => `
+            <label style="display:inline-flex;align-items:center;gap:4px;margin:0">
+              <input type="checkbox" data-report-column="${escapeAttr(column)}" style="width:auto;min-height:auto"${selected.includes(column) ? " checked" : ""}>
+              <span style="font-size:12px">${escapeHtml(column)}</span>
+            </label>`).join("");
+        };
+        renderColumns();
+        qs("#insertReportKind").addEventListener("change", renderColumns);
+        qs("#runInsertReportBtn").addEventListener("click", () => {
+          const kind = qs("#insertReportKind").value;
+          const chosen = qsa("[data-report-column]", qs("#dialogBody"))
+            .filter(input => input.checked)
+            .map(input => input.dataset.reportColumn);
+          if (chosen.length) state.settings.reportColumns[kind] = chosen;
+          insertReportTableFromDialog();
+        });
       }
 
       function insertReportTableFromDialog() {
@@ -9369,11 +9580,15 @@
         };
       }
 
+      // 帳票列: プロジェクト設定(reportColumns)に有効な選択があればそれを、なければ既定を返す。
       function reportHeaders(kind) {
-        if (kind === "wire") return ["ページ", "線番", "FROM", "TO"];
-        if (kind === "terminal") return ["ページ", "端子", "種別", "詳細"];
-        if (kind === "component") return ["ページ", "タグ/名称", "説明", "品番"];
-        return ["種別", "ページ", "タグ/名称", "詳細"];
+        const pool = REPORT_COLUMN_POOL[kind] || REPORT_COLUMN_POOL.all;
+        const saved = (state.settings.reportColumns || {})[kind];
+        if (Array.isArray(saved)) {
+          const valid = saved.filter(column => pool.includes(column));
+          if (valid.length) return valid;
+        }
+        return [...(REPORT_DEFAULT_COLUMNS[kind] || REPORT_DEFAULT_COLUMNS.all)];
       }
 
       function reportCellValue(row, header) {
@@ -9385,6 +9600,10 @@
           "タグ/名称": row.tag || row.name || "",
           "説明": row.description || "",
           "品番": row.catalog || "",
+          "メーカー": row.manufacturer || "",
+          "定格": row.rating || "",
+          "設備": row.installation || "",
+          "場所": row.location || "",
           "線番": row.name || "",
           "FROM": from,
           "TO": to,
@@ -9585,24 +9804,59 @@
         });
       }
 
-      function showSymbolBuilder() {
-        openDialog("シンボルビルダー（簡易）", `
+      // ユーザー部品のテンプレート列をビルダーのスクリプト表記へ逆変換する。
+      // スクリプトで表現できるのは line/rect/circle/text/anchor(端子)の5種のみ。
+      // 回路スニペット(接点やコイルを含む登録)は対象外として null を返す。
+      function symbolToScript(symbol) {
+        const templates = (symbol.templates || [symbol.template]).filter(Boolean);
+        const lines = [];
+        for (const template of templates) {
+          const n = value => String(round(Number(value) || 0));
+          if (template.type === "line" && Array.isArray(template.points) && template.points.length >= 2) {
+            lines.push(["line", n(template.points[0][0]), n(template.points[0][1]), n(template.points[1][0]), n(template.points[1][1])].join(" "));
+          } else if (template.type === "rect") {
+            lines.push(["rect", n(template.x), n(template.y), n(template.w), n(template.h)].join(" "));
+          } else if (template.type === "circle" && Math.abs(Number(template.w) - Number(template.h)) < .01) {
+            const r = Number(template.w || 0) / 2;
+            lines.push(["circle", n(Number(template.x) + r), n(Number(template.y) + r), n(r)].join(" "));
+          } else if (template.type === "text") {
+            lines.push(["text", n(template.x), n(template.y), n(template.fontSize || 2.5), template.text || ""].join(" "));
+          } else if (template.type === "terminal") {
+            lines.push(["anchor", n(Number(template.x) + 0.9), n(Number(template.y) + 0.9)].join(" "));
+          } else {
+            return null;
+          }
+        }
+        return lines.join("\n");
+      }
+
+      // editId を渡すと既存ユーザー部品の編集モードで開く(保存時にIDを維持して置換)。
+      function showSymbolBuilder(editId) {
+        const editing = typeof editId === "string"
+          ? (state.customSymbols || []).find(symbol => symbol.id === editId)
+          : null;
+        const initialScript = editing
+          ? (symbolToScript(editing) || "")
+          : "# 例: 箱と左右リード+接続点\nanchor 0 6\nline 0 6 4 6\nrect 4 0 12 12\nline 16 6 20 6\nanchor 20 6";
+        openDialog(editing ? "シンボルビルダー（編集）" : "シンボルビルダー（簡易）", `
           <p class="muted">1行に1プリミティブを書きます（座標はmm・左上原点）。<br>
           <code>line x1 y1 x2 y2</code> ／ <code>rect x y 幅 高</code> ／ <code>circle cx cy r</code> ／
           <code>text x y サイズ 文字列</code> ／ <code>anchor x y</code>（配線が吸着する接続点） ／ <code>#</code> はコメント</p>
           <label>部品名</label>
-          <input id="sbName" value="新しい部品">
+          <input id="sbName" value="${escapeAttr(editing ? editing.label || "" : "新しい部品")}">
           <label>定義</label>
-          <textarea id="sbScript" style="min-height:140px;font-family:var(--mono)">
-# 例: 箱と左右リード+接続点
-anchor 0 6
-line 0 6 4 6
-rect 4 0 12 12
-line 16 6 20 6
-anchor 20 6</textarea>
+          <textarea id="sbScript" style="min-height:140px;font-family:var(--mono)">${escapeHtml(initialScript)}</textarea>
+          <div class="inline" style="flex-wrap:wrap;margin-top:6px">
+            <span class="muted" style="font-size:11px">クイック挿入:</span>
+            <button type="button" data-sb-snippet="line 0 0 10 0">直線</button>
+            <button type="button" data-sb-snippet="rect 0 0 12 8">矩形</button>
+            <button type="button" data-sb-snippet="circle 6 6 4">円</button>
+            <button type="button" data-sb-snippet="text 0 0 2.5 文字">文字</button>
+            <button type="button" data-sb-snippet="anchor 0 0">接続点</button>
+          </div>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="sbPreviewBtn">プレビュー</button>
-            <button type="button" id="sbSaveBtn" class="primary">パレットへ登録</button>
+            <button type="button" id="sbSaveBtn" class="primary">${editing ? "上書き保存" : "パレットへ登録"}</button>
           </div>
           <div id="sbPreviewArea" style="margin-top:10px"></div>`);
         const buildPreview = () => {
@@ -9619,21 +9873,35 @@ anchor 20 6</textarea>
           area.innerHTML = symbolPreviewSvg({ templates: parsed.templates });
           return parsed.templates;
         };
+        qsa("[data-sb-snippet]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            const textarea = qs("#sbScript");
+            textarea.value = textarea.value.replace(/\s*$/, "") + "\n" + button.dataset.sbSnippet;
+            buildPreview();
+          });
+        });
         qs("#sbPreviewBtn").addEventListener("click", buildPreview);
         qs("#sbSaveBtn").addEventListener("click", () => {
           const templates = buildPreview();
           if (!templates) return;
           const label = qs("#sbName").value || "ユーザー部品";
-          state.customSymbols.push({
-            id: uid("sym"),
-            label,
-            template: deepClone(templates[0]),
-            templates: deepClone(templates)
-          });
+          if (editing) {
+            editing.label = label;
+            editing.template = deepClone(templates[0]);
+            editing.templates = deepClone(templates);
+          } else {
+            state.customSymbols.push({
+              id: uid("sym"),
+              label,
+              template: deepClone(templates[0]),
+              templates: deepClone(templates)
+            });
+          }
           closeDialog();
-          commitHistory("シンボルビルダーで部品を登録しました。");
+          commitHistory(editing ? "ユーザー部品を上書き保存しました。" : "シンボルビルダーで部品を登録しました。");
           render();
         });
+        if (editing) buildPreview();
       }
 
       function symbolPreviewSvg(symbol) {
@@ -9661,9 +9929,12 @@ anchor 20 6</textarea>
       function showSymbolManager() {
         const symbols = state.customSymbols || [];
         const html = symbols.length
-          ? `<table class="report-table"><thead><tr><th>プレビュー</th><th>部品名</th><th>内容</th><th>操作</th></tr></thead><tbody>${symbols.map(symbol => `<tr><td>${symbolPreviewSvg(symbol)}</td><td>${escapeHtml(symbol.label)}</td><td>${escapeHtml(symbolSummary(symbol))}</td><td><button type="button" data-rename-symbol="${escapeAttr(symbol.id)}">改名</button> <button type="button" data-delete-symbol="${escapeAttr(symbol.id)}">削除</button></td></tr>`).join("")}</tbody></table>`
+          ? `<table class="report-table"><thead><tr><th>プレビュー</th><th>部品名</th><th>内容</th><th>操作</th></tr></thead><tbody>${symbols.map(symbol => `<tr><td>${symbolPreviewSvg(symbol)}</td><td>${escapeHtml(symbol.label)}</td><td>${escapeHtml(symbolSummary(symbol))}</td><td>${symbolToScript(symbol) !== null ? `<button type="button" data-edit-symbol="${escapeAttr(symbol.id)}">編集</button> ` : ""}<button type="button" data-rename-symbol="${escapeAttr(symbol.id)}">改名</button> <button type="button" data-delete-symbol="${escapeAttr(symbol.id)}">削除</button></td></tr>`).join("")}</tbody></table>`
           : '<p class="muted">登録済みのユーザー部品はありません。図形を選択して「ユーザー部品に登録」を押すと追加できます。配線を接続したい回路には端子や接点を含めて登録してください（接続点として機能します）。</p>';
         openDialog("ユーザー部品管理", html);
+        qsa("[data-edit-symbol]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => showSymbolBuilder(button.dataset.editSymbol));
+        });
         qsa("[data-rename-symbol]", qs("#dialogBody")).forEach(button => {
           button.addEventListener("click", () => {
             const symbol = (state.customSymbols || []).find(item => item.id === button.dataset.renameSymbol);
@@ -11455,6 +11726,7 @@ anchor 20 6</textarea>
           motorCircuit: showMotorCircuitDialog,
           plcUnit: showPlcUnitBuilder,
           panelLink: showPanelLayoutLinkDialog,
+          projects: showProjectManager,
           terminalEditor: showTerminalEditor,
           tagRules: showComponentTagRulesDialog,
           wireTypeManager: showWireTypeManager,
