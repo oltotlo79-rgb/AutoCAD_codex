@@ -618,6 +618,7 @@
             <optgroup label="一括生成">
               <option value="rungCircuit">ラング回路（接点+コイル/ランプ）</option>
               <option value="estopChain">非常停止チェーン</option>
+              <option value="powerOn">電源投入回路（自己保持）</option>
               <option value="wireColumn">縦配線列</option>
               <option value="wireRow">横配線行</option>
               <option value="twistedPair">ツイストペア</option>
@@ -641,6 +642,7 @@
               <option value="bom">部品集計表(BOM)</option>
               <option value="terminalPlan">端子台プラン表</option>
               <option value="indexGen">目次生成（全ページ一覧）</option>
+              <option value="netlist">ネットリスト（ページ間統合）</option>
             </optgroup>
             <optgroup label="取込・出力">
               <option value="terminalCsv">端子CSV取込</option>
@@ -6221,6 +6223,70 @@
         render();
       }
 
+      // ===== 電源投入回路生成(切替スイッチ+準備PB+自己保持) =====
+      function showPowerOnCircuitDialog() {
+        openDialog("電源投入回路生成", `
+          <p class="muted">切替スイッチ行と、押しボタン+自己保持接点の行を生成します（設備標準ページ向け）。</p>
+          <div class="row">
+            <div><label>開始行(00-20)</label><input id="poRow" type="number" min="0" max="17" step="1" value="1"></div>
+            <div><label>切替スイッチタグ</label><input id="poKs" value="KS1"></div>
+          </div>
+          <div class="row">
+            <div><label>準備PBタグ</label><input id="poPb" value="PB1"></div>
+            <div><label>コイルタグ(投入/準備)</label><input id="poCr" value="CR1,CR2"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="poBuildBtn" class="primary">生成</button>
+          </div>`);
+        qs("#poBuildBtn").addEventListener("click", buildPowerOnCircuit);
+      }
+
+      function buildPowerOnCircuit() {
+        const page = currentPage();
+        if (!page) return;
+        const row0 = Math.max(0, Math.min(17, Math.floor(Number(qs("#poRow").value || 1))));
+        const ksTag = qs("#poKs").value || "KS1";
+        const pbTag = qs("#poPb").value || "PB1";
+        const crTags = String(qs("#poCr").value || "CR1,CR2").split(",").map(s => s.trim());
+        const cr1 = crTags[0] || "CR1";
+        const cr2 = crTags[1] || crTags[0] || "CR2";
+        const created = [];
+        const yA = round(LADDER_GRID.top + LADDER_GRID.pitch * row0);
+        const yB = round(LADDER_GRID.top + LADDER_GRID.pitch * (row0 + 2));
+        const yB2 = round(LADDER_GRID.top + LADDER_GRID.pitch * (row0 + 3));
+        // 行A: 切替スイッチ + 入/切ポジション + コイル
+        created.push(defaultElement("junction", 32.5, yA));
+        created.push({ ...defaultElement("selectorSwitch", 52, round(yA - 3.2)), label: ksTag });
+        created.push({ ...defaultElement("wire", 32.5, yA), points: [[32.5, yA], [52, yA]] });
+        created.push({ ...defaultElement("positionMark", 76, round(yA - 3)), label: "入", markStyle: "box" });
+        created.push({ ...defaultElement("positionMark", 88, round(yA - 3)), label: "切", markStyle: "line" });
+        created.push({ ...defaultElement("wire", 62, yA), points: [[62, yA], [134, yA]] });
+        created.push({ ...defaultElement("coil", 134, round(yA - 2.2)), label: cr1, tag: cr1 });
+        created.push({ ...defaultElement("wire", 144, yA), points: [[144, yA], [146.5, yA]] });
+        // 行B: 準備PB + 自己保持接点(並列) + コイル
+        created.push(defaultElement("junction", 32.5, yB));
+        created.push({ ...defaultElement("wire", 32.5, yB), points: [[32.5, yB], [48, yB]] });
+        created.push(defaultElement("junction", 48, yB));
+        created.push({ ...defaultElement("pushButton", 52, round(yB - 3.5)), label: pbTag, tag: pbTag });
+        created.push({ ...defaultElement("wire", 48, yB), points: [[48, yB], [52, yB]] });
+        created.push({ ...defaultElement("wire", 62, yB), points: [[62, yB], [70, yB]] });
+        created.push(defaultElement("junction", 70, yB));
+        created.push({ ...defaultElement("wire", 70, yB), points: [[70, yB], [134, yB]] });
+        created.push({ ...defaultElement("coil", 134, round(yB - 2.2)), label: cr2, tag: cr2 });
+        created.push({ ...defaultElement("wire", 144, yB), points: [[144, yB], [146.5, yB]] });
+        // 自己保持分岐(下段に a接点 cr2)
+        created.push({ ...defaultElement("wire", 48, yB), points: [[48, yB], [48, yB2]] });
+        created.push({ ...defaultElement("contactNO", 52, round(yB2 - 2.2)), label: cr2 });
+        created.push({ ...defaultElement("wire", 48, yB2), points: [[48, yB2], [52, yB2]] });
+        created.push({ ...defaultElement("wire", 60, yB2), points: [[60, yB2], [70, yB2]] });
+        created.push({ ...defaultElement("wire", 70, yB2), points: [[70, yB2], [70, yB]] });
+        page.elements.push(...created);
+        setSelection(created.map(el => el.id));
+        closeDialog();
+        commitHistory("電源投入回路を生成しました。");
+        render();
+      }
+
       // ===== ラング回路生成(直列接点+終端部品) =====
       function showRungCircuitDialog() {
         openDialog("ラング回路生成", `
@@ -6269,6 +6335,82 @@
         closeDialog();
         commitHistory(rows + "行のラング回路を生成しました。");
         render();
+      }
+
+      // ===== ページ間ネットリスト(信号矢印で結合した同電位グループ) =====
+      function buildProjectNetlist() {
+        const groups = [];
+        state.pages.forEach(page => {
+          buildWireNets(page).forEach(net => {
+            const members = net.filter(wire => !wire.ladderRail);
+            if (!members.length) return;
+            groups.push({
+              pages: [page],
+              items: members.map(wire => ({ page, wire })),
+              wireNos: new Set(members.map(wire => wire.wireNo).filter(Boolean)),
+              signals: new Set(netArrowLabels(page, net)),
+              merged: false
+            });
+          });
+        });
+        // 同じ信号ラベルに接するグループをページ横断で統合する
+        const bySignal = new Map();
+        groups.forEach(group => {
+          group.signals.forEach(signal => {
+            const list = bySignal.get(signal) || [];
+            list.push(group);
+            bySignal.set(signal, list);
+          });
+        });
+        bySignal.forEach(list => {
+          const base = list.find(group => !group.merged);
+          if (!base) return;
+          list.forEach(group => {
+            if (group === base || group.merged) return;
+            base.pages.push(...group.pages);
+            base.items.push(...group.items);
+            group.wireNos.forEach(no => base.wireNos.add(no));
+            group.signals.forEach(signal => base.signals.add(signal));
+            group.merged = true;
+          });
+        });
+        return groups.filter(group => !group.merged).map(group => {
+          const pageNames = Array.from(new Set(group.pages.map(page => page.name)));
+          return {
+            name: Array.from(group.wireNos).join(" / ") || Array.from(group.signals).join(" / ") || "(未採番)",
+            signals: Array.from(group.signals).join(" / "),
+            pages: pageNames,
+            wireCount: group.items.length,
+            first: group.items[0]
+          };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      function showNetlist() {
+        const nets = buildProjectNetlist();
+        const html = nets.length
+          ? `<p class="muted">端点の一致・T分岐・接続点で結合し、同じ信号矢印ラベルに接するネットはページ横断で1グループに統合しています。</p>
+             <table class="report-table"><thead><tr><th>線番</th><th>信号</th><th>ページ</th><th>配線数</th><th></th></tr></thead>
+             <tbody>${nets.map(net => `<tr>
+               <td>${escapeHtml(net.name)}</td>
+               <td>${escapeHtml(net.signals)}</td>
+               <td>${escapeHtml(net.pages.join(", "))}</td>
+               <td>${net.wireCount}</td>
+               <td><button type="button" data-select-page="${escapeAttr(net.first.page.id)}" data-select-id="${escapeAttr(net.first.wire.id)}">選択</button></td>
+             </tr>`).join("")}</tbody></table>
+             <div class="inline" style="justify-content:flex-end;margin-top:12px">
+               <button type="button" id="netlistCsvBtn">CSV出力</button>
+             </div>`
+          : '<p class="muted">配線がありません。</p>';
+        openDialog("ネットリスト（ページ間統合）", html);
+        attachDialogSelection();
+        qs("#netlistCsvBtn")?.addEventListener("click", () => {
+          const headers = ["name", "signals", "pages", "wireCount"];
+          const csv = [headers.join(","), ...buildProjectNetlist().map(net =>
+            [csvCell(net.name), csvCell(net.signals), csvCell(net.pages.join(" ")), net.wireCount].join(","))].join("\r\n");
+          download("netlist.csv", csv, "text/csv;charset=utf-8");
+          setStatus("ネットリストCSVを書き出しました。");
+        });
       }
 
       // ===== 全ページ目次の自動生成 =====
@@ -8556,12 +8698,46 @@
         return results;
       }
 
+      function symbolPreviewSvg(symbol) {
+        const templates = (symbol.templates || [symbol.template]).filter(Boolean);
+        if (!templates.length) return "";
+        const boxes = templates.map(template => elementBounds({ ...template, x: template.x || 0, y: template.y || 0 })).filter(Boolean);
+        if (!boxes.length) return "";
+        const bounds = unionBounds(boxes);
+        const pad = 3;
+        const svg = svgEl("svg", {
+          xmlns: svgNS,
+          viewBox: (bounds.x - pad) + " " + (bounds.y - pad) + " " + (bounds.w + pad * 2) + " " + (bounds.h + pad * 2),
+          width: 96,
+          height: 52,
+          style: "background:#fff;border:1px solid #d6dde5;border-radius:4px"
+        });
+        templates.forEach(template => {
+          const clone = deepClone(template);
+          clone.id = uid("pv");
+          drawElement(svg, clone);
+        });
+        return svg.outerHTML;
+      }
+
       function showSymbolManager() {
         const symbols = state.customSymbols || [];
         const html = symbols.length
-          ? `<table class="report-table"><thead><tr><th>部品名</th><th>内容</th><th>操作</th></tr></thead><tbody>${symbols.map(symbol => `<tr><td>${escapeHtml(symbol.label)}</td><td>${escapeHtml(symbolSummary(symbol))}</td><td><button type="button" data-delete-symbol="${escapeAttr(symbol.id)}">削除</button></td></tr>`).join("")}</tbody></table>`
-          : '<p class="muted">登録済みのユーザー部品はありません。図形を選択して「ユーザー部品に登録」を押すと追加できます。</p>';
+          ? `<table class="report-table"><thead><tr><th>プレビュー</th><th>部品名</th><th>内容</th><th>操作</th></tr></thead><tbody>${symbols.map(symbol => `<tr><td>${symbolPreviewSvg(symbol)}</td><td>${escapeHtml(symbol.label)}</td><td>${escapeHtml(symbolSummary(symbol))}</td><td><button type="button" data-rename-symbol="${escapeAttr(symbol.id)}">改名</button> <button type="button" data-delete-symbol="${escapeAttr(symbol.id)}">削除</button></td></tr>`).join("")}</tbody></table>`
+          : '<p class="muted">登録済みのユーザー部品はありません。図形を選択して「ユーザー部品に登録」を押すと追加できます。配線を接続したい回路には端子や接点を含めて登録してください（接続点として機能します）。</p>';
         openDialog("ユーザー部品管理", html);
+        qsa("[data-rename-symbol]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            const symbol = (state.customSymbols || []).find(item => item.id === button.dataset.renameSymbol);
+            if (!symbol) return;
+            const label = prompt("ユーザー部品名", symbol.label || "");
+            if (!label) return;
+            symbol.label = label;
+            commitHistory("ユーザー部品名を変更しました。");
+            showSymbolManager();
+            renderPalette();
+          });
+        });
         qsa("[data-delete-symbol]", qs("#dialogBody")).forEach(button => {
           button.addEventListener("click", () => {
             const id = button.dataset.deleteSymbol;
@@ -10244,6 +10420,7 @@
         const MENU_ACTIONS = {
           rungCircuit: showRungCircuitDialog,
           estopChain: showEStopChainDialog,
+          powerOn: showPowerOnCircuitDialog,
           terminalNo: renumberTerminals,
           tagComponents: autoTagComponents,
           autoJunction: autoJunctions,
@@ -10268,6 +10445,7 @@
           bom: showBomTable,
           terminalPlan: showTerminalPlan,
           indexGen: generateIndexPage,
+          netlist: showNetlist,
           terminalCsv: () => qs("#terminalCsvInput").click(),
           plcCsv: () => qs("#plcCsvInput").click(),
           importDxf: () => qs("#dxfImportInput").click(),
