@@ -770,7 +770,7 @@
             <option value="">選択してください…</option>
             <option value="facilityLadder">設備ラダー</option>
             <option value="acPower">AC電源回路（一括）</option>
-            <option value="plcInput">PLC入力回路</option>
+            <option value="plcInput">PLC入出力回路</option>
             <option value="terminalSheet">端子接続図</option>
             <option value="interlock">インターロック接続</option>
             <option value="ladder">ラダー（汎用）</option>
@@ -5959,29 +5959,83 @@
         render();
       }
 
-      // ===== PLC入力回路ページ(scan-001.pdf の型) =====
+      // ===== PLC入出力回路ページ(設備標準の型) =====
       function showPlcInputPageDialog() {
-        openDialog("PLC入力回路ページ", `
+        openDialog("PLC入出力回路ページ", `
           <div class="row">
+            <div><label>種別</label><select id="plcInDir">
+              <option value="input">入力（接点→ユニット）</option>
+              <option value="output">出力（ユニット→コイル）</option>
+            </select></div>
             <div><label>ユニット名</label><input id="plcInUnit" value="UNIT-1"></div>
-            <div><label>開始アドレス(16進連番)</label><input id="plcInStart" value="X000"></div>
           </div>
           <div class="row">
+            <div><label>開始アドレス(16進連番)</label><input id="plcInStart" value="X000"></div>
             <div><label>点数（最大17）</label><input id="plcInCount" type="number" min="1" max="17" step="1" value="16"></div>
-            <div><label>各行に接点を配置</label><select id="plcInContacts"><option value="on">する</option><option value="off">しない</option></select></div>
+          </div>
+          <div class="row">
+            <div><label>各行に接点を配置（入力時）</label><select id="plcInContacts"><option value="on">する</option><option value="off">しない</option></select></div>
+            <div></div>
           </div>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="plcInBuildBtn" class="primary">ページ追加</button>
           </div>`);
+        qs("#plcInDir").addEventListener("change", () => {
+          const startInput = qs("#plcInStart");
+          if (qs("#plcInDir").value === "output" && /^X/i.test(startInput.value)) startInput.value = "Y000";
+          if (qs("#plcInDir").value === "input" && /^Y/i.test(startInput.value)) startInput.value = "X000";
+        });
         qs("#plcInBuildBtn").addEventListener("click", addPlcInputCircuitPage);
+      }
+
+      function addPlcOutputCircuitPage(unitName, addresses) {
+        const count = addresses.length;
+        const page = createPage({
+          name: "制御盤",
+          size: "A4",
+          orientation: "portrait",
+          frameVariant: "ladder",
+          title: "出力回路(" + addresses[0] + ")"
+        });
+        page.elements.push(...facilityRailElements("P1", 32.5, "+", 22));
+        page.elements.push(...facilityRailElements("N1", 146.5, "-", 22));
+        page.elements.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
+        const unitX = 41;
+        page.elements.push({
+          ...defaultElement("plcBlock", unitX, 31.75),
+          plcStyle: "unit",
+          rows: count,
+          w: 10.5,
+          h: count * 9.5,
+          label: unitName,
+          pinText: addresses.join("\n")
+        });
+        addresses.forEach((address, i) => {
+          const y = round(36.5 + 9.5 * i);
+          page.elements.push({ ...defaultElement("terminal", 0, 0), x: round(unitX + 10.5), y: round(y - 0.9), label: "" });
+          page.elements.push({ ...defaultElement("wire", round(unitX + 12.3), y), points: [[round(unitX + 12.3), y], [134, y]], wireNo: address, wireNoAlign: "start" });
+          page.elements.push({ ...defaultElement("coil", 134, round(y - 2.2)), label: "", tag: "" });
+          page.elements.push({ ...defaultElement("wire", 144, y), points: [[144, y], [146.5, y]] });
+        });
+        state.pages.push(page);
+        state.activePageId = page.id;
+        setSelection([]);
+        closeDialog();
+        commitHistory("PLC出力回路ページを追加しました。");
+        render();
       }
 
       function addPlcInputCircuitPage() {
         const unitName = qs("#plcInUnit")?.value || "PLC";
-        const start = qs("#plcInStart")?.value || "X000";
+        const direction = qs("#plcInDir")?.value || "input";
+        const start = qs("#plcInStart")?.value || (direction === "output" ? "Y000" : "X000");
         const count = Math.max(1, Math.min(17, Math.floor(Number(qs("#plcInCount")?.value || 16))));
         const withContacts = (qs("#plcInContacts")?.value || "on") === "on";
         const addresses = plcAddressSequence(start, count);
+        if (direction === "output") {
+          addPlcOutputCircuitPage(unitName, addresses);
+          return;
+        }
         const page = createPage({
           name: "制御盤",
           size: "A4",
