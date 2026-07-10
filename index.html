@@ -2453,7 +2453,8 @@
           g.appendChild(svgEl("path", { d: wave(geo.h), class: "symbol-line", stroke, fill: "none" }));
           for (let i = 0; i < geo.nodes; i++) {
             const cy = geo.pitch * (i % geo.count) + geo.pitch / 2;
-            const r = Math.min(3.5, geo.pitch * .37);
+            // ユニット列の端子円は実測⌀6.4(r3.2)
+            const r = Math.min(3.2, geo.pitch * .35);
             const cx = geo.levels === 2 ? (i < geo.count ? 4.5 : w - 4.5) : w / 2;
             g.appendChild(svgEl("circle", { cx, cy, r, class: "terminal-dot", stroke }));
             g.appendChild(textEl(terminalLabel(element, i), cx, cy, { fontSize: 2, anchor: "middle" }));
@@ -3141,7 +3142,7 @@
 
       // 接続点(塗り小円)の描画。ネット結合の見た目でもある。
       function drawJunction(g, element, stroke) {
-        g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: Number(element.r || 0.75), fill: stroke }));
+        g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: Number(element.r || 0.5), fill: stroke }));
       }
 
       // ===== 寸法記入(直線寸法・水平/垂直自動) =====
@@ -3268,53 +3269,56 @@
       // ===== ジオメトリ単一定義方式(固定寸法シンボル定義) =====
       // SVG / DXF / 接続アンカーはすべてここから導出する。座標は横向き基準mm。
       const SYMBOL_GEO = {
+        // 接点バーは実測(高さ4.8mm・細線0.35mm・中心間1.9mm)。要素ボックス(8×4.4)は互換のため維持。
         contactNO: {
           w: 8, h: 4.4,
           anchors: [[0, 2.2], [8, 2.2]],
           prims: [
-            { t: "line", p: [0, 2.2, 2.7, 2.2] },
-            { t: "line", p: [5.3, 2.2, 8, 2.2] },
-            { t: "rect", p: [2.7, 0.6, 0.6, 3.2], fill: "white" },
-            { t: "rect", p: [4.7, 0.6, 0.6, 3.2], fill: "white" },
-            { t: "text", p: [4, -1.4], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [4, -3.6], size: 1.8, anchor: "middle", field: "descLine" },
-            { t: "text", p: [4, 6.0], size: 1.7, anchor: "middle", field: "refNo" }
+            { t: "line", p: [0, 2.2, 2.88, 2.2] },
+            { t: "line", p: [5.12, 2.2, 8, 2.2] },
+            { t: "rect", p: [2.88, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "rect", p: [4.77, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [4, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
         contactNC: {
           w: 8, h: 4.4,
           anchors: [[0, 2.2], [8, 2.2]],
           prims: [
-            { t: "line", p: [0, 2.2, 2.7, 2.2] },
-            { t: "line", p: [5.3, 2.2, 8, 2.2] },
-            { t: "rect", p: [2.7, 0.6, 0.6, 3.2], fill: "white" },
-            { t: "rect", p: [4.7, 0.6, 0.6, 3.2], fill: "white" },
-            { t: "line", p: [2.6, 4.6, 5.4, -0.4] },
-            { t: "text", p: [4, -1.4], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [4, -3.6], size: 1.8, anchor: "middle", field: "descLine" },
-            { t: "text", p: [4, 6.0], size: 1.7, anchor: "middle", field: "refNo" }
+            { t: "line", p: [0, 2.2, 2.88, 2.2] },
+            { t: "line", p: [5.12, 2.2, 8, 2.2] },
+            { t: "rect", p: [2.88, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "rect", p: [4.77, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "line", p: [2.5, 5.0, 5.5, -0.6] },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [4, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
+        // ○✕○: 端子小円は実測⌀1.2、✕は円間に配置。
         thermalRelay: {
           w: 8, h: 4,
           anchors: [[0, 2.4], [8, 2.4]],
           prims: [
-            { t: "line", p: [0, 2.4, 1.7, 2.4] },
-            { t: "line", p: [6.3, 2.4, 8, 2.4] },
-            { t: "circle", p: [2.6, 2.4, 0.9], fill: "white" },
-            { t: "circle", p: [5.4, 2.4, 0.9], fill: "white" },
-            { t: "line", p: [3.1, 1.3, 4.9, 3.1] },
-            { t: "line", p: [3.1, 3.1, 4.9, 1.3] },
+            { t: "line", p: [0, 2.4, 2.0, 2.4] },
+            { t: "line", p: [6.0, 2.4, 8, 2.4] },
+            { t: "circle", p: [2.6, 2.4, 0.6], fill: "white" },
+            { t: "circle", p: [5.4, 2.4, 0.6], fill: "white" },
+            { t: "line", p: [3.3, 1.7, 4.7, 3.1] },
+            { t: "line", p: [3.3, 3.1, 4.7, 1.7] },
             { t: "text", p: [4, -1.2], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [4, -3.4], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [4, 5.6], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
+        // ⊓: 実測で山幅2.0mm・高さ1.2mm。
         thermalElement: {
           w: 8, h: 3,
           anchors: [[0, 3], [8, 3]],
           prims: [
-            { t: "pline", pts: [[0, 3], [2.2, 3], [2.2, 1.2], [5.8, 1.2], [5.8, 3], [8, 3]] },
+            { t: "pline", pts: [[0, 3], [3, 3], [3, 1.8], [5, 1.8], [5, 3], [8, 3]] },
             { t: "text", p: [4, -0.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -3322,53 +3326,56 @@
           w: 12, h: 5,
           anchors: [[0, 3], [12, 3]],
           prims: [
-            { t: "line", p: [0, 3, 1.6, 3] },
+            { t: "line", p: [0, 3, 1.9, 3] },
             { t: "arc", p: [4.75, 3, 2.25, 180, 360] },
-            { t: "circle", p: [2.5, 3, 0.9], fill: "white" },
-            { t: "circle", p: [7, 3, 0.9], fill: "white" },
-            { t: "line", p: [7.9, 3, 8.4, 3] },
+            { t: "circle", p: [2.5, 3, 0.6], fill: "white" },
+            { t: "circle", p: [7, 3, 0.6], fill: "white" },
+            { t: "line", p: [7.6, 3, 8.4, 3] },
             { t: "pline", pts: [[8.4, 3], [8.4, 1.9], [9.4, 1.9], [9.4, 4.1], [10.2, 4.1], [10.2, 3], [12, 3]] },
             { t: "text", p: [4.75, -1.2], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [4.75, -3.4], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [9.3, 0.9], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
+        // コイル円は実測r1.9。
         coil: {
           w: 10, h: 4.4,
           anchors: [[0, 2.2], [10, 2.2]],
           prims: [
-            { t: "line", p: [0, 2.2, 2.8, 2.2] },
-            { t: "line", p: [7.2, 2.2, 10, 2.2] },
-            { t: "circle", p: [5, 2.2, 2.2], fill: "white" },
+            { t: "line", p: [0, 2.2, 3.1, 2.2] },
+            { t: "line", p: [6.9, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.9], fill: "white" },
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -3.6], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "catalog" }
           ]
         },
+        // 表示灯は実測r1.8+45°ヒゲ0.6mm。
         lamp: {
           w: 10, h: 4.4,
           anchors: [[0, 2.2], [10, 2.2]],
           prims: [
-            { t: "line", p: [0, 2.2, 2.8, 2.2] },
-            { t: "line", p: [7.2, 2.2, 10, 2.2] },
-            { t: "circle", p: [5, 2.2, 2.2], fill: "white" },
-            { t: "line", p: [6.56, 0.64, 7.4, -0.2] },
-            { t: "line", p: [6.56, 3.76, 7.4, 4.6] },
-            { t: "line", p: [3.44, 0.64, 2.6, -0.2] },
-            { t: "line", p: [3.44, 3.76, 2.6, 4.6] },
+            { t: "line", p: [0, 2.2, 3.2, 2.2] },
+            { t: "line", p: [6.8, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.8], fill: "white" },
+            { t: "line", p: [6.27, 0.93, 6.7, 0.5] },
+            { t: "line", p: [6.27, 3.47, 6.7, 3.9] },
+            { t: "line", p: [3.73, 0.93, 3.3, 0.5] },
+            { t: "line", p: [3.73, 3.47, 3.3, 3.9] },
             { t: "text", p: [5, 2.2], size: 2.2, anchor: "middle", field: "lampColor" },
             { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -3.8], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
+        // 操作スイッチ類の端子小円は実測⌀1.2(r0.6)。
         pushButton: {
           w: 10, h: 5,
           anchors: [[0, 3.5], [10, 3.5]],
           prims: [
-            { t: "line", p: [0, 3.5, 2.5, 3.5] },
-            { t: "line", p: [7.5, 3.5, 10, 3.5] },
-            { t: "circle", p: [3.4, 3.5, 0.9], fill: "white" },
-            { t: "circle", p: [6.6, 3.5, 0.9], fill: "white" },
+            { t: "line", p: [0, 3.5, 2.8, 3.5] },
+            { t: "line", p: [7.2, 3.5, 10, 3.5] },
+            { t: "circle", p: [3.4, 3.5, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 3.5, 0.6], fill: "white" },
             { t: "line", p: [2.6, 2.2, 7.4, 2.2] },
             { t: "line", p: [5, 2.2, 5, 1.0] },
             { t: "line", p: [4.3, 1.0, 5.7, 1.0] },
@@ -3380,10 +3387,10 @@
           w: 10, h: 6,
           anchors: [[0, 3.8], [10, 3.8]],
           prims: [
-            { t: "line", p: [0, 3.8, 2.5, 3.8] },
-            { t: "line", p: [7.5, 3.8, 10, 3.8] },
-            { t: "circle", p: [3.4, 3.8, 0.9], fill: "white" },
-            { t: "circle", p: [6.6, 3.8, 0.9], fill: "white" },
+            { t: "line", p: [0, 3.8, 2.8, 3.8] },
+            { t: "line", p: [7.2, 3.8, 10, 3.8] },
+            { t: "circle", p: [3.4, 3.8, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 3.8, 0.6], fill: "white" },
             { t: "line", p: [2.4, 2.9, 7.6, 2.9] },
             { t: "line", p: [5, 2.9, 5, 1.5] },
             { t: "line", p: [3.6, 1.5, 6.4, 1.5] },
@@ -3397,10 +3404,10 @@
           w: 10, h: 5,
           anchors: [[0, 3.2], [10, 3.2]],
           prims: [
-            { t: "line", p: [0, 3.2, 2.5, 3.2] },
-            { t: "line", p: [7.5, 3.2, 10, 3.2] },
-            { t: "circle", p: [3.4, 3.2, 0.9], fill: "white" },
-            { t: "circle", p: [6.6, 3.2, 0.9], fill: "white" },
+            { t: "line", p: [0, 3.2, 2.8, 3.2] },
+            { t: "line", p: [7.2, 3.2, 10, 3.2] },
+            { t: "circle", p: [3.4, 3.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 3.2, 0.6], fill: "white" },
             { t: "pline", pts: [[3.4, 2.3], [3.4, 1.4], [4.1, 1.4]] },
             { t: "pline", pts: [[6.6, 2.3], [6.6, 1.4], [5.9, 1.4]] },
             { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
@@ -3410,10 +3417,10 @@
           w: 10, h: 4.6,
           anchors: [[0, 2.8], [10, 2.8]],
           prims: [
-            { t: "line", p: [0, 2.8, 2.5, 2.8] },
-            { t: "line", p: [7.5, 2.8, 10, 2.8] },
-            { t: "circle", p: [3.4, 2.8, 0.9], fill: "white" },
-            { t: "circle", p: [6.6, 2.8, 0.9], fill: "white" },
+            { t: "line", p: [0, 2.8, 2.8, 2.8] },
+            { t: "line", p: [7.2, 2.8, 10, 2.8] },
+            { t: "circle", p: [3.4, 2.8, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 2.8, 0.6], fill: "white" },
             { t: "rect", p: [2.9, 0.4, 4.2, 1.3], fill: "white" },
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
@@ -3422,10 +3429,10 @@
           w: 10, h: 6,
           anchors: [[0, 2.2], [10, 2.2]],
           prims: [
-            { t: "line", p: [0, 2.2, 2.5, 2.2] },
-            { t: "line", p: [7.5, 2.2, 10, 2.2] },
-            { t: "circle", p: [3.4, 2.2, 0.9], fill: "white" },
-            { t: "circle", p: [6.6, 2.2, 0.9], fill: "white" },
+            { t: "line", p: [0, 2.2, 2.8, 2.2] },
+            { t: "line", p: [7.2, 2.2, 10, 2.2] },
+            { t: "circle", p: [3.4, 2.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 2.2, 0.6], fill: "white" },
             { t: "line", p: [4.1, 1.7, 7.3, 3.2] },
             { t: "line", p: [4.6, 2.6, 4.6, 3.6] },
             { t: "arc", p: [4.6, 4.7, 1.1, 180, 360] },
@@ -3433,18 +3440,20 @@
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // モータ本体円は実測r4.8(⌀9.6)、端子小円は⌀1.2。右下スタブ先にも端子小円。
         motor: {
           w: 16, h: 16,
           anchors: [[0.9, 2.4], [0.9, 8], [0.9, 13.6], [14.6, 14.6]],
           prims: [
-            { t: "circle", p: [8, 8, 6], fill: "white" },
-            { t: "circle", p: [0.9, 2.4, 0.9], fill: "white" },
-            { t: "circle", p: [0.9, 8, 0.9], fill: "white" },
-            { t: "circle", p: [0.9, 13.6, 0.9], fill: "white" },
-            { t: "line", p: [1.7, 2.8, 3.76, 3.76] },
-            { t: "line", p: [1.8, 8, 2, 8] },
-            { t: "line", p: [1.7, 13.2, 3.76, 12.24] },
-            { t: "line", p: [12.24, 12.24, 14.6, 14.6] },
+            { t: "circle", p: [8, 8, 4.8], fill: "white" },
+            { t: "circle", p: [0.9, 2.4, 0.6], fill: "white" },
+            { t: "circle", p: [0.9, 8, 0.6], fill: "white" },
+            { t: "circle", p: [0.9, 13.6, 0.6], fill: "white" },
+            { t: "line", p: [1.37, 2.68, 4.61, 4.61] },
+            { t: "line", p: [1.5, 8, 3.2, 8] },
+            { t: "line", p: [1.37, 13.32, 4.61, 11.39] },
+            { t: "line", p: [11.39, 11.39, 14.18, 14.18] },
+            { t: "circle", p: [14.6, 14.6, 0.6], fill: "white" },
             { t: "text", p: [8, 8], size: 2.2, anchor: "middle", field: "label" }
           ]
         },
@@ -3459,11 +3468,12 @@
             { t: "text", p: [2, 6.6], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // 端子小円は実測⌀1.1→r0.55。アンカーは円の縁(配線が縁で止まる)。
         terminal: {
           w: 1.8, h: 1.8,
-          anchors: [[0, 0.9], [0.9, 0.9], [1.8, 0.9]],
+          anchors: [[0.35, 0.9], [0.9, 0.9], [1.45, 0.9]],
           prims: [
-            { t: "circle", p: [0.9, 0.9, 0.9], fill: "white" },
+            { t: "circle", p: [0.9, 0.9, 0.55], fill: "white" },
             { t: "text", p: [0.9, -1.4], size: 1.8, anchor: "middle", field: "label" }
           ]
         },
@@ -3863,7 +3873,7 @@
         g.appendChild(svgEl("path", { d: wave(h), class: "symbol-line", stroke, fill: "none" }));
         for (let i = 0; i < rows; i++) {
           const cy = 9.5 * i + 4.75;
-          g.appendChild(svgEl("circle", { cx: w / 2, cy, r: 3.5, class: "terminal-dot", stroke }));
+          g.appendChild(svgEl("circle", { cx: w / 2, cy, r: 3.2, class: "terminal-dot", stroke }));
           if (labels[i]) g.appendChild(textEl(labels[i], w / 2, cy, { fontSize: 2, anchor: "middle" }));
         }
         if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
@@ -4984,7 +4994,7 @@
           cableBundle: { ...base, w: 32, h: 18, label: "CBL" },
           terminalBox: { ...base, w: 22, h: 18, label: "TB", rows: 3 },
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", colWidths: "", rowHeights: "", tableFontSize: 2.2, cellText: "No.\t項目\t内容\t備考" },
-          junction: { ...base, w: 2, h: 2, r: 0.75, label: "" },
+          junction: { ...base, w: 2, h: 2, r: 0.5, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", arrowStyle: "open", arrowAtStart: false, stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
           dimension: { id: uid("el"), type: "dimension", points: [[x, y], [x + 30, y]], label: "", dimOffset: 6, stroke: state.settings.stroke, layer: "notes" },
           wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireNoAlign: "mid", fixedWireNo: false, hideWireNo: false, gapAtMid: false, fromOverride: "", toOverride: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
@@ -9465,7 +9475,7 @@
               y: point.y,
               w: 2,
               h: 2,
-              r: 0.75,
+              r: 0.5,
               rotation: 0,
               stroke: state.settings.stroke
             });
@@ -11435,7 +11445,7 @@
             const unitLevels = Number(element.levels) === 2 ? 2 : 1;
             for (let i = 0; i < count * unitLevels; i++) {
               const cy = pitch * (i % count) + pitch / 2;
-              const r = Math.min(3.5, pitch * .37);
+              const r = Math.min(3.2, pitch * .35);
               const cx = unitLevels === 2 ? (i < count ? 4.5 : w - 4.5) : w / 2;
               dxfCircleLocal(out, page, "SYMBOL", element, cx, cy, r);
               const label = terminalLabel(element, i);
@@ -11647,7 +11657,7 @@
             });
             for (let i = 0; i < rows; i++) {
               const cy = 9.5 * i + 4.75;
-              dxfCircleLocal(out, page, "SYMBOL", element, uw / 2, cy, 3.5);
+              dxfCircleLocal(out, page, "SYMBOL", element, uw / 2, cy, 3.2);
               if (labels[i]) dxfTextLocal(out, page, "TEXT", element, uw / 2 - labels[i].length * .6, cy + .7, 2, labels[i]);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
@@ -11680,7 +11690,7 @@
           return;
         }
         if (element.type === "junction") {
-          dxfCircleLocal(out, page, "SYMBOL", element, 0, 0, Number(element.r || 6));
+          dxfCircleLocal(out, page, "SYMBOL", element, 0, 0, Number(element.r || 0.5));
           if (element.label) dxfTextLocal(out, page, "TEXT", element, -4, -8, 2.4, element.label);
           dxfVisibleAttributes(out, page, element);
           return;
