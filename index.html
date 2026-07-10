@@ -1007,6 +1007,8 @@
         { type: "rectifierBox", label: "整流器", icon: "diode" },
         { type: "arrester", label: "避雷器", icon: "diode" },
         { type: "transistor", label: "トランジスタ", icon: "diode" },
+        { type: "logicGate", label: "論理ゲート", icon: "contactBlock" },
+        { type: "photocoupler", label: "フォトカプラ", icon: "diode" },
         { type: "currentTransformer", label: "変流器(CT)", icon: "coil" },
         { type: "disconnector", label: "断路器", icon: "contactNO" },
         { type: "outlet", label: "コンセント", icon: "power" },
@@ -1018,6 +1020,8 @@
         { type: "pressureSwitch", label: "圧力スイッチ", icon: "pressureSwitch" },
         { type: "floatSwitch", label: "フロートスイッチ", icon: "limitSwitch" },
         { type: "thermoSwitch", label: "温度スイッチ", icon: "limitSwitch" },
+        { type: "flowSwitch", label: "フロースイッチ", icon: "limitSwitch" },
+        { type: "footSwitch", label: "フットスイッチ", icon: "limitSwitch" },
         { type: "deviceBox", label: "機器箱", icon: "box" },
         { type: "plcBlock", label: "PLC/I-O", icon: "plc" },
         { type: "connector", label: "コネクタ", icon: "connector" },
@@ -1056,6 +1060,10 @@
         timerContactNC: "TLR",
         floatSwitch: "FS",
         thermoSwitch: "TS",
+        flowSwitch: "FLS",
+        footSwitch: "FTS",
+        logicGate: "",
+        photocoupler: "PC",
         bell: "BL",
         battery: "BT",
         rectifierBox: "REC",
@@ -1100,11 +1108,11 @@
       // 要素種別→パレットカテゴリの対応表。未登録はdevice扱い。
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
-        contactNO: "contact", contactNC: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact",
+        contactNO: "contact", contactNC: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact", flowSwitch: "contact", footSwitch: "contact",
         coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil", bell: "coil", beacon: "coil",
         disconnector: "power", outlet: "power",
         powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power", inductor: "power", heater: "power", battery: "power", rectifierBox: "power", arrester: "power", currentTransformer: "power",
-        fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect", transistor: "protect",
+        fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect", transistor: "protect", logicGate: "protect", photocoupler: "protect",
         terminal: "terminal", terminalStrip: "terminal", terminalSheet: "terminal", connector: "terminal", junction: "terminal", cableMarker: "terminal", cableBundle: "terminal", terminalBox: "terminal",
         deviceBox: "device", plcBlock: "device", installationBox: "device", locationBox: "device", table: "device",
         arrow: "annotation", positionMark: "annotation", polarityMark: "annotation", cloud: "annotation"
@@ -4283,6 +4291,115 @@
             { t: "text", p: [0.9, -1.4], size: 1.8, anchor: "middle", field: "label" }
           ]
         },
+        // フロースイッチ: 接点+流路パドル(旗)。
+        flowSwitch: {
+          w: 10, h: 6,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.8, 2.2] },
+            { t: "line", p: [7.2, 2.2, 10, 2.2] },
+            { t: "circle", p: [3.4, 2.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 2.2, 0.6], fill: "white" },
+            { t: "line", p: [3.91, 1.89, 6.1, 0.55] },
+            { t: "line", p: [5, 2.9, 5, 4.7] },
+            { t: "pline", pts: [[5, 3.3], [6.6, 3.85], [5, 4.4]] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // フットスイッチ: 接点+踏板ペダル。
+        footSwitch: {
+          w: 10, h: 6.5,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.8, 2.2] },
+            { t: "line", p: [7.2, 2.2, 10, 2.2] },
+            { t: "circle", p: [3.4, 2.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 2.2, 0.6], fill: "white" },
+            { t: "line", p: [3.91, 1.89, 6.1, 0.55] },
+            { t: "line", p: [5, 2.9, 5, 4.4] },
+            { t: "pline", pts: [[3.2, 5.9], [6.4, 5.9], [7.4, 4.4], [5, 4.4]] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 切替スイッチ(鍵付き): 2位置+鍵記号。
+        selectorSwitchKey: {
+          w: 10, h: 5,
+          anchors: [[0, 3.2], [10, 3.2]],
+          prims: [
+            { t: "line", p: [0, 3.2, 2.8, 3.2] },
+            { t: "line", p: [7.2, 3.2, 10, 3.2] },
+            { t: "circle", p: [3.4, 3.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 3.2, 0.6], fill: "white" },
+            { t: "pline", pts: [[3.4, 2.3], [3.4, 1.4], [4.1, 1.4]] },
+            { t: "pline", pts: [[6.6, 2.3], [6.6, 1.4], [5.9, 1.4]] },
+            { t: "circle", p: [5, 0.9, 0.6] },
+            { t: "line", p: [5, 1.5, 5, 2.6] },
+            { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 論理ゲート(AND, IEC/JIS矩形式): 箱+&。入力2(±2.5mm)/出力1。
+        gateAnd: {
+          w: 10, h: 10,
+          anchors: [[0, 2.5], [0, 7.5], [10, 5]],
+          prims: [
+            { t: "line", p: [0, 2.5, 3, 2.5] },
+            { t: "line", p: [0, 7.5, 3, 7.5] },
+            { t: "rect", p: [3, 1, 4.5, 8], fill: "white" },
+            { t: "line", p: [7.5, 5, 10, 5] },
+            { t: "text", p: [5.25, 3.0], size: 2.2, anchor: "middle", value: "&" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 論理ゲート(OR): 箱+≥1。
+        gateOr: {
+          w: 10, h: 10,
+          anchors: [[0, 2.5], [0, 7.5], [10, 5]],
+          prims: [
+            { t: "line", p: [0, 2.5, 3, 2.5] },
+            { t: "line", p: [0, 7.5, 3, 7.5] },
+            { t: "rect", p: [3, 1, 4.5, 8], fill: "white" },
+            { t: "line", p: [7.5, 5, 10, 5] },
+            { t: "text", p: [5.25, 3.0], size: 1.9, anchor: "middle", value: "≥1" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 論理ゲート(NOT): 箱+1+出力否定丸。入力1/出力1。
+        gateNot: {
+          w: 10, h: 10,
+          anchors: [[0, 5], [10, 5]],
+          prims: [
+            { t: "line", p: [0, 5, 3, 5] },
+            { t: "rect", p: [3, 1, 4.5, 8], fill: "white" },
+            { t: "circle", p: [8.0, 5, 0.5], fill: "white" },
+            { t: "line", p: [8.5, 5, 10, 5] },
+            { t: "text", p: [5.25, 3.0], size: 2.2, anchor: "middle", value: "1" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // フォトカプラ: 箱内にLED(左)と受光素子(右)。左=入力2/右=出力2(±2.5mm)。
+        photocoupler: {
+          w: 10, h: 8,
+          anchors: [[0, 1.5], [0, 6.5], [10, 1.5], [10, 6.5]],
+          prims: [
+            { t: "rect", p: [2.5, 0.4, 5, 7.2], fill: "white" },
+            { t: "line", p: [0, 1.5, 2.5, 1.5] },
+            { t: "line", p: [0, 6.5, 2.5, 6.5] },
+            { t: "line", p: [10, 1.5, 7.5, 1.5] },
+            { t: "line", p: [10, 6.5, 7.5, 6.5] },
+            { t: "line", p: [3.5, 1.5, 3.5, 2.9] },
+            { t: "pline", pts: [[2.9, 2.9], [4.1, 2.9], [3.5, 4.1], [2.9, 2.9]] },
+            { t: "line", p: [2.9, 4.1, 4.1, 4.1] },
+            { t: "line", p: [3.5, 4.1, 3.5, 6.5] },
+            { t: "line", p: [4.6, 3.4, 5.6, 3.4] },
+            { t: "pline", pts: [[5.25, 3.15], [5.6, 3.4], [5.25, 3.65]] },
+            { t: "line", p: [4.6, 4.6, 5.6, 4.6] },
+            { t: "pline", pts: [[5.25, 4.35], [5.6, 4.6], [5.25, 4.85]] },
+            { t: "line", p: [6.4, 2.7, 6.4, 5.3] },
+            { t: "line", p: [6.4, 3.4, 7.5, 1.5] },
+            { t: "line", p: [6.4, 4.6, 7.5, 6.5] },
+            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         // 零相変流器(ZCT): 貫通導体+二重円。
         currentTransformerZct: {
           w: 10, h: 4.4,
@@ -4616,7 +4733,19 @@
             if (variant === "pull") return "pushButtonPull";
             if (variant === "twist") return "pushButtonTwist";
             return "pushButton";
-          case "selectorSwitch": return variant === "three" ? "selectorSwitch3" : "selectorSwitch";
+          case "selectorSwitch": {
+            if (variant === "three") return "selectorSwitch3";
+            if (variant === "key") return "selectorSwitchKey";
+            return "selectorSwitch";
+          }
+          case "flowSwitch": return "flowSwitch";
+          case "footSwitch": return "footSwitch";
+          case "logicGate": {
+            if (variant === "or") return "gateOr";
+            if (variant === "not") return "gateNot";
+            return "gateAnd";
+          }
+          case "photocoupler": return "photocoupler";
           case "limitSwitch": return variant === "roller" ? "limitSwitchRoller" : "limitSwitch";
           case "pressureSwitch": return "pressureSwitch";
           case "motor": return variant === "double" ? "motorDouble" : "motor";
@@ -5514,7 +5643,8 @@
         thermalRelay: [["standard", "○✕○（設備標準）"], ["box", "箱形（内部⊓）"]],
         inductor: [["standard", "コブ3個"], ["core", "鉄心入り（上線2本）"]],
         currentTransformer: [["standard", "円（CT）"], ["zct", "二重円（ZCT）"]],
-        selectorSwitch: [["standard", "2位置"], ["three", "3位置"]],
+        selectorSwitch: [["standard", "2位置"], ["three", "3位置"], ["key", "鍵付き"]],
+        logicGate: [["and", "AND（&）"], ["or", "OR（≥1）"], ["not", "NOT（1＋否定丸）"]],
         limitSwitch: [["standard", "箱形アクチュエータ"], ["roller", "ローラーレバー"]],
         transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "二巻線円形（JIS）"]],
         pushButtonEmergency: [["standard", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]]
@@ -5623,7 +5753,7 @@
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
           `;
         }
-        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor", "inductor"].includes(element.type)) {
+        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor", "inductor", "logicGate"].includes(element.type)) {
           return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
@@ -6135,6 +6265,10 @@
           timerContactNC: { ...base, w: 8, h: 4.4, label: "T", orientation: "horizontal", refNo: "" },
           floatSwitch: { ...base, w: 10, h: 6, label: "FS", orientation: "horizontal" },
           thermoSwitch: { ...base, w: 10, h: 5, label: "TS", orientation: "horizontal" },
+          flowSwitch: { ...base, w: 10, h: 6, label: "FLS", orientation: "horizontal" },
+          footSwitch: { ...base, w: 10, h: 6.5, label: "FTS", orientation: "horizontal" },
+          logicGate: { ...base, w: 10, h: 10, label: "" },
+          photocoupler: { ...base, w: 10, h: 8, label: "PC" },
           bell: { ...base, w: 10, h: 5.4, label: "BL" },
           battery: { ...base, w: 10, h: 4.4, label: "BT" },
           rectifierBox: { ...base, w: 10, h: 6, label: "REC" },
@@ -6417,6 +6551,8 @@
           "pressureSwitch",
           "floatSwitch",
           "thermoSwitch",
+          "flowSwitch",
+          "footSwitch",
           "bell",
           "battery",
           "rectifierBox",
@@ -6426,6 +6562,8 @@
           "disconnector",
           "outlet",
           "beacon",
+          "logicGate",
+          "photocoupler",
           "positionMark",
           "polarityMark",
           "pushButton",
@@ -6469,6 +6607,8 @@
           "pressureSwitch",
           "floatSwitch",
           "thermoSwitch",
+          "flowSwitch",
+          "footSwitch",
           "terminal",
           "pushButton",
           "selectorSwitch",
