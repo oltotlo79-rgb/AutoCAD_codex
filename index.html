@@ -158,11 +158,14 @@
     .brand-mark::after {
       content: "";
       position: absolute;
+      /* inset+margin:autoで枠線の太さに関係なく十字を完全中央に置く */
+      inset: 0;
+      margin: auto;
       background: var(--accent);
     }
 
-    .brand-mark::before { width: 12px; height: 2px; left: 4px; top: 10px; }
-    .brand-mark::after { width: 2px; height: 12px; left: 10px; top: 4px; }
+    .brand-mark::before { width: 12px; height: 2px; }
+    .brand-mark::after { width: 2px; height: 12px; }
 
     .top-actions,
     .tool-actions {
