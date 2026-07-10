@@ -979,6 +979,7 @@
         { type: "buzzer", label: "ブザー", icon: "buzzer" },
         { type: "meter", label: "計器(V/A)", icon: "coil" },
         { type: "bell", label: "ベル", icon: "buzzer" },
+        { type: "beacon", label: "回転灯", icon: "lamp" },
         { type: "solenoidValve", label: "ソレノイド弁", icon: "solenoidValve" },
         { type: "sensor", label: "センサ", icon: "sensor" },
         { type: "powerSupply", label: "電源", icon: "powerSupply" },
@@ -993,6 +994,8 @@
         { type: "arrester", label: "避雷器", icon: "diode" },
         { type: "transistor", label: "トランジスタ", icon: "diode" },
         { type: "currentTransformer", label: "変流器(CT)", icon: "coil" },
+        { type: "disconnector", label: "断路器", icon: "contactNO" },
+        { type: "outlet", label: "コンセント", icon: "power" },
         { type: "resistor", label: "抵抗", icon: "resistor" },
         { type: "capacitor", label: "コンデンサ", icon: "capacitor" },
         { type: "diode", label: "ダイオード", icon: "diode" },
@@ -1052,6 +1055,9 @@
         capacitor: "C",
         diode: "D",
         thermalRelay: "THR",
+        disconnector: "DS",
+        outlet: "SC",
+        beacon: "SL",
         thermalElement: "OL",
         pressureSwitch: "PS",
         deviceBox: "DEV",
@@ -1081,7 +1087,8 @@
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
         contactNO: "contact", contactNC: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact",
-        coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil", bell: "coil",
+        coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil", bell: "coil", beacon: "coil",
+        disconnector: "power", outlet: "power",
         powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power", inductor: "power", heater: "power", battery: "power", rectifierBox: "power", arrester: "power", currentTransformer: "power",
         fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect", transistor: "protect",
         terminal: "terminal", terminalStrip: "terminal", terminalSheet: "terminal", connector: "terminal", junction: "terminal", cableMarker: "terminal", cableBundle: "terminal", terminalBox: "terminal",
@@ -4182,6 +4189,84 @@
             { t: "text", p: [8, 8], size: 2.2, anchor: "middle", field: "label" }
           ]
         },
+        // 断路器(DS): 円端子+開き線+受け側の止め棒。
+        disconnector: {
+          w: 10, h: 5,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 2.8, 3] },
+            { t: "line", p: [7.2, 3, 10, 3] },
+            { t: "circle", p: [3.4, 3, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 3, 0.6], fill: "white" },
+            { t: "line", p: [3.91, 2.69, 6.6, 1.1] },
+            { t: "line", p: [6.6, 0.7, 6.6, 2.4] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // コンセント: 半円筐体+差込口2。左1線で受電する末端機器。
+        outlet: {
+          w: 10, h: 6,
+          anchors: [[0, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 3.4, 3] },
+            { t: "arc", p: [6, 3, 2.6, 90, 270] },
+            { t: "line", p: [6, 0.4, 6, 5.6] },
+            { t: "line", p: [4.8, 2.0, 4.8, 4.0] },
+            { t: "text", p: [8.2, 3], size: 1.8, anchor: "start", field: "label" }
+          ]
+        },
+        // 回転灯: 台座+ドーム+光線。
+        beacon: {
+          w: 10, h: 6,
+          anchors: [[0, 4.4], [10, 4.4]],
+          prims: [
+            { t: "line", p: [0, 4.4, 3.4, 4.4] },
+            { t: "line", p: [6.6, 4.4, 10, 4.4] },
+            { t: "rect", p: [3.4, 3.6, 3.2, 1.6], fill: "white" },
+            { t: "arc", p: [5, 3.6, 1.6, 180, 360] },
+            { t: "line", p: [2.9, 1.1, 3.7, 1.9] },
+            { t: "line", p: [7.1, 1.1, 6.3, 1.9] },
+            { t: "text", p: [5, -0.8], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // サーマルリレー(箱形): 箱+内部の⊓素子。
+        thermalRelayBox: {
+          w: 8, h: 4,
+          anchors: [[0, 2.4], [8, 2.4]],
+          prims: [
+            { t: "line", p: [0, 2.4, 2.0, 2.4] },
+            { t: "line", p: [6.0, 2.4, 8, 2.4] },
+            { t: "rect", p: [2.0, 0.8, 4.0, 3.2], fill: "white" },
+            { t: "pline", pts: [[2.6, 3.0], [3.3, 3.0], [3.3, 1.6], [4.7, 1.6], [4.7, 3.0], [5.4, 3.0]] },
+            { t: "text", p: [4, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, 5.6], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // リアクトル(鉄心入り): コブ3個+鉄心線2本。
+        inductorCore: {
+          w: 10, h: 3,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 2.6, 3] },
+            { t: "arc", p: [3.3, 3, 0.7, 180, 360] },
+            { t: "arc", p: [4.7, 3, 0.7, 180, 360] },
+            { t: "arc", p: [6.1, 3, 0.7, 180, 360] },
+            { t: "line", p: [6.8, 3, 10, 3] },
+            { t: "line", p: [2.6, 1.5, 6.8, 1.5] },
+            { t: "line", p: [2.6, 0.9, 6.8, 0.9] },
+            { t: "text", p: [5, -0.8], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 端子(二重円): 貫通・中継端子表現。
+        terminalDouble: {
+          w: 1.8, h: 1.8,
+          anchors: [[0.9, 0.9]],
+          prims: [
+            { t: "circle", p: [0.9, 0.9, 0.55], fill: "white" },
+            { t: "circle", p: [0.9, 0.9, 0.32] },
+            { t: "text", p: [0.9, -1.4], size: 1.8, anchor: "middle", field: "label" }
+          ]
+        },
         // 零相変流器(ZCT): 貫通導体+二重円。
         currentTransformerZct: {
           w: 10, h: 4.4,
@@ -4477,7 +4562,10 @@
         switch (element.type) {
           case "contactNO": return variant === "jis" ? "contactNOJis" : (variant === "iec" ? "contactNOIec" : "contactNO");
           case "contactNC": return variant === "jis" ? "contactNCJis" : (variant === "iec" ? "contactNCIec" : "contactNC");
-          case "thermalRelay": return "thermalRelay";
+          case "thermalRelay": return variant === "box" ? "thermalRelayBox" : "thermalRelay";
+          case "disconnector": return "disconnector";
+          case "outlet": return "outlet";
+          case "beacon": return "beacon";
           case "thermalElement": return "thermalElement";
           case "breaker": {
             if (variant === "elb") return "breakerElb";
@@ -4522,10 +4610,15 @@
             if (variant === "double") return "meterDouble";
             return "meter";
           }
-          case "inductor": return "inductor";
+          case "inductor": return variant === "core" ? "inductorCore" : "inductor";
           case "heater": return "heater";
           case "ground": return variant === "bars" ? "groundBars" : (variant === "circle" ? "groundClean" : "ground");
-          case "terminal": return (element.terminalShape || "circle") === "circle" ? "terminal" : null;
+          case "terminal": {
+            const shape = element.terminalShape || "circle";
+            if (shape === "circle") return "terminal";
+            if (shape === "double") return "terminalDouble";
+            return null;
+          }
           case "resistor": {
             const rs = element.resistorStyle || "box";
             if (rs === "varistor") return "varistor";
@@ -5402,6 +5495,8 @@
         transistor: [["npn", "NPN"], ["pnp", "PNP"]],
         meter: [["standard", "円形"], ["box", "角形"], ["double", "二重円（積算計）"]],
         motor: [["standard", "円（設備標準）"], ["double", "二重円（発電機等）"]],
+        thermalRelay: [["standard", "○✕○（設備標準）"], ["box", "箱形（内部⊓）"]],
+        inductor: [["standard", "コブ3個"], ["core", "鉄心入り（上線2本）"]],
         currentTransformer: [["standard", "円（CT）"], ["zct", "二重円（ZCT）"]],
         selectorSwitch: [["standard", "2位置"], ["three", "3位置"]],
         limitSwitch: [["standard", "箱形アクチュエータ"], ["roller", "ローラーレバー"]],
@@ -5418,7 +5513,7 @@
         if (!options) return "";
         const current = element.symbolVariant || "standard";
         return `
-            <label>シンボルデザイン</label>
+            <label>シンボルデザイン（規格・様式切替）</label>
             <select data-bind="symbolVariant">
               ${options.map(([value, label]) => `<option value="${escapeAttr(value)}"${current === value ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}
             </select>`;
@@ -5512,12 +5607,13 @@
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
           `;
         }
-        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor"].includes(element.type)) {
+        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor", "inductor"].includes(element.type)) {
           return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
           const orientation = element.orientation || "horizontal";
           return `
+            ${symbolVariantSelectHtml(element)}
             <label>接点方向</label>
             <select data-bind="orientation">
               <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横向き標準</option>
@@ -5632,6 +5728,7 @@
             <label>端子形状</label>
             <select data-bind="terminalShape">
               <option value="circle"${shape === "circle" ? " selected" : ""}>丸</option>
+              <option value="double"${shape === "double" ? " selected" : ""}>二重円（貫通）</option>
               <option value="square"${shape === "square" ? " selected" : ""}>角</option>
             </select>
           `;
@@ -6028,6 +6125,9 @@
           currentTransformer: { ...base, w: 10, h: 4.4, label: "CT" },
           arrester: { ...base, w: 10, h: 6, label: "AR" },
           transistor: { ...base, w: 10, h: 6, label: "TR" },
+          disconnector: { ...base, w: 10, h: 5, label: "DS", orientation: "horizontal" },
+          outlet: { ...base, w: 10, h: 6, label: "SC" },
+          beacon: { ...base, w: 10, h: 6, label: "SL" },
           ground: { ...base, w: 4, h: 5, label: "E" },
           motor: { ...base, w: 16, h: 16, label: "M" },
           fan: { ...base, w: 14, h: 14, r: 5, label: "FAN" },
@@ -6236,7 +6336,7 @@
           add(w / 2, h);
           return anchors;
         }
-        if (["coil", "fuse", "breaker", "lamp", "buzzer", "meter", "inductor", "heater", "bell", "battery", "rectifierBox", "currentTransformer", "arrester", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
+        if (["coil", "fuse", "breaker", "lamp", "buzzer", "meter", "inductor", "heater", "bell", "battery", "rectifierBox", "currentTransformer", "arrester", "disconnector", "beacon", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
           add(0, h / 2);
           add(w, h / 2);
           return anchors;
@@ -6307,6 +6407,9 @@
           "currentTransformer",
           "arrester",
           "transistor",
+          "disconnector",
+          "outlet",
+          "beacon",
           "positionMark",
           "polarityMark",
           "pushButton",
@@ -6371,6 +6474,8 @@
           "meter",
           "inductor",
           "heater",
+          "disconnector",
+          "beacon",
           "motor",
           "fan"
         ]);
