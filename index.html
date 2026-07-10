@@ -712,6 +712,7 @@
               <option value="rotateAbout">指定回転（中心指定）</option>
               <option value="wireSequence">配線順序(FROM/TO)</option>
               <option value="addRung">ラング追加</option>
+              <option value="rungShift">行挿入/行削除（行シフト）</option>
             </optgroup>
             <optgroup label="一括生成">
               <option value="rungCircuit">ラング回路（接点+コイル/ランプ）</option>
@@ -733,7 +734,7 @@
               <option value="layerManager">レイヤ管理</option>
               <option value="catalog">部品カタログ</option>
               <option value="symbolManager">ユーザー部品管理</option>
-              <option value="symbolBuilder">シンボルビルダー（簡易）</option>
+              <option value="symbolBuilder">シンボルビルダー（マウス作図）</option>
               <option value="revisionHistory">改訂履歴</option>
             </optgroup>
             <optgroup label="帳票・確認">
@@ -3692,6 +3693,29 @@
         return coil && coil.element.id !== element.id ? coil.address : "";
       }
 
+      // 選択中のコイル/接点から相互ジャンプするボタン群(ACEのサーファー相当)。
+      // コイル選択時=全接点のアドレス一覧、接点選択時=親コイルへの1ボタン。
+      function crossRefJumpHtml(element) {
+        const tag = componentTag(element);
+        if (!tag) return "";
+        const data = crossRefData();
+        if (coilTypes().has(element.type)) {
+          const list = data.contacts.get(tag) || [];
+          if (!list.length) return "";
+          return `
+            <label>接点へ移動（${list.length}件・頁+行アドレス）</label>
+            <div class="row-3">
+              ${list.slice(0, 12).map(item => `<button type="button" data-xref-jump="${escapeAttr(item.page.id)}|${escapeAttr(item.element.id)}" title="ページ「${escapeAttr(item.page.name || "")}」の接点へ移動">${escapeHtml(item.address || "?")}${item.closed ? " b" : ""}</button>`).join("")}
+            </div>`;
+        }
+        if (contactChildTypes().has(element.type)) {
+          const coil = data.coils.get(tag);
+          if (!coil || coil.element.id === element.id) return "";
+          return `<button type="button" data-xref-jump="${escapeAttr(coil.page.id)}|${escapeAttr(coil.element.id)}" style="width:100%;margin-top:8px" title="同じタグの親コイルへ移動">親コイルへ移動（${escapeHtml(coil.address || "")}）</button>`;
+        }
+        return "";
+      }
+
       // ===== ジオメトリ単一定義方式(固定寸法シンボル定義) =====
       // SVG / DXF / 接続アンカーはすべてここから導出する。座標は横向き基準mm。
       const SYMBOL_GEO = {
@@ -5725,6 +5749,7 @@
           ${labelFields(element)}
           ${specificFields(element)}
           ${electricalAttributeFields(element)}
+          ${crossRefJumpHtml(element)}
           <details class="attr-panel">
             <summary>スタイル・メモ（レイヤ／線色／属性メモ）</summary>
             <label>所属レイヤ</label>
@@ -5782,6 +5807,13 @@
         });
         qs("#registerSymbolBtn", panel)?.addEventListener("click", registerSelectedAsSymbol);
         qs("#toggleLockBtn", panel)?.addEventListener("click", toggleSelectedLock);
+        qsa("[data-xref-jump]", panel).forEach(button => {
+          button.addEventListener("click", () => {
+            const [pageId, elementId] = button.dataset.xrefJump.split("|");
+            jumpToElement(pageId, elementId);
+            setStatus("クロスリファレンス先へ移動しました。");
+          });
+        });
         qs("#toggleWireGapBtn", panel)?.addEventListener("click", toggleSelectedWireGap);
         qs("#addIntersectionGapsBtn", panel)?.addEventListener("click", addIntersectionGapsToSelectedWire);
         qs("#clearWireGapsBtn", panel)?.addEventListener("click", clearSelectedWireGaps);
@@ -7911,6 +7943,86 @@
         addLadderRungElements(page, cfg, y, nextIndex);
         commitHistory("ラングを追加しました。");
         render();
+      }
+
+      // ===== 行挿入/行削除(設備標準の行シフト。ACEのラング挿入相当) =====
+      // 指定行から下の全要素を行ピッチ単位で下げ(挿入)/上げ(削除)る。
+      // 配線は境界をまたぐ点だけが動くため、縦レールは自動で伸縮する。
+      function showRungShiftDialog() {
+        const page = currentPage();
+        if (!page) return;
+        openDialog("行挿入/行削除（行シフト）", `
+          <p class="muted">指定した行番号から下の要素をまとめて移動します。
+          「挿入」= 指定行の位置に空行を作る(下へ移動)。「削除」= 指定行を詰める(上へ移動)。
+          縦の配線は境界をまたぐ部分が自動で伸び縮みします。設備標準図枠の行番号(00〜20)が基準です。</p>
+          <div class="row">
+            <div><label>操作</label><select id="rsMode"><option value="insert">行を挿入</option><option value="delete">行を削除</option></select></div>
+            <div><label>対象行番号(00〜20)</label><input id="rsRow" type="number" min="0" max="20" step="1" value="10"></div>
+          </div>
+          <label>行数</label>
+          <input id="rsCount" type="number" min="1" max="10" step="1" value="1">
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="rsRunBtn" class="primary">実行</button>
+          </div>`);
+        qs("#rsRunBtn").addEventListener("click", () => {
+          const mode = qs("#rsMode").value;
+          const row = Math.max(0, Math.min(LADDER_GRID.rows, Math.floor(Number(qs("#rsRow").value || 0))));
+          const count = Math.max(1, Math.min(10, Math.floor(Number(qs("#rsCount").value || 1))));
+          shiftLadderRows(row, count, mode === "insert" ? 1 : -1);
+        });
+      }
+
+      // 行シフト本体。direction=1で挿入(下へ)、-1で削除(上へ)。削除は帯内に要素があると中止する。
+      function shiftLadderRows(fromRow, count, direction) {
+        const page = currentPage();
+        if (!page) return;
+        const pitch = LADDER_GRID.pitch;
+        const boundaryY = LADDER_GRID.top + pitch * fromRow - pitch / 2;
+        const dy = direction * count * pitch;
+        const refYOf = el => {
+          if (el.points) return Math.min(...el.points.map(p => p[1]));
+          const anchors = componentConnectionAnchors(el);
+          return anchors && anchors.length ? anchors[0].y : Number(el.y || 0);
+        };
+        if (direction < 0) {
+          // 削除帯[fromRow, fromRow+count)に載っている部品があれば中止(配線は跨ぎ可)
+          const bandTop = boundaryY;
+          const bandBottom = boundaryY + count * pitch;
+          const blocking = page.elements.filter(el => !el.points && !isFrameLikeType(el.type) && refYOf(el) >= bandTop && refYOf(el) < bandBottom);
+          if (blocking.length) {
+            setStatus("削除対象の行に部品が " + blocking.length + " 個あります。先に移動または削除してください。");
+            return;
+          }
+        }
+        let movedCount = 0;
+        page.elements.forEach(el => {
+          if (isElementLocked(el)) return;
+          if (el.points) {
+            let touched = false;
+            const threshold = direction < 0 ? boundaryY + count * pitch : boundaryY;
+            el.points = el.points.map(p => {
+              if (p[1] >= threshold - .01) { touched = true; return [p[0], round(p[1] + dy)]; }
+              return [p[0], p[1]];
+            });
+            if (touched) movedCount += 1;
+          } else {
+            const threshold = direction < 0 ? boundaryY + count * pitch : boundaryY;
+            if (refYOf(el) >= threshold - .01) {
+              el.y = round(Number(el.y || 0) + dy);
+              movedCount += 1;
+            }
+          }
+        });
+        closeDialog();
+        commitHistory(direction > 0
+          ? "行" + String(fromRow).padStart(2, "0") + "へ" + count + "行挿入しました(" + movedCount + "要素を移動)。"
+          : "行" + String(fromRow).padStart(2, "0") + "から" + count + "行削除しました(" + movedCount + "要素を移動)。");
+        render();
+      }
+
+      // 行シフトの対象外にする図枠系要素の種別か(表・下絵・図枠部品は行に属さない)。
+      function isFrameLikeType(type) {
+        return ["table", "underlayImage", "cloud", "rect", "text"].includes(type);
       }
 
       // 縦配線列の一括生成ダイアログを開く。
@@ -12192,7 +12304,9 @@
           ${section("タグとクロスリファレンス", `
             <p style="margin:4px 0">コイル（親）と接点（子）へ<b>同じタグ</b>（例: CR1）を付けると、
             接点の下に親コイルの位置（頁+行、例: 205）が自動表示され、設備標準図枠の左下表にも自動記入されます
-            （b接点は下線つき）。タグは「部品タグ採番」で自動付与、「タグ固定」で再採番から保護できます。</p>`)}
+            （b接点は下線つき）。タグは「部品タグ採番」で自動付与、「タグ固定」で再採番から保護できます。</p>
+            <p style="margin:4px 0">選択中の右パネルから<b>相互ジャンプ</b>できます:
+            接点→「親コイルへ移動」、コイル→「接点へ移動」の頁+行一覧。クリックでページ切替+自動スクロール。</p>`)}
 
           ${section("自動処理と監査（仕上げの手順）", `
             <ol style="margin:4px 0;padding-left:20px;line-height:1.8">
@@ -12435,6 +12549,8 @@
       }
 
       // editId を渡すと既存ユーザー部品の編集モードで開く(保存時にIDを維持して置換)。
+      // 上段=マウス作図キャンバス(GUI)、下段=スクリプト。両者は常に同期する
+      // (GUI操作→スクリプト再生成、スクリプト編集→キャンバス再描画)。
       function showSymbolBuilder(editId) {
         const editing = typeof editId === "string"
           ? (state.customSymbols || []).find(symbol => symbol.id === editId)
@@ -12442,27 +12558,45 @@
         const initialScript = editing
           ? (symbolToScript(editing) || "")
           : "# 例: 箱と左右リード+接続点\nanchor 0 6\nline 0 6 4 6\nrect 4 0 12 12\nline 16 6 20 6\nanchor 20 6";
-        openDialog(editing ? "シンボルビルダー（編集）" : "シンボルビルダー（簡易）", `
-          <p class="muted">1行に1プリミティブを書きます（座標はmm・左上原点）。<br>
-          <code>line x1 y1 x2 y2</code> ／ <code>rect x y 幅 高</code> ／ <code>circle cx cy r</code> ／
-          <code>text x y サイズ 文字列</code> ／ <code>anchor x y</code>（配線が吸着する接続点） ／ <code>#</code> はコメント</p>
+        openDialog(editing ? "シンボルビルダー（編集）" : "シンボルビルダー", `
+          <div class="inline" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">
+            <span class="muted" style="font-size:11px">作図ツール:</span>
+            <button type="button" data-sb-tool="select" class="active">選択/移動</button>
+            <button type="button" data-sb-tool="line">直線</button>
+            <button type="button" data-sb-tool="rect">矩形</button>
+            <button type="button" data-sb-tool="circle">円</button>
+            <button type="button" data-sb-tool="text">文字</button>
+            <button type="button" data-sb-tool="anchor">接続点</button>
+            <button type="button" data-sb-tool="delete">削除</button>
+            <label style="margin:0 0 0 8px">スナップ</label>
+            <select id="sbSnap" style="width:auto"><option value="1">1mm</option><option value="0.5">0.5mm</option><option value="0.25">0.25mm</option></select>
+            <label style="margin:0 0 0 8px">文字内容</label>
+            <input id="sbTextContent" value="文字" style="width:90px">
+          </div>
+          <svg id="sbCanvas" viewBox="-2 -2 28 20" style="display:block;width:100%;max-width:660px;aspect-ratio:28/20;background:#fff;border:1px solid #c9d2dc;border-radius:4px;cursor:crosshair;touch-action:none"></svg>
+          <p class="muted" style="margin:4px 0 8px;font-size:11px">直線/矩形/円=ドラッグで作図 ／ 文字・接続点=クリックで配置 ／ 選択ツール=クリックで選択・ドラッグで移動、Deleteキーで削除 ／ 赤丸=配線が吸着する接続点</p>
           <label>部品名</label>
           <input id="sbName" value="${escapeAttr(editing ? editing.label || "" : "新しい部品")}">
-          <label>定義</label>
-          <textarea id="sbScript" style="min-height:140px;font-family:var(--mono)">${escapeHtml(initialScript)}</textarea>
-          <div class="inline" style="flex-wrap:wrap;margin-top:6px">
-            <span class="muted" style="font-size:11px">クイック挿入:</span>
-            <button type="button" data-sb-snippet="line 0 0 10 0">直線</button>
-            <button type="button" data-sb-snippet="rect 0 0 12 8">矩形</button>
-            <button type="button" data-sb-snippet="circle 6 6 4">円</button>
-            <button type="button" data-sb-snippet="text 0 0 2.5 文字">文字</button>
-            <button type="button" data-sb-snippet="anchor 0 0">接続点</button>
-          </div>
+          <details style="margin-top:6px">
+            <summary class="muted">スクリプト定義（上のキャンバスと同期。直接編集も可）</summary>
+            <p class="muted" style="font-size:11px">1行に1プリミティブ（座標はmm・左上原点）:
+            <code>line x1 y1 x2 y2</code> ／ <code>rect x y 幅 高</code> ／ <code>circle cx cy r</code> ／
+            <code>text x y サイズ 文字列</code> ／ <code>anchor x y</code>（接続点） ／ <code>#</code>=コメント</p>
+            <textarea id="sbScript" style="min-height:120px;width:100%;font-family:var(--mono)">${escapeHtml(initialScript)}</textarea>
+            <div class="inline" style="flex-wrap:wrap;margin-top:6px">
+              <span class="muted" style="font-size:11px">クイック挿入:</span>
+              <button type="button" data-sb-snippet="line 0 0 10 0">直線</button>
+              <button type="button" data-sb-snippet="rect 0 0 12 8">矩形</button>
+              <button type="button" data-sb-snippet="circle 6 6 4">円</button>
+              <button type="button" data-sb-snippet="text 0 0 2.5 文字">文字</button>
+              <button type="button" data-sb-snippet="anchor 0 0">接続点</button>
+            </div>
+          </details>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="sbPreviewBtn">プレビュー</button>
             <button type="button" id="sbSaveBtn" class="primary">${editing ? "上書き保存" : "パレットへ登録"}</button>
           </div>
-          <div id="sbPreviewArea" style="margin-top:10px"></div>`);
+          <div id="sbPreviewArea" style="margin-top:10px"></div>`, { wide: true });
         const buildPreview = () => {
           const parsed = parseSymbolScript(qs("#sbScript").value);
           const area = qs("#sbPreviewArea");
@@ -12477,14 +12611,215 @@
           area.innerHTML = symbolPreviewSvg({ templates: parsed.templates });
           return parsed.templates;
         };
+        // ===== GUI作図キャンバス(スクリプトと双方向同期) =====
+        let sbTemplates = parseSymbolScript(qs("#sbScript").value).templates;
+        let sbTool = "select";
+        let sbSel = -1;
+        let sbDrag = null; // { mode: "draw"|"move", start:[x,y], original? }
+        const sbSvg = qs("#sbCanvas");
+        const sbSnapStep = () => Number(qs("#sbSnap").value || 1);
+        const sbSnapV = v => round(Math.round(v / sbSnapStep()) * sbSnapStep());
+        const sbPointOf = event => {
+          const r = sbSvg.getBoundingClientRect();
+          return [
+            -2 + (event.clientX - r.left) / r.width * 28,
+            -2 + (event.clientY - r.top) / r.height * 20
+          ];
+        };
+        // GUI変更→スクリプト書き戻し+再描画(scriptが常に保存の正)
+        const sbSyncScript = () => {
+          const script = symbolToScript({ templates: sbTemplates });
+          if (script !== null) qs("#sbScript").value = script;
+          sbRenderCanvas();
+          buildPreview();
+        };
+        // 線分と点の距離(選択ヒット用)
+        const sbDistSeg = (px, py, x1, y1, x2, y2) => {
+          const dx = x2 - x1, dy = y2 - y1;
+          const len2 = dx * dx + dy * dy;
+          const t = len2 ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2)) : 0;
+          return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+        };
+        const sbHitAt = (mx, my) => {
+          for (let i = sbTemplates.length - 1; i >= 0; i--) {
+            const t = sbTemplates[i];
+            if (t.type === "line") {
+              if (sbDistSeg(mx, my, t.points[0][0], t.points[0][1], t.points[1][0], t.points[1][1]) < .9) return i;
+            } else {
+              const b = elementBounds({ ...t, x: t.x || 0, y: t.y || 0 });
+              if (b && mx >= b.x - .6 && mx <= b.x + b.w + .6 && my >= b.y - .6 && my <= b.y + b.h + .6) return i;
+            }
+          }
+          return -1;
+        };
+        const sbRenderCanvas = ghost => {
+          if (!sbSvg) return;
+          sbSvg.innerHTML = "";
+          // 方眼(1mm細・5mm中・原点軸濃)
+          for (let gx = -2; gx <= 26; gx += 1) {
+            sbSvg.appendChild(svgEl("line", { x1: gx, y1: -2, x2: gx, y2: 18, stroke: gx === 0 ? "#9fb0c0" : (gx % 5 === 0 ? "#d7dfe7" : "#edf1f5"), "stroke-width": gx === 0 ? .1 : .05 }));
+          }
+          for (let gy = -2; gy <= 18; gy += 1) {
+            sbSvg.appendChild(svgEl("line", { x1: -2, y1: gy, x2: 26, y2: gy, stroke: gy === 0 ? "#9fb0c0" : (gy % 5 === 0 ? "#d7dfe7" : "#edf1f5"), "stroke-width": gy === 0 ? .1 : .05 }));
+          }
+          sbTemplates.forEach((template, index) => {
+            const clone = deepClone(template);
+            clone.id = "sbpv" + index;
+            drawElement(sbSvg, clone);
+          });
+          // 接続点を赤リングで強調
+          sbTemplates.forEach(t => {
+            if (t.type !== "terminal") return;
+            sbSvg.appendChild(svgEl("circle", { cx: Number(t.x) + 0.9, cy: Number(t.y) + 0.9, r: 1.3, fill: "none", stroke: "#d23", "stroke-width": .18, "stroke-dasharray": ".5 .35", "pointer-events": "none" }));
+          });
+          // 選択枠
+          if (sbSel >= 0 && sbTemplates[sbSel]) {
+            const b = elementBounds({ ...sbTemplates[sbSel], x: sbTemplates[sbSel].x || 0, y: sbTemplates[sbSel].y || 0 });
+            if (b) sbSvg.appendChild(svgEl("rect", { x: b.x - .5, y: b.y - .5, width: b.w + 1, height: b.h + 1, fill: "none", stroke: "#2563eb", "stroke-width": .15, "stroke-dasharray": ".8 .5", "pointer-events": "none" }));
+          }
+          // ドラッグ中ゴースト
+          if (ghost) {
+            const attrs = { fill: "none", stroke: "#2563eb", "stroke-width": .2, opacity: .6, "pointer-events": "none" };
+            if (ghost.kind === "line") sbSvg.appendChild(svgEl("line", { ...attrs, x1: ghost.a[0], y1: ghost.a[1], x2: ghost.b[0], y2: ghost.b[1] }));
+            if (ghost.kind === "rect") sbSvg.appendChild(svgEl("rect", { ...attrs, x: Math.min(ghost.a[0], ghost.b[0]), y: Math.min(ghost.a[1], ghost.b[1]), width: Math.abs(ghost.b[0] - ghost.a[0]), height: Math.abs(ghost.b[1] - ghost.a[1]) }));
+            if (ghost.kind === "circle") sbSvg.appendChild(svgEl("circle", { ...attrs, cx: ghost.a[0], cy: ghost.a[1], r: Math.max(.3, Math.hypot(ghost.b[0] - ghost.a[0], ghost.b[1] - ghost.a[1])) }));
+          }
+        };
+        // ツール切替
+        qsa("[data-sb-tool]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            sbTool = button.dataset.sbTool;
+            qsa("[data-sb-tool]", qs("#dialogBody")).forEach(b => b.classList.toggle("active", b === button));
+            sbSvg.style.cursor = sbTool === "select" ? "default" : (sbTool === "delete" ? "not-allowed" : "crosshair");
+          });
+        });
+        // キャンバス操作: クリック配置(文字/接続点/削除)、ドラッグ作図(線/矩形/円)、選択移動
+        sbSvg.addEventListener("pointerdown", event => {
+          event.preventDefault();
+          const [rawX, rawY] = sbPointOf(event);
+          const x = sbSnapV(rawX);
+          const y = sbSnapV(rawY);
+          if (sbTool === "anchor") {
+            sbTemplates.push({ label: "", rotation: 0, stroke: state.settings.stroke, layer: "symbols", type: "terminal", x: x - 0.9, y: y - 0.9, w: 1.8, h: 1.8, orientation: "horizontal", terminalShape: "circle" });
+            sbSel = sbTemplates.length - 1;
+            sbSyncScript();
+            return;
+          }
+          if (sbTool === "text") {
+            const content = qs("#sbTextContent").value || "文字";
+            sbTemplates.push({ label: "", rotation: 0, stroke: state.settings.stroke, layer: "notes", type: "text", x, y, w: 24, h: 5, text: content, fontSize: 2.5 });
+            sbSel = sbTemplates.length - 1;
+            sbSyncScript();
+            return;
+          }
+          if (sbTool === "delete") {
+            const hit = sbHitAt(rawX, rawY);
+            if (hit >= 0) {
+              sbTemplates.splice(hit, 1);
+              sbSel = -1;
+              sbSyncScript();
+            }
+            return;
+          }
+          if (sbTool === "select") {
+            const hit = sbHitAt(rawX, rawY);
+            sbSel = hit;
+            if (hit >= 0) sbDrag = { mode: "move", start: [x, y], original: deepClone(sbTemplates[hit]) };
+            sbRenderCanvas();
+            return;
+          }
+          // line / rect / circle: ドラッグ開始
+          sbDrag = { mode: "draw", start: [x, y] };
+        });
+        sbSvg.addEventListener("pointermove", event => {
+          if (!sbDrag) return;
+          const [rawX, rawY] = sbPointOf(event);
+          const x = sbSnapV(rawX);
+          const y = sbSnapV(rawY);
+          if (sbDrag.mode === "draw") {
+            sbRenderCanvas({ kind: sbTool, a: sbDrag.start, b: [x, y] });
+            return;
+          }
+          if (sbDrag.mode === "move" && sbSel >= 0) {
+            const dx = x - sbDrag.start[0];
+            const dy = y - sbDrag.start[1];
+            const target = sbTemplates[sbSel];
+            const original = sbDrag.original;
+            if (target.type === "line") {
+              target.points = original.points.map(p => [round(p[0] + dx), round(p[1] + dy)]);
+            } else {
+              target.x = round(Number(original.x || 0) + dx);
+              target.y = round(Number(original.y || 0) + dy);
+            }
+            sbRenderCanvas();
+          }
+        });
+        const sbFinishDrag = event => {
+          if (!sbDrag) return;
+          const drag = sbDrag;
+          sbDrag = null;
+          const [rawX, rawY] = sbPointOf(event);
+          const x = sbSnapV(rawX);
+          const y = sbSnapV(rawY);
+          if (drag.mode === "move") {
+            sbSyncScript();
+            return;
+          }
+          const [ax, ay] = drag.start;
+          if (Math.abs(x - ax) < .01 && Math.abs(y - ay) < .01) {
+            sbRenderCanvas();
+            return; // ゼロ寸法は破棄
+          }
+          const base = { label: "", rotation: 0, stroke: state.settings.stroke, layer: "symbols" };
+          if (sbTool === "line") {
+            sbTemplates.push({ ...base, type: "line", points: [[ax, ay], [x, y]], strokeWidth: .32, dash: "" });
+          } else if (sbTool === "rect") {
+            sbTemplates.push({ ...base, type: "rect", x: Math.min(ax, x), y: Math.min(ay, y), w: Math.abs(x - ax), h: Math.abs(y - ay) });
+          } else if (sbTool === "circle") {
+            const r = round(Math.max(sbSnapStep(), Math.hypot(x - ax, y - ay)));
+            sbTemplates.push({ ...base, type: "circle", x: ax - r, y: ay - r, w: r * 2, h: r * 2 });
+          }
+          sbSel = sbTemplates.length - 1;
+          sbSyncScript();
+        };
+        sbSvg.addEventListener("pointerup", sbFinishDrag);
+        sbSvg.addEventListener("pointerleave", event => { if (sbDrag && sbDrag.mode === "draw") sbFinishDrag(event); });
+        // Deleteキーで選択プリミティブを削除(入力欄フォーカス中は無効)
+        qs("#dialogBody").addEventListener("keydown", event => {
+          if (event.key !== "Delete" && event.key !== "Backspace") return;
+          const tag = document.activeElement?.tagName;
+          if (["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
+          if (sbSel >= 0) {
+            event.preventDefault();
+            sbTemplates.splice(sbSel, 1);
+            sbSel = -1;
+            sbSyncScript();
+          }
+        });
+        // スクリプト手編集→キャンバス反映
+        qs("#sbScript").addEventListener("input", () => {
+          const parsed = parseSymbolScript(qs("#sbScript").value);
+          if (!parsed.errors.length) {
+            sbTemplates = parsed.templates;
+            sbSel = -1;
+            sbRenderCanvas();
+          }
+        });
+        sbRenderCanvas();
         qsa("[data-sb-snippet]", qs("#dialogBody")).forEach(button => {
           button.addEventListener("click", () => {
             const textarea = qs("#sbScript");
             textarea.value = textarea.value.replace(/\s*$/, "") + "\n" + button.dataset.sbSnippet;
+            const parsed = parseSymbolScript(textarea.value);
+            if (!parsed.errors.length) { sbTemplates = parsed.templates; sbRenderCanvas(); }
             buildPreview();
           });
         });
-        qs("#sbPreviewBtn").addEventListener("click", buildPreview);
+        qs("#sbPreviewBtn").addEventListener("click", () => {
+          const parsed = parseSymbolScript(qs("#sbScript").value);
+          if (!parsed.errors.length) { sbTemplates = parsed.templates; sbSel = -1; sbRenderCanvas(); }
+          buildPreview();
+        });
         qs("#sbSaveBtn").addEventListener("click", () => {
           const templates = buildPreview();
           if (!templates) return;
@@ -12868,15 +13203,28 @@
       function attachDialogSelection() {
         qsa("[data-select-id]", qs("#dialogBody")).forEach(button => {
           button.addEventListener("click", () => {
-            const pageId = button.dataset.selectPage;
-            const elementId = button.dataset.selectId;
-            if (pageId) state.activePageId = pageId;
-            selectSingle(elementId);
             closeDialog();
-            render();
+            jumpToElement(button.dataset.selectPage, button.dataset.selectId);
             setStatus("一覧から要素を選択しました。");
           });
         });
+      }
+
+      // 指定要素へジャンプ(ページ切替+選択+ワークスペースを要素中心へスクロール)。
+      // 監査/検索/一覧のジャンプとクロスリファレンスのサーフィン移動が共用する。
+      function jumpToElement(pageId, elementId) {
+        if (pageId && state.activePageId !== pageId) state.activePageId = pageId;
+        selectSingle(elementId);
+        render();
+        setTimeout(() => {
+          const g = document.querySelector('#canvas g[data-id="' + CSS.escape(elementId || "") + '"]');
+          const workspace = qs(".workspace");
+          if (!g || !workspace) return;
+          const r = g.getBoundingClientRect();
+          const wr = workspace.getBoundingClientRect();
+          workspace.scrollLeft += (r.left + r.width / 2) - (wr.left + wr.width / 2);
+          workspace.scrollTop += (r.top + r.height / 2) - (wr.top + wr.height / 2);
+        }, 0);
       }
 
       // CSVセルのエスケープ(引用符・改行対応)。
@@ -14424,6 +14772,7 @@
           rotateAbout: showRotateAboutDialog,
           wireSequence: showWireSequenceDialog,
           addRung: addRungToCurrentPage,
+          rungShift: showRungShiftDialog,
           wireColumn: showWireColumnDialog,
           wireRow: showWireRowDialog,
           twistedPair: showTwistedPairDialog,
