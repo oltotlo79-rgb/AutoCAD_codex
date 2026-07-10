@@ -14076,6 +14076,7 @@
         { key: "offPage", label: "用紙外" },
         { key: "floating", label: "未接続端点" },
         { key: "relay", label: "コイル/接点" },
+        { key: "signal", label: "信号矢印の相手" },
         { key: "panel", label: "盤配置" }
       ];
 
@@ -14236,6 +14237,38 @@
           const first = list[0];
           issues.push({ level: "注意", page: first.page.name, pageId: first.page.id, elementId: first.element.id, message: "接点に対応するコイルがありません。", target: tag + "(" + list.length + "箇所)" });
         });
+        if (auditRuleOn("signal")) {
+          // ページ間接続は同じラベルの信号矢印同士で結ばれる。図面全体で1本しかないラベルは
+          // 「行き先はあるのに受け側を作り忘れた」可能性が高いので指摘する。
+          const signalArrows = new Map();
+          state.pages.forEach(page => {
+            page.elements.forEach(element => {
+              if (element.type !== "arrow" || !element.label || element.ladderRail) return;
+              const list = signalArrows.get(element.label) || [];
+              list.push({ page, element });
+              signalArrows.set(element.label, list);
+            });
+          });
+          signalArrows.forEach((list, label) => {
+            if (list.length === 1) {
+              const only = list[0];
+              issues.push({ level: "注意", page: only.page.name, pageId: only.page.id, elementId: only.element.id, message: "同じラベルの信号矢印が他にありません（相手先の作り忘れの可能性）。", target: label });
+              return;
+            }
+            // 発信(source)/受信(destination)を使い分けている組で、片方の役割が欠けている場合も指摘
+            const roles = list.map(item => item.element.signalRole || "reference");
+            if (roles.some(role => role === "reference")) return; // 汎用参照が混ざる組は判定しない
+            const hasSource = roles.includes("source");
+            const hasDestination = roles.includes("destination");
+            if (hasSource && !hasDestination) {
+              const first = list[0];
+              issues.push({ level: "注意", page: first.page.name, pageId: first.page.id, elementId: first.element.id, message: "受信（destination）の信号矢印がありません。", target: label });
+            } else if (hasDestination && !hasSource) {
+              const first = list[0];
+              issues.push({ level: "注意", page: first.page.name, pageId: first.page.id, elementId: first.element.id, message: "発信（source）の信号矢印がありません。", target: label });
+            }
+          });
+        }
         const jumperTargets = [];
         state.pages.forEach(page => {
           page.elements.forEach(element => {
