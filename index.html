@@ -1408,17 +1408,31 @@
 
       // Undo履歴へ現在stateのスナップショットを積み、localStorageへ自動バックアップする。
       // 変更を伴う操作は必ず最後にこれを呼ぶ(直前と同一なら何もしない)。reasonはステータスバー表示。
+      // Undo履歴の保持上限。全量スナップショット方式のため、下絵入り大規模図面での
+      // メモリ肥大を防ぐ(超過分は古い方から破棄)。
+      const HISTORY_LIMIT = 60;
+      let backupFailureWarned = false;
+
       function commitHistory(reason = "") {
         syncPageTotals();
         const snapshot = JSON.stringify(state);
         if (history[historyIndex] === snapshot) return;
         history = history.slice(0, historyIndex + 1);
         history.push(snapshot);
+        if (history.length > HISTORY_LIMIT) {
+          history.splice(0, history.length - HISTORY_LIMIT);
+        }
         historyIndex = history.length - 1;
         try {
           localStorage.setItem("electricalDrawingStudio.backup", snapshot);
+          backupFailureWarned = false;
         } catch (_) {
-          // プライベートモード等ではlocalStorageが使えないことがあるため失敗は無視する。
+          // 容量超過やプライベートモードで失敗し得る。無言で止めず一度だけ警告する。
+          if (!backupFailureWarned) {
+            backupFailureWarned = true;
+            reason = (reason ? reason + " " : "") +
+              "※自動バックアップを保存できません（容量超過の可能性）。上部「保存」でJSON保存してください。";
+          }
         }
         setStatus(reason || "変更を記録しました。");
       }
@@ -1458,7 +1472,7 @@
         if (!hint) return;
         let text = "";
         if (activeTool === "wire") {
-          text = "配線: 始点から終点へドラッグ（端子・接点へ自動吸着／直交配線）。Esc で選択へ戻る";
+          text = "配線: 始点から終点へドラッグ（端子・接点へ自動吸着／直交配線）。Shift で折れ向き反転、Esc で選択へ戻る";
         } else if (activeTool === "line") {
           text = "直線: ドラッグで作図（任意角度）。Esc で選択へ戻る";
         } else if (activeTool === "mechanicalLink") {
@@ -1770,16 +1784,20 @@
 
       // 全体再描画のエントリポイント。クロス参照キャッシュを無効化し、パレット/タブ/キャンバス/右パネルを更新。
       // state変更後はcommitHistory()と併せてこれを呼ぶのが基本パターン。
-      function render() {
+      // 全体再描画。options.light=true(ドラッグ中)はキャンバスのみ更新し、
+      // パレット/タブ/右パネルの再構築を省いて描画コストを下げる。
+      // 印刷用シートはここでは作らない(印刷直前にrenderPrintSheets()が生成する)。
+      function render(options = {}) {
         crossRefCache = null;
-        renderPalette();
-        renderTabs();
+        if (!options.light) {
+          renderPalette();
+          renderTabs();
+        }
         const page = currentPage();
         if (!page) return;
         const svg = qs("#canvas");
         drawPageSvg(svg, page, { selection: true, scaled: true, grid: true });
-        syncInspector();
-        syncPrintSheets();
+        if (!options.light) syncInspector();
         updateCanvasHint();
       }
 
@@ -2208,7 +2226,7 @@
         if (element.type !== "underlayImage") {
           if (element.points && element.points.length > 1) {
             g.appendChild(svgEl("path", {
-              d: wirePath(element.points),
+              d: wirePath(element.points, element.orthoFlip),
               fill: "none", stroke: "#000", "stroke-opacity": 0,
               "stroke-width": 2.4, "pointer-events": "stroke"
             }));
@@ -2380,7 +2398,7 @@
       // 配線の描画。折れ点列をポリラインで結び、線番文字(位置=wireNoAnchorPoint)とギャップを描く。
       function drawWire(g, element, stroke) {
         const points = element.points || [[0, 0], [20, 0]];
-        const path = wirePath(points);
+        const path = wirePath(points, element.orthoFlip);
         const style = wireStyle(element);
         g.appendChild(svgEl("path", {
           d: path,
@@ -2412,7 +2430,7 @@
         };
         if (element.gapAtMid) {
           const points = element.points || [[0, 0], [20, 0]];
-          const segment = wireMidSegment(points);
+          const segment = wireMidSegment(points, element.orthoFlip);
           const mid = pathMid([segment[0], segment[1]], [segment[2], segment[3]]);
           addGap(mid.x, mid.y, segment);
         }
@@ -2608,11 +2626,13 @@
       }
 
       // 2点間の直交L字経路(中間点1つ)を返す。配線作図時の既定経路。
-      function orthogonalPath(a, b) {
+      // flip=trueでL字の折れ向きを反転(縦→横 を 横→縦 に)。作図中はShiftで切替。
+      function orthogonalPath(a, b, flip) {
         if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
           return "M " + a[0] + " " + a[1] + " L " + b[0] + " " + b[1];
         }
-        return "M " + a[0] + " " + a[1] + " L " + a[0] + " " + b[1] + " L " + b[0] + " " + b[1];
+        const c = flip ? [b[0], a[1]] : [a[0], b[1]];
+        return "M " + a[0] + " " + a[1] + " L " + c[0] + " " + c[1] + " L " + b[0] + " " + b[1];
       }
 
       // L字経路の中間点。
@@ -2621,21 +2641,21 @@
       }
 
       // 折れ点列→SVGパス文字列。
-      function wirePath(points) {
+      function wirePath(points, flip) {
         if (!points || points.length < 2) return "M 0 0 L 20 0";
-        if (points.length === 2) return orthogonalPath(points[0], points[1]);
+        if (points.length === 2) return orthogonalPath(points[0], points[1], flip);
         return points.map((point, index) => (index ? "L " : "M ") + point[0] + " " + point[1]).join(" ");
       }
 
       // 線番ラベルの既定位置(最長セグメント中央)を返す。
-      function wireLabelPoint(points) {
-        const segment = wireMidSegment(points);
+      function wireLabelPoint(points, flip) {
+        const segment = wireMidSegment(points, flip);
         return pathMid([segment[0], segment[1]], [segment[2], segment[3]]);
       }
 
       // 折れ点列中の最長セグメントを返す(線番配置・ギャップ既定位置用)。
-      function wireMidSegment(points) {
-        const segments = wireSegments({ points });
+      function wireMidSegment(points, flip) {
+        const segments = wireSegments({ points, orthoFlip: flip });
         if (!segments.length) return [0, 0, 20, 0];
         const lengths = segments.map(segment => Math.hypot(segment[2] - segment[0], segment[3] - segment[1]));
         const total = lengths.reduce((sum, length) => sum + length, 0);
@@ -5077,7 +5097,7 @@
         const dx = Number(element.wireNoDx || 0);
         const dy = Number(element.wireNoDy || 0);
         if (align === "mid") {
-          const mid = wireLabelPoint(points);
+          const mid = wireLabelPoint(points, element.orthoFlip);
           return { x: mid.x + 1.6 + dx, y: mid.y - 1.8 + dy, anchor: "start" };
         }
         const end = align === "end" ? points[points.length - 1] : points[0];
@@ -5577,6 +5597,7 @@
         qs("#addWirePointBtn", panel)?.addEventListener("click", addSelectedWirePoint);
         qs("#removeWirePointBtn", panel)?.addEventListener("click", removeSelectedWirePoint);
         qs("#orthogonalizeWireBtn", panel)?.addEventListener("click", orthogonalizeSelectedWire);
+        qs("#flipWireBendBtn", panel)?.addEventListener("click", flipSelectedWireBend);
         qs("#splitWireBtn", panel)?.addEventListener("click", splitSelectedWire);
         qs("#extendWireBtn", panel)?.addEventListener("click", extendSelectedWireEnd);
         qs("#trimWireBtn", panel)?.addEventListener("click", trimSelectedWireEnd);
@@ -5769,7 +5790,10 @@
               <button type="button" id="addWirePointBtn">中間点追加</button>
               <button type="button" id="removeWirePointBtn" ${pointCount <= 2 ? "disabled" : ""}>中間点削除</button>
             </div>
-            <button type="button" id="orthogonalizeWireBtn" style="width:100%;margin-top:8px">直交整形</button>
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="orthogonalizeWireBtn">直交整形</button>
+              <button type="button" id="flipWireBendBtn" title="L字の折れ向き(縦先行/横先行)を切り替えます。作図中はShiftでも切替できます。">折れ向き反転</button>
+            </div>
             <div class="row" style="margin-top:8px">
               <button type="button" id="extendWireBtn">終点を延長</button>
               <button type="button" id="trimWireBtn">終点をトリム</button>
@@ -9654,6 +9678,7 @@
           return;
         }
         a.points = orthogonalizePoints(points);
+        a.orthoFlip = false;
         page.elements = page.elements.filter(el => el.id !== b.id);
         selectSingle(a.id);
         commitHistory("配線を結合しました。");
@@ -9752,7 +9777,16 @@
         if (points.length < 2) return;
         let before;
         let after;
-        if (points.length === 2) {
+        const isDiagonal2 = points.length === 2
+          && Math.abs(points[0][0] - points[1][0]) > .001 && Math.abs(points[0][1] - points[1][1]) > .001;
+        if (isDiagonal2) {
+          // L字は経路上にある折れ角(orthoFlip考慮)で2本の直線に分割する
+          const c = element.orthoFlip
+            ? [round(points[1][0]), round(points[0][1])]
+            : [round(points[0][0]), round(points[1][1])];
+          before = [points[0], c];
+          after = [c, points[1]];
+        } else if (points.length === 2) {
           const mid = [round((points[0][0] + points[1][0]) / 2), round((points[0][1] + points[1][1]) / 2)];
           before = [points[0], mid];
           after = [mid, points[1]];
@@ -9765,7 +9799,9 @@
         second.id = uid("el");
         second.points = after;
         second.hideWireNo = true;
+        second.orthoFlip = false;
         element.points = before;
+        element.orthoFlip = false;
         page.elements.push(second);
         setSelection([element.id, second.id]);
         commitHistory("配線を分割しました。");
@@ -10045,8 +10081,9 @@
         const insertAt = Math.max(1, points.length - 1);
         const a = points[insertAt - 1];
         const b = points[insertAt];
+        // 2点L字は見た目どおりの折れ角(orthoFlip考慮)を実点化する
         const point = points.length === 2 && Math.abs(a[0] - b[0]) > .001 && Math.abs(a[1] - b[1]) > .001
-          ? [round(a[0]), round(b[1])]
+          ? (element.orthoFlip ? [round(b[0]), round(a[1])] : [round(a[0]), round(b[1])])
           : [round((a[0] + b[0]) / 2), round((a[1] + b[1]) / 2)];
         points.splice(insertAt, 0, point);
         element.points = points;
@@ -10076,13 +10113,38 @@
           return;
         }
         const original = element.points || [[0, 0], [20, 0]];
-        const normalized = orthogonalizePoints(original);
+        // 2点L字は表示どおり(orthoFlip考慮)の角を実点化してから直交化する
+        const normalized = orthogonalizePoints(materializedWirePoints(element));
         if (JSON.stringify(original) === JSON.stringify(normalized)) {
           setStatus("この配線はすでに直交しています。");
           return;
         }
         element.points = normalized;
+        element.orthoFlip = false;
         commitHistory("配線を直交整形しました。");
+        render();
+      }
+
+      // 2点L字配線の折れ向き(縦先行/横先行)を反転する。作図中はShiftでも切替可。
+      function flipSelectedWireBend() {
+        const element = selectedElement();
+        if (!element || element.type !== "wire") return;
+        if (isElementLocked(element)) {
+          setStatus("ロックされた配線は変更できません。");
+          return;
+        }
+        const points = element.points || [];
+        if (points.length !== 2) {
+          setStatus("折れ向き反転は始点と終点だけの配線(中間点なし)で使えます。");
+          return;
+        }
+        const [a, b] = points;
+        if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
+          setStatus("まっすぐな配線には折れがありません。");
+          return;
+        }
+        element.orthoFlip = !element.orthoFlip;
+        commitHistory("配線の折れ向きを反転しました。");
         render();
       }
 
@@ -11078,6 +11140,18 @@
         });
       }
 
+      // 表示どおりの折れ点列を返す(2点L字はorthoFlip考慮で角を実点化)。結合・整形・分割用。
+      function materializedWirePoints(wire) {
+        const points = wire.points || [[0, 0], [20, 0]];
+        if (points.length !== 2) return points.map(point => [point[0], point[1]]);
+        const [a, b] = points;
+        if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
+          return [[a[0], a[1]], [b[0], b[1]]];
+        }
+        const c = wire.orthoFlip ? [b[0], a[1]] : [a[0], b[1]];
+        return [[a[0], a[1]], [c[0], c[1]], [b[0], b[1]]];
+      }
+
       // 配線の折れ点列→線分配列。
       function wireSegments(wire) {
         const points = wire.points || [[0, 0], [20, 0]];
@@ -11093,7 +11167,8 @@
         if (Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001) {
           return [[a[0], a[1], b[0], b[1]]];
         }
-        const c = [a[0], b[1]];
+        // 折れ角は表示(orthogonalPath)と同一規則。orthoFlip=trueで横→縦に反転。
+        const c = wire.orthoFlip ? [b[0], a[1]] : [a[0], b[1]];
         return [
           [a[0], a[1], c[0], c[1]],
           [c[0], c[1], b[0], b[1]]
@@ -14292,24 +14367,26 @@
         });
         if (dragState.mode === "marquee") {
           dragState.current = point;
-          render();
+          render({ light: true });
           return;
         }
         if (dragState.mode === "resize") {
           applyResizeDrag(point);
-          render();
+          render({ light: true });
           return;
         }
         if (dragState.mode === "point") {
           applyPointDrag(point);
-          render();
+          render({ light: true });
           return;
         }
         const element = selectedElement();
         if (!element) return;
         if (dragState.mode === "draw") {
           element.points[element.points.length - 1] = [point.x, point.y];
-          render();
+          // Shiftを押しながらドラッグでL字の折れ向きを反転(配線のみ)
+          if (element.type === "wire") element.orthoFlip = event.shiftKey === true;
+          render({ light: true });
           return;
         }
         if (dragState.mode === "move") {
@@ -14351,7 +14428,7 @@
             }
           });
           syncAttachedWireEndpoints(page, dragState.originals || [], dragState.attachedWires || [], dx, dy);
-          render();
+          render({ light: true });
         }
       }
 
