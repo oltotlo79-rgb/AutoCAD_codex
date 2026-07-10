@@ -631,6 +631,7 @@
               <option value="terminalNo">端子番号の振り直し</option>
               <option value="tagComponents">部品タグ採番</option>
               <option value="autoJunction">接続点生成</option>
+              <option value="rotateAbout">指定回転（中心指定）</option>
               <option value="wireSequence">配線順序(FROM/TO)</option>
               <option value="addRung">ラング追加</option>
             </optgroup>
@@ -7703,7 +7704,7 @@
       }
 
       // 選択全体の境界中心を回転中心として剛体回転する(複数選択対応)
-      function rotateSelected(degrees) {
+      function rotateSelected(degrees, center) {
         const selected = selectedElements();
         if (!selected.length) return;
         if (selected.some(isElementLocked)) {
@@ -7713,8 +7714,8 @@
         const boxes = selected.map(elementBounds).filter(Boolean);
         if (!boxes.length) return;
         const target = unionBounds(boxes);
-        const cx = target.x + target.w / 2;
-        const cy = target.y + target.h / 2;
+        const cx = center ? Number(center[0]) : target.x + target.w / 2;
+        const cy = center ? Number(center[1]) : target.y + target.h / 2;
         const angle = degrees * Math.PI / 180;
         const rot = point => [
           round(cx + (point[0] - cx) * Math.cos(angle) - (point[1] - cy) * Math.sin(angle)),
@@ -7732,6 +7733,48 @@
         });
         commitHistory("要素を回転しました。");
         render();
+      }
+
+      function showRotateAboutDialog() {
+        const selected = selectedElements();
+        if (!selected.length) {
+          setStatus("回転する要素を選択してください。");
+          return;
+        }
+        const boxes = selected.map(elementBounds).filter(Boolean);
+        const target = unionBounds(boxes);
+        const cx = round(target.x + target.w / 2);
+        const cy = round(target.y + target.h / 2);
+        openDialog("指定回転", `
+          <p class="muted">選択中の${selected.length}要素を、指定した中心のまわりに回転します。</p>
+          <div class="row">
+            <div><label>角度</label><select id="rotAngle">
+              <option value="90">90°</option>
+              <option value="180">180°</option>
+              <option value="270">270°</option>
+            </select></div>
+            <div><label>回転中心</label><select id="rotCenter">
+              <option value="bbox">選択枠の中心</option>
+              <option value="point">座標を指定</option>
+            </select></div>
+          </div>
+          <div class="row" id="rotPointRow" style="display:none">
+            <div><label>中心X mm</label><input id="rotCx" type="number" step="0.5" value="${cx}"></div>
+            <div><label>中心Y mm</label><input id="rotCy" type="number" step="0.5" value="${cy}"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="rotApplyBtn" class="primary">回転</button>
+          </div>`);
+        qs("#rotCenter").addEventListener("change", () => {
+          qs("#rotPointRow").style.display = qs("#rotCenter").value === "point" ? "" : "none";
+        });
+        qs("#rotApplyBtn").addEventListener("click", () => {
+          const degrees = Number(qs("#rotAngle").value || 90);
+          const usePoint = qs("#rotCenter").value === "point";
+          const center = usePoint ? [Number(qs("#rotCx").value || cx), Number(qs("#rotCy").value || cy)] : null;
+          closeDialog();
+          rotateSelected(degrees, center);
+        });
       }
 
       function toggleSelectedLock() {
@@ -9056,12 +9099,48 @@
               </tr>`;
             }).join("")}</tbody></table>
             <div class="inline" style="justify-content:flex-end;margin-top:12px">
+              <button type="button" id="wireFromToCsvBtn">From-To一覧CSV（全ページ）</button>
               <button type="button" id="applyWireSequenceBtn" class="primary">配線順序を更新</button>
             </div>`
-          : '<p class="muted">現在ページに配線がありません。</p>';
+          : `<p class="muted">現在ページに配線がありません。</p>
+             <div class="inline" style="justify-content:flex-end;margin-top:12px">
+               <button type="button" id="wireFromToCsvBtn">From-To一覧CSV（全ページ）</button>
+             </div>`;
         openDialog("配線順序", html);
         attachDialogSelection();
         qs("#applyWireSequenceBtn")?.addEventListener("click", applyWireSequenceDialog);
+        qs("#wireFromToCsvBtn")?.addEventListener("click", exportWireFromToCsv);
+      }
+
+      function collectWireFromToRows() {
+        const rows = [];
+        state.pages.forEach(page => {
+          page.elements
+            .filter(element => element.type === "wire" && !element.ladderRail)
+            .forEach(wire => {
+              const endpoints = wireEndpointNames(page, wire);
+              rows.push({
+                page: page.name || "",
+                wireNo: wire.wireNo || "",
+                from: wire.fromOverride || endpoints.autoFrom || "",
+                to: wire.toOverride || endpoints.autoTo || "",
+                wireType: wire.wireType || ""
+              });
+            });
+        });
+        return rows;
+      }
+
+      function exportWireFromToCsv() {
+        const rows = collectWireFromToRows();
+        if (!rows.length) {
+          setStatus("配線がないため From-To 一覧を出力できません。");
+          return;
+        }
+        const headers = ["page", "wireNo", "from", "to", "wireType"];
+        const csv = [headers.join(","), ...rows.map(row => headers.map(h => csvCell(row[h])).join(","))].join("\r\n");
+        download("wire-from-to.csv", csv, "text/csv;charset=utf-8");
+        setStatus(`From-To一覧CSVを書き出しました（${rows.length}行）。`);
       }
 
       function applyWireSequenceDialog() {
@@ -11237,6 +11316,7 @@ anchor 20 6</textarea>
           terminalNo: renumberTerminals,
           tagComponents: autoTagComponents,
           autoJunction: autoJunctions,
+          rotateAbout: showRotateAboutDialog,
           wireSequence: showWireSequenceDialog,
           addRung: addRungToCurrentPage,
           wireColumn: showWireColumnDialog,
