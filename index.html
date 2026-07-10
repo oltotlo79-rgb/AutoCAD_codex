@@ -1308,6 +1308,7 @@
         { type: "ellipseArc", label: "楕円弧", icon: "earc" },
         { type: "polygon", label: "多角形", icon: "polygon" },
         { type: "cloud", label: "雲マーク", icon: "cloud" },
+        { type: "revisionMark", label: "改訂三角", icon: "revTriangle" },
         { type: "installationBox", label: "設備枠", icon: "area" },
         { type: "locationBox", label: "場所枠", icon: "area" },
         { type: "terminal", label: "端子", icon: "terminal" },
@@ -1453,7 +1454,7 @@
         fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect", transistor: "protect", logicGate: "protect", photocoupler: "protect",
         terminal: "terminal", terminalStrip: "terminal", terminalSheet: "terminal", connector: "terminal", junction: "terminal", cableMarker: "terminal", cableBundle: "terminal", terminalBox: "terminal",
         deviceBox: "device", plcBlock: "device", installationBox: "device", locationBox: "device", table: "device",
-        arrow: "annotation", positionMark: "annotation", polarityMark: "annotation", cloud: "annotation"
+        arrow: "annotation", positionMark: "annotation", polarityMark: "annotation", cloud: "annotation", revisionMark: "annotation"
       };
 
       // 開いているパレットカテゴリのid集合(セッション内で開閉状態を保持)。
@@ -2159,6 +2160,7 @@
           circle: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
           ellipse: `<svg ${common}><ellipse cx="40" cy="22" rx="21" ry="12" ${stroke} fill="none"/></svg>`,
           arc: `<svg ${common}><path d="M14 34 A26 26 0 0 1 66 34" ${stroke} fill="none"/></svg>`,
+          revTriangle: `<svg ${common}><path d="M40 7 L63 38 L17 38 Z" ${stroke} fill="none"/></svg>`,
           earc: `<svg ${common}><path d="M12 32 A28 15 0 0 1 68 32" ${stroke} fill="none"/></svg>`,
           polygon: `<svg ${common}><path d="M40 5 L66 19 L57 40 L23 40 L14 19 Z" ${stroke} fill="none"/></svg>`,
           cloud: `<svg ${common}><path ${thin} d="M18 12 A6 6 0 0 0 30 12 A6 6 0 0 0 42 12 A6 6 0 0 0 54 12 A6 6 0 0 0 62 16 A6 6 0 0 0 62 30 A6 6 0 0 0 54 34 A6 6 0 0 0 42 34 A6 6 0 0 0 30 34 A6 6 0 0 0 18 34 A6 6 0 0 0 14 26 A6 6 0 0 0 18 12 Z"/></svg>`,
@@ -5323,6 +5325,15 @@
             { t: "text", p: [5, -0.6], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // 改訂三角: 改訂範囲を示す△+改訂番号(雲マークとセットで使う注記記号)。
+        revisionMark: {
+          w: 6, h: 5.4,
+          anchors: [],
+          prims: [
+            { t: "pline", pts: [[3, 0.2], [5.8, 5.2], [0.2, 5.2], [3, 0.2]] },
+            { t: "text", p: [3, 3.8], size: 1.9, anchor: "middle", field: "label" }
+          ]
+        },
         // 変流器(CT): 貫通導体+円。
         currentTransformer: {
           w: 10, h: 4.4,
@@ -5519,6 +5530,7 @@
           case "connector": return element.connStyle === "pair" ? "connectorPair" : null;
           case "contactBlock": return (element.blockContact || "NO") === "NC" ? "contactBlockNC" : "contactBlock";
           case "positionMark": return (element.markStyle || "box") === "box" ? "positionMarkBox" : "positionMarkLine";
+          case "revisionMark": return "revisionMark";
           case "polarityMark": return (element.sign || "+") === "-" ? "polarityMarkMinus" : "polarityMarkPlus";
           default: return null;
         }
@@ -7132,6 +7144,7 @@
           arc: { ...base, w: 16, h: 16, a0: 180, a1: 270, label: "" },
           polygon: { id: uid("el"), type: "polygon", points: regularPolygonPoints(x, y, 8, 6), sides: 6, radius: 8, label: "", strokeWidth: .32, stroke: state.settings.stroke, layer: defaultLayerFor("polygon") },
           cloud: { ...base, w: 40, h: 20, label: "" },
+          revisionMark: { ...base, w: 6, h: 5.4, label: String((state.project?.revisions || []).slice(-1)[0]?.rev || "1"), layer: "notes" },
           underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
