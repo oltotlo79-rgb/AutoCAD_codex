@@ -1072,6 +1072,7 @@
               <option value="exportPack">標準パック出力</option>
               <option value="importPack">標準パック取込</option>
               <option value="titleLayout">表題欄レイアウト編集（JSON）</option>
+              <option value="diffViewer">図面差分（旧版JSONと比較）</option>
             </optgroup>
           </select>
         </div>
@@ -10405,6 +10406,135 @@
         });
       }
 
+      // ===== 図面差分ビューア(旧版JSONと現在の比較) =====
+      // 要素ID基準で 追加(現在のみ)/削除(旧のみ)/変更(両方にあるが内容差) を判定し、
+      // ページごとのサマリ表+重ね描画(追加=緑枠、変更=橙枠、削除=赤ゴースト)で表示する。
+      function startDiffViewer() {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json,application/json";
+        input.addEventListener("change", () => {
+          const file = input.files && input.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const oldData = migrateProjectData(JSON.parse(reader.result));
+              if (!oldData.pages || !Array.isArray(oldData.pages)) throw new Error("pages が見つかりません。");
+              showDiffViewer(oldData, file.name);
+            } catch (error) {
+              setStatus("比較ファイルの読み込みに失敗しました: " + error.message);
+            }
+          };
+          reader.readAsText(file);
+        });
+        input.click();
+      }
+
+      // 2版のページ/要素を突き合わせて差分マップを作る。
+      function diffProjects(oldData) {
+        const stripId = element => {
+          const clone = deepClone(element);
+          delete clone.id;
+          return JSON.stringify(clone);
+        };
+        const result = [];
+        const oldPages = new Map((oldData.pages || []).map(page => [page.id, page]));
+        const newPages = new Map(state.pages.map(page => [page.id, page]));
+        state.pages.forEach(page => {
+          const oldPage = oldPages.get(page.id);
+          const entry = { pageId: page.id, name: page.name || "", oldName: oldPage?.name || "", status: oldPage ? "common" : "added", added: [], removed: [], changed: [] };
+          if (oldPage) {
+            const oldEls = new Map((oldPage.elements || []).map(el => [el.id, el]));
+            (page.elements || []).forEach(el => {
+              const before = oldEls.get(el.id);
+              if (!before) entry.added.push(el);
+              else if (stripId(before) !== stripId(el)) entry.changed.push(el);
+            });
+            (oldPage.elements || []).forEach(el => {
+              if (!(page.elements || []).some(item => item.id === el.id)) entry.removed.push(el);
+            });
+          } else {
+            entry.added = (page.elements || []).slice();
+          }
+          result.push(entry);
+        });
+        (oldData.pages || []).forEach(page => {
+          if (!newPages.has(page.id)) {
+            result.push({ pageId: page.id, name: page.name || "", oldName: page.name || "", status: "removedPage", added: [], removed: (page.elements || []).slice(), changed: [] });
+          }
+        });
+        return result;
+      }
+
+      // 差分ダイアログ本体。ページ選択+重ね描画+サマリ表。
+      function showDiffViewer(oldData, fileName) {
+        const diffs = diffProjects(oldData);
+        const total = diffs.reduce((sum, d) => sum + d.added.length + d.removed.length + d.changed.length, 0);
+        openDialog("図面差分（旧版との比較）", `
+          <p class="muted">比較対象: ${escapeHtml(fileName || "旧版JSON")}（旧版）→ 現在の図面。
+          <span style="color:#1b7f4d;font-weight:700">緑=追加</span> ／
+          <span style="color:#b45309;font-weight:700">橙=変更</span> ／
+          <span style="color:#b42318;font-weight:700">赤=削除（旧版の内容をうすく表示）</span>。差分合計: ${total}件</p>
+          <table class="report-table">
+            <thead><tr><th>ページ</th><th>追加</th><th>変更</th><th>削除</th><th></th></tr></thead>
+            <tbody>${diffs.map((d, index) => `<tr>
+              <td>${escapeHtml(d.name || d.oldName)}${d.status === "removedPage" ? "（ページ削除）" : d.status === "added" ? "（ページ追加）" : (d.oldName && d.oldName !== d.name ? "（旧名: " + escapeHtml(d.oldName) + "）" : "")}</td>
+              <td>${d.added.length}</td><td>${d.changed.length}</td><td>${d.removed.length}</td>
+              <td>${d.status !== "removedPage" ? `<button type="button" data-diff-page="${index}">表示</button>` : ""}</td>
+            </tr>`).join("")}</tbody>
+          </table>
+          <div id="diffPreview" style="margin-top:12px;background:#e8ecf1;padding:12px;border-radius:6px;display:none">
+            <div id="diffPreviewHost" style="background:#fff;box-shadow:0 2px 10px rgba(20,31,44,.18)"></div>
+          </div>`, { wide: true });
+        qsa("[data-diff-page]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            const diff = diffs[Number(button.dataset.diffPage)];
+            const page = state.pages.find(p => p.id === diff.pageId);
+            if (!page) return;
+            renderDiffPreview(page, diff, oldData);
+          });
+        });
+        setStatus("差分を表示しました（追加" + diffs.reduce((s, d) => s + d.added.length, 0) + "・変更" + diffs.reduce((s, d) => s + d.changed.length, 0) + "・削除" + diffs.reduce((s, d) => s + d.removed.length, 0) + "）。");
+      }
+
+      // 1ページ分の差分重ね描画。現在版の上に、削除要素の赤ゴーストと差分枠を重ねる。
+      function renderDiffPreview(page, diff, oldData) {
+        const wrap = qs("#diffPreview");
+        const host = qs("#diffPreviewHost");
+        if (!wrap || !host) return;
+        wrap.style.display = "block";
+        host.innerHTML = "";
+        const svg = svgEl("svg", {});
+        drawPageSvg(svg, page, { selection: false, grid: false, scaled: false, output: true });
+        svg.style.width = "100%";
+        svg.style.height = "auto";
+        svg.style.display = "block";
+        // 削除要素: 旧版の姿を赤の半透明ゴーストで重ねる
+        diff.removed.forEach(element => {
+          const ghost = deepClone(element);
+          ghost.id = "diff-ghost-" + ghost.id;
+          ghost.stroke = "#b42318";
+          const g = svgEl("g", { opacity: .45, "pointer-events": "none" });
+          drawElement(g, ghost);
+          svg.appendChild(g);
+        });
+        // 枠: 追加=緑 / 変更=橙 / 削除=赤
+        const frameFor = (element, color) => {
+          const box = elementBounds(element);
+          if (!box) return;
+          svg.appendChild(svgEl("rect", {
+            x: box.x - 1.2, y: box.y - 1.2, width: box.w + 2.4, height: box.h + 2.4,
+            fill: "none", stroke: color, "stroke-width": .4, "stroke-dasharray": "1.6 1",
+            "pointer-events": "none"
+          }));
+        };
+        diff.added.forEach(element => frameFor(element, "#1b7f4d"));
+        diff.changed.forEach(element => frameFor(element, "#b45309"));
+        diff.removed.forEach(element => frameFor(element, "#b42318"));
+        host.appendChild(svg);
+      }
+
       // ===== DXF取込 MVP(LINE/CIRCLE/TEXT/LWPOLYLINE) =====
       function importDxfFile(file) {
         const reader = new FileReader();
@@ -15756,7 +15886,8 @@
           exportDxfAll: exportDxfAllPages,
           exportPack: exportStandardPack,
           importPack: () => qs("#packImportInput").click(),
-          titleLayout: showTitleLayoutEditor
+          titleLayout: showTitleLayoutEditor,
+          diffViewer: startDiffViewer
         };
         qs("#actionMenu").addEventListener("change", event => {
           const action = MENU_ACTIONS[event.target.value];
@@ -16741,7 +16872,7 @@
       initProject();
 
       // 自動テスト用の内部フック(通常操作では使用しない)。接続点のグリッド整合検証などに使う。
-      window.__edsTest = { defaultElementAtPlacement, elementConnectionAnchors, defaultElement, SYMBOL_GEO };
+      window.__edsTest = { defaultElementAtPlacement, elementConnectionAnchors, defaultElement, SYMBOL_GEO, diffProjects, showDiffViewer };
     })();
   </script>
 </body>
