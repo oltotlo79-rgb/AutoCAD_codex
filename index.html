@@ -15889,8 +15889,69 @@
         qs(".workspace")?.addEventListener("scroll", hideContextMenu, { passive: true });
         window.addEventListener("resize", hideContextMenu);
         svg.addEventListener("wheel", onCanvasWheel, { passive: false });
+        svg.addEventListener("pointercancel", event => {
+          if (event.pointerType === "touch") {
+            touchPoints.delete(event.pointerId);
+            if (touchPoints.size < 2) pinchState = null;
+          }
+        });
 
         window.addEventListener("keydown", onKeyDown);
+      }
+
+      // ===== タッチ操作(ピンチズーム+二本指パン) =====
+      // 2本指タッチを検出したら作図・移動ドラッグを中断し、指間距離でズーム、
+      // 中点の移動でワークスペースをパンする。1本指タッチは従来どおりマウスと同じ操作。
+      const touchPoints = new Map();
+      let pinchState = null;
+
+      function handleTouchDown(event) {
+        if (event.pointerType !== "touch") return false;
+        touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (touchPoints.size === 2) {
+          dragState = null; // 進行中の作図/移動はピンチ開始で中断
+          const pts = [...touchPoints.values()];
+          pinchState = {
+            startDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+            startZoom: state.settings.zoom,
+            lastMid: { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+          };
+          render();
+          return true;
+        }
+        return false;
+      }
+
+      function handleTouchMove(event) {
+        if (event.pointerType !== "touch" || !touchPoints.has(event.pointerId)) return false;
+        touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (!pinchState || touchPoints.size < 2) return false;
+        event.preventDefault();
+        const pts = [...touchPoints.values()];
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+        const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        if (pinchState.startDist > 10) {
+          state.settings.zoom = clampZoom(pinchState.startZoom * (dist / pinchState.startDist));
+          setValue("zoomRange", state.settings.zoom);
+          render({ light: true });
+        }
+        const workspace = qs(".workspace");
+        if (workspace) {
+          workspace.scrollLeft -= mid.x - pinchState.lastMid.x;
+          workspace.scrollTop -= mid.y - pinchState.lastMid.y;
+        }
+        pinchState.lastMid = mid;
+        return true;
+      }
+
+      function handleTouchUp(event) {
+        if (event.pointerType !== "touch") return false;
+        touchPoints.delete(event.pointerId);
+        if (pinchState && touchPoints.size < 2) {
+          pinchState = null;
+          return true; // ピンチ終了。既存のpointerup処理(作図確定等)へは流さない
+        }
+        return !!pinchState;
       }
 
       // Ctrl+ホイールでズーム(カーソル位置基準)。
@@ -15905,6 +15966,7 @@
       // キャンバス押下の入口。優先順: 点編集ハンドル → リサイズハンドル → 作図ツール(配線/直線等の開始) →
       // 部品配置 → 要素選択(移動開始) → 空白(範囲選択開始)。選択はevent.targetのdata-id基準。
       function onCanvasPointerDown(event) {
+        if (handleTouchDown(event)) return; // 2本指=ピンチ開始(通常操作へ流さない)
         const svg = qs("#canvas");
         const point = canvasPoint(event, { connectionOnly: activeTool === "wire", raw: activeTool === "select" });
         const pointHandle = event.target.closest("[data-point-index]");
@@ -16008,6 +16070,7 @@
       // ドラッグ中の処理。dragState.modeで分岐: draw=配線/直線の終点更新(直交スナップ)、move=選択移動
       // (グリッド/行スナップした差分で全要素+接続配線端点を追従)、resize/point/marqueeも同様。
       function onCanvasPointerMove(event) {
+        if (handleTouchMove(event)) return; // ピンチ中はズーム/パンのみ
         if (!dragState) return;
         const page = currentPage();
         const activeDragElement = page?.elements.find(item => item.id === dragState.elementId);
@@ -16268,6 +16331,7 @@
 
       // ドラッグ確定。mode別に履歴記録し、marqueeなら範囲内要素を選択。
       function onCanvasPointerUp(event) {
+        if (handleTouchUp(event)) return; // ピンチ終了処理(作図確定へ流さない)
         if (!dragState) return;
         const finishedDrag = dragState;
         try {
