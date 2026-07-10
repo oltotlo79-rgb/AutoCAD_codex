@@ -1838,6 +1838,7 @@
         if (options.selection) {
           drawSelection(svg);
           drawMarquee(svg);
+          drawAlignGuides(svg);
         }
         if (options.selection && !page.elements.length) {
           // 空ページの「はじめかた」カード(画面表示のみ。印刷・出力には含まれない)
@@ -5260,6 +5261,22 @@
           height: rect.h,
           class: "selection-box"
         }));
+      }
+
+      // 移動中の整列ガイド線を描く(画面表示のみ。印刷・出力には含まれない)。
+      function drawAlignGuides(svg) {
+        const guides = dragState && dragState.alignGuides;
+        if (!guides || !guides.length) return;
+        const pad = 6;
+        guides.forEach(guide => {
+          const attrs = guide.axis === "v"
+            ? { x1: guide.at, y1: guide.a - pad, x2: guide.at, y2: guide.b + pad }
+            : { x1: guide.a - pad, y1: guide.at, x2: guide.b + pad, y2: guide.at };
+          svg.appendChild(svgEl("line", Object.assign(attrs, {
+            stroke: "#e0218a", "stroke-width": .25, "stroke-dasharray": "1.6 1.1",
+            opacity: .85, "pointer-events": "none"
+          })));
+        });
       }
 
       // 2点から正規化矩形{x,y,w,h}を作る。
@@ -14447,8 +14464,50 @@
             }
           });
           syncAttachedWireEndpoints(page, dragState.originals || [], dragState.attachedWires || [], dx, dy);
+          updateAlignGuides(page);
           render({ light: true });
         }
+      }
+
+      // ===== 整列ガイド(移動中のスマートガイド) =====
+      // 移動中の部品の接続ピンが他部品のピンとX/Yで一致した瞬間、マゼンタ破線を表示する。
+      // 比較先ピンはドラッグ開始後の初回に一度だけ収集(alignCache)し、毎moveの全要素走査を避ける。
+      function updateAlignGuides(page) {
+        if (!dragState || dragState.mode !== "move") return;
+        if (!dragState.alignCache) {
+          const movedIds = new Set((dragState.originals || []).map(original => original.id));
+          const anchors = [];
+          page.elements.forEach(el => {
+            if (movedIds.has(el.id) || !isElementVisible(el)) return;
+            if (el.points || el.type === "text") return; // 基準は部品ピンのみ(配線・文字は除外)
+            (componentConnectionAnchors(el) || []).forEach(a => anchors.push({ x: round(a.x), y: round(a.y) }));
+          });
+          dragState.alignCache = anchors;
+        }
+        const movingAnchors = [];
+        (dragState.originals || []).forEach(original => {
+          const target = page.elements.find(item => item.id === original.id);
+          if (!target || target.points) return;
+          (componentConnectionAnchors(target) || []).forEach(a => movingAnchors.push({ x: round(a.x), y: round(a.y) }));
+        });
+        const guides = [];
+        const seenV = new Set();
+        const seenH = new Set();
+        for (const m of movingAnchors) {
+          if (guides.length >= 6) break;
+          for (const o of dragState.alignCache) {
+            if (guides.length >= 6) break;
+            if (Math.abs(m.x - o.x) < .05 && !seenV.has(o.x)) {
+              seenV.add(o.x);
+              guides.push({ axis: "v", at: o.x, a: Math.min(m.y, o.y), b: Math.max(m.y, o.y) });
+            }
+            if (Math.abs(m.y - o.y) < .05 && !seenH.has(o.y)) {
+              seenH.add(o.y);
+              guides.push({ axis: "h", at: o.y, a: Math.min(m.x, o.x), b: Math.max(m.x, o.x) });
+            }
+          }
+        }
+        dragState.alignGuides = guides;
       }
 
       // 部品移動に合わせ、部品接続点に刺さっていた配線端点を追従させる。
