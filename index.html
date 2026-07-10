@@ -638,6 +638,7 @@
               <option value="rungCircuit">ラング回路（接点+コイル/ランプ）</option>
               <option value="estopChain">非常停止チェーン</option>
               <option value="powerOn">電源投入回路（自己保持）</option>
+              <option value="brake">ブレーキ/整流回路</option>
               <option value="wireColumn">縦配線列</option>
               <option value="wireRow">横配線行</option>
               <option value="twistedPair">ツイストペア</option>
@@ -715,40 +716,43 @@
           <option value="blank">枠線のみ</option>
         </select>
 
-        <div class="row">
-          <div>
-            <label for="drawingNo">図番</label>
-            <input id="drawingNo" type="text">
-          </div>
-          <div>
-            <label for="revision">改訂</label>
-            <input id="revision" type="text">
-          </div>
-        </div>
         <label for="drawingTitle">図名</label>
         <input id="drawingTitle" type="text">
-        <div class="row">
-          <div>
-            <label for="designer">作成</label>
-            <input id="designer" type="text">
+        <details class="attr-panel">
+          <summary>表題欄の詳細（図番・改訂・作成・設備/場所・側注記）</summary>
+          <div class="row">
+            <div>
+              <label for="drawingNo">図番</label>
+              <input id="drawingNo" type="text">
+            </div>
+            <div>
+              <label for="revision">改訂</label>
+              <input id="revision" type="text">
+            </div>
           </div>
-          <div>
-            <label for="drawDate">日付</label>
-            <input id="drawDate" type="text">
+          <div class="row">
+            <div>
+              <label for="designer">作成</label>
+              <input id="designer" type="text">
+            </div>
+            <div>
+              <label for="drawDate">日付</label>
+              <input id="drawDate" type="text">
+            </div>
           </div>
-        </div>
-        <div class="row">
-          <div>
-            <label for="pageInstallation">設備コード</label>
-            <input id="pageInstallation" type="text">
+          <div class="row">
+            <div>
+              <label for="pageInstallation">設備コード</label>
+              <input id="pageInstallation" type="text">
+            </div>
+            <div>
+              <label for="pageLocation">場所コード</label>
+              <input id="pageLocation" type="text">
+            </div>
           </div>
-          <div>
-            <label for="pageLocation">場所コード</label>
-            <input id="pageLocation" type="text">
-          </div>
-        </div>
-        <label for="pageSideNote">側注記（左余白の縦書き）</label>
-        <input id="pageSideNote" type="text" placeholder="設備名など">
+          <label for="pageSideNote">側注記（左余白の縦書き）</label>
+          <input id="pageSideNote" type="text" placeholder="設備名など">
+        </details>
 
         <div class="section">
           <div class="inline">
@@ -1091,6 +1095,7 @@
         };
         state.project.titleMap = { ...DEFAULT_TITLE_MAP, ...(state.project.titleMap || {}) };
         if (!Array.isArray(state.project.revisions)) state.project.revisions = [];
+        if (!state.settings.auditRules || typeof state.settings.auditRules !== "object") state.settings.auditRules = {};
         if (!Array.isArray(state.catalog)) state.catalog = [];
         if (!Array.isArray(state.standardPacks)) state.standardPacks = [];
         return state.project;
@@ -3842,14 +3847,17 @@
           ${labelFields(element)}
           ${specificFields(element)}
           ${electricalAttributeFields(element)}
-          <label>所属レイヤ</label>
-          <select data-bind="layer">${layerOptions(element.layer || inferredLayerFor(element.type))}</select>
-          <label>属性メモ</label>
-          <textarea data-bind="note">${escapeHtml(element.note || "")}</textarea>
-          <label for="selStroke">線色</label>
-          <div class="swatches" id="swatches">
-            ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
-          </div>
+          <details class="attr-panel">
+            <summary>スタイル・メモ（レイヤ／線色／属性メモ）</summary>
+            <label>所属レイヤ</label>
+            <select data-bind="layer">${layerOptions(element.layer || inferredLayerFor(element.type))}</select>
+            <label>属性メモ</label>
+            <textarea data-bind="note">${escapeHtml(element.note || "")}</textarea>
+            <label for="selStroke">線色</label>
+            <div class="swatches" id="swatches">
+              ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
+            </div>
+          </details>
           <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:12px">ユーザー部品に登録</button>
           <button type="button" id="toggleLockBtn" style="width:100%;margin-top:8px" ${isLayerLocked(element.layer || inferredLayerFor(element.type)) ? "disabled" : ""}>${isLayerLocked(element.layer || inferredLayerFor(element.type)) ? "レイヤロック中" : (element.locked ? "ロック解除" : "ロック")}</button>
           <div class="row" style="margin-top:8px">
@@ -6436,6 +6444,59 @@
         render();
       }
 
+      // ===== ブレーキ/整流回路生成(接点→整流器→コイル) =====
+      function showBrakeCircuitDialog() {
+        openDialog("ブレーキ/整流回路生成", `
+          <p class="muted">接点 → 整流器(1入1出) → コイル → N1 の行を生成します（設備標準ページ向け）。</p>
+          <div class="row">
+            <div><label>開始行(00-20)</label><input id="bkRow" type="number" min="0" max="19" step="1" value="2"></div>
+            <div><label>回路数</label><input id="bkCount" type="number" min="1" max="4" step="1" value="2"></div>
+          </div>
+          <div class="row">
+            <div><label>接点タグ接頭辞</label><input id="bkContact" value="MSB"></div>
+            <div><label>コイルタグ接頭辞</label><input id="bkCoil" value="B"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="bkBuildBtn" class="primary">生成</button>
+          </div>`);
+        qs("#bkBuildBtn").addEventListener("click", buildBrakeCircuits);
+      }
+
+      function buildBrakeCircuits() {
+        const page = currentPage();
+        if (!page) return;
+        const row0 = Math.max(0, Math.min(19, Math.floor(Number(qs("#bkRow").value || 2))));
+        const count = Math.max(1, Math.min(4, Math.floor(Number(qs("#bkCount").value || 2))));
+        const contactPrefix = qs("#bkContact").value || "MSB";
+        const coilPrefix = qs("#bkCoil").value || "B";
+        const created = [];
+        for (let i = 0; i < count && row0 + i * 2 <= 20; i++) {
+          const y = round(LADDER_GRID.top + LADDER_GRID.pitch * (row0 + i * 2));
+          created.push(defaultElement("junction", 32.5, y));
+          created.push({ ...defaultElement("contactNO", 52, round(y - 2.2)), label: contactPrefix + (i + 1) });
+          created.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [52, y]] });
+          created.push({ ...defaultElement("wire", 60, y), points: [[60, y], [92, y]] });
+          created.push({
+            ...defaultElement("deviceBox", 92, round(y - 6)),
+            w: 26,
+            h: 12,
+            pins: 1,
+            pinText: "2",
+            rightPinText: "4",
+            label: "整流器",
+            tag: ""
+          });
+          created.push({ ...defaultElement("wire", 118, y), points: [[118, y], [134, y]] });
+          created.push({ ...defaultElement("coil", 134, round(y - 2.2)), label: coilPrefix + (i + 1), tag: coilPrefix + (i + 1) });
+          created.push({ ...defaultElement("wire", 144, y), points: [[144, y], [146.5, y]] });
+        }
+        page.elements.push(...created);
+        setSelection(created.map(el => el.id));
+        closeDialog();
+        commitHistory("ブレーキ/整流回路を生成しました。");
+        render();
+      }
+
       // ===== ラング回路生成(直列接点+終端部品) =====
       function showRungCircuitDialog() {
         openDialog("ラング回路生成", `
@@ -6900,6 +6961,7 @@
           componentTagPrefixes: deepClone(state.settings.componentTagPrefixes || {}),
           wireTypes: deepClone(state.wireTypes),
           layers: deepClone(state.layers),
+          auditRules: deepClone(state.settings.auditRules || {}),
           frameVariant: currentPage()?.frameVariant || "ladder"
         };
         download("standard-pack.json", JSON.stringify(pack, null, 2), "application/json");
@@ -6932,6 +6994,7 @@
         if (pack.componentTagPrefixes) state.settings.componentTagPrefixes = deepClone(pack.componentTagPrefixes);
         if (Array.isArray(pack.wireTypes) && pack.wireTypes.length) state.wireTypes = deepClone(pack.wireTypes);
         if (Array.isArray(pack.layers) && pack.layers.length) state.layers = deepClone(pack.layers);
+        if (pack.auditRules && typeof pack.auditRules === "object") state.settings.auditRules = deepClone(pack.auditRules);
         if (pack.frameVariant) {
           const page = currentPage();
           if (page) page.frameVariant = pack.frameVariant;
@@ -9471,13 +9534,38 @@ anchor 20 6</textarea>
         return text;
       }
 
+      const AUDIT_RULES = [
+        { key: "wireNo", label: "未採番配線" },
+        { key: "net", label: "ネット整合" },
+        { key: "emptyLabel", label: "空ラベル" },
+        { key: "offPage", label: "用紙外" },
+        { key: "floating", label: "未接続端点" },
+        { key: "relay", label: "コイル/接点" },
+        { key: "panel", label: "盤配置" }
+      ];
+
+      function auditRuleOn(key) {
+        const rules = state.settings.auditRules || {};
+        return rules[key] !== false;
+      }
+
       function showAudit() {
         const issues = auditProject();
+        const ruleControls = AUDIT_RULES.map(rule =>
+          `<label style="display:inline-flex;align-items:center;gap:4px;margin:0 10px 6px 0;font-size:12px"><input type="checkbox" data-audit-rule="${rule.key}" ${auditRuleOn(rule.key) ? "checked" : ""} style="width:auto;min-height:auto">${rule.label}</label>`).join("");
         const body = issues.length
           ? `<table class="report-table"><thead><tr><th>重要度</th><th>ページ</th><th>内容</th><th>対象</th><th>選択</th></tr></thead><tbody>${issues.map(issue => `<tr><td>${issue.level}</td><td>${escapeHtml(issue.page)}</td><td>${escapeHtml(issue.message)}</td><td>${escapeHtml(issue.target)}</td><td>${auditSelectionButton(issue)}</td></tr>`).join("")}</tbody></table>`
           : '<p class="muted">検出された問題はありません。</p>';
-        openDialog("図面監査", body);
+        openDialog("図面監査", `<div><span class="muted">検査ルール（外すと対象外。標準パックにも保存されます）:</span><div style="margin:6px 0 10px">${ruleControls}</div></div>` + body);
         attachDialogSelection();
+        qsa("[data-audit-rule]", qs("#dialogBody")).forEach(input => {
+          input.addEventListener("change", () => {
+            state.settings.auditRules = state.settings.auditRules || {};
+            state.settings.auditRules[input.dataset.auditRule] = input.checked;
+            commitHistory("監査ルールを変更しました。");
+            showAudit();
+          });
+        });
       }
 
       function auditSelectionButton(issue) {
@@ -9498,11 +9586,11 @@ anchor 20 6</textarea>
           page.elements.forEach(element => {
             const label = componentTag(element) || element.text || element.wireNo || "";
             if (element.type === "wire") {
-              if (!element.wireNo && !element.ladderRail && !wireStyle(element).noNumber) {
+              if (auditRuleOn("wireNo") && !element.wireNo && !element.ladderRail && !wireStyle(element).noNumber) {
                 issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "線番が未入力です。", target: element.id });
               }
             }
-            if (["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "transformer", "ground", "motor", "fan", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
+            if (auditRuleOn("emptyLabel") && ["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "transformer", "ground", "motor", "fan", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
               issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "ラベルが未入力です。", target: element.type });
             }
             const prefix = tagPrefix(element.type);
@@ -9537,11 +9625,11 @@ anchor 20 6</textarea>
               }
             }
             const box = elementBounds(element);
-            if (box && (box.x < 0 || box.y < 0 || box.x + box.w > size.w || box.y + box.h > size.h)) {
+            if (auditRuleOn("offPage") && box && (box.x < 0 || box.y < 0 || box.x + box.w > size.w || box.y + box.h > size.h)) {
               issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "用紙外にはみ出しています。", target: label || element.type });
             }
           });
-          const pageNets = buildWireNets(page)
+          const pageNets = !auditRuleOn("net") ? [] : buildWireNets(page)
             .map(net => net.filter(wire => !wire.ladderRail && !wireStyle(wire).noNumber))
             .filter(net => net.length);
           const numberToNets = new Map();
@@ -9561,7 +9649,7 @@ anchor 20 6</textarea>
               issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: nets[0][0].id, message: "同じ線番が接続されていない別ネットにあります。", target: wireNo + "(" + nets.length + "ネット)" });
             }
           });
-          auditFloatingWireEnds(page).forEach(item => issues.push(item));
+          if (auditRuleOn("floating")) auditFloatingWireEnds(page).forEach(item => issues.push(item));
         });
         arrows.forEach((group, label) => {
           if (group.source.length && !group.destination.length) {
@@ -9588,7 +9676,7 @@ anchor 20 6</textarea>
           }
         });
         const xref = buildCrossRefCache();
-        xref.coils.forEach((coil, tag) => {
+        if (auditRuleOn("relay")) xref.coils.forEach((coil, tag) => {
           const children = xref.contacts.get(tag) || [];
           if (!children.length) {
             issues.push({ level: "情報", page: coil.page.name, pageId: coil.page.id, elementId: coil.element.id, message: "コイルに対応する接点がありません。", target: tag });
@@ -9601,7 +9689,7 @@ anchor 20 6</textarea>
           if (usedNO > maxNO) issues.push({ level: "警告", page: coil.page.name, pageId: coil.page.id, elementId: coil.element.id, message: "a接点の使用数が上限を超えています(" + usedNO + "/" + maxNO + ")。", target: tag });
           if (usedNC > maxNC) issues.push({ level: "警告", page: coil.page.name, pageId: coil.page.id, elementId: coil.element.id, message: "b接点の使用数が上限を超えています(" + usedNC + "/" + maxNC + ")。", target: tag });
         });
-        xref.contacts.forEach((list, tag) => {
+        if (auditRuleOn("relay")) xref.contacts.forEach((list, tag) => {
           if (xref.coils.has(tag)) return;
           if (list.every(item => item.element.type === "thermalRelay")) return;
           const first = list[0];
@@ -9624,7 +9712,7 @@ anchor 20 6</textarea>
           issues.push({ level: "警告", page: item.page.name, pageId: item.page.id, elementId: item.element.id, message: "ジャンパの端子番号が範囲外です。", target: (item.element.label || item.element.id) + " " + item.pair });
         });
         const hasFootprints = state.pages.some(page => page.elements.some(element => element.panelRef));
-        if (hasFootprints) {
+        if (auditRuleOn("panel") && hasFootprints) {
           const placed = new Set();
           state.pages.forEach(page => page.elements.forEach(element => {
             if (element.panelRef) placed.add(element.panelRef);
@@ -10881,6 +10969,7 @@ anchor 20 6</textarea>
           rungCircuit: showRungCircuitDialog,
           estopChain: showEStopChainDialog,
           powerOn: showPowerOnCircuitDialog,
+          brake: showBrakeCircuitDialog,
           terminalNo: renumberTerminals,
           tagComponents: autoTagComponents,
           autoJunction: autoJunctions,
