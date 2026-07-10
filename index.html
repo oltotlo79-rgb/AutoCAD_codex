@@ -592,7 +592,7 @@
         <div class="section">
           <div class="panel-title">表示</div>
           <label for="zoomRange">ズーム</label>
-          <input id="zoomRange" type="range" min="0.8" max="8" step=".1" value="3.2">
+          <input id="zoomRange" type="range" min="0.8" max="24" step=".1" value="3.2">
           <div class="row-3" style="margin-top:8px">
             <button type="button" id="zoomOutBtn">縮小</button>
             <button type="button" id="zoomInBtn">拡大</button>
@@ -4061,7 +4061,7 @@
       function clampZoom(value) {
         const input = qs("#zoomRange");
         const min = Number(input?.min || .8);
-        const max = Number(input?.max || 8);
+        const max = Number(input?.max || 24);
         const zoom = Number(value);
         return Math.max(min, Math.min(max, Number.isFinite(zoom) ? zoom : 3.2));
       }
@@ -12439,8 +12439,9 @@
         });
         qs("#zoomRange").addEventListener("input", event => setZoom(event.target.value, false));
         qs("#zoomRange").addEventListener("change", () => commitHistory("ズームを変更しました。"));
-        qs("#zoomOutBtn").addEventListener("click", () => setZoom(state.settings.zoom - .4, true));
-        qs("#zoomInBtn").addEventListener("click", () => setZoom(state.settings.zoom + .4, true));
+        // 高倍率域では1クリックの変化量を大きくする(比例ステップ)
+        qs("#zoomOutBtn").addEventListener("click", () => setZoom(state.settings.zoom / 1.25, true));
+        qs("#zoomInBtn").addEventListener("click", () => setZoom(state.settings.zoom * 1.25, true));
         qs("#actualSizeBtn").addEventListener("click", () => setZoom(3.78, true));
         qs("#fitPageBtn").addEventListener("click", fitPageToWorkspace);
         qs("#gridSize").addEventListener("change", event => {
@@ -12526,8 +12527,9 @@
       function onCanvasWheel(event) {
         if (!event.ctrlKey && !event.metaKey) return;
         event.preventDefault();
-        const delta = event.deltaY < 0 ? .25 : -.25;
-        setZoom(state.settings.zoom + delta, false);
+        // 高倍率でも一定の体感になるよう比例ステップでズームする
+        const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+        setZoom(state.settings.zoom * factor, false);
       }
 
       // キャンバス押下の入口。優先順: 点編集ハンドル → リサイズハンドル → 作図ツール(配線/直線等の開始) →
