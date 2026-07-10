@@ -1766,6 +1766,49 @@
       const HISTORY_LIMIT = 60;
       let backupFailureWarned = false;
 
+      // ===== 自動バックアップの世代管理 =====
+      // 最新(BACKUP_KEY)に加え、約5分おきに直前の最新を世代1〜3へ繰り下げて保存する。
+      // 「誤操作に気づかず上書きし続けた」場合でも、少し前の状態へ戻れるようにする保険。
+      const BACKUP_KEY = "electricalDrawingStudio.backup";
+      const BACKUP_GEN_PREFIX = "electricalDrawingStudio.backupGen";
+      const BACKUP_GEN_META_KEY = "electricalDrawingStudio.backupGenMeta";
+      const BACKUP_GEN_COUNT = 3;
+      const BACKUP_GEN_INTERVAL_MS = 5 * 60 * 1000;
+
+      // 世代メタ(各世代の保存日時の配列。[0]=世代1)を読む。壊れていれば空。
+      function readBackupGenMeta() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(BACKUP_GEN_META_KEY) || "[]");
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+          return [];
+        }
+      }
+
+      // 前回の世代化から一定時間経っていたら、現在の最新バックアップを世代1へ繰り下げる。
+      // 失敗しても最新バックアップの保存(呼び出し元)には影響させない。
+      function rotateBackupGenerations() {
+        try {
+          const meta = readBackupGenMeta();
+          if (meta[0] && Date.now() - new Date(meta[0].at).getTime() < BACKUP_GEN_INTERVAL_MS) return;
+          const current = localStorage.getItem(BACKUP_KEY);
+          if (!current) return;
+          for (let i = Math.min(meta.length, BACKUP_GEN_COUNT - 1); i >= 1; i--) {
+            const older = localStorage.getItem(BACKUP_GEN_PREFIX + i);
+            if (older !== null) localStorage.setItem(BACKUP_GEN_PREFIX + (i + 1), older);
+          }
+          localStorage.setItem(BACKUP_GEN_PREFIX + 1, current);
+          const nextMeta = [{ at: new Date().toISOString() }, ...meta].slice(0, BACKUP_GEN_COUNT);
+          localStorage.setItem(BACKUP_GEN_META_KEY, JSON.stringify(nextMeta));
+        } catch (_) {
+          // 容量超過時は世代を諦めて最新のみ保護する(古い世代から削除して空きを作る)
+          try {
+            for (let i = BACKUP_GEN_COUNT; i >= 1; i--) localStorage.removeItem(BACKUP_GEN_PREFIX + i);
+            localStorage.removeItem(BACKUP_GEN_META_KEY);
+          } catch (_) { /* ここまで失敗したら何もできない */ }
+        }
+      }
+
       function commitHistory(reason = "") {
         syncPageTotals();
         const snapshot = JSON.stringify(state);
@@ -1777,7 +1820,8 @@
         }
         historyIndex = history.length - 1;
         try {
-          localStorage.setItem("electricalDrawingStudio.backup", snapshot);
+          rotateBackupGenerations();
+          localStorage.setItem(BACKUP_KEY, snapshot);
           backupFailureWarned = false;
         } catch (_) {
           // 容量超過やプライベートモードで失敗し得る。無言で止めず一度だけ警告する。
@@ -11308,20 +11352,65 @@
         setStatus("JSONを保存しました。");
       }
 
-      // localStorage自動バックアップからの復元(確認ダイアログつき)。
+      // localStorage自動バックアップからの復元。最新+世代1〜3(約5分おき)から選ぶダイアログを開く。
       function restoreLocalBackup() {
-        let snapshot = "";
+        let latest = "";
         try {
-          snapshot = localStorage.getItem("electricalDrawingStudio.backup") || "";
+          latest = localStorage.getItem(BACKUP_KEY) || "";
         } catch (_) {
           setStatus("ブラウザ内バックアップを読めません。");
           return;
         }
-        if (!snapshot) {
+        const meta = readBackupGenMeta();
+        const rows = [];
+        if (latest) rows.push({ key: "latest", label: "最新（直前の操作まで）", at: "" });
+        meta.forEach((entry, index) => {
+          let stored = null;
+          try { stored = localStorage.getItem(BACKUP_GEN_PREFIX + (index + 1)); } catch (_) { stored = null; }
+          if (stored) rows.push({ key: String(index + 1), label: "世代" + (index + 1) + "（少し前）", at: entry.at });
+        });
+        if (!rows.length) {
           setStatus("復元できるバックアップがありません。");
           return;
         }
-        if (!confirm("ブラウザ内の自動保存データを復元しますか？\n現在の画面内容は置き換わります。")) return;
+        const formatAt = iso => {
+          try { return new Date(iso).toLocaleString("ja-JP"); } catch (_) { return ""; }
+        };
+        openDialog("ブラウザ内バックアップの復元", `
+          <p class="muted">復元すると現在の画面内容は置き換わります（必要なら先に上部「保存」でJSONへ保存してください）。
+          「最新」は操作のたびに、「世代」は約5分おきに自動で残している少し前の状態です。</p>
+          <table class="report-table">
+            <thead><tr><th>バックアップ</th><th>保存日時</th><th></th></tr></thead>
+            <tbody>${rows.map(row => `<tr>
+              <td>${escapeHtml(row.label)}</td>
+              <td>${escapeHtml(row.at ? formatAt(row.at) : "（現在の自動保存）")}</td>
+              <td><button type="button" data-restore-backup="${escapeAttr(row.key)}">この状態へ復元</button></td>
+            </tr>`).join("")}</tbody>
+          </table>`);
+        qsa("[data-restore-backup]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            const key = button.dataset.restoreBackup;
+            let snapshot = "";
+            try {
+              snapshot = key === "latest"
+                ? (localStorage.getItem(BACKUP_KEY) || "")
+                : (localStorage.getItem(BACKUP_GEN_PREFIX + key) || "");
+            } catch (_) {
+              snapshot = "";
+            }
+            if (!snapshot) {
+              setStatus("このバックアップは読めませんでした。");
+              return;
+            }
+            if (!confirm("バックアップを復元しますか？\n現在の画面内容は置き換わります。")) return;
+            applyBackupSnapshot(snapshot);
+            closeDialog();
+          });
+        });
+      }
+
+      // バックアップ文字列をstateへ反映する(スキーマ移行+履歴リセット)。
+      function applyBackupSnapshot(snapshot) {
         try {
           const restored = migrateProjectData(JSON.parse(snapshot));
           if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
