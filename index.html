@@ -965,6 +965,7 @@
         { type: "contactNC", label: "b接点", icon: "contactNC" },
         { type: "contactBlock", label: "接点ブロック", icon: "contactBlock" },
         { type: "pushButton", label: "押しボタン", icon: "pushButton" },
+        { type: "pushButtonEmergency", label: "非常停止ボタン", icon: "pushButton" },
         { type: "selectorSwitch", label: "切替スイッチ", icon: "selectorSwitch" },
         { type: "limitSwitch", label: "リミットスイッチ", icon: "limitSwitch" },
         { type: "coil", label: "コイル", icon: "coil" },
@@ -1050,7 +1051,7 @@
       // 要素種別→パレットカテゴリの対応表。未登録はdevice扱い。
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
-        contactNO: "contact", contactNC: "contact", contactBlock: "contact", pushButton: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact",
+        contactNO: "contact", contactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact",
         coil: "coil", lamp: "coil", buzzer: "coil",
         powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power",
         fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect",
@@ -3464,6 +3465,36 @@
             { t: "text", p: [8, 8], size: 2.2, anchor: "middle", field: "label" }
           ]
         },
+        // 変圧器(参照実測): 縦長の巻線バー2本+タップ端子円。上下ライン間は行ピッチ9.5mmで
+        // 2行にまたがって配置する。左=一次(上端/上段/中間タップ/下段)、右=二次(上端/上段/下段)。
+        transformer: {
+          w: 14, h: 17,
+          anchors: [[0, 5.5], [14, 5.5], [0, 15.0], [14, 15.0], [3.4, 0.9], [10.6, 0.9]],
+          prims: [
+            { t: "rect", p: [5.55, 0.7, 0.85, 14.5], fill: "white" },
+            { t: "rect", p: [7.6, 0.7, 0.85, 14.5], fill: "white" },
+            { t: "line", p: [3.95, 0.9, 5.55, 0.9] },
+            { t: "circle", p: [3.4, 0.9, 0.55], fill: "white" },
+            { t: "line", p: [0, 5.5, 2.85, 5.5] },
+            { t: "line", p: [3.95, 5.5, 5.55, 5.5] },
+            { t: "circle", p: [3.4, 5.5, 0.55], fill: "white" },
+            { t: "line", p: [3.95, 10.25, 5.55, 10.25] },
+            { t: "circle", p: [3.4, 10.25, 0.55], fill: "white" },
+            { t: "line", p: [0, 15.0, 2.85, 15.0] },
+            { t: "line", p: [3.95, 15.0, 5.55, 15.0] },
+            { t: "circle", p: [3.4, 15.0, 0.55], fill: "white" },
+            { t: "line", p: [8.45, 0.9, 10.05, 0.9] },
+            { t: "circle", p: [10.6, 0.9, 0.55], fill: "white" },
+            { t: "line", p: [11.15, 5.5, 14, 5.5] },
+            { t: "line", p: [8.45, 5.5, 10.05, 5.5] },
+            { t: "circle", p: [10.6, 5.5, 0.55], fill: "white" },
+            { t: "line", p: [11.15, 15.0, 14, 15.0] },
+            { t: "line", p: [8.45, 15.0, 10.05, 15.0] },
+            { t: "circle", p: [10.6, 15.0, 0.55], fill: "white" },
+            { t: "text", p: [7, -1.4], size: 2.2, anchor: "middle", field: "label" },
+            { t: "text", p: [7, 17.6], size: 2, anchor: "middle", field: "rating" }
+          ]
+        },
         ground: {
           w: 4, h: 5,
           anchors: [[2, 0]],
@@ -3597,6 +3628,7 @@
           case "limitSwitch": return "limitSwitch";
           case "pressureSwitch": return "pressureSwitch";
           case "motor": return "motor";
+          case "transformer": return "transformer";
           case "ground": return "ground";
           case "terminal": return (element.terminalShape || "circle") === "circle" ? "terminal" : null;
           case "resistor": return (element.resistorStyle || "box") === "varistor" ? "varistor" : "resistor";
@@ -4955,6 +4987,10 @@
 
       // 種別ごとの新規要素の既定値(寸法・ラベル・レイヤ)。新種別はここへ追加する。
       function defaultElement(type, x = 30, y = 30) {
+        // 別名: パレットの「非常停止ボタン」は押しボタンの非常停止スタイルとして生成する。
+        if (type === "pushButtonEmergency") {
+          return { ...defaultElement("pushButton", x, y), pbStyle: "emergency", label: "PBE" };
+        }
         const base = { id: uid("el"), type, x, y, rotation: 0, stroke: state.settings.stroke, layer: defaultLayerFor(type) };
         const defaults = {
           text: { ...base, w: 40, h: 8, text: "文字", fontSize: 3.5 },
@@ -4983,7 +5019,7 @@
           solenoidValve: { ...base, w: 26, h: 16, label: "SOL" },
           sensor: { ...base, w: 24, h: 14, label: "SEN" },
           powerSupply: { ...base, w: 34, h: 24, label: "PS" },
-          transformer: { ...base, w: 24, h: 16, label: "T" },
+          transformer: { ...base, w: 14, h: 17, label: "Tr1" },
           ground: { ...base, w: 4, h: 5, label: "E" },
           motor: { ...base, w: 16, h: 16, label: "M" },
           fan: { ...base, w: 14, h: 14, r: 5, label: "FAN" },
@@ -5269,6 +5305,7 @@
           "thermalRelay",
           "motor",
           "fan",
+          "transformer",
           "cableMarker",
           "cableBundle"
         ]);
@@ -5303,10 +5340,12 @@
       // 配置時の新規要素を生成(中心合わせ・向き自動判定込み)。
       function defaultElementAtPlacement(type, x, y) {
         const element = defaultElement(type, x, y);
+        // 別名種別(非常停止ボタン等)は生成後のelement.typeで配置方法を判定する
+        const kind = element.type;
         autoOrientElementForPlacement(element, x, y);
-        if (centerPlacedTypes().has(type)) {
-          const w = Number(element.w || defaultElement(type).w || 0);
-          const h = Number(element.h || defaultElement(type).h || 0);
+        if (centerPlacedTypes().has(kind)) {
+          const w = Number(element.w || defaultElement(kind).w || 0);
+          const h = Number(element.h || defaultElement(kind).h || 0);
           element.x = round(x - w / 2);
           element.y = round(y - h / 2);
           // ピン高さが中心と異なる部品(押しボタン等)は、中心ではなく接続ピンの線を
@@ -5319,8 +5358,8 @@
               element.y = round(Number(element.y) + (y - anchors[0].y));
             }
           }
-        } else if (type === "ground") {
-          const w = Number(element.w || defaultElement(type).w || 0);
+        } else if (kind === "ground") {
+          const w = Number(element.w || defaultElement(kind).w || 0);
           element.x = round(x - w / 2);
           element.y = round(y);
         }
