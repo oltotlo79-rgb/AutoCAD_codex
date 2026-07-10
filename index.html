@@ -3301,6 +3301,37 @@
             { t: "text", p: [4, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
+        // a接点デザイン2: 円端子+開き線(参照のスイッチ接点様式)。寸法・接続点は縦バー版と共通。
+        contactNOJis: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.0, 2.2] },
+            { t: "line", p: [6.0, 2.2, 8, 2.2] },
+            { t: "circle", p: [2.6, 2.2, 0.6], fill: "white" },
+            { t: "circle", p: [5.4, 2.2, 0.6], fill: "white" },
+            { t: "line", p: [5.9, 1.75, 2.9, 0.5] },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [4, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // b接点デザイン2: 円端子+閉じ線(先端に止め)。
+        contactNCJis: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.0, 2.2] },
+            { t: "line", p: [6.0, 2.2, 8, 2.2] },
+            { t: "circle", p: [2.6, 2.2, 0.6], fill: "white" },
+            { t: "circle", p: [5.4, 2.2, 0.6], fill: "white" },
+            { t: "line", p: [5.9, 1.75, 2.7, 0.6] },
+            { t: "line", p: [2.3, 1.05, 3.1, 0.25] },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [4, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
         // ○✕○: 端子小円は実測⌀1.2、✕は円間に配置。
         thermalRelay: {
           w: 8, h: 4,
@@ -3349,6 +3380,19 @@
             { t: "line", p: [0, 2.2, 3.1, 2.2] },
             { t: "line", p: [6.9, 2.2, 10, 2.2] },
             { t: "circle", p: [5, 2.2, 1.9], fill: "white" },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.6], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "catalog" }
+          ]
+        },
+        // コイルデザイン2: 箱形(JIS系)。寸法・接続点は円版と共通。
+        coilBox: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.0, 2.2] },
+            { t: "line", p: [7.0, 2.2, 10, 2.2] },
+            { t: "rect", p: [3.0, 0.2, 4.0, 4.0], fill: "white" },
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -3.6], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "catalog" }
@@ -3404,6 +3448,23 @@
             { t: "line", p: [3.95, 4.83, 6.05, 4.83] },
             { t: "line", p: [3.95, 6.07, 6.05, 6.07] },
             { t: "text", p: [7.7, 1.6], size: 1.6, anchor: "start", value: "R" },
+            { t: "text", p: [5, 8.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        // 非常停止デザイン2: バー押込式(押しバー+キノコ傘)。寸法・接続点は設備標準版と共通。
+        pushButtonEmergencyBar: {
+          w: 10, h: 7,
+          anchors: [[0, 4.4], [10, 4.4]],
+          prims: [
+            { t: "line", p: [0, 4.4, 2.8, 4.4] },
+            { t: "line", p: [7.2, 4.4, 10, 4.4] },
+            { t: "circle", p: [3.4, 4.4, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 4.4, 0.6], fill: "white" },
+            { t: "line", p: [2.6, 3.2, 7.4, 3.2] },
+            { t: "line", p: [5, 3.2, 5, 1.9] },
+            { t: "arc", p: [5, 3.4, 2.2, 215, 325] },
+            { t: "text", p: [7.6, 1.7], size: 1.6, anchor: "start", value: "R" },
             { t: "text", p: [5, 8.2], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
           ]
@@ -3506,10 +3567,11 @@
             { t: "text", p: [2, 6.6], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 端子小円は実測⌀1.1→r0.55。アンカーは円の縁(配線が縁で止まる)。
+        // 端子小円は実測⌀1.1→r0.55。アンカーは中心のみ(グリッド整合のため。
+        // 配線は中心まで届くが白抜き円が内側を隠すので、見た目は縁で止まる)。
         terminal: {
           w: 1.8, h: 1.8,
-          anchors: [[0.35, 0.9], [0.9, 0.9], [1.45, 0.9]],
+          anchors: [[0.9, 0.9]],
           prims: [
             { t: "circle", p: [0.9, 0.9, 0.55], fill: "white" },
             { t: "text", p: [0.9, -1.4], size: 1.8, anchor: "middle", field: "label" }
@@ -3615,15 +3677,18 @@
       // 要素→SYMBOL_GEOキーの解決。ここでnull以外を返す種別は設備標準の固定形状で描かれ、
       // 角ハンドルでのリサイズ対象外になる(canResizeElement参照)。バリエーション(筒形ランプ等)はnull。
       function geoKeyFor(element) {
+        const variant = element.symbolVariant || "standard";
         switch (element.type) {
-          case "contactNO": return "contactNO";
-          case "contactNC": return "contactNC";
+          case "contactNO": return variant === "jis" ? "contactNOJis" : "contactNO";
+          case "contactNC": return variant === "jis" ? "contactNCJis" : "contactNC";
           case "thermalRelay": return "thermalRelay";
           case "thermalElement": return "thermalElement";
           case "breaker": return "breaker";
-          case "coil": return "coil";
+          case "coil": return variant === "box" ? "coilBox" : "coil";
           case "lamp": return (element.lampVariant || "pilot") === "pilot" ? "lamp" : null;
-          case "pushButton": return (element.pbStyle || "momentary") === "emergency" ? "pushButtonEmergency" : "pushButton";
+          case "pushButton":
+            if ((element.pbStyle || "momentary") !== "emergency") return "pushButton";
+            return variant === "bar" ? "pushButtonEmergencyBar" : "pushButtonEmergency";
           case "selectorSwitch": return "selectorSwitch";
           case "limitSwitch": return "limitSwitch";
           case "pressureSwitch": return "pressureSwitch";
@@ -4457,6 +4522,29 @@
         `;
       }
 
+      // シンボルデザインの選択肢。同一種別の別デザインで、寸法・接続点(アンカー)は共通に揃える。
+      const SYMBOL_VARIANT_OPTIONS = {
+        contactNO: [["standard", "縦バー（設備標準）"], ["jis", "円端子＋開き線"]],
+        contactNC: [["standard", "縦バー＋斜線（設備標準）"], ["jis", "円端子＋閉じ線"]],
+        coil: [["standard", "円（設備標準）"], ["box", "箱形"]],
+        pushButtonEmergency: [["standard", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]]
+      };
+
+      // 選択中要素に対応する「シンボルデザイン」セレクトHTML(バリエーションが無い種別は空文字)。
+      function symbolVariantSelectHtml(element) {
+        const key = element.type === "pushButton"
+          ? ((element.pbStyle || "momentary") === "emergency" ? "pushButtonEmergency" : "")
+          : element.type;
+        const options = SYMBOL_VARIANT_OPTIONS[key];
+        if (!options) return "";
+        const current = element.symbolVariant || "standard";
+        return `
+            <label>シンボルデザイン</label>
+            <select data-bind="symbolVariant">
+              ${options.map(([value, label]) => `<option value="${escapeAttr(value)}"${current === value ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}
+            </select>`;
+      }
+
       // 種別固有の編集フィールド(接点方向、端子台段数、表の行列、下絵クロップ等)を返す大型分岐。
       function specificFields(element) {
         if (element.type === "wire") {
@@ -4542,7 +4630,11 @@
             </select>` : `
             <label>参照番号(空欄=コイルから自動)</label>
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
+            ${symbolVariantSelectHtml(element)}
           `;
+        }
+        if (element.type === "coil") {
+          return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
           const orientation = element.orientation || "horizontal";
@@ -4896,7 +4988,7 @@
           if (key === "orientation" && element.type === "terminal" && !resizeGeoElementForOrientation(element)) resizeSingleTerminalForOrientation(element);
           if (key === "orientation" && ["contactNO", "contactNC", "pushButton", "selectorSwitch", "limitSwitch", "pressureSwitch", "thermalRelay", "thermalElement", "contactBlock"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeContactElementForOrientation(element);
           if (key === "orientation" && ["fuse", "breaker", "resistor"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
-          if (["pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "terminalShape", "connStyle", "blockContact"].includes(key)) {
+          if (["pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "terminalShape", "connStyle", "blockContact", "symbolVariant"].includes(key)) {
             if (!resizeGeoElementForOrientation(element)) {
               if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
               if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
@@ -5228,7 +5320,7 @@
           add(w / 2, h);
           return anchors;
         }
-        if (["coil", "fuse", "breaker", "lamp", "buzzer", "solenoidValve", "sensor", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
+        if (["coil", "fuse", "breaker", "lamp", "buzzer", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
           add(0, h / 2);
           add(w, h / 2);
           return anchors;
@@ -5306,6 +5398,12 @@
           "motor",
           "fan",
           "transformer",
+          "solenoidValve",
+          "sensor",
+          "powerSupply",
+          "deviceBox",
+          "terminalBox",
+          "plcBlock",
           "cableMarker",
           "cableBundle"
         ]);
@@ -5348,20 +5446,28 @@
           const h = Number(element.h || defaultElement(kind).h || 0);
           element.x = round(x - w / 2);
           element.y = round(y - h / 2);
-          // ピン高さが中心と異なる部品(押しボタン等)は、中心ではなく接続ピンの線を
-          // スナップ点へ合わせる(グリッド・行と配線高さが一致するように)。
+          // 中心合わせだけでは接続ピンがグリッドに乗らない部品があるため、
+          // 第1ピンを「配線軸=スナップ点に正確一致」「直交軸=最寄りグリッド」へ合わせる。
           const anchors = elementConnectionAnchors(element);
           if (anchors && anchors.length) {
+            const pin = anchors[0];
             if (element.orientation === "vertical") {
-              element.x = round(Number(element.x) + (x - anchors[0].x));
+              element.x = round(Number(element.x) + (x - pin.x));
+              element.y = round(Number(element.y) + (snap(pin.y) - pin.y));
             } else {
-              element.y = round(Number(element.y) + (y - anchors[0].y));
+              element.y = round(Number(element.y) + (y - pin.y));
+              element.x = round(Number(element.x) + (snap(pin.x) - pin.x));
             }
           }
         } else if (kind === "ground") {
           const w = Number(element.w || defaultElement(kind).w || 0);
           element.x = round(x - w / 2);
           element.y = round(y);
+        } else if (kind === "terminalStrip" || kind === "connector") {
+          // 端子台/コネクタは先頭端子ノードをスナップ点へ合わせる(行・グリッドに端子が乗るように)。
+          const node = terminalStripNodeGlobal(element, 0);
+          element.x = round(Number(element.x) + (x - node.x));
+          element.y = round(Number(element.y) + (y - node.y));
         }
         return element;
       }
@@ -12720,7 +12826,10 @@
               const first = dragState.originals[0];
               const anchors0 = elementConnectionAnchors(first);
               const box0 = elementBounds(first);
-              const cy0 = anchors0 && anchors0.length ? anchors0[0].y : (box0 ? box0.y + box0.h / 2 : null);
+              let cy0 = anchors0 && anchors0.length ? anchors0[0].y : (box0 ? box0.y + box0.h / 2 : null);
+              if ((first.type === "terminalStrip" || first.type === "connector") && first.connStyle !== "pair") {
+                cy0 = terminalStripNodeGlobal(first, 0).y;
+              }
               if (cy0 !== null) {
                 const targetY = cy0 + rawDy;
                 const row = LADDER_GRID.top + LADDER_GRID.pitch * Math.round((targetY - LADDER_GRID.top) / LADDER_GRID.pitch);
@@ -13046,6 +13155,9 @@
 
       attachEvents();
       initProject();
+
+      // 自動テスト用の内部フック(通常操作では使用しない)。接続点のグリッド整合検証などに使う。
+      window.__edsTest = { defaultElementAtPlacement, elementConnectionAnchors, defaultElement };
     })();
   </script>
 </body>
