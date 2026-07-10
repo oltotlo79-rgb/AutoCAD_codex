@@ -768,6 +768,7 @@
           <select id="templateMenu">
             <option value="">選択してください…</option>
             <option value="facilityLadder">設備ラダー</option>
+            <option value="acPower">AC電源回路（一括）</option>
             <option value="plcInput">PLC入力回路</option>
             <option value="terminalSheet">端子接続図</option>
             <option value="interlock">インターロック接続</option>
@@ -1324,10 +1325,17 @@
           tab.type = "button";
           tab.className = "page-tab" + (page.id === state.activePageId ? " active" : "");
           tab.textContent = page.name || "P" + (index + 1);
-          tab.title = "ページ " + (index + 1);
+          tab.title = "ページ " + (index + 1) + "（ダブルクリックで名前変更）";
           tab.addEventListener("click", () => {
             state.activePageId = page.id;
             setSelection([]);
+            render();
+          });
+          tab.addEventListener("dblclick", () => {
+            const name = prompt("ページ名", page.name || "");
+            if (name === null) return;
+            page.name = name.trim() || page.name;
+            commitHistory("ページ名を変更しました。");
             render();
           });
           tabbar.appendChild(tab);
@@ -6170,15 +6178,13 @@
         qs("#twBuildBtn").addEventListener("click", buildTwistedPairFromDialog);
       }
 
-      function buildTwistedPairFromDialog() {
-        const page = currentPage();
-        if (!page) return;
-        const count = Math.max(2, Math.min(8, Math.floor(Number(qs("#twCount").value || 4))));
-        const pitch = Number(qs("#twPitch").value || 6.3);
-        const x0 = Number(qs("#twX").value || 40);
-        const y0 = Number(qs("#twY").value || 80);
-        const span = Math.max(30, Number(qs("#twSpan").value || 60));
-        const labels = String(qs("#twLabels").value || "").split(",").map(s => s.trim());
+      function makeTwistedPairElements(options) {
+        const count = Math.max(2, Math.min(8, Math.floor(Number(options.count || 4))));
+        const pitch = Number(options.pitch || 6.3);
+        const x0 = Number(options.x0 || 40);
+        const y0 = Number(options.y0 || 80);
+        const span = Math.max(30, Number(options.span || 60));
+        const labels = Array.isArray(options.labels) ? options.labels : [];
         const created = [];
         const yTop = y0;
         const yBot = y0 + pitch * (count - 1);
@@ -6201,6 +6207,20 @@
         });
         created.push({ ...defaultElement("line", exL, yTop - 2), points: [[exL, round(yTop - 2)], [exR, round(yTop - 2)]], dash: "3 2", label: "" });
         created.push({ ...defaultElement("line", exL, yBot + 2), points: [[exL, round(yBot + 2)], [exR, round(yBot + 2)]], dash: "3 2", label: "" });
+        return created;
+      }
+
+      function buildTwistedPairFromDialog() {
+        const page = currentPage();
+        if (!page) return;
+        const created = makeTwistedPairElements({
+          count: Number(qs("#twCount").value || 4),
+          pitch: Number(qs("#twPitch").value || 6.3),
+          x0: Number(qs("#twX").value || 40),
+          y0: Number(qs("#twY").value || 80),
+          span: Number(qs("#twSpan").value || 60),
+          labels: String(qs("#twLabels").value || "").split(",").map(s => s.trim())
+        });
         page.elements.push(...created);
         setSelection(created.map(el => el.id));
         closeDialog();
@@ -6232,17 +6252,17 @@
         qs("#mcBuildBtn").addEventListener("click", buildMotorBranchFromDialog);
       }
 
-      function buildMotorBranchFromDialog() {
-        const page = currentPage();
-        if (!page) return;
-        const x0 = Number(qs("#mcX").value || 40);
-        const y0 = Number(qs("#mcY").value || 65);
-        const span = Math.max(70, Number(qs("#mcSpan").value || 96));
-        const tag = qs("#mcTag").value || "M1";
+      function makeMotorBranchElements(options) {
+        const x0 = Number(options.x0 || 40);
+        const y0 = Number(options.y0 || 65);
+        const span = Math.max(70, Number(options.span || 96));
+        const tag = options.tag || "M1";
         const pitch = 5.6;
-        const withBreaker = qs("#mcWithBreaker").checked;
-        const withThermal = qs("#mcWithThermal").checked;
-        const withGround = qs("#mcWithGround").checked;
+        const withBreaker = options.withBreaker !== false;
+        const withThermal = options.withThermal !== false;
+        const withGround = options.withGround !== false;
+        const contactTag = options.contactTag || "MC1";
+        const thermalTag = options.thermalTag || "OL1";
         const created = [];
         const lineYs = [y0, y0 + pitch, y0 + pitch * 2];
         const motorX = x0 + span;
@@ -6262,13 +6282,13 @@
           cursor += 22;
         }
         lineYs.forEach((y, i) => {
-          created.push({ ...defaultElement("contactNO", cursor, round(y - 2.2)), label: i === 0 ? (qs("#mcContactTag").value || "MC") : "" });
+          created.push({ ...defaultElement("contactNO", cursor, round(y - 2.2)), label: i === 0 ? contactTag : "" });
         });
         stations.push([cursor, cursor + 8]);
         cursor += 18;
         if (withThermal) {
           lineYs.forEach((y, i) => {
-            created.push({ ...defaultElement("thermalElement", cursor, round(y - 3)), label: i === 0 ? (qs("#mcThermalTag").value || "OL") : "" });
+            created.push({ ...defaultElement("thermalElement", cursor, round(y - 3)), label: i === 0 ? thermalTag : "" });
           });
           stations.push([cursor, cursor + 8]);
           cursor += 18;
@@ -6294,6 +6314,23 @@
           created.push({ ...defaultElement("wire", gx, gy), points: [[gx, gy], [gx, gy + 8]] });
           created.push({ ...defaultElement("ground", round(gx - 2), gy + 8), label: "" });
         }
+        return created;
+      }
+
+      function buildMotorBranchFromDialog() {
+        const page = currentPage();
+        if (!page) return;
+        const created = makeMotorBranchElements({
+          x0: Number(qs("#mcX").value || 40),
+          y0: Number(qs("#mcY").value || 65),
+          span: Number(qs("#mcSpan").value || 96),
+          tag: qs("#mcTag").value || "M1",
+          contactTag: qs("#mcContactTag").value || "MC1",
+          thermalTag: qs("#mcThermalTag").value || "OL1",
+          withBreaker: qs("#mcWithBreaker").checked,
+          withThermal: qs("#mcWithThermal").checked,
+          withGround: qs("#mcWithGround").checked
+        });
         page.elements.push(...created);
         setSelection(created.map(el => el.id));
         closeDialog();
@@ -6462,13 +6499,11 @@
         qs("#bkBuildBtn").addEventListener("click", buildBrakeCircuits);
       }
 
-      function buildBrakeCircuits() {
-        const page = currentPage();
-        if (!page) return;
-        const row0 = Math.max(0, Math.min(19, Math.floor(Number(qs("#bkRow").value || 2))));
-        const count = Math.max(1, Math.min(4, Math.floor(Number(qs("#bkCount").value || 2))));
-        const contactPrefix = qs("#bkContact").value || "MSB";
-        const coilPrefix = qs("#bkCoil").value || "B";
+      function makeBrakeCircuitElements(options) {
+        const row0 = Math.max(0, Math.min(19, Math.floor(Number(options.row0 || 2))));
+        const count = Math.max(1, Math.min(4, Math.floor(Number(options.count || 2))));
+        const contactPrefix = options.contactPrefix || "MSB";
+        const coilPrefix = options.coilPrefix || "B";
         const created = [];
         for (let i = 0; i < count && row0 + i * 2 <= 20; i++) {
           const y = round(LADDER_GRID.top + LADDER_GRID.pitch * (row0 + i * 2));
@@ -6490,10 +6525,116 @@
           created.push({ ...defaultElement("coil", 134, round(y - 2.2)), label: coilPrefix + (i + 1), tag: coilPrefix + (i + 1) });
           created.push({ ...defaultElement("wire", 144, y), points: [[144, y], [146.5, y]] });
         }
+        return created;
+      }
+
+      function buildBrakeCircuits() {
+        const page = currentPage();
+        if (!page) return;
+        const created = makeBrakeCircuitElements({
+          row0: Number(qs("#bkRow").value || 2),
+          count: Number(qs("#bkCount").value || 2),
+          contactPrefix: qs("#bkContact").value || "MSB",
+          coilPrefix: qs("#bkCoil").value || "B"
+        });
         page.elements.push(...created);
         setSelection(created.map(el => el.id));
         closeDialog();
         commitHistory("ブレーキ/整流回路を生成しました。");
+        render();
+      }
+
+      // ===== AC電源回路ページ(レール+モータ分岐+ブレーキ+ツイストペアの一括生成) =====
+      function showAcPowerPageDialog() {
+        openDialog("AC電源回路ページ", `
+          <p class="muted">設備標準図枠のページを新規追加し、電源レール・モータ分岐・ブレーキ/整流回路・ツイストペアをまとめて配置します。</p>
+          <div class="row">
+            <div><label>左レール名（カンマ区切り）</label><input id="acRails" value="R01,S01,T01"></div>
+            <div><label>右レール名</label><input id="acRight" value="E"></div>
+          </div>
+          <div class="row">
+            <div><label>モータタグ</label><input id="acMotorTag" value="M1"></div>
+            <div><label>MC接点タグ</label><input id="acContactTag" value="MC1"></div>
+          </div>
+          <div class="row">
+            <div><label>サーマルタグ</label><input id="acThermalTag" value="OL1"></div>
+            <div><label>ブレーキ回路数（0で省略）</label><input id="acBrakeCount" type="number" min="0" max="4" step="1" value="2"></div>
+          </div>
+          <div class="row">
+            <div><label>ツイストペア</label><select id="acTwisted"><option value="on">配置する</option><option value="off">配置しない</option></select></div>
+            <div><label>ペア信号名（カンマ区切り）</label><input id="acTwLabels" value="SIG1,SIG2,SIG3,SIG4"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="acBuildBtn" class="primary">ページ追加</button>
+          </div>`);
+        qs("#acBuildBtn").addEventListener("click", buildAcPowerPage);
+      }
+
+      function buildAcPowerPage() {
+        const rails = String(qs("#acRails")?.value || "R01,S01,T01").split(",").map(s => s.trim()).filter(Boolean);
+        const rightName = String(qs("#acRight")?.value || "E").trim() || "E";
+        const motorTag = qs("#acMotorTag")?.value || "M1";
+        const contactTag = qs("#acContactTag")?.value || "MC1";
+        const thermalTag = qs("#acThermalTag")?.value || "OL1";
+        const brakeCount = Math.max(0, Math.min(4, Math.floor(Number(qs("#acBrakeCount")?.value || 0))));
+        const withTwisted = (qs("#acTwisted")?.value || "on") === "on";
+        const twLabels = String(qs("#acTwLabels")?.value || "").split(",").map(s => s.trim());
+        const page = createPage({
+          name: "AC電源回路",
+          size: "A4",
+          orientation: "portrait",
+          frameVariant: "ladder",
+          title: "AC電源回路"
+        });
+        (rails.length ? rails : ["R01"]).forEach((name, i) => {
+          const x = round(32.5 - 4 * i);
+          page.elements.push(...facilityRailElements(name, x, "+", 22 + 3 * i));
+          page.elements.push(textElement(x - 2, 219 + 3 * i, name, 2.2, 0, 12));
+        });
+        page.elements.push(...facilityRailElements(rightName, 146.5, "-", 22));
+        page.elements.push(textElement(144.5, 219, rightName, 2.2, 0, 12));
+        const motorY = round(LADDER_GRID.top + LADDER_GRID.pitch * 2);
+        const railXs = (rails.length ? rails : ["R01"]).map((_, i) => round(32.5 - 4 * i));
+        for (let i = 0; i < 3; i++) {
+          const railX = railXs[Math.min(i, railXs.length - 1)];
+          const y = round(motorY + 5.6 * i);
+          page.elements.push(defaultElement("junction", railX, y));
+          page.elements.push({ ...defaultElement("wire", railX, y), points: [[railX, y], [46.5, y]] });
+        }
+        page.elements.push(...makeMotorBranchElements({
+          x0: 46.5,
+          y0: motorY,
+          span: 88,
+          tag: motorTag,
+          contactTag,
+          thermalTag
+        }));
+        let nextRow = 7;
+        if (brakeCount > 0) {
+          page.elements.push(...makeBrakeCircuitElements({
+            row0: nextRow,
+            count: brakeCount,
+            contactPrefix: "MSB",
+            coilPrefix: "B"
+          }));
+          nextRow += brakeCount * 2;
+        }
+        if (withTwisted) {
+          const twY = round(LADDER_GRID.top + LADDER_GRID.pitch * (nextRow + 1));
+          page.elements.push(...makeTwistedPairElements({
+            count: Math.max(2, Math.min(8, twLabels.filter(Boolean).length || 4)),
+            pitch: 6.3,
+            x0: 52,
+            y0: twY,
+            span: 60,
+            labels: twLabels
+          }));
+        }
+        state.pages.push(page);
+        state.activePageId = page.id;
+        setSelection([]);
+        closeDialog();
+        commitHistory("AC電源回路ページを追加しました。");
         render();
       }
 
@@ -6671,7 +6812,10 @@
             <thead><tr><th>種別</th><th>メーカー</th><th>品番</th><th>説明</th><th>定格</th><th>a上限</th><th>b上限</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
-          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+          <div class="inline" style="justify-content:flex-end;margin-top:12px;flex-wrap:wrap">
+            <button type="button" id="catalogSampleBtn">サンプル追加</button>
+            <button type="button" id="catalogCsvImportBtn">CSV取込</button>
+            <button type="button" id="catalogCsvExportBtn">CSV出力</button>
             <button type="button" id="addCatalogRowBtn">行追加</button>
             <button type="button" id="applyCatalogBtn" class="primary">適用</button>
           </div>`);
@@ -6679,6 +6823,26 @@
           applyCatalogEdits(false);
           state.catalog.push({});
           showCatalogManager();
+        });
+        qs("#catalogSampleBtn").addEventListener("click", () => {
+          applyCatalogEdits(false);
+          addCatalogSampleItems();
+          showCatalogManager();
+        });
+        qs("#catalogCsvExportBtn").addEventListener("click", () => {
+          applyCatalogEdits(false);
+          exportCatalogCsv();
+        });
+        qs("#catalogCsvImportBtn").addEventListener("click", () => {
+          applyCatalogEdits(false);
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = ".csv,.tsv,.txt";
+          input.addEventListener("change", () => {
+            const file = input.files && input.files[0];
+            if (file) importCatalogCsvFile(file);
+          });
+          input.click();
         });
         qs("#applyCatalogBtn").addEventListener("click", () => applyCatalogEdits(true));
         qsa("[data-cat-delete]", qs("#dialogBody")).forEach(button => {
@@ -6688,6 +6852,106 @@
             showCatalogManager();
           });
         });
+      }
+
+      const CATALOG_SAMPLE_ITEMS = [
+        { family: "CR", manufacturer: "汎用", catalog: "RY-DC24", description: "補助リレー DC24V", rating: "DC24V", maxNO: 4, maxNC: 4 },
+        { family: "CR", manufacturer: "汎用", catalog: "TM-DC24", description: "タイマリレー DC24V", rating: "DC24V", maxNO: 2, maxNC: 2 },
+        { family: "CB", manufacturer: "汎用", catalog: "CP-2P05", description: "サーキットプロテクタ 2P", rating: "5A" },
+        { family: "F", manufacturer: "汎用", catalog: "FUSE-05", description: "管ヒューズ", rating: "5A" },
+        { family: "PL", manufacturer: "汎用", catalog: "LED-22", description: "LED表示灯", rating: "DC24V" },
+        { family: "PB", manufacturer: "汎用", catalog: "PB-22", description: "押しボタンスイッチ", rating: "" },
+        { family: "SOL", manufacturer: "汎用", catalog: "SV-DC24", description: "電磁弁", rating: "DC24V" },
+        { family: "M", manufacturer: "汎用", catalog: "IM-04", description: "三相誘導モータ 0.4kW", rating: "AC200V" }
+      ];
+
+      function addCatalogSampleItems() {
+        if (!Array.isArray(state.catalog)) state.catalog = [];
+        let added = 0;
+        CATALOG_SAMPLE_ITEMS.forEach(sample => {
+          if (state.catalog.some(item => item.catalog === sample.catalog)) return;
+          state.catalog.push({ ...sample });
+          added++;
+        });
+        setStatus(added ? `サンプル品目を${added}件追加しました。` : "サンプル品目は追加済みです。");
+      }
+
+      function exportCatalogCsv() {
+        const header = ["family", "manufacturer", "catalog", "description", "rating", "maxNO", "maxNC"];
+        const lines = [header.join(",")];
+        (state.catalog || []).forEach(item => {
+          lines.push(header.map(key => {
+            const value = item[key] == null ? "" : String(item[key]);
+            return /[",\n]/.test(value) ? '"' + value.replace(/"/g, '""') + '"' : value;
+          }).join(","));
+        });
+        download("catalog.csv", "\uFEFF" + lines.join("\r\n"), "text/csv");
+        setStatus("カタログCSVを書き出しました。");
+      }
+
+      function normalizeCatalogCsvRows(rows) {
+        if (!rows.length) return [];
+        const aliases = {
+          family: ["family", "種別", "ファミリ", "接頭辞"],
+          manufacturer: ["manufacturer", "メーカー", "メーカ", "maker"],
+          catalog: ["catalog", "品番", "型式", "型番", "partno"],
+          description: ["description", "説明", "名称", "品名"],
+          rating: ["rating", "定格", "仕様"],
+          maxNO: ["maxno", "a上限", "no上限"],
+          maxNC: ["maxnc", "b上限", "nc上限"]
+        };
+        const headerCells = rows[0].map(cell => cell.toLowerCase().replace(/\s+/g, ""));
+        const columns = {};
+        Object.entries(aliases).forEach(([key, names]) => {
+          const index = headerCells.findIndex(cell => names.includes(cell));
+          if (index >= 0) columns[key] = index;
+        });
+        const hasHeader = columns.catalog !== undefined || columns.description !== undefined;
+        const dataRows = hasHeader ? rows.slice(1) : rows;
+        if (!hasHeader) {
+          ["family", "manufacturer", "catalog", "description", "rating", "maxNO", "maxNC"].forEach((key, i) => { columns[key] = i; });
+        }
+        return dataRows.map(cells => {
+          const pick = key => (columns[key] === undefined ? "" : (cells[columns[key]] || "").trim());
+          const numeric = value => (value === "" ? undefined : Number(value));
+          return {
+            family: pick("family"),
+            manufacturer: pick("manufacturer"),
+            catalog: pick("catalog"),
+            description: pick("description"),
+            rating: pick("rating"),
+            maxNO: numeric(pick("maxNO")),
+            maxNC: numeric(pick("maxNC"))
+          };
+        }).filter(item => item.catalog || item.description);
+      }
+
+      function importCatalogCsvFile(file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const items = normalizeCatalogCsvRows(parseDelimitedRows(String(reader.result || "")));
+          if (!items.length) {
+            setStatus("カタログCSVに取り込める行がありません。ヘッダ（品番/説明など）を確認してください。");
+            return;
+          }
+          if (!Array.isArray(state.catalog)) state.catalog = [];
+          let added = 0;
+          let updated = 0;
+          items.forEach(item => {
+            const existing = item.catalog ? state.catalog.find(row => row.catalog === item.catalog) : null;
+            if (existing) {
+              Object.assign(existing, item);
+              updated++;
+            } else {
+              state.catalog.push(item);
+              added++;
+            }
+          });
+          commitHistory("カタログCSVを取り込みました。");
+          setStatus(`カタログCSVを取り込みました（追加${added}件・更新${updated}件）。`);
+          showCatalogManager();
+        };
+        reader.readAsText(file);
       }
 
       function applyCatalogEdits(close) {
@@ -11011,6 +11275,7 @@ anchor 20 6</textarea>
         });
         const TEMPLATE_ACTIONS = {
           facilityLadder: showFacilityLadderDialog,
+          acPower: showAcPowerPageDialog,
           plcInput: showPlcInputPageDialog,
           terminalSheet: addSampleTerminalPage,
           interlock: showInterlockPageDialog,
