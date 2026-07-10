@@ -1017,6 +1017,7 @@
         { type: "mechanicalLink", label: "連動破線", icon: "mechanicalLink" },
         { type: "rect", label: "矩形", icon: "rect" },
         { type: "circle", label: "円", icon: "circle" },
+        { type: "arc", label: "円弧", icon: "arc" },
         { type: "cloud", label: "雲マーク", icon: "cloud" },
         { type: "installationBox", label: "設備枠", icon: "area" },
         { type: "locationBox", label: "場所枠", icon: "area" },
@@ -1768,6 +1769,7 @@
           mechanicalLink: `<svg ${common}><path ${stroke} stroke-dasharray="5 4" d="M40 6v32"/><path ${thin} d="M28 14h24M28 30h24"/></svg>`,
           rect: `<svg ${common}><rect x="18" y="11" width="44" height="24" ${stroke}/></svg>`,
           circle: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
+          arc: `<svg ${common}><path d="M14 34 A26 26 0 0 1 66 34" ${stroke} fill="none"/></svg>`,
           cloud: `<svg ${common}><path ${thin} d="M18 12 A6 6 0 0 0 30 12 A6 6 0 0 0 42 12 A6 6 0 0 0 54 12 A6 6 0 0 0 62 16 A6 6 0 0 0 62 30 A6 6 0 0 0 54 34 A6 6 0 0 0 42 34 A6 6 0 0 0 30 34 A6 6 0 0 0 18 34 A6 6 0 0 0 14 26 A6 6 0 0 0 18 12 Z"/></svg>`,
           area: `<svg ${common}><rect x="12" y="8" width="56" height="30" ${thin} stroke-dasharray="5 4"/><path ${thin} d="M12 17h56"/><path ${stroke} d="M20 13h18"/></svg>`,
           terminal: `<svg ${common}><path ${stroke} d="M8 22h24M48 22h24"/><circle cx="40" cy="22" r="8" ${thin}/></svg>`,
@@ -2370,6 +2372,13 @@
                 fill: "none", stroke: "#000", "stroke-opacity": 0,
                 "stroke-width": 2.4, "pointer-events": "stroke"
               }));
+            } else if (element.type === "arc") {
+              // 弧の曲線に沿ったヒット(外接箱全体だと下の要素が選べないため)
+              g.appendChild(svgEl("path", {
+                d: ellipseArcPath(hitW / 2, hitH / 2, hitW / 2, hitH / 2, Number(element.a0 ?? 0), Number(element.a1 ?? 90)),
+                fill: "none", stroke: "#000", "stroke-opacity": 0,
+                "stroke-width": 2.4, "pointer-events": "stroke"
+              }));
             } else {
               g.appendChild(svgEl("rect", {
                 x: -0.8, y: -0.8, width: hitW + 1.6, height: hitH + 1.6,
@@ -2389,6 +2398,7 @@
         if (element.type === "line" || element.type === "mechanicalLink") drawLineElement(g, element, stroke);
         if (element.type === "rect") drawRectElement(g, element, stroke);
         if (element.type === "circle") drawCircleElement(g, element, stroke);
+        if (element.type === "arc") drawArcElement(g, element, stroke);
         if (element.type === "cloud") drawCloudElement(g, element, stroke);
         if (element.type === "installationBox" || element.type === "locationBox") drawAreaBox(g, element, stroke);
         if (element.type === "terminal") drawTerminal(g, element, stroke);
@@ -2708,6 +2718,36 @@
           fill: element.fill || "none"
         }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
+      }
+
+      // 楕円弧パス(中心cx,cy・半径rx,ry・角度a0→a1度)。角度は0=右・時計回り(svgArcPathと同規約)。
+      // 円弧はrx==ryで使う。a0==a1(または360以上の掃引)は全周として2本の半弧で描く。
+      function ellipseArcPath(cx, cy, rx, ry, a0, a1) {
+        const rad = d => d * Math.PI / 180;
+        const px = a => round(cx + rx * Math.cos(rad(a)));
+        const py = a => round(cy + ry * Math.sin(rad(a)));
+        let sweep = ((a1 - a0) % 360 + 360) % 360;
+        if (sweep < .01) sweep = 360;
+        if (sweep >= 360) {
+          const mid = a0 + 180;
+          return "M " + px(a0) + " " + py(a0)
+            + " A " + rx + " " + ry + " 0 0 1 " + px(mid) + " " + py(mid)
+            + " A " + rx + " " + ry + " 0 0 1 " + px(a0) + " " + py(a0);
+        }
+        const large = sweep > 180 ? 1 : 0;
+        return "M " + px(a0) + " " + py(a0) + " A " + rx + " " + ry + " 0 " + large + " 1 " + px(a1) + " " + py(a1);
+      }
+
+      // 円弧・楕円弧要素の描画。x/y/w/h=外接楕円の箱、a0/a1=開始/終了角(度)。
+      function drawArcElement(g, element, stroke) {
+        const w = Number(element.w || 16);
+        const h = Number(element.h || 16);
+        g.appendChild(svgEl("path", {
+          d: ellipseArcPath(w / 2, h / 2, w / 2, h / 2, Number(element.a0 ?? 0), Number(element.a1 ?? 90)),
+          class: "symbol-line",
+          stroke,
+          fill: "none"
+        }));
       }
 
       // 設備枠/場所枠(破線枠+名称帯)の描画。枠内部品への属性一括適用の対象になる。
@@ -6062,6 +6102,15 @@
             <p class="muted">ギャップ数: ${gapCount}</p>
           `;
         }
+        if (element.type === "arc") {
+          return `
+            <div class="row" style="margin-top:8px">
+              <div><label>開始角（0=右・時計回り）</label><input data-bind="a0" data-kind="number" type="number" step="5" value="${round(Number(element.a0 ?? 0))}"></div>
+              <div><label>終了角（度）</label><input data-bind="a1" data-kind="number" type="number" step="5" value="${round(Number(element.a1 ?? 90))}"></div>
+            </div>
+            <p class="muted">幅=高さなら円弧、異なれば楕円弧になります。開始角=終了角で全周(楕円)です。</p>
+          `;
+        }
         if (element.type === "underlayImage") {
           const crop = element.cropPreset || "full";
           return `
@@ -6609,6 +6658,7 @@
           mechanicalLink: { id: uid("el"), type: "mechanicalLink", points: [[x, y], [x, y + 30]], label: "", strokeWidth: .26, dash: "1.2 1.4", stroke: state.settings.stroke, layer: "symbols" },
           rect: { ...base, w: 34, h: 22, label: "" },
           circle: { ...base, w: 22, h: 22, label: "" },
+          arc: { ...base, w: 16, h: 16, a0: 180, a1: 270, label: "" },
           cloud: { ...base, w: 40, h: 20, label: "" },
           underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
@@ -6680,7 +6730,7 @@
       function defaultLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
-        if (type === "rect" || type === "circle" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return state.settings.currentLayer || "layout";
+        if (type === "rect" || type === "circle" || type === "arc" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return state.settings.currentLayer || "layout";
         if (type === "mechanicalLink") return state.settings.currentLayer || "symbols";
         return state.settings.currentLayer || "symbols";
       }
@@ -6689,7 +6739,7 @@
       function inferredLayerFor(type) {
         if (type === "wire") return "wires";
         if (type === "text" || type === "table") return "notes";
-        if (type === "rect" || type === "circle" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return "layout";
+        if (type === "rect" || type === "circle" || type === "arc" || type === "line" || type === "underlayImage" || type === "installationBox" || type === "locationBox") return "layout";
         if (type === "mechanicalLink") return "symbols";
         return "symbols";
       }
@@ -9987,6 +10037,13 @@
           } else {
             const box = elementBounds(element);
             element.x = round(axis * 2 - box.x - box.w);
+            if (element.type === "arc") {
+              // 左右反転で弧の向きも反転(θ→180-θ、掃引の時計回りを保つため入替)
+              const a0 = Number(element.a0 ?? 0);
+              const a1 = Number(element.a1 ?? 90);
+              element.a0 = round(((180 - a1) % 360 + 360) % 360);
+              element.a1 = round(((180 - a0) % 360 + 360) % 360);
+            }
           }
         });
         commitHistory("左右ミラーしました。");
@@ -12466,6 +12523,12 @@
             templates.push({ ...base, type: "rect", x: nums[0], y: nums[1], w: nums[2], h: nums[3] });
           } else if (cmd === "circle" && nums.length >= 3 && nums.slice(0, 3).every(Number.isFinite)) {
             templates.push({ ...base, type: "circle", x: nums[0] - nums[2], y: nums[1] - nums[2], w: nums[2] * 2, h: nums[2] * 2 });
+          } else if (cmd === "ellipse" && nums.length >= 4 && nums.slice(0, 4).every(Number.isFinite)) {
+            templates.push({ ...base, type: "circle", x: nums[0] - nums[2], y: nums[1] - nums[3], w: nums[2] * 2, h: nums[3] * 2 });
+          } else if (cmd === "arc" && nums.length >= 5 && nums.slice(0, 5).every(Number.isFinite)) {
+            templates.push({ ...base, type: "arc", x: nums[0] - nums[2], y: nums[1] - nums[2], w: nums[2] * 2, h: nums[2] * 2, a0: nums[3], a1: nums[4] });
+          } else if (cmd === "earc" && nums.length >= 6 && nums.slice(0, 6).every(Number.isFinite)) {
+            templates.push({ ...base, type: "arc", x: nums[0] - nums[2], y: nums[1] - nums[3], w: nums[2] * 2, h: nums[3] * 2, a0: nums[4], a1: nums[5] });
           } else if (cmd === "text" && nums.length >= 3 && Number.isFinite(nums[0]) && Number.isFinite(nums[1]) && parts.length >= 5) {
             templates.push({ ...base, type: "text", x: nums[0], y: nums[1], w: 24, h: 5, text: parts.slice(4).join(" "), fontSize: Number.isFinite(nums[2]) && nums[2] > 0 ? nums[2] : 2.5, layer: "notes" });
           } else if (cmd === "anchor" && nums.length >= 2 && nums.slice(0, 2).every(Number.isFinite)) {
@@ -12534,9 +12597,24 @@
             lines.push(["line", n(template.points[0][0]), n(template.points[0][1]), n(template.points[1][0]), n(template.points[1][1])].join(" "));
           } else if (template.type === "rect") {
             lines.push(["rect", n(template.x), n(template.y), n(template.w), n(template.h)].join(" "));
-          } else if (template.type === "circle" && Math.abs(Number(template.w) - Number(template.h)) < .01) {
-            const r = Number(template.w || 0) / 2;
-            lines.push(["circle", n(Number(template.x) + r), n(Number(template.y) + r), n(r)].join(" "));
+          } else if (template.type === "circle") {
+            const rx = Number(template.w || 0) / 2;
+            const ry = Number(template.h || 0) / 2;
+            if (Math.abs(rx - ry) < .005) {
+              lines.push(["circle", n(Number(template.x) + rx), n(Number(template.y) + ry), n(rx)].join(" "));
+            } else {
+              lines.push(["ellipse", n(Number(template.x) + rx), n(Number(template.y) + ry), n(rx), n(ry)].join(" "));
+            }
+          } else if (template.type === "arc") {
+            const rx = Number(template.w || 0) / 2;
+            const ry = Number(template.h || 0) / 2;
+            const cx = Number(template.x) + rx;
+            const cy = Number(template.y) + ry;
+            if (Math.abs(rx - ry) < .005) {
+              lines.push(["arc", n(cx), n(cy), n(rx), n(template.a0 ?? 0), n(template.a1 ?? 90)].join(" "));
+            } else {
+              lines.push(["earc", n(cx), n(cy), n(rx), n(ry), n(template.a0 ?? 0), n(template.a1 ?? 90)].join(" "));
+            }
           } else if (template.type === "text") {
             lines.push(["text", n(template.x), n(template.y), n(template.fontSize || 2.5), template.text || ""].join(" "));
           } else if (template.type === "terminal") {
@@ -12565,6 +12643,8 @@
             <button type="button" data-sb-tool="line">直線</button>
             <button type="button" data-sb-tool="rect">矩形</button>
             <button type="button" data-sb-tool="circle">円</button>
+            <button type="button" data-sb-tool="ellipse">楕円</button>
+            <button type="button" data-sb-tool="arc">円弧</button>
             <button type="button" data-sb-tool="text">文字</button>
             <button type="button" data-sb-tool="anchor">接続点</button>
             <button type="button" data-sb-tool="delete">削除</button>
@@ -12574,13 +12654,17 @@
             <input id="sbTextContent" value="文字" style="width:90px">
           </div>
           <svg id="sbCanvas" viewBox="-2 -2 28 20" style="display:block;width:100%;max-width:660px;aspect-ratio:28/20;background:#fff;border:1px solid #c9d2dc;border-radius:4px;cursor:crosshair;touch-action:none"></svg>
-          <p class="muted" style="margin:4px 0 8px;font-size:11px">直線/矩形/円=ドラッグで作図 ／ 文字・接続点=クリックで配置 ／ 選択ツール=クリックで選択・ドラッグで移動、Deleteキーで削除 ／ 赤丸=配線が吸着する接続点</p>
+          <p class="muted" style="margin:4px 0 8px;font-size:11px">直線/矩形/円/楕円=ドラッグ、円弧=中心から弧の始点へドラッグ(90°で作成) ／ 文字・接続点=クリック ／
+          選択ツール=クリックで選択・ドラッグで移動、<b>青□ハンドル=変形</b>(端点・角・半径)、<b>橙○ハンドル=弧の開始/終了角</b>(5°刻み)。
+          円は半径ハンドルの片方だけ動かすと楕円に、円弧も同様に楕円弧になります ／ 文字は選択して「文字内容」欄で書換え ／ Deleteキーで削除 ／ 赤丸=配線が吸着する接続点</p>
           <label>部品名</label>
           <input id="sbName" value="${escapeAttr(editing ? editing.label || "" : "新しい部品")}">
           <details style="margin-top:6px">
             <summary class="muted">スクリプト定義（上のキャンバスと同期。直接編集も可）</summary>
             <p class="muted" style="font-size:11px">1行に1プリミティブ（座標はmm・左上原点）:
             <code>line x1 y1 x2 y2</code> ／ <code>rect x y 幅 高</code> ／ <code>circle cx cy r</code> ／
+            <code>ellipse cx cy rx ry</code> ／ <code>arc cx cy r 開始角 終了角</code> ／
+            <code>earc cx cy rx ry 開始角 終了角</code>（角度は0=右・時計回り、開始=終了で全周） ／
             <code>text x y サイズ 文字列</code> ／ <code>anchor x y</code>（接続点） ／ <code>#</code>=コメント</p>
             <textarea id="sbScript" style="min-height:120px;width:100%;font-family:var(--mono)">${escapeHtml(initialScript)}</textarea>
             <div class="inline" style="flex-wrap:wrap;margin-top:6px">
@@ -12588,6 +12672,9 @@
               <button type="button" data-sb-snippet="line 0 0 10 0">直線</button>
               <button type="button" data-sb-snippet="rect 0 0 12 8">矩形</button>
               <button type="button" data-sb-snippet="circle 6 6 4">円</button>
+              <button type="button" data-sb-snippet="ellipse 8 5 6 3">楕円</button>
+              <button type="button" data-sb-snippet="arc 8 8 6 180 270">円弧</button>
+              <button type="button" data-sb-snippet="earc 8 8 6 3 180 360">楕円弧</button>
               <button type="button" data-sb-snippet="text 0 0 2.5 文字">文字</button>
               <button type="button" data-sb-snippet="anchor 0 0">接続点</button>
             </div>
@@ -12652,6 +12739,39 @@
           }
           return -1;
         };
+        // 選択プリミティブの変形ハンドル一覧。a0/a1=弧の角度ハンドル(橙)、他=寸法/端点(青)。
+        const sbHandlesFor = t => {
+          if (!t) return [];
+          if (t.type === "line") {
+            return [
+              { id: "p0", x: t.points[0][0], y: t.points[0][1] },
+              { id: "p1", x: t.points[1][0], y: t.points[1][1] }
+            ];
+          }
+          if (t.type === "rect") {
+            const x = Number(t.x || 0), y = Number(t.y || 0), w = Number(t.w || 0), h = Number(t.h || 0);
+            return [
+              { id: "nw", x, y }, { id: "ne", x: x + w, y },
+              { id: "sw", x, y: y + h }, { id: "se", x: x + w, y: y + h }
+            ];
+          }
+          if (t.type === "circle" || t.type === "arc") {
+            const rx = Number(t.w || 0) / 2, ry = Number(t.h || 0) / 2;
+            const cx = Number(t.x || 0) + rx, cy = Number(t.y || 0) + ry;
+            const handles = [];
+            if (t.type === "arc") {
+              const rad = d => d * Math.PI / 180;
+              const a0 = Number(t.a0 ?? 0), a1 = Number(t.a1 ?? 90);
+              handles.push(
+                { id: "a0", x: cx + rx * Math.cos(rad(a0)), y: cy + ry * Math.sin(rad(a0)) },
+                { id: "a1", x: cx + rx * Math.cos(rad(a1)), y: cy + ry * Math.sin(rad(a1)) }
+              );
+            }
+            handles.push({ id: "rx", x: cx + rx, y: cy }, { id: "ry", x: cx, y: cy + ry });
+            return handles;
+          }
+          return [];
+        };
         const sbRenderCanvas = ghost => {
           if (!sbSvg) return;
           sbSvg.innerHTML = "";
@@ -12672,10 +12792,17 @@
             if (t.type !== "terminal") return;
             sbSvg.appendChild(svgEl("circle", { cx: Number(t.x) + 0.9, cy: Number(t.y) + 0.9, r: 1.3, fill: "none", stroke: "#d23", "stroke-width": .18, "stroke-dasharray": ".5 .35", "pointer-events": "none" }));
           });
-          // 選択枠
+          // 選択枠+変形ハンドル(青□=寸法/端点、橙○=弧の角度)
           if (sbSel >= 0 && sbTemplates[sbSel]) {
             const b = elementBounds({ ...sbTemplates[sbSel], x: sbTemplates[sbSel].x || 0, y: sbTemplates[sbSel].y || 0 });
             if (b) sbSvg.appendChild(svgEl("rect", { x: b.x - .5, y: b.y - .5, width: b.w + 1, height: b.h + 1, fill: "none", stroke: "#2563eb", "stroke-width": .15, "stroke-dasharray": ".8 .5", "pointer-events": "none" }));
+            sbHandlesFor(sbTemplates[sbSel]).forEach(hd => {
+              if (hd.id === "a0" || hd.id === "a1") {
+                sbSvg.appendChild(svgEl("circle", { cx: hd.x, cy: hd.y, r: .55, fill: "#f59e0b", stroke: "#b45309", "stroke-width": .12, "pointer-events": "none" }));
+              } else {
+                sbSvg.appendChild(svgEl("rect", { x: hd.x - .45, y: hd.y - .45, width: .9, height: .9, fill: "#2563eb", stroke: "#1e40af", "stroke-width": .12, "pointer-events": "none" }));
+              }
+            });
           }
           // ドラッグ中ゴースト
           if (ghost) {
@@ -12683,6 +12810,12 @@
             if (ghost.kind === "line") sbSvg.appendChild(svgEl("line", { ...attrs, x1: ghost.a[0], y1: ghost.a[1], x2: ghost.b[0], y2: ghost.b[1] }));
             if (ghost.kind === "rect") sbSvg.appendChild(svgEl("rect", { ...attrs, x: Math.min(ghost.a[0], ghost.b[0]), y: Math.min(ghost.a[1], ghost.b[1]), width: Math.abs(ghost.b[0] - ghost.a[0]), height: Math.abs(ghost.b[1] - ghost.a[1]) }));
             if (ghost.kind === "circle") sbSvg.appendChild(svgEl("circle", { ...attrs, cx: ghost.a[0], cy: ghost.a[1], r: Math.max(.3, Math.hypot(ghost.b[0] - ghost.a[0], ghost.b[1] - ghost.a[1])) }));
+            if (ghost.kind === "ellipse") sbSvg.appendChild(svgEl("ellipse", { ...attrs, cx: ghost.a[0], cy: ghost.a[1], rx: Math.max(.3, Math.abs(ghost.b[0] - ghost.a[0])), ry: Math.max(.3, Math.abs(ghost.b[1] - ghost.a[1])) }));
+            if (ghost.kind === "arc") {
+              const r = Math.max(.3, Math.hypot(ghost.b[0] - ghost.a[0], ghost.b[1] - ghost.a[1]));
+              sbSvg.appendChild(svgEl("circle", { ...attrs, "stroke-dasharray": ".6 .5", cx: ghost.a[0], cy: ghost.a[1], r }));
+              sbSvg.appendChild(svgEl("line", { ...attrs, x1: ghost.a[0], y1: ghost.a[1], x2: ghost.b[0], y2: ghost.b[1] }));
+            }
           }
         };
         // ツール切替
@@ -12722,13 +12855,23 @@
             return;
           }
           if (sbTool === "select") {
+            // 変形ハンドルを優先ヒット(選択中のみ)
+            if (sbSel >= 0 && sbTemplates[sbSel]) {
+              const handle = sbHandlesFor(sbTemplates[sbSel]).find(hd => Math.hypot(rawX - hd.x, rawY - hd.y) < .9);
+              if (handle) {
+                sbDrag = { mode: "reshape", handle: handle.id, original: deepClone(sbTemplates[sbSel]) };
+                return;
+              }
+            }
             const hit = sbHitAt(rawX, rawY);
             sbSel = hit;
+            // 文字を選択したら「文字内容」欄へ内容を反映(そのまま書き換え可能)
+            if (hit >= 0 && sbTemplates[hit].type === "text") qs("#sbTextContent").value = sbTemplates[hit].text || "";
             if (hit >= 0) sbDrag = { mode: "move", start: [x, y], original: deepClone(sbTemplates[hit]) };
             sbRenderCanvas();
             return;
           }
-          // line / rect / circle: ドラッグ開始
+          // line / rect / circle / ellipse / arc: ドラッグ開始
           sbDrag = { mode: "draw", start: [x, y] };
         });
         sbSvg.addEventListener("pointermove", event => {
@@ -12752,6 +12895,49 @@
               target.y = round(Number(original.y || 0) + dy);
             }
             sbRenderCanvas();
+            return;
+          }
+          if (sbDrag.mode === "reshape" && sbSel >= 0) {
+            const target = sbTemplates[sbSel];
+            const original = sbDrag.original;
+            const handle = sbDrag.handle;
+            if (target.type === "line") {
+              target.points = handle === "p0"
+                ? [[x, y], [original.points[1][0], original.points[1][1]]]
+                : [[original.points[0][0], original.points[0][1]], [x, y]];
+            } else if (target.type === "rect") {
+              // 反対側の角を固定してリサイズ
+              const fx = handle === "nw" || handle === "sw" ? Number(original.x) + Number(original.w) : Number(original.x);
+              const fy = handle === "nw" || handle === "ne" ? Number(original.y) + Number(original.h) : Number(original.y);
+              target.x = round(Math.min(x, fx));
+              target.y = round(Math.min(y, fy));
+              target.w = round(Math.max(sbSnapStep(), Math.abs(x - fx)));
+              target.h = round(Math.max(sbSnapStep(), Math.abs(y - fy)));
+            } else if (target.type === "circle" || target.type === "arc") {
+              const orx = Number(original.w) / 2;
+              const ory = Number(original.h) / 2;
+              const cx = Number(original.x) + orx;
+              const cy = Number(original.y) + ory;
+              if (handle === "rx") {
+                const rx = Math.max(sbSnapStep() / 2, Math.abs(x - cx));
+                target.x = round(cx - rx);
+                target.w = round(rx * 2);
+              } else if (handle === "ry") {
+                const ry = Math.max(sbSnapStep() / 2, Math.abs(y - cy));
+                target.y = round(cy - ry);
+                target.h = round(ry * 2);
+              } else if (handle === "a0" || handle === "a1") {
+                // 楕円パラメータ角(5°刻み)。rx/ryで正規化してから角度を取る
+                const rx = Number(target.w) / 2 || .1;
+                const ry = Number(target.h) / 2 || .1;
+                const ccx = Number(target.x) + rx;
+                const ccy = Number(target.y) + ry;
+                let angle = Math.atan2((rawY - ccy) / ry, (rawX - ccx) / rx) * 180 / Math.PI;
+                angle = Math.round(angle / 5) * 5;
+                target[handle] = ((angle % 360) + 360) % 360;
+              }
+            }
+            sbRenderCanvas();
           }
         });
         const sbFinishDrag = event => {
@@ -12761,7 +12947,7 @@
           const [rawX, rawY] = sbPointOf(event);
           const x = sbSnapV(rawX);
           const y = sbSnapV(rawY);
-          if (drag.mode === "move") {
+          if (drag.mode === "move" || drag.mode === "reshape") {
             sbSyncScript();
             return;
           }
@@ -12778,6 +12964,16 @@
           } else if (sbTool === "circle") {
             const r = round(Math.max(sbSnapStep(), Math.hypot(x - ax, y - ay)));
             sbTemplates.push({ ...base, type: "circle", x: ax - r, y: ay - r, w: r * 2, h: r * 2 });
+          } else if (sbTool === "ellipse") {
+            const rx = round(Math.max(sbSnapStep() / 2, Math.abs(x - ax)));
+            const ry = round(Math.max(sbSnapStep() / 2, Math.abs(y - ay)));
+            sbTemplates.push({ ...base, type: "circle", x: ax - rx, y: ay - ry, w: rx * 2, h: ry * 2 });
+          } else if (sbTool === "arc") {
+            // 中心=ドラッグ始点、半径=距離、開始角=離した方向(5°刻み)、掃引90°で作成→ハンドルで調整
+            const r = round(Math.max(sbSnapStep(), Math.hypot(x - ax, y - ay)));
+            let a0 = Math.atan2(rawY - ay, rawX - ax) * 180 / Math.PI;
+            a0 = ((Math.round(a0 / 5) * 5) % 360 + 360) % 360;
+            sbTemplates.push({ ...base, type: "arc", x: ax - r, y: ay - r, w: r * 2, h: r * 2, a0, a1: (a0 + 90) % 360 });
           }
           sbSel = sbTemplates.length - 1;
           sbSyncScript();
@@ -12795,6 +12991,18 @@
             sbSel = -1;
             sbSyncScript();
           }
+        });
+        // 「文字内容」欄: 文字プリミティブ選択中は内容をその場で書き換えられる
+        qs("#sbTextContent").addEventListener("input", () => {
+          const target = sbSel >= 0 ? sbTemplates[sbSel] : null;
+          if (target && target.type === "text") {
+            target.text = qs("#sbTextContent").value || "文字";
+            sbRenderCanvas();
+          }
+        });
+        qs("#sbTextContent").addEventListener("change", () => {
+          const target = sbSel >= 0 ? sbTemplates[sbSel] : null;
+          if (target && target.type === "text") sbSyncScript();
         });
         // スクリプト手編集→キャンバス反映
         qs("#sbScript").addEventListener("input", () => {
@@ -13821,6 +14029,18 @@
           dxfVisibleAttributes(out, page, element);
           return;
         }
+        if (element.type === "arc") {
+          const w = Number(element.w || 16);
+          const h = Number(element.h || 16);
+          const a0 = Number(element.a0 ?? 0);
+          const a1 = Number(element.a1 ?? 90);
+          if (Math.abs(w - h) < .01) {
+            dxfArcLocal(out, page, "GEOMETRY", element, w / 2, h / 2, w / 2, a0, a1);
+          } else {
+            dxfEllipseArcApproxLocal(out, page, "GEOMETRY", element, w / 2, h / 2, w / 2, h / 2, a0, a1);
+          }
+          return;
+        }
         if (element.type === "cloud") {
           const w = Number(element.w || 40);
           const h = Number(element.h || 20);
@@ -14657,6 +14877,20 @@
           return;
         }
         dxfCircleLocal(out, page, layer, element, cx, cy, r);
+      }
+
+      // 楕円弧を折れ線近似でDXF出力(角度規約はellipseArcPathと同一)。
+      function dxfEllipseArcApproxLocal(out, page, layer, element, cx, cy, rx, ry, a0, a1) {
+        let sweep = ((a1 - a0) % 360 + 360) % 360;
+        if (sweep < .01) sweep = 360;
+        const steps = Math.max(8, Math.ceil(sweep / 7.5));
+        let prev = null;
+        for (let i = 0; i <= steps; i++) {
+          const angle = (a0 + sweep * i / steps) * Math.PI / 180;
+          const point = [cx + Math.cos(angle) * rx, cy + Math.sin(angle) * ry];
+          if (prev) dxfLineLocal(out, page, layer, element, prev[0], prev[1], point[0], point[1]);
+          prev = point;
+        }
       }
 
       // 楕円を折れ線近似でDXF出力。
