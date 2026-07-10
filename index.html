@@ -963,6 +963,8 @@
         { type: "terminalSheet", label: "端子配線セット", icon: "sheet" },
         { type: "contactNO", label: "a接点", icon: "contactNO" },
         { type: "contactNC", label: "b接点", icon: "contactNC" },
+        { type: "timerContactNO", label: "限時a接点", icon: "contactNO" },
+        { type: "timerContactNC", label: "限時b接点", icon: "contactNC" },
         { type: "contactBlock", label: "接点ブロック", icon: "contactBlock" },
         { type: "pushButton", label: "押しボタン", icon: "pushButton" },
         { type: "pushButtonEmergency", label: "非常停止ボタン", icon: "pushButton" },
@@ -974,6 +976,7 @@
         { type: "lamp", label: "ランプ", icon: "lamp" },
         { type: "buzzer", label: "ブザー", icon: "buzzer" },
         { type: "meter", label: "計器(V/A)", icon: "coil" },
+        { type: "bell", label: "ベル", icon: "buzzer" },
         { type: "solenoidValve", label: "ソレノイド弁", icon: "solenoidValve" },
         { type: "sensor", label: "センサ", icon: "sensor" },
         { type: "powerSupply", label: "電源", icon: "powerSupply" },
@@ -983,12 +986,18 @@
         { type: "fan", label: "ファン", icon: "fan" },
         { type: "inductor", label: "リアクトル", icon: "coil" },
         { type: "heater", label: "ヒータ", icon: "resistor" },
+        { type: "battery", label: "バッテリ", icon: "power" },
+        { type: "rectifierBox", label: "整流器", icon: "diode" },
+        { type: "arrester", label: "避雷器", icon: "diode" },
+        { type: "currentTransformer", label: "変流器(CT)", icon: "coil" },
         { type: "resistor", label: "抵抗", icon: "resistor" },
         { type: "capacitor", label: "コンデンサ", icon: "capacitor" },
         { type: "diode", label: "ダイオード", icon: "diode" },
         { type: "thermalRelay", label: "サーマルリレー", icon: "thermalRelay" },
         { type: "thermalElement", label: "サーマル素子", icon: "thermalElement" },
         { type: "pressureSwitch", label: "圧力スイッチ", icon: "pressureSwitch" },
+        { type: "floatSwitch", label: "フロートスイッチ", icon: "limitSwitch" },
+        { type: "thermoSwitch", label: "温度スイッチ", icon: "limitSwitch" },
         { type: "deviceBox", label: "機器箱", icon: "box" },
         { type: "plcBlock", label: "PLC/I-O", icon: "plc" },
         { type: "connector", label: "コネクタ", icon: "connector" },
@@ -1023,6 +1032,15 @@
         meter: "",
         inductor: "L",
         heater: "H",
+        timerContactNO: "TLR",
+        timerContactNC: "TLR",
+        floatSwitch: "FS",
+        thermoSwitch: "TS",
+        bell: "BL",
+        battery: "BT",
+        rectifierBox: "REC",
+        currentTransformer: "CT",
+        arrester: "AR",
         ground: "E",
         motor: "M",
         fan: "FAN",
@@ -1057,9 +1075,9 @@
       // 要素種別→パレットカテゴリの対応表。未登録はdevice扱い。
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
-        contactNO: "contact", contactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact",
-        coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil",
-        powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power", inductor: "power", heater: "power",
+        contactNO: "contact", contactNC: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact",
+        coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil", bell: "coil",
+        powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power", inductor: "power", heater: "power", battery: "power", rectifierBox: "power", arrester: "power", currentTransformer: "power",
         fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect",
         terminal: "terminal", terminalStrip: "terminal", terminalSheet: "terminal", connector: "terminal", junction: "terminal", cableMarker: "terminal", cableBundle: "terminal", terminalBox: "terminal",
         deviceBox: "device", plcBlock: "device", installationBox: "device", locationBox: "device", table: "device",
@@ -3264,7 +3282,7 @@
 
       // クロス参照で「子(接点)」として扱う種別集合。
       function contactChildTypes() {
-        return new Set(["contactNO", "contactNC", "contactBlock", "thermalRelay"]);
+        return new Set(["contactNO", "contactNC", "timerContactNO", "timerContactNC", "contactBlock", "thermalRelay"]);
       }
 
       // 全ページを走査してタグ→コイル/接点の対応表を構築(1 render中は使い回すキャッシュ)。
@@ -3284,7 +3302,7 @@
                 page,
                 element,
                 address: elementAddress(page, element),
-                closed: element.type === "contactNC" || element.type === "thermalRelay" || element.blockContact === "NC"
+                closed: element.type === "contactNC" || element.type === "timerContactNC" || element.type === "thermalRelay" || element.blockContact === "NC"
               });
               contacts.set(tag, list);
             }
@@ -3686,6 +3704,268 @@
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // a接点デザイン3: 斜め可動線のみ(IEC)。
+        contactNOIec: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.9, 2.2] },
+            { t: "line", p: [5.1, 2.2, 8, 2.2] },
+            { t: "line", p: [2.9, 2.2, 5.4, 0.6] },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [4, 4.4], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // b接点デザイン3: 斜め可動線+縦の止め(IEC)。
+        contactNCIec: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.9, 2.2] },
+            { t: "line", p: [5.1, 2.2, 8, 2.2] },
+            { t: "line", p: [5.1, 0.7, 5.1, 2.2] },
+            { t: "line", p: [2.9, 2.2, 5.6, 0.5] },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [4, 4.4], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // 表示灯デザイン(IEC): 円+対角✕。寸法はパイロット形と共通。
+        lampCross: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.2, 2.2] },
+            { t: "line", p: [6.8, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.8], fill: "white" },
+            { t: "line", p: [3.73, 0.93, 6.27, 3.47] },
+            { t: "line", p: [3.73, 3.47, 6.27, 0.93] },
+            { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.8], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        // 接地デザイン3: 清浄接地(横棒3本+円囲み)。
+        groundClean: {
+          w: 4, h: 5,
+          anchors: [[2, 0]],
+          prims: [
+            { t: "line", p: [2, 0, 2, 1.35] },
+            { t: "circle", p: [2, 3.4, 2.05] },
+            { t: "line", p: [0.8, 2.4, 3.2, 2.4] },
+            { t: "line", p: [1.3, 3.4, 2.7, 3.4] },
+            { t: "line", p: [1.8, 4.4, 2.2, 4.4] },
+            { t: "text", p: [2, 6.9], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // ダイオード(標準): 三角+バー。
+        diode: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.4, 2.2] },
+            { t: "line", p: [6.0, 2.2, 10, 2.2] },
+            { t: "pline", pts: [[3.4, 0.9], [3.4, 3.5], [6.0, 2.2], [3.4, 0.9]] },
+            { t: "line", p: [6.0, 0.9, 6.0, 3.5] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // ダイオード(LED): 発光矢印2本つき。
+        diodeLed: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.4, 2.2] },
+            { t: "line", p: [6.0, 2.2, 10, 2.2] },
+            { t: "pline", pts: [[3.4, 0.9], [3.4, 3.5], [6.0, 2.2], [3.4, 0.9]] },
+            { t: "line", p: [6.0, 0.9, 6.0, 3.5] },
+            { t: "line", p: [5.0, 0.7, 5.9, -0.2] },
+            { t: "pline", pts: [[5.55, -0.2], [5.9, -0.2], [5.9, 0.15]] },
+            { t: "line", p: [5.9, 1.3, 6.8, 0.4] },
+            { t: "pline", pts: [[6.45, 0.4], [6.8, 0.4], [6.8, 0.75]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // ダイオード(ツェナー): バー両端に折り返し。
+        diodeZener: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.4, 2.2] },
+            { t: "line", p: [6.0, 2.2, 10, 2.2] },
+            { t: "pline", pts: [[3.4, 0.9], [3.4, 3.5], [6.0, 2.2], [3.4, 0.9]] },
+            { t: "line", p: [6.0, 0.9, 6.0, 3.5] },
+            { t: "line", p: [6.0, 0.9, 5.55, 0.9] },
+            { t: "line", p: [6.0, 3.5, 6.45, 3.5] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // コンデンサ(標準): 平行板。
+        capacitor: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 4.3, 2.2] },
+            { t: "line", p: [5.7, 2.2, 10, 2.2] },
+            { t: "line", p: [4.3, 0.7, 4.3, 3.7] },
+            { t: "line", p: [5.7, 0.7, 5.7, 3.7] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // コンデンサ(有極): +表記と曲面電極。
+        capacitorPolarized: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 4.3, 2.2] },
+            { t: "line", p: [5.6, 2.2, 10, 2.2] },
+            { t: "line", p: [4.3, 0.7, 4.3, 3.7] },
+            { t: "arc", p: [7.3, 2.2, 1.75, 130, 230] },
+            { t: "text", p: [3.4, 0.2], size: 1.6, anchor: "middle", value: "+" },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 可変抵抗: 標準抵抗+斜め矢印。
+        resistorVariable: {
+          w: 10, h: 2.6,
+          anchors: [[0, 1.3], [10, 1.3]],
+          prims: [
+            { t: "line", p: [0, 1.3, 2.5, 1.3] },
+            { t: "line", p: [7.5, 1.3, 10, 1.3] },
+            { t: "rect", p: [2.5, 0, 5, 2.6], fill: "white" },
+            { t: "line", p: [3.2, 3.3, 6.9, -0.6] },
+            { t: "pline", pts: [[6.2, -0.5], [6.9, -0.6], [6.75, 0.1]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 限時a接点(タイマ): 接点バー+限時記号(パラシュート弧)。
+        timerContactNO: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.88, 2.2] },
+            { t: "line", p: [5.12, 2.2, 8, 2.2] },
+            { t: "rect", p: [2.88, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "rect", p: [4.77, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "arc", p: [4, 6.2, 1.2, 180, 360] },
+            { t: "line", p: [2.8, 6.2, 5.2, 6.2] },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [6.8, 6.4], size: 1.7, anchor: "start", field: "refNo" }
+          ]
+        },
+        // 限時b接点(タイマ)。
+        timerContactNC: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.88, 2.2] },
+            { t: "line", p: [5.12, 2.2, 8, 2.2] },
+            { t: "rect", p: [2.88, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "rect", p: [4.77, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "line", p: [2.5, 5.0, 5.5, -0.6] },
+            { t: "arc", p: [4, 6.2, 1.2, 180, 360] },
+            { t: "line", p: [2.8, 6.2, 5.2, 6.2] },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [6.8, 6.4], size: 1.7, anchor: "start", field: "refNo" }
+          ]
+        },
+        // フロートスイッチ: 円端子接点+下方のフロート(レバー+丸)。
+        floatSwitch: {
+          w: 10, h: 6,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.8, 2.2] },
+            { t: "line", p: [7.2, 2.2, 10, 2.2] },
+            { t: "circle", p: [3.4, 2.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 2.2, 0.6], fill: "white" },
+            { t: "line", p: [3.14, 1.94, 6.1, 0.55] },
+            { t: "line", p: [5, 2.9, 5, 4.2] },
+            { t: "circle", p: [5, 5.0, 0.8], fill: "white" },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 温度スイッチ(サーモ): 円端子接点+t°表記。
+        thermoSwitch: {
+          w: 10, h: 5,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.8, 2.2] },
+            { t: "line", p: [7.2, 2.2, 10, 2.2] },
+            { t: "circle", p: [3.4, 2.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 2.2, 0.6], fill: "white" },
+            { t: "line", p: [3.14, 1.94, 6.1, 0.55] },
+            { t: "text", p: [7.0, 0.5], size: 1.7, anchor: "start", value: "t°" },
+            { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // ベル: ドーム+底線(配線上に載る)。
+        bell: {
+          w: 10, h: 5.4,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 3.1, 3] },
+            { t: "line", p: [6.9, 3, 10, 3] },
+            { t: "arc", p: [5, 3, 1.9, 180, 360] },
+            { t: "line", p: [3.1, 3, 6.9, 3] },
+            { t: "line", p: [5, 3, 5, 4.1] },
+            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // バッテリ: 長短棒2セル+極性。
+        battery: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 4.0, 2.2] },
+            { t: "line", p: [4.0, 0.6, 4.0, 3.8] },
+            { t: "line", p: [4.7, 1.5, 4.7, 2.9] },
+            { t: "line", p: [5.4, 0.6, 5.4, 3.8] },
+            { t: "line", p: [6.1, 1.5, 6.1, 2.9] },
+            { t: "line", p: [6.1, 2.2, 10, 2.2] },
+            { t: "text", p: [3.3, 0.2], size: 1.6, anchor: "middle", value: "+" },
+            { t: "text", p: [6.9, 0.2], size: 1.6, anchor: "middle", value: "-" },
+            { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 整流器(単体): 箱+ダイオード記号。
+        rectifierBox: {
+          w: 10, h: 6,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 3.0, 3] },
+            { t: "line", p: [7.0, 3, 10, 3] },
+            { t: "rect", p: [3.0, 0.8, 4.0, 4.4], fill: "white" },
+            { t: "pline", pts: [[4.2, 2.0], [4.2, 4.0], [5.6, 3.0], [4.2, 2.0]] },
+            { t: "line", p: [5.6, 2.0, 5.6, 4.0] },
+            { t: "text", p: [5, -0.6], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 変流器(CT): 貫通導体+円。
+        currentTransformer: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.9] },
+            { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, 5.6], size: 1.7, anchor: "middle", field: "rating" }
+          ]
+        },
+        // 避雷器: 箱+下向き矢印。
+        arrester: {
+          w: 10, h: 6,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 3.0, 3] },
+            { t: "line", p: [7.0, 3, 10, 3] },
+            { t: "rect", p: [3.0, 0.8, 4.0, 4.4], fill: "white" },
+            { t: "line", p: [5, 1.4, 5, 4.0] },
+            { t: "pline", pts: [[4.55, 3.3], [5, 4.1], [5.45, 3.3]] },
+            { t: "text", p: [5, -0.6], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         connectorPair: {
           w: 6, h: 3,
           anchors: [[0, 1.5], [6, 1.5]],
@@ -3767,13 +4047,24 @@
       function geoKeyFor(element) {
         const variant = element.symbolVariant || "standard";
         switch (element.type) {
-          case "contactNO": return variant === "jis" ? "contactNOJis" : "contactNO";
-          case "contactNC": return variant === "jis" ? "contactNCJis" : "contactNC";
+          case "contactNO": return variant === "jis" ? "contactNOJis" : (variant === "iec" ? "contactNOIec" : "contactNO");
+          case "contactNC": return variant === "jis" ? "contactNCJis" : (variant === "iec" ? "contactNCIec" : "contactNC");
           case "thermalRelay": return "thermalRelay";
           case "thermalElement": return "thermalElement";
           case "breaker": return "breaker";
           case "coil": return variant === "box" ? "coilBox" : "coil";
-          case "lamp": return (element.lampVariant || "pilot") === "pilot" ? "lamp" : null;
+          case "lamp": {
+            const lv = element.lampVariant || "pilot";
+            if (lv === "pilot") return "lamp";
+            if (lv === "cross") return "lampCross";
+            return null;
+          }
+          case "diode": {
+            if (variant === "led") return "diodeLed";
+            if (variant === "zener") return "diodeZener";
+            return "diode";
+          }
+          case "capacitor": return variant === "polarized" ? "capacitorPolarized" : "capacitor";
           case "pushButton":
             if ((element.pbStyle || "momentary") !== "emergency") return "pushButton";
             return variant === "bar" ? "pushButtonEmergencyBar" : "pushButtonEmergency";
@@ -3785,9 +4076,21 @@
           case "meter": return "meter";
           case "inductor": return "inductor";
           case "heater": return "heater";
-          case "ground": return variant === "bars" ? "groundBars" : "ground";
+          case "ground": return variant === "bars" ? "groundBars" : (variant === "circle" ? "groundClean" : "ground");
           case "terminal": return (element.terminalShape || "circle") === "circle" ? "terminal" : null;
-          case "resistor": return (element.resistorStyle || "box") === "varistor" ? "varistor" : "resistor";
+          case "resistor": {
+            const rs = element.resistorStyle || "box";
+            return rs === "varistor" ? "varistor" : (rs === "variable" ? "resistorVariable" : "resistor");
+          }
+          case "timerContactNO": return "timerContactNO";
+          case "timerContactNC": return "timerContactNC";
+          case "floatSwitch": return "floatSwitch";
+          case "thermoSwitch": return "thermoSwitch";
+          case "bell": return "bell";
+          case "battery": return "battery";
+          case "rectifierBox": return "rectifierBox";
+          case "currentTransformer": return "currentTransformer";
+          case "arrester": return "arrester";
           case "connector": return element.connStyle === "pair" ? "connectorPair" : null;
           case "contactBlock": return (element.blockContact || "NO") === "NC" ? "contactBlockNC" : "contactBlock";
           case "positionMark": return (element.markStyle || "box") === "box" ? "positionMarkBox" : "positionMarkLine";
@@ -4633,10 +4936,12 @@
 
       // シンボルデザインの選択肢。同一種別の別デザインで、寸法・接続点(アンカー)は共通に揃える。
       const SYMBOL_VARIANT_OPTIONS = {
-        contactNO: [["standard", "縦バー（設備標準）"], ["jis", "円端子＋開き線"]],
-        contactNC: [["standard", "縦バー＋斜線（設備標準）"], ["jis", "円端子＋閉じ線"]],
+        contactNO: [["standard", "縦バー（設備標準）"], ["jis", "円端子＋開き線"], ["iec", "斜め線のみ（IEC）"]],
+        contactNC: [["standard", "縦バー＋斜線（設備標準）"], ["jis", "円端子＋閉じ線"], ["iec", "斜め線＋止め（IEC）"]],
         coil: [["standard", "円（設備標準）"], ["box", "箱形"]],
-        ground: [["standard", "斜線ハッチ（設備標準）"], ["bars", "横棒3本"]],
+        ground: [["standard", "斜線ハッチ（設備標準）"], ["bars", "横棒3本"], ["circle", "清浄接地（円囲み）"]],
+        diode: [["standard", "標準"], ["led", "LED（矢印つき）"], ["zener", "ツェナー"]],
+        capacitor: [["standard", "標準（平行板）"], ["polarized", "有極（＋と曲板）"]],
         pushButtonEmergency: [["standard", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]]
       };
 
@@ -4743,7 +5048,7 @@
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
           `;
         }
-        if (element.type === "coil" || element.type === "ground") {
+        if (["coil", "ground", "diode", "capacitor"].includes(element.type)) {
           return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
@@ -4797,6 +5102,7 @@
             <select data-bind="resistorStyle">
               <option value="box"${style === "box" ? " selected" : ""}>標準(枠)</option>
               <option value="varistor"${style === "varistor" ? " selected" : ""}>バリスタ(斜線)</option>
+              <option value="variable"${style === "variable" ? " selected" : ""}>可変(矢印)</option>
             </select>
             <label>方向</label>
             <select data-bind="orientation">
@@ -4830,7 +5136,8 @@
           return `
             <label>ランプ形状</label>
             <select data-bind="lampVariant">
-              <option value="pilot"${variant === "pilot" ? " selected" : ""}>丸形パイロット</option>
+              <option value="pilot"${variant === "pilot" ? " selected" : ""}>丸形パイロット（設備標準）</option>
+              <option value="cross"${variant === "cross" ? " selected" : ""}>円＋✕（IEC）</option>
               <option value="cylinder"${variant === "cylinder" ? " selected" : ""}>筒形表示灯</option>
             </select>
             <label>ランプ色文字(W/R/G等)</label>
@@ -5245,12 +5552,21 @@
           meter: { ...base, w: 10, h: 4.4, label: "V" },
           inductor: { ...base, w: 10, h: 3, label: "L" },
           heater: { ...base, w: 10, h: 4.4, label: "H" },
+          timerContactNO: { ...base, w: 8, h: 4.4, label: "T", orientation: "horizontal", refNo: "" },
+          timerContactNC: { ...base, w: 8, h: 4.4, label: "T", orientation: "horizontal", refNo: "" },
+          floatSwitch: { ...base, w: 10, h: 6, label: "FS", orientation: "horizontal" },
+          thermoSwitch: { ...base, w: 10, h: 5, label: "TS", orientation: "horizontal" },
+          bell: { ...base, w: 10, h: 5.4, label: "BL" },
+          battery: { ...base, w: 10, h: 4.4, label: "BT" },
+          rectifierBox: { ...base, w: 10, h: 6, label: "REC" },
+          currentTransformer: { ...base, w: 10, h: 4.4, label: "CT" },
+          arrester: { ...base, w: 10, h: 6, label: "AR" },
           ground: { ...base, w: 4, h: 5, label: "E" },
           motor: { ...base, w: 16, h: 16, label: "M" },
           fan: { ...base, w: 14, h: 14, r: 5, label: "FAN" },
           resistor: { ...base, w: 10, h: 2.6, label: "R", orientation: "horizontal", resistorStyle: "box" },
-          capacitor: { ...base, w: 12, h: 7, label: "C" },
-          diode: { ...base, w: 12, h: 7, label: "D" },
+          capacitor: { ...base, w: 10, h: 4.4, label: "C" },
+          diode: { ...base, w: 10, h: 4.4, label: "D" },
           thermalRelay: { ...base, w: 8, h: 4, label: "THR", orientation: "horizontal", refNo: "" },
           thermalElement: { ...base, w: 8, h: 3, label: "OL", orientation: "horizontal" },
           positionMark: { ...base, w: 4, h: 6, label: "入", markStyle: "box" },
@@ -5453,7 +5769,7 @@
           add(w / 2, h);
           return anchors;
         }
-        if (["coil", "fuse", "breaker", "lamp", "buzzer", "meter", "inductor", "heater", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
+        if (["coil", "fuse", "breaker", "lamp", "buzzer", "meter", "inductor", "heater", "bell", "battery", "rectifierBox", "currentTransformer", "arrester", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
           add(0, h / 2);
           add(w, h / 2);
           return anchors;
@@ -5511,9 +5827,18 @@
           "terminal",
           "contactNO",
           "contactNC",
+          "timerContactNO",
+          "timerContactNC",
           "contactBlock",
           "thermalElement",
           "pressureSwitch",
+          "floatSwitch",
+          "thermoSwitch",
+          "bell",
+          "battery",
+          "rectifierBox",
+          "currentTransformer",
+          "arrester",
           "positionMark",
           "polarityMark",
           "pushButton",
@@ -5550,14 +5875,23 @@
         return new Set([
           "contactNO",
           "contactNC",
+          "timerContactNO",
+          "timerContactNC",
           "contactBlock",
           "thermalElement",
           "pressureSwitch",
+          "floatSwitch",
+          "thermoSwitch",
           "terminal",
           "pushButton",
           "selectorSwitch",
           "limitSwitch",
           "coil",
+          "bell",
+          "battery",
+          "rectifierBox",
+          "currentTransformer",
+          "arrester",
           "fuse",
           "breaker",
           "lamp",
