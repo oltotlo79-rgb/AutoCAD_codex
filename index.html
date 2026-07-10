@@ -50,6 +50,8 @@
       padding: 6px 9px;
       cursor: pointer;
       min-height: 32px;
+      /* ボタン文言の途中改行を防ぐ(見た目崩れ対策)。長文はボタン側でなく行側で折り返す */
+      white-space: nowrap;
     }
 
     button:hover { border-color: var(--line-dark); background: #f9fbfc; }
@@ -1071,6 +1073,7 @@
         { id: "terminal", label: "端子・接続" },
         { id: "device", label: "機器・枠・表" },
         { id: "annotation", label: "注釈・マーク" },
+        { id: "circuits", label: "回路ライブラリ" },
         { id: "custom", label: "ユーザー部品" }
       ];
 
@@ -1087,6 +1090,97 @@
       };
 
       // 開いているパレットカテゴリのid集合(セッション内で開閉状態を保持)。
+      // 同梱の標準回路スニペット。座標は配置基準点(クリック点=先頭ピン)からの相対mm。
+      // 配線ラインy=0/9.5(行ピッチ)に乗るよう設計し、2.5mmグリッド整合を保つ。
+      const BUILTIN_CIRCUITS = [
+        {
+          id: "selfHold",
+          label: "自己保持回路",
+          templates: [
+            { type: "wire", points: [[0, 0], [10, 0]] },
+            { type: "contactNO", x: 10, y: -2.2, w: 8, h: 4.4, label: "PB1", orientation: "horizontal" },
+            { type: "wire", points: [[18, 0], [30, 0]] },
+            { type: "coil", x: 30, y: -2.2, w: 10, h: 4.4, label: "CR1", tag: "CR1" },
+            { type: "wire", points: [[40, 0], [47.5, 0]] },
+            { type: "junction", x: 5, y: 0, w: 2, h: 2, r: 0.5 },
+            { type: "wire", points: [[5, 0], [5, 9.5]] },
+            { type: "wire", points: [[5, 9.5], [10, 9.5]] },
+            { type: "contactNO", x: 10, y: 7.3, w: 8, h: 4.4, label: "CR1", tag: "CR1", orientation: "horizontal" },
+            { type: "wire", points: [[18, 9.5], [22.5, 9.5]] },
+            { type: "wire", points: [[22.5, 9.5], [22.5, 0]] },
+            { type: "junction", x: 22.5, y: 0, w: 2, h: 2, r: 0.5 }
+          ]
+        },
+        {
+          id: "startStop",
+          label: "起動・停止回路",
+          templates: [
+            { type: "wire", points: [[0, 0], [5, 0]] },
+            { type: "contactNC", x: 5, y: -2.2, w: 8, h: 4.4, label: "PB停", orientation: "horizontal" },
+            { type: "wire", points: [[13, 0], [17.5, 0]] },
+            { type: "contactNO", x: 17.5, y: -2.2, w: 8, h: 4.4, label: "PB起", orientation: "horizontal" },
+            { type: "wire", points: [[25.5, 0], [32.5, 0]] },
+            { type: "coil", x: 32.5, y: -2.2, w: 10, h: 4.4, label: "CR1", tag: "CR1" },
+            { type: "wire", points: [[42.5, 0], [50, 0]] },
+            { type: "junction", x: 15, y: 0, w: 2, h: 2, r: 0.5 },
+            { type: "wire", points: [[15, 0], [15, 9.5]] },
+            { type: "wire", points: [[15, 9.5], [17.5, 9.5]] },
+            { type: "contactNO", x: 17.5, y: 7.3, w: 8, h: 4.4, label: "CR1", tag: "CR1", orientation: "horizontal" },
+            { type: "wire", points: [[25.5, 9.5], [27.5, 9.5]] },
+            { type: "wire", points: [[27.5, 9.5], [27.5, 0]] },
+            { type: "junction", x: 27.5, y: 0, w: 2, h: 2, r: 0.5 }
+          ]
+        },
+        {
+          id: "timerDelay",
+          label: "タイマ遅延回路",
+          templates: [
+            { type: "wire", points: [[0, 0], [10, 0]] },
+            { type: "contactNO", x: 10, y: -2.2, w: 8, h: 4.4, label: "CR1", tag: "CR1", orientation: "horizontal" },
+            { type: "wire", points: [[18, 0], [30, 0]] },
+            { type: "coil", x: 30, y: -2.2, w: 10, h: 4.4, label: "TLR1", tag: "TLR1", symbolVariant: "timer" },
+            { type: "wire", points: [[40, 0], [47.5, 0]] },
+            { type: "wire", points: [[0, 9.5], [10, 9.5]] },
+            { type: "timerContactNO", x: 10, y: 7.3, w: 8, h: 4.4, label: "TLR1", tag: "TLR1", orientation: "horizontal" },
+            { type: "wire", points: [[18, 9.5], [30, 9.5]] },
+            { type: "coil", x: 30, y: 7.3, w: 10, h: 4.4, label: "CR2", tag: "CR2" },
+            { type: "wire", points: [[40, 9.5], [47.5, 9.5]] }
+          ]
+        },
+        {
+          id: "lampRow",
+          label: "ランプ表示行",
+          templates: [
+            { type: "wire", points: [[0, 0], [10, 0]] },
+            { type: "contactNO", x: 10, y: -2.2, w: 8, h: 4.4, label: "CR1", tag: "CR1", orientation: "horizontal" },
+            { type: "wire", points: [[18, 0], [30, 0]] },
+            { type: "lamp", x: 30, y: -2.2, w: 10, h: 4.4, label: "PL1", tag: "PL1", lampVariant: "pilot", lampColor: "R" },
+            { type: "wire", points: [[40, 0], [47.5, 0]] }
+          ]
+        },
+        {
+          id: "buzzerRow",
+          label: "ブザー警報行",
+          templates: [
+            { type: "wire", points: [[0, 0], [10, 0]] },
+            { type: "contactNO", x: 10, y: -2.2, w: 8, h: 4.4, label: "CR1", tag: "CR1", orientation: "horizontal" },
+            { type: "wire", points: [[18, 0], [30, 0]] },
+            { type: "buzzer", x: 30, y: -4.5, w: 14, h: 9, label: "BZ1", tag: "BZ1", buzzerVariant: "horn" },
+            { type: "wire", points: [[44, 0], [47.5, 0]] }
+          ]
+        },
+        {
+          id: "estopRow",
+          label: "非常停止行",
+          templates: [
+            { type: "wire", points: [[0, 0], [10, 0]] },
+            { type: "pushButton", x: 10, y: -3.4, w: 10, h: 5, label: "PBE1", tag: "PBE1", pbStyle: "emergency", orientation: "horizontal" },
+            { type: "wire", points: [[20, 0], [37.5, 0]] },
+            { type: "arrow", points: [[37.5, 0], [47.5, 0]], label: "S:0", arrowStyle: "chevron" }
+          ]
+        }
+      ];
+
       const paletteOpenGroups = new Set(["basic", "contact", "custom"]);
 
       // document.querySelectorの短縮形。
@@ -1344,6 +1438,12 @@
         const filter = paletteFilterText.trim().toLowerCase();
         const allItems = [
           ...PALETTE,
+          ...BUILTIN_CIRCUITS.map(circuit => ({
+            type: "circuit:" + circuit.id,
+            label: circuit.label,
+            icon: "box",
+            group: "circuits"
+          })),
           ...(state.customSymbols || []).map(symbol => ({
             type: "custom:" + symbol.id,
             label: symbol.label,
@@ -1429,6 +1529,27 @@
       function paletteIconHtml(item) {
         if (String(item.type).startsWith("custom:")) return iconSvg(item.icon);
         if (paletteIconCache.has(item.type)) return paletteIconCache.get(item.type);
+        // 回路ライブラリは登録テンプレート全体を実描画してアイコン化する
+        if (String(item.type).startsWith("circuit:")) {
+          const circuit = BUILTIN_CIRCUITS.find(c => "circuit:" + c.id === item.type);
+          let html = iconSvg("box");
+          if (circuit) {
+            try {
+              const boxes = circuit.templates.map(t => elementBounds({ ...t, x: t.x || 0, y: t.y || 0 })).filter(Boolean);
+              const b = unionBounds(boxes);
+              const pad = 2;
+              const svg = svgEl("svg", {
+                xmlns: svgNS,
+                class: "palette-icon",
+                viewBox: (b.x - pad) + " " + (b.y - pad) + " " + (b.w + pad * 2) + " " + (b.h + pad * 2)
+              });
+              circuit.templates.forEach(t => drawElement(svg, { ...deepClone(t), id: uid("pv") }));
+              html = svg.outerHTML;
+            } catch (_) { /* 失敗時は既定アイコン */ }
+          }
+          paletteIconCache.set(item.type, html);
+          return html;
+        }
         let html = "";
         try {
           const element = paletteIconElement(item.type);
@@ -4030,6 +4151,37 @@
             { t: "text", p: [5, -1.6], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
+        // 計器(積算計): 二重円+ラベル文字。
+        meterDouble: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.1, 2.2] },
+            { t: "line", p: [6.9, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.9], fill: "white" },
+            { t: "circle", p: [5, 2.2, 1.35] },
+            { t: "text", p: [5, 2.2], size: 1.8, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -1.6], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        // モータ(二重円): 発電機・同期機など。端子配置は標準モータと共通。
+        motorDouble: {
+          w: 16, h: 16,
+          anchors: [[0.9, 2.4], [0.9, 8], [0.9, 13.6], [14.6, 14.6]],
+          prims: [
+            { t: "circle", p: [8, 8, 4.8], fill: "white" },
+            { t: "circle", p: [8, 8, 3.9] },
+            { t: "circle", p: [0.9, 2.4, 0.6], fill: "white" },
+            { t: "circle", p: [0.9, 8, 0.6], fill: "white" },
+            { t: "circle", p: [0.9, 13.6, 0.6], fill: "white" },
+            { t: "line", p: [1.37, 2.68, 4.61, 4.61] },
+            { t: "line", p: [1.5, 8, 3.2, 8] },
+            { t: "line", p: [1.37, 13.32, 4.61, 11.39] },
+            { t: "line", p: [11.39, 11.39, 14.18, 14.18] },
+            { t: "circle", p: [14.6, 14.6, 0.6], fill: "white" },
+            { t: "text", p: [8, 8], size: 2.2, anchor: "middle", field: "label" }
+          ]
+        },
         // 零相変流器(ZCT): 貫通導体+二重円。
         currentTransformerZct: {
           w: 10, h: 4.4,
@@ -4363,9 +4515,13 @@
           case "selectorSwitch": return variant === "three" ? "selectorSwitch3" : "selectorSwitch";
           case "limitSwitch": return variant === "roller" ? "limitSwitchRoller" : "limitSwitch";
           case "pressureSwitch": return "pressureSwitch";
-          case "motor": return "motor";
+          case "motor": return variant === "double" ? "motorDouble" : "motor";
           case "transformer": return variant === "circles" ? "transformerCircles" : "transformer";
-          case "meter": return variant === "box" ? "meterBox" : "meter";
+          case "meter": {
+            if (variant === "box") return "meterBox";
+            if (variant === "double") return "meterDouble";
+            return "meter";
+          }
           case "inductor": return "inductor";
           case "heater": return "heater";
           case "ground": return variant === "bars" ? "groundBars" : (variant === "circle" ? "groundClean" : "ground");
@@ -5244,7 +5400,8 @@
         breaker: [["standard", "実測形（円＋アーク＋トリップ）"], ["elb", "漏電（E表示つき）"], ["iec", "×＋開き線（IEC）"]],
         pushButton: [["standard", "押し（設備標準）"], ["pull", "引きボタン"], ["twist", "ひねりボタン"]],
         transistor: [["npn", "NPN"], ["pnp", "PNP"]],
-        meter: [["standard", "円形"], ["box", "角形"]],
+        meter: [["standard", "円形"], ["box", "角形"], ["double", "二重円（積算計）"]],
+        motor: [["standard", "円（設備標準）"], ["double", "二重円（発電機等）"]],
         currentTransformer: [["standard", "円（CT）"], ["zct", "二重円（ZCT）"]],
         selectorSwitch: [["standard", "2位置"], ["three", "3位置"]],
         limitSwitch: [["standard", "箱形アクチュエータ"], ["roller", "ローラーレバー"]],
@@ -5355,7 +5512,7 @@
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
           `;
         }
-        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor"].includes(element.type)) {
+        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor"].includes(element.type)) {
           return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
@@ -6292,6 +6449,14 @@
           placeCustomSymbol(type.slice("custom:".length), x, y);
           return;
         }
+        if (String(type).startsWith("circuit:")) {
+          const circuit = BUILTIN_CIRCUITS.find(c => c.id === type.slice("circuit:".length));
+          if (circuit) {
+            placeTemplates(circuit.templates, x, y,
+              circuit.label + "を配置しました。タグ(CR1等)は右パネルで実際の番号へ変更してください。");
+          }
+          return;
+        }
         if (type === "terminalSheet") {
           addTerminalSheet(page, x, y);
           commitHistory("端子配線セットを配置しました。");
@@ -6373,6 +6538,29 @@
       }
 
       // ユーザー部品(単品/回路スニペット)を配置。テンプレート列を相対座標のままオフセット展開。
+      // テンプレート要素列を(x,y)オフセットで現在ページへ展開する共通処理。
+      function placeTemplates(templates, x, y, doneMessage) {
+        const page = currentPage();
+        if (!page || !templates.length) return;
+        const placed = templates.map(template => {
+          const element = deepClone(template);
+          element.id = uid("el");
+          element.locked = false;
+          if (element.points) {
+            element.points = element.points.map(point => [point[0] + x, point[1] + y]);
+          } else {
+            element.x = Number(element.x || 0) + x;
+            element.y = Number(element.y || 0) + y;
+          }
+          return element;
+        });
+        page.elements.push(...placed);
+        setSelection(placed.map(element => element.id));
+        commitHistory(doneMessage);
+        setActiveTool("select");
+        render();
+      }
+
       function placeCustomSymbol(id, x, y) {
         const symbol = (state.customSymbols || []).find(item => item.id === id);
         const page = currentPage();
@@ -6587,17 +6775,79 @@
       }
 
       // 現在ページを複製(要素IDは振り直し)。
-      function duplicatePage() {
+      // 末尾のアドレス/番号にオフセットを加算する。X060+10hex→X070、CR1+1→CR2 のように
+      // 接頭辞と桁数を保ったまま加算する。16進判定: 数字部にA-Fを含む、または接頭辞がX/Y/B/W系。
+      function offsetAddressToken(text, offset) {
+        const match = String(text || "").match(/^(.*?)([0-9A-Fa-f]+)$/);
+        if (!match || !offset) return text;
+        const prefix = match[1];
+        const digits = match[2];
+        const hexPrefix = /^(X|Y|B|W|SB|SW|RX|RY)$/i.test(prefix.trim());
+        const isHex = hexPrefix || /[A-Fa-f]/.test(digits);
+        if (!isHex && !/^\d+$/.test(digits)) return text;
+        const value = parseInt(digits, isHex ? 16 : 10) + offset;
+        if (!Number.isFinite(value) || value < 0) return text;
+        const raw = value.toString(isHex ? 16 : 10).toUpperCase();
+        return prefix + raw.padStart(digits.length, "0");
+      }
+
+      // 複製ページの要素へアドレスオフセットを適用する(線番/タグ/ラベル/PLCピン文字)。
+      function applyAddressOffsetToElements(elements, offset) {
+        if (!offset) return;
+        elements.forEach(element => {
+          if (element.wireNo) element.wireNo = offsetAddressToken(element.wireNo, offset);
+          if (element.tag) element.tag = offsetAddressToken(element.tag, offset);
+          if (element.label) element.label = offsetAddressToken(element.label, offset);
+          if (element.pinText) {
+            element.pinText = String(element.pinText).split(/\r?\n/)
+              .map(line => offsetAddressToken(line, offset)).join("\n");
+          }
+        });
+      }
+
+      // ページ複製ダイアログ: 複製数と、線番/タグ/アドレスへの一括オフセットを指定できる。
+      // 見本様式のX060→X070…のような同型ページ量産を1操作で行うための機能。
+      function showDuplicatePageDialog() {
         const page = currentPage();
         if (!page) return;
-        const copy = deepClone(page);
-        copy.id = uid("page");
-        copy.name = page.name + " copy";
-        copy.elements = copy.elements.map(element => ({ ...element, id: uid("el") }));
-        state.pages.push(copy);
-        state.activePageId = copy.id;
+        openDialog("ページ複製", `
+          <p class="muted">現在ページを複製します。オフセットを指定すると、複製ページの
+          線番・タグ・ラベル・PLCピン文字の末尾番号へ一括加算します
+          （例: オフセット16 → X060はX070、CR1はCR17。16進アドレスは16進で加算）。</p>
+          <div class="row">
+            <div><label>複製数</label><input id="dupCount" type="number" min="1" max="20" step="1" value="1"></div>
+            <div><label>1枚ごとのオフセット(10進。0=変更なし)</label><input id="dupOffset" type="number" step="1" value="0"></div>
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="dupRunBtn" class="primary">複製</button>
+          </div>`);
+        qs("#dupRunBtn").addEventListener("click", () => {
+          const count = Math.max(1, Math.min(20, Math.floor(Number(qs("#dupCount").value || 1))));
+          const offset = Math.floor(Number(qs("#dupOffset").value || 0));
+          duplicatePage(count, offset);
+          closeDialog();
+        });
+      }
+
+      function duplicatePage(count = 1, offset = 0) {
+        const page = currentPage();
+        if (!page) return;
+        let last = null;
+        for (let i = 1; i <= count; i++) {
+          const copy = deepClone(page);
+          copy.id = uid("page");
+          copy.name = offset ? offsetAddressToken(page.name, offset * i) : page.name + " copy" + (count > 1 ? i : "");
+          copy.elements = copy.elements.map(element => ({ ...element, id: uid("el") }));
+          applyAddressOffsetToElements(copy.elements, offset * i);
+          if (copy.title && copy.title.title) copy.title.title = offsetAddressToken(copy.title.title, offset * i);
+          state.pages.push(copy);
+          last = copy;
+        }
+        state.activePageId = last.id;
         setSelection([]);
-        commitHistory("ページを複製しました。");
+        commitHistory(offset
+          ? `ページを${count}枚複製し、アドレスを+${offset}ずつオフセットしました。`
+          : "ページを複製しました。");
         render();
       }
 
@@ -13367,7 +13617,7 @@
         qs("#redoBtn").addEventListener("click", () => restoreHistory(historyIndex + 1));
         qs("#deleteBtn").addEventListener("click", deleteSelected);
         qs("#addPageBtn").addEventListener("click", addPage);
-        qs("#duplicatePageBtn").addEventListener("click", duplicatePage);
+        qs("#duplicatePageBtn").addEventListener("click", showDuplicatePageDialog);
         qs("#deletePageBtn").addEventListener("click", deletePage);
         qs("#movePagePrevBtn").addEventListener("click", () => movePage(-1));
         qs("#movePageNextBtn").addEventListener("click", () => movePage(1));
