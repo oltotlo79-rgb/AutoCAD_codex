@@ -5456,6 +5456,18 @@
           lastScrolledSelectionId = null;
         }
         if (selected.length > 1) {
+          // 選択中の部品(配線・文字以外)が全て同じデザイン系列なら一括切替セレクトを出す
+          const variantKeys = new Set(selected
+            .filter(el => !el.points && el.type !== "text")
+            .map(el => variantOptionsKeyFor(el)));
+          const commonVariantKey = variantKeys.size === 1 ? [...variantKeys][0] : null;
+          const commonVariantOptions = commonVariantKey ? SYMBOL_VARIANT_OPTIONS[commonVariantKey] : null;
+          const bulkVariantHtml = commonVariantOptions ? `
+            <label>シンボルデザイン一括変更（同種部品）</label>
+            <select id="bulkVariantSelect">
+              <option value="">変更しない…</option>
+              ${commonVariantOptions.map(([value, label]) => `<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`).join("")}
+            </select>` : "";
           panel.innerHTML = `
             <div class="panel-title">複数選択: ${selected.length}件</div>
             <p class="muted">Shiftクリックで選択を追加/解除できます。選択中の要素をまとめて移動、コピー、複製、削除できます。</p>
@@ -5478,6 +5490,15 @@
               <option value="">変更しない…</option>
               ${(state.wireTypes || []).map(type => `<option value="${escapeAttr(type.id)}">${escapeHtml(type.label)}</option>`).join("")}
             </select>
+            ${bulkVariantHtml}
+            <label>線色一括変更</label>
+            <div class="swatches">
+              ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch" data-bulk-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
+            </div>
+            <div class="row" style="margin-top:8px">
+              <button type="button" id="lockAllBtn">一括ロック</button>
+              <button type="button" id="unlockAllBtn">一括ロック解除</button>
+            </div>
             <div class="row" style="margin-top:8px">
               <button type="button" id="bringForwardBtn">前面へ</button>
               <button type="button" id="sendBackwardBtn">背面へ</button>
@@ -5549,6 +5570,36 @@
               return;
             }
             commitHistory(changed + "本の配線種別を一括変更しました。");
+            render();
+          });
+          qs("#bulkVariantSelect", panel)?.addEventListener("change", event => {
+            const value = event.target.value;
+            if (!value) return;
+            let changed = 0;
+            selectedElements().forEach(el => {
+              if (el.points || el.type === "text") return;
+              if (variantOptionsKeyFor(el) !== commonVariantKey) return;
+              applySymbolVariantTo(el, value);
+              changed += 1;
+            });
+            commitHistory(changed + "件のシンボルデザインを一括変更しました。");
+            render();
+          });
+          qsa("[data-bulk-color]", panel).forEach(button => {
+            button.addEventListener("click", () => {
+              selectedElements().forEach(el => { el.stroke = button.dataset.bulkColor; });
+              commitHistory("線色を一括変更しました。");
+              render();
+            });
+          });
+          qs("#lockAllBtn", panel)?.addEventListener("click", () => {
+            selectedElements().forEach(el => { el.locked = true; });
+            commitHistory("選択要素を一括ロックしました。");
+            render();
+          });
+          qs("#unlockAllBtn", panel)?.addEventListener("click", () => {
+            selectedElements().forEach(el => { el.locked = false; });
+            commitHistory("選択要素のロックを一括解除しました。");
             render();
           });
           return;
@@ -5797,11 +5848,43 @@
         pushButtonEmergency: [["standard", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]]
       };
 
-      // 選択中要素に対応する「シンボルデザイン」セレクトHTML(バリエーションが無い種別は空文字)。
-      function symbolVariantSelectHtml(element) {
-        const key = element.type === "pushButton"
+      // 要素→SYMBOL_VARIANT_OPTIONSのキー解決(押しボタンは非常停止か否かで分岐)。
+      function variantOptionsKeyFor(element) {
+        return element.type === "pushButton"
           ? ((element.pbStyle || "momentary") === "emergency" ? "pushButtonEmergency" : "pushButton")
           : element.type;
+      }
+
+      // シンボルデザインを1要素へ適用する(寸法補正+第1ピン位置保存)。一括変更用。
+      // 単一要素の切替はupdateSelectedFromInputのGEOMETRY_KEYS経路が同じ規則で処理する。
+      function applySymbolVariantTo(element, value) {
+        const firstPinOf = target => {
+          if (target.points) return null;
+          if ((target.type === "terminalStrip" || target.type === "connector") && target.connStyle !== "pair") {
+            return terminalStripNodeGlobal(target, 0);
+          }
+          const anchors = elementConnectionAnchors(target);
+          return anchors && anchors.length ? anchors[0] : null;
+        };
+        const pinBefore = firstPinOf(element);
+        element.symbolVariant = value;
+        if (!resizeGeoElementForOrientation(element)) {
+          if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
+          if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
+          if (element.type === "lamp") { element.w = 10; element.h = 10; }
+        }
+        if (pinBefore) {
+          const pinAfter = firstPinOf(element);
+          if (pinAfter && (Math.abs(pinAfter.x - pinBefore.x) > 0.001 || Math.abs(pinAfter.y - pinBefore.y) > 0.001)) {
+            element.x = round(Number(element.x || 0) + (pinBefore.x - pinAfter.x));
+            element.y = round(Number(element.y || 0) + (pinBefore.y - pinAfter.y));
+          }
+        }
+      }
+
+      // 選択中要素に対応する「シンボルデザイン」セレクトHTML(バリエーションが無い種別は空文字)。
+      function symbolVariantSelectHtml(element) {
+        const key = variantOptionsKeyFor(element);
         const options = SYMBOL_VARIANT_OPTIONS[key];
         if (!options) return "";
         const current = element.symbolVariant || "standard";
