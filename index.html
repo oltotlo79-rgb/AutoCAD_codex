@@ -872,6 +872,36 @@
       background: var(--accent);
     }
 
+    /* --- 右クリックコンテキストメニュー --- */
+    .context-menu {
+      position: fixed;
+      z-index: 70;
+      min-width: 210px;
+      padding: 6px;
+      background: #fff;
+      border: 1px solid #d8e0e8;
+      border-radius: 10px;
+      box-shadow: var(--shadow-2);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      animation: dialog-in .12s var(--ease);
+    }
+    .context-menu.hidden { display: none; }
+    .context-menu button {
+      border: 0;
+      background: transparent;
+      text-align: left;
+      padding: 7px 10px;
+      border-radius: 6px;
+      min-height: 0;
+      box-shadow: none;
+      white-space: nowrap;
+    }
+    .context-menu button:hover { background: #eef4f2; color: var(--accent); box-shadow: none; transform: none; }
+    .context-menu button:disabled { opacity: .45; }
+    .context-sep { height: 1px; background: #e6ebf1; margin: 4px 6px; }
+
     /* --- モーション低減設定の尊重(全アニメ・遷移を実質停止) --- */
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after {
@@ -1172,6 +1202,8 @@
   <input id="packImportInput" type="file" accept=".json,application/json">
   <!-- 印刷専用シート(printProject()が組み立て、@media printでのみ表示) -->
   <div id="printSheets" class="print-sheets"></div>
+  <!-- 右クリックメニュー(onCanvasContextMenuが項目を差し込む) -->
+  <div id="contextMenu" class="context-menu hidden" role="menu"></div>
   <!-- 共通ダイアログ(openDialog()がタイトルと本文を差し込む) -->
   <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
     <div class="dialog">
@@ -15849,6 +15881,13 @@
         svg.addEventListener("pointerup", onCanvasPointerUp);
         svg.addEventListener("pointercancel", onCanvasPointerUp);
         svg.addEventListener("dblclick", onCanvasDoubleClick);
+        svg.addEventListener("contextmenu", onCanvasContextMenu);
+        // メニュー外のクリック/スクロール/リサイズで右クリックメニューを閉じる
+        document.addEventListener("pointerdown", event => {
+          if (!event.target.closest("#contextMenu")) hideContextMenu();
+        });
+        qs(".workspace")?.addEventListener("scroll", hideContextMenu, { passive: true });
+        window.addEventListener("resize", hideContextMenu);
         svg.addEventListener("wheel", onCanvasWheel, { passive: false });
 
         window.addEventListener("keydown", onKeyDown);
@@ -16454,6 +16493,89 @@
         });
         input.addEventListener("blur", () => closeInlineEdit(true));
         setStatus(title + "をその場で編集中: Enter=確定 / Esc=取消 / Tab=次の要素へ");
+      }
+
+      // ===== 右クリックコンテキストメニュー =====
+      // 要素上=編集/複製/回転/ロック/同種選択/参照ジャンプ、空白上=貼付/全体表示。
+      function hideContextMenu() {
+        qs("#contextMenu")?.classList.add("hidden");
+      }
+
+      function showContextMenu(event, items) {
+        const menu = qs("#contextMenu");
+        if (!menu) return;
+        menu.innerHTML = "";
+        items.forEach(item => {
+          if (item === "-") {
+            const sep = document.createElement("div");
+            sep.className = "context-sep";
+            menu.appendChild(sep);
+            return;
+          }
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = item.label;
+          if (item.disabled) button.disabled = true;
+          button.addEventListener("click", () => {
+            hideContextMenu();
+            item.run();
+          });
+          menu.appendChild(button);
+        });
+        menu.classList.remove("hidden");
+        menu.style.left = Math.round(Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8)) + "px";
+        menu.style.top = Math.round(Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8)) + "px";
+      }
+
+      function onCanvasContextMenu(event) {
+        event.preventDefault();
+        const page = currentPage();
+        if (!page) return;
+        const targetG = event.target.closest("[data-id]");
+        if (!targetG) {
+          showContextMenu(event, [
+            { label: "貼付 (Ctrl+V)", run: pasteClipboard },
+            { label: "全体表示 (0)", run: fitPageToWorkspace }
+          ]);
+          return;
+        }
+        const id = targetG.dataset.id;
+        if (!selectedIds.includes(id)) {
+          selectSingle(id);
+          render();
+        }
+        const element = page.elements.find(item => item.id === id);
+        if (!element) return;
+        const locked = isElementLocked(element);
+        const items = [
+          { label: "その場編集（ラベル/線番/文字）", run: () => startInlineEdit(element), disabled: locked },
+          "-",
+          { label: "コピー (Ctrl+C)", run: copySelected },
+          { label: "複製 (Ctrl+D)", run: duplicateSelected, disabled: locked },
+          { label: "削除 (Delete)", run: deleteSelected, disabled: locked },
+          "-",
+          { label: "右90°回転", run: () => rotateSelected(90), disabled: locked },
+          { label: "左右ミラー", run: mirrorSelectedHorizontal, disabled: locked },
+          { label: locked ? "ロック解除" : "ロック", run: toggleSelectedLock },
+          "-",
+          { label: "同種をページ内全選択", run: selectAllOfSameType }
+        ];
+        const tag = componentTag(element);
+        if (tag) {
+          const data = crossRefData();
+          if (contactChildTypes().has(element.type)) {
+            const coil = data.coils.get(tag);
+            if (coil && coil.element.id !== element.id) {
+              items.push("-", { label: "親コイルへ移動（" + coil.address + "）", run: () => jumpToElement(coil.page.id, coil.element.id) });
+            }
+          } else if (coilTypes().has(element.type)) {
+            const first = (data.contacts.get(tag) || [])[0];
+            if (first) {
+              items.push("-", { label: "接点へ移動（" + first.address + "）", run: () => jumpToElement(first.page.id, first.element.id) });
+            }
+          }
+        }
+        showContextMenu(event, items);
       }
 
       // ダブルクリックでその場編集を開始。
