@@ -174,6 +174,15 @@
 
     .spacer { flex: 1; }
 
+    /* ツールバー内の論理区切り(ファイル/検索・表題欄/出力) */
+    .tool-sep {
+      width: 1px;
+      height: 22px;
+      background: var(--line);
+      margin: 0 4px;
+      align-self: center;
+    }
+
     .status {
       font-size: 12px;
       color: var(--muted);
@@ -559,9 +568,11 @@
         <button type="button" id="openBtn" title="JSONを開く">開く</button>
         <button type="button" id="restoreBackupBtn" title="ブラウザ内の自動保存を復元">復元</button>
         <button type="button" id="saveBtn" class="primary" title="JSONで保存">保存</button>
+        <span class="tool-sep" aria-hidden="true"></span>
         <button type="button" id="searchBtn" title="線番・タグ・文字を検索/置換">検索</button>
         <button type="button" id="helpBtn" title="使い方とショートカット">ヘルプ</button>
         <button type="button" id="titleBatchBtn" title="全ページの表題欄を一括更新">表題欄</button>
+        <span class="tool-sep" aria-hidden="true"></span>
         <button type="button" id="printBtn" title="全ページをPDF印刷">PDF印刷</button>
         <button type="button" id="printTwoUpBtn" title="A3縦に2ページずつ面付けして印刷">A3面付</button>
         <button type="button" id="exportSvgBtn" title="現在ページをSVG出力">SVG</button>
@@ -569,12 +580,12 @@
       </div>
       <div class="spacer"></div>
       <div class="tool-actions" role="toolbar" aria-label="作図ツール">
-        <button type="button" class="icon active" data-tool="select" title="選択/移動">S</button>
-        <button type="button" class="icon" data-tool="wire" title="直交配線">W</button>
-        <button type="button" class="icon" data-tool="text" title="文字">T</button>
-        <button type="button" class="icon" id="undoBtn" title="元に戻す">U</button>
-        <button type="button" class="icon" id="redoBtn" title="やり直し">R</button>
-        <button type="button" class="icon" id="deleteBtn" title="削除">X</button>
+        <button type="button" class="icon active" data-tool="select" title="選択/移動（ショートカット: S または V）">S</button>
+        <button type="button" class="icon" data-tool="wire" title="直交配線を引く（ショートカット: W）">W</button>
+        <button type="button" class="icon" data-tool="text" title="文字を配置（ショートカット: T）">T</button>
+        <button type="button" class="icon" id="undoBtn" title="元に戻す（Ctrl+Z）">U</button>
+        <button type="button" class="icon" id="redoBtn" title="やり直し（Ctrl+Y）">R</button>
+        <button type="button" class="icon" id="deleteBtn" title="選択を削除（Delete）">X</button>
       </div>
       <div class="status" id="status">A4縦の図枠付きページを作成しました。</div>
     </header>
@@ -637,14 +648,17 @@
 
         <div class="section">
           <div class="panel-title">自動処理・ツール</div>
-          <label for="wireNumberFormat">線番書式</label>
-          <input id="wireNumberFormat" type="text" value="%S-%N">
-          <label for="componentTagFormat">部品タグ書式</label>
-          <input id="componentTagFormat" type="text" value="%F%N">
-          <div class="row" style="margin-top:8px">
-            <button type="button" id="autoWireBtn">線番採番</button>
-            <button type="button" id="auditBtn">監査</button>
+          <div class="row">
+            <button type="button" id="autoWireBtn" title="ページごとに同電位ネット単位で線番を自動付与">線番採番</button>
+            <button type="button" id="auditBtn" title="未接続・未採番・重複などを一括チェック">監査</button>
           </div>
+          <details class="attr-panel" style="margin-top:8px">
+            <summary>採番の書式設定（線番 %S-%N ／ タグ %F%N）</summary>
+            <label for="wireNumberFormat">線番書式（%S=シート %N=連番 %R=行）</label>
+            <input id="wireNumberFormat" type="text" value="%S-%N">
+            <label for="componentTagFormat">部品タグ書式（%F=種別接頭辞 %N=連番）</label>
+            <input id="componentTagFormat" type="text" value="%F%N">
+          </details>
           <label for="actionMenu">機能メニュー</label>
           <select id="actionMenu">
             <option value="">選択してください…</option>
@@ -1389,9 +1403,11 @@
         render();
       }
 
-      // 画面右上のステータスバーへメッセージを表示。
+      // 画面右上のステータスバーへメッセージを表示。長文は省略表示になるためtitleで全文も持たせる。
       function setStatus(message) {
-        qs("#status").textContent = message;
+        const status = qs("#status");
+        status.textContent = message;
+        status.title = message;
       }
 
       // SVG要素を属性・子要素つきで生成するヘルパ。null/undefinedの属性はスキップ。
