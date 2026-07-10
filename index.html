@@ -289,6 +289,9 @@
 
     /* 実描画アイコン: 図面用クラスはvector-effect併用のため、アイコン内では線幅を画面px固定にする */
     .palette-icon [class] { stroke-width: 1.35; }
+    /* アイコンではタグ等の入力文字を表示しない(文字部品のアイコンのみ例外) */
+    .palette-icon text { display: none; }
+    .palette-icon.icon-keep-text text { display: initial; }
 
     .palette-label {
       font-size: 12px;
@@ -1406,7 +1409,7 @@
           const pad = Math.max(1.4, Math.min(box.w, box.h) * 0.18);
           const svg = svgEl("svg", {
             xmlns: svgNS,
-            class: "palette-icon",
+            class: "palette-icon" + (item.type === "text" ? " icon-keep-text" : ""),
             viewBox: (box.x - pad) + " " + (box.y - pad) + " " + (box.w + pad * 2) + " " + (box.h + pad * 2)
           });
           drawElement(svg, element);
@@ -3383,20 +3386,24 @@
             { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
+        // 非常停止PB(参照実測): 端子円2+ワイドな傘弧+プランジャ+押し方向の矢頭+
+        // ひねり解除の環(スタジアム形)+右上のR。配線は円を貫通して見える(白抜き円が中を隠す)。
         pushButtonEmergency: {
-          w: 10, h: 6,
-          anchors: [[0, 3.8], [10, 3.8]],
+          w: 10, h: 7,
+          anchors: [[0, 4.4], [10, 4.4]],
           prims: [
-            { t: "line", p: [0, 3.8, 2.8, 3.8] },
-            { t: "line", p: [7.2, 3.8, 10, 3.8] },
-            { t: "circle", p: [3.4, 3.8, 0.6], fill: "white" },
-            { t: "circle", p: [6.6, 3.8, 0.6], fill: "white" },
-            { t: "line", p: [2.4, 2.9, 7.6, 2.9] },
-            { t: "line", p: [5, 2.9, 5, 1.5] },
-            { t: "line", p: [3.6, 1.5, 6.4, 1.5] },
-            { t: "arc", p: [5, 3.8, 1.9, 20, 160] },
-            { t: "text", p: [7.6, 1.5], size: 1.6, anchor: "start", value: "R" },
-            { t: "text", p: [5, 6.8], size: 2, anchor: "middle", field: "label" },
+            { t: "line", p: [0, 4.4, 10, 4.4] },
+            { t: "circle", p: [3.4, 4.4, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 4.4, 0.6], fill: "white" },
+            { t: "arc", p: [5, 4.6, 4.0, 235, 305] },
+            { t: "line", p: [5, 0.6, 5, 5.55] },
+            { t: "pline", pts: [[4.62, 5.28], [5, 5.72], [5.38, 5.28]] },
+            { t: "arc", p: [3.95, 5.45, 0.62, 90, 270] },
+            { t: "arc", p: [6.05, 5.45, 0.62, 270, 450] },
+            { t: "line", p: [3.95, 4.83, 6.05, 4.83] },
+            { t: "line", p: [3.95, 6.07, 6.05, 6.07] },
+            { t: "text", p: [7.7, 1.6], size: 1.6, anchor: "start", value: "R" },
+            { t: "text", p: [5, 8.2], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
@@ -5302,6 +5309,16 @@
           const h = Number(element.h || defaultElement(type).h || 0);
           element.x = round(x - w / 2);
           element.y = round(y - h / 2);
+          // ピン高さが中心と異なる部品(押しボタン等)は、中心ではなく接続ピンの線を
+          // スナップ点へ合わせる(グリッド・行と配線高さが一致するように)。
+          const anchors = elementConnectionAnchors(element);
+          if (anchors && anchors.length) {
+            if (element.orientation === "vertical") {
+              element.x = round(Number(element.x) + (x - anchors[0].x));
+            } else {
+              element.y = round(Number(element.y) + (y - anchors[0].y));
+            }
+          }
         } else if (type === "ground") {
           const w = Number(element.w || defaultElement(type).w || 0);
           element.x = round(x - w / 2);
@@ -12657,9 +12674,13 @@
             dx = Math.round(dx / gridStep) * gridStep;
             dy = Math.round(dy / gridStep) * gridStep;
             if (page && page.frameVariant === "ladder" && (dragState.originals || []).length) {
-              const box0 = elementBounds(dragState.originals[0]);
-              if (box0) {
-                const cy0 = box0.y + box0.h / 2;
+              // 行磁気スナップは要素中心ではなく接続ピンの高さを基準にする
+              // (押しボタン等ピンが中心にない部品でも配線高さが行に乗るように)。
+              const first = dragState.originals[0];
+              const anchors0 = elementConnectionAnchors(first);
+              const box0 = elementBounds(first);
+              const cy0 = anchors0 && anchors0.length ? anchors0[0].y : (box0 ? box0.y + box0.h / 2 : null);
+              if (cy0 !== null) {
                 const targetY = cy0 + rawDy;
                 const row = LADDER_GRID.top + LADDER_GRID.pitch * Math.round((targetY - LADDER_GRID.top) / LADDER_GRID.pitch);
                 if (Math.abs(row - targetY) <= 2.5) dy = round(row - cy0);
