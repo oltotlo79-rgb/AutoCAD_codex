@@ -754,6 +754,7 @@
               <option value="exportDxfAll">DXF出力（全ページ）</option>
               <option value="exportPack">標準パック出力</option>
               <option value="importPack">標準パック取込</option>
+              <option value="titleLayout">表題欄レイアウト編集（JSON）</option>
             </optgroup>
           </select>
         </div>
@@ -2004,62 +2005,123 @@
         frame.appendChild(svgEl("rect", { x, y, width: w, height: h, fill: "#fff", stroke: "none" }));
       }
 
-      // 簡易表題欄(右下小型)を描画。
-      function drawCompactTitle(frame, page, size, margin) {
-        const w = Math.min(94, size.w - margin * 2 - 18);
-        const h = 32;
-        const x = size.w - margin - w;
-        const y = size.h - margin - h;
-        frameWhiteUnderlay(frame, x, y, w, h);
-        frame.appendChild(svgEl("rect", { x, y, width: w, height: h, class: "frame-thick" }));
-        drawRows(frame, x, y, w, h, [8, 8, 8, 8]);
-        drawCols(frame, x, y, w, h, [18, 46, 18, w - 82]);
-        frame.appendChild(textEl("図名", x + 2, y + 4, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.title, x + 20, y + 4, { fontSize: 2.7 }));
-        frame.appendChild(textEl("図番", x + 2, y + 12, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.drawingNo, x + 20, y + 12, { fontSize: 2.5 }));
-        frame.appendChild(textEl("作成", x + 2, y + 20, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.designer, x + 20, y + 20, { fontSize: 2.5 }));
-        frame.appendChild(textEl("日付", x + 52, y + 20, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.date, x + 70, y + 20, { fontSize: 2.5 }));
-        frame.appendChild(textEl("SHEET", x + 2, y + 28, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.page + " / " + page.title.total, x + 20, y + 28, { fontSize: 2.5 }));
+      // ===== 表題欄レイアウト定義(データ駆動) =====
+      // compact(基本)/detailed(詳細)の表題欄はこのJSONレイアウトをdrawTitleBlockLayoutが解釈して描く。
+      // 各項目の意味:
+      //   w/h            = 欄の外形(mm)。wはmaxWidthInsetにより用紙幅へ収まるよう縮む
+      //   rows/cols      = 罫線(行高さ・列幅の並び。最後の1件の後には線を引かない。"rest"=残り全部)
+      //   cells          = 描画要素の並び(DOM順=定義順)
+      //     { t:"label", text, dx, dy, size? }            固定文字(既定サイズ2.2)
+      //     { t:"field", field, dx, dy, size? }           page.titleの値("sheet"=頁/総頁)
+      //     { t:"revBlock", wFromRight, rows, rowH }      改訂欄(project.revisions末尾rows件)
+      // state.titleLayoutsに同形のオブジェクトを入れると既定を上書きできる(標準パックで持ち運び可)。
+      // 設備標準(ladder)図枠は実測固定のため対象外。
+      const DEFAULT_TITLE_LAYOUTS = {
+        compact: {
+          w: 94, h: 32, maxWidthInset: 18,
+          rows: [8, 8, 8, 8],
+          cols: [18, 46, 18, "rest"],
+          cells: [
+            { t: "label", text: "図名", dx: 2, dy: 4 },
+            { t: "field", field: "title", dx: 20, dy: 4, size: 2.7 },
+            { t: "label", text: "図番", dx: 2, dy: 12 },
+            { t: "field", field: "drawingNo", dx: 20, dy: 12 },
+            { t: "label", text: "作成", dx: 2, dy: 20 },
+            { t: "field", field: "designer", dx: 20, dy: 20 },
+            { t: "label", text: "日付", dx: 52, dy: 20 },
+            { t: "field", field: "date", dx: 70, dy: 20 },
+            { t: "label", text: "SHEET", dx: 2, dy: 28 },
+            { t: "field", field: "sheet", dx: 20, dy: 28 }
+          ]
+        },
+        detailed: {
+          w: 124, h: 48, maxWidthInset: 12,
+          rows: [8, 8, 8, 8, 8, 8],
+          cols: [18, 44, 16, 24, 22],
+          cells: [
+            { t: "revBlock", wFromRight: 28, rows: 5, rowH: 8 },
+            { t: "label", text: "図名", dx: 2, dy: 4 },
+            { t: "field", field: "title", dx: 20, dy: 4, size: 2.7 },
+            { t: "label", text: "設備", dx: 2, dy: 12 },
+            { t: "field", field: "facility", dx: 20, dy: 12 },
+            { t: "label", text: "図番", dx: 2, dy: 20 },
+            { t: "field", field: "drawingNo", dx: 20, dy: 20 },
+            { t: "label", text: "作成", dx: 2, dy: 28 },
+            { t: "field", field: "designer", dx: 20, dy: 28 },
+            { t: "label", text: "日付", dx: 64, dy: 28 },
+            { t: "field", field: "date", dx: 82, dy: 28 },
+            { t: "label", text: "SHEET", dx: 2, dy: 44 },
+            { t: "field", field: "sheet", dx: 20, dy: 44 }
+          ]
+        }
+      };
+
+      // 有効な表題欄レイアウト(プロジェクトの上書き→既定の順)。
+      function titleLayoutFor(variant) {
+        const custom = state.titleLayouts && state.titleLayouts[variant];
+        return custom && typeof custom === "object" ? custom : DEFAULT_TITLE_LAYOUTS[variant];
       }
 
-      // 詳細表題欄(右下+改訂欄つき)を描画。project.revisionsの末尾5件を改訂欄へ表示。
-      function drawDetailedTitle(frame, page, size, margin) {
-        const w = Math.min(124, size.w - margin * 2 - 12);
-        const h = 48;
+      // page.titleのフィールド値を解決("sheet"は頁/総頁の合成)。
+      function titleFieldValue(page, field) {
+        if (field === "sheet") return page.title.page + " / " + page.title.total;
+        const raw = page.title[field];
+        return raw === undefined || raw === null ? "" : raw;
+      }
+
+      // 改訂欄(REV列)を描画。project.revisionsの末尾N件、無ければpage.title.revisionを1行目へ。
+      function drawRevisionBlock(frame, page, x, y, w, h, cell) {
+        const revW = Number(cell.wFromRight || 28);
+        const rowH = Number(cell.rowH || 8);
+        const rowCount = Math.max(1, Number(cell.rows || 5));
+        const revX = x + w - revW;
+        frame.appendChild(svgEl("line", { x1: revX, y1: y, x2: revX, y2: y + h, class: "frame-line" }));
+        frame.appendChild(textEl("REV", revX + revW / 2, y + 4, { fontSize: 2.1, anchor: "middle" }));
+        for (let i = 1; i <= rowCount; i++) frame.appendChild(svgEl("line", { x1: revX, y1: y + rowH * i, x2: x + w, y2: y + rowH * i, class: "frame-light" }));
+        const revisions = (state.project.revisions || []).slice(-rowCount);
+        if (revisions.length) {
+          revisions.forEach((entry, index) => {
+            frame.appendChild(textEl(((entry.rev || "") + " " + (entry.date || "")).trim(), revX + revW / 2, y + rowH + 4 + rowH * index, { fontSize: 2, anchor: "middle" }));
+          });
+        } else {
+          frame.appendChild(textEl(page.title.revision || "", revX + revW / 2, y + rowH + 4, { fontSize: 2.4, anchor: "middle" }));
+        }
+      }
+
+      // 表題欄レイアウトのインタープリタ。外形→罫線→セルの順に描画する。
+      function drawTitleBlockLayout(frame, page, size, margin, layout) {
+        if (!layout) return;
+        const w = Math.min(Number(layout.w || 94), size.w - margin * 2 - Number(layout.maxWidthInset ?? 12));
+        const h = Number(layout.h || 32);
         const x = size.w - margin - w;
         const y = size.h - margin - h;
         frameWhiteUnderlay(frame, x, y, w, h);
         frame.appendChild(svgEl("rect", { x, y, width: w, height: h, class: "frame-thick" }));
-        drawRows(frame, x, y, w, h, [8, 8, 8, 8, 8, 8]);
-        drawCols(frame, x, y, w, h, [18, 44, 16, 24, 22]);
-        const revX = x + w - 28;
-        frame.appendChild(svgEl("line", { x1: revX, y1: y, x2: revX, y2: y + h, class: "frame-line" }));
-        frame.appendChild(textEl("REV", revX + 14, y + 4, { fontSize: 2.1, anchor: "middle" }));
-        for (let i = 1; i < 6; i++) frame.appendChild(svgEl("line", { x1: revX, y1: y + 8 * i, x2: x + w, y2: y + 8 * i, class: "frame-light" }));
-        const revisions = (state.project.revisions || []).slice(-5);
-        if (revisions.length) {
-          revisions.forEach((entry, index) => {
-            frame.appendChild(textEl(((entry.rev || "") + " " + (entry.date || "")).trim(), revX + 14, y + 12 + 8 * index, { fontSize: 2, anchor: "middle" }));
-          });
-        } else {
-          frame.appendChild(textEl(page.title.revision || "", revX + 14, y + 12, { fontSize: 2.4, anchor: "middle" }));
+        if (Array.isArray(layout.rows)) drawRows(frame, x, y, w, h, layout.rows);
+        if (Array.isArray(layout.cols)) {
+          const fixed = layout.cols.filter(col => typeof col === "number").reduce((sum, col) => sum + col, 0);
+          drawCols(frame, x, y, w, h, layout.cols.map(col => col === "rest" ? Math.max(0, w - fixed) : col));
         }
-        frame.appendChild(textEl("図名", x + 2, y + 4, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.title, x + 20, y + 4, { fontSize: 2.7 }));
-        frame.appendChild(textEl("設備", x + 2, y + 12, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.facility || "", x + 20, y + 12, { fontSize: 2.5 }));
-        frame.appendChild(textEl("図番", x + 2, y + 20, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.drawingNo, x + 20, y + 20, { fontSize: 2.5 }));
-        frame.appendChild(textEl("作成", x + 2, y + 28, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.designer, x + 20, y + 28, { fontSize: 2.5 }));
-        frame.appendChild(textEl("日付", x + 64, y + 28, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.date, x + 82, y + 28, { fontSize: 2.5 }));
-        frame.appendChild(textEl("SHEET", x + 2, y + 44, { fontSize: 2.2 }));
-        frame.appendChild(textEl(page.title.page + " / " + page.title.total, x + 20, y + 44, { fontSize: 2.5 }));
+        (layout.cells || []).forEach(cell => {
+          if (cell.t === "revBlock") {
+            drawRevisionBlock(frame, page, x, y, w, h, cell);
+            return;
+          }
+          const text = cell.t === "label" ? cell.text : titleFieldValue(page, cell.field);
+          const opts = { fontSize: Number(cell.size || (cell.t === "label" ? 2.2 : 2.5)) };
+          if (cell.anchor) opts.anchor = cell.anchor;
+          frame.appendChild(textEl(text, x + Number(cell.dx || 0), y + Number(cell.dy || 0), opts));
+        });
+      }
+
+      // 簡易表題欄(右下小型)を描画(レイアウト定義から)。
+      function drawCompactTitle(frame, page, size, margin) {
+        drawTitleBlockLayout(frame, page, size, margin, titleLayoutFor("compact"));
+      }
+
+      // 詳細表題欄(右下+改訂欄つき)を描画(レイアウト定義から)。
+      function drawDetailedTitle(frame, page, size, margin) {
+        drawTitleBlockLayout(frame, page, size, margin, titleLayoutFor("detailed"));
       }
 
       // 側帯型表題欄(左側縦帯)を描画。
@@ -9547,7 +9609,8 @@
           customSymbols: deepClone(state.customSymbols || []),
           catalog: deepClone(state.catalog || []),
           plcModules: deepClone(state.plcModules || []),
-          frameVariant: currentPage()?.frameVariant || "ladder"
+          frameVariant: currentPage()?.frameVariant || "ladder",
+          titleLayouts: state.titleLayouts ? deepClone(state.titleLayouts) : undefined
         };
         download("standard-pack.json", JSON.stringify(pack, null, 2), "application/json");
         setStatus("標準パックを書き出しました。");
@@ -9613,6 +9676,48 @@
           const page = currentPage();
           if (page) page.frameVariant = pack.frameVariant;
         }
+        if (pack.titleLayouts && typeof pack.titleLayouts === "object") {
+          state.titleLayouts = deepClone(pack.titleLayouts);
+        }
+      }
+
+      // 表題欄レイアウト(compact/detailed)のJSON編集ダイアログ。
+      // 有効中のレイアウトを表示し、編集して適用するとstate.titleLayoutsへ保存(標準パックにも同梱)。
+      function showTitleLayoutEditor() {
+        const effective = {
+          compact: titleLayoutFor("compact"),
+          detailed: titleLayoutFor("detailed")
+        };
+        openDialog("表題欄レイアウト編集（JSON）", `
+          <p class="muted">「基本(compact)」「詳細(detailed)」表題欄の罫線とセル配置をJSONで調整できます。
+          w/h=外形mm、rows/cols=罫線("rest"=残り幅)、cells=文字(label=固定文字、field=表題欄の値、revBlock=改訂欄)。
+          既定へ戻すには「既定に戻す」を押します。設備標準図枠(行番号つき)は対象外です。</p>
+          <textarea id="titleLayoutJson" style="width:100%;height:300px;font-family:ui-monospace,Consolas,monospace;font-size:11px">${escapeHtml(JSON.stringify(effective, null, 2))}</textarea>
+          <div class="inline" style="justify-content:space-between;margin-top:12px">
+            <button type="button" id="titleLayoutResetBtn">既定に戻す</button>
+            <button type="button" id="titleLayoutApplyBtn" class="primary">適用</button>
+          </div>`);
+        qs("#titleLayoutApplyBtn").addEventListener("click", () => {
+          try {
+            const parsed = JSON.parse(qs("#titleLayoutJson").value);
+            if (!parsed || typeof parsed !== "object") throw new Error("オブジェクトではありません。");
+            ["compact", "detailed"].forEach(key => {
+              if (parsed[key] && !Array.isArray(parsed[key].cells)) throw new Error(key + ".cells が配列ではありません。");
+            });
+            state.titleLayouts = parsed;
+            commitHistory("表題欄レイアウトを更新しました。");
+            closeDialog();
+            render();
+          } catch (error) {
+            setStatus("表題欄レイアウトの適用に失敗しました: " + error.message);
+          }
+        });
+        qs("#titleLayoutResetBtn").addEventListener("click", () => {
+          delete state.titleLayouts;
+          commitHistory("表題欄レイアウトを既定に戻しました。");
+          closeDialog();
+          render();
+        });
       }
 
       // ===== DXF取込 MVP(LINE/CIRCLE/TEXT/LWPOLYLINE) =====
@@ -10576,6 +10681,7 @@
           const restored = migrateProjectData(JSON.parse(snapshot));
           if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
           Object.assign(state, restored);
+          if (!restored.titleLayouts) delete state.titleLayouts;
           state.schemaVersion = SCHEMA_VERSION;
           ensureProjectDefaults();
           setSelection([]);
@@ -10645,6 +10751,7 @@
           const restored = migrateProjectData(JSON.parse(entry.snapshot));
           if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
           Object.assign(state, restored);
+          if (!restored.titleLayouts) delete state.titleLayouts;
           state.schemaVersion = SCHEMA_VERSION;
           ensureProjectDefaults();
           setSelection([]);
@@ -10906,6 +11013,7 @@
             state.layers = loaded.layers || state.layers;
             state.wireTypes = loaded.wireTypes || state.wireTypes;
             state.customSymbols = loaded.customSymbols || [];
+            if (loaded.titleLayouts) state.titleLayouts = loaded.titleLayouts; else delete state.titleLayouts;
             state.project = { ...state.project, ...(loaded.project || {}) };
             ensureProjectDefaults();
             state.pages = loaded.pages;
@@ -14345,7 +14453,8 @@
           exportDxf: exportDxf,
           exportDxfAll: exportDxfAllPages,
           exportPack: exportStandardPack,
-          importPack: () => qs("#packImportInput").click()
+          importPack: () => qs("#packImportInput").click(),
+          titleLayout: showTitleLayoutEditor
         };
         qs("#actionMenu").addEventListener("change", event => {
           const action = MENU_ACTIONS[event.target.value];
