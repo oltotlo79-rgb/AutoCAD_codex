@@ -287,6 +287,9 @@
       color: #14202c;
     }
 
+    /* 実描画アイコン: 図面用クラスはvector-effect併用のため、アイコン内では線幅を画面px固定にする */
+    .palette-icon [class] { stroke-width: 1.35; }
+
     .palette-label {
       font-size: 12px;
       text-align: center;
@@ -1332,7 +1335,7 @@
           button.draggable = true;
           button.dataset.type = item.type;
           button.title = item.label + "を配置（ドラッグ or クリック→用紙クリック）";
-          button.innerHTML = iconSvg(item.icon) + '<div class="palette-label">' + item.label + "</div>";
+          button.innerHTML = paletteIconHtml(item) + '<div class="palette-label">' + item.label + "</div>";
           button.addEventListener("dragstart", event => {
             event.dataTransfer.setData("text/plain", item.type);
             event.dataTransfer.effectAllowed = "copy";
@@ -1370,7 +1373,52 @@
         });
       }
 
-      // パレット用のインラインSVGアイコン集。キーはPALETTE[].icon。
+      // パレットアイコンの見本要素。実配置と同じ描画関数で描くため、置いた時の形と常に一致する。
+      // 点列系・大型部品のみ、アイコンとして読める代表形状にサイズ/点数を調整する。
+      function paletteIconElement(type) {
+        if (type === "text") return { ...defaultElement("text", 0, 0), w: 16, h: 7 };
+        if (type === "wire") return { ...defaultElement("wire", 0, 0), points: [[0, 8], [11, 8], [11, 0], [22, 0]], wireNo: "" };
+        if (type === "line") return { ...defaultElement("line", 0, 0), points: [[0, 8], [22, 0]] };
+        if (type === "mechanicalLink") return { ...defaultElement("mechanicalLink", 0, 0), points: [[0, 10], [16, 0]] };
+        if (type === "dimension") return { ...defaultElement("dimension", 0, 0), points: [[0, 5], [20, 5]] };
+        if (type === "arrow") return { ...defaultElement("arrow", 0, 0), points: [[0, 4], [16, 4]], label: "" };
+        if (type === "terminalStrip") return { ...defaultElement("terminalStrip", 0, 0), count: 3, h: 28.5, label: "", start: 1 };
+        if (type === "plcBlock") {
+          const element = defaultElement("plcBlock", 0, 0);
+          return { ...element, plcStyle: "unit", rows: 3, w: 10.5, h: 28.5, label: "", pinText: "" };
+        }
+        if (type === "table") return { ...defaultElement("table", 0, 0), rows: 3, cols: 3, w: 24, h: 14, label: "", cellText: "" };
+        if (type === "installationBox" || type === "locationBox") return { ...defaultElement(type, 0, 0), w: 40, h: 26 };
+        if (type === "underlayImage" || type === "terminalSheet") return null;
+        return defaultElement(type, 0, 0);
+      }
+
+      // 実描画によるパレットアイコンHTML(種別ごとにキャッシュ)。生成不可の種別は手描きアイコンへ退避。
+      const paletteIconCache = new Map();
+      function paletteIconHtml(item) {
+        if (String(item.type).startsWith("custom:")) return iconSvg(item.icon);
+        if (paletteIconCache.has(item.type)) return paletteIconCache.get(item.type);
+        let html = "";
+        try {
+          const element = paletteIconElement(item.type);
+          if (!element) throw new Error("no sample");
+          const box = elementBounds(element);
+          const pad = Math.max(1.4, Math.min(box.w, box.h) * 0.18);
+          const svg = svgEl("svg", {
+            xmlns: svgNS,
+            class: "palette-icon",
+            viewBox: (box.x - pad) + " " + (box.y - pad) + " " + (box.w + pad * 2) + " " + (box.h + pad * 2)
+          });
+          drawElement(svg, element);
+          html = svg.outerHTML;
+        } catch (_) {
+          html = iconSvg(item.icon);
+        }
+        paletteIconCache.set(item.type, html);
+        return html;
+      }
+
+      // パレット用のインラインSVGアイコン集(実描画アイコンの退避先とユーザー部品用)。キーはPALETTE[].icon。
       function iconSvg(name) {
         const common = 'class="palette-icon" viewBox="0 0 80 44" fill="none" xmlns="http://www.w3.org/2000/svg"';
         const stroke = 'stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"';
@@ -1603,6 +1651,11 @@
         return Math.min(size.w, size.h) >= 297 ? 10 : 8;
       }
 
+      // 表題欄などの下に白地を敷き、作図グリッドが透けて見にくくなるのを防ぐ。
+      function frameWhiteUnderlay(frame, x, y, w, h) {
+        frame.appendChild(svgEl("rect", { x, y, width: w, height: h, fill: "#fff", stroke: "none" }));
+      }
+
       // 図枠外周の座標目盛を描画。目盛は太グリッド(10mm)の絶対座標に一致させ、
       // ラベルは「mm座標÷10」(例: x=120mm → 12)。bottomExcludeFromX以降の下辺目盛は
       // 表題欄と重なるため描かない。
@@ -1627,6 +1680,7 @@
         const h = 32;
         const x = size.w - margin - w;
         const y = size.h - margin - h;
+        frameWhiteUnderlay(frame, x, y, w, h);
         frame.appendChild(svgEl("rect", { x, y, width: w, height: h, class: "frame-thick" }));
         drawRows(frame, x, y, w, h, [8, 8, 8, 8]);
         drawCols(frame, x, y, w, h, [18, 46, 18, w - 82]);
@@ -1648,6 +1702,7 @@
         const h = 48;
         const x = size.w - margin - w;
         const y = size.h - margin - h;
+        frameWhiteUnderlay(frame, x, y, w, h);
         frame.appendChild(svgEl("rect", { x, y, width: w, height: h, class: "frame-thick" }));
         drawRows(frame, x, y, w, h, [8, 8, 8, 8, 8, 8]);
         drawCols(frame, x, y, w, h, [18, 44, 16, 24, 22]);
@@ -1683,6 +1738,7 @@
         const x = size.w - margin - w;
         const y = margin + 4;
         const h = size.h - margin * 2 - 8;
+        frameWhiteUnderlay(frame, x, y, w, h);
         frame.appendChild(svgEl("line", { x1: x, y1: y, x2: x, y2: y + h, class: "frame-thick" }));
         frame.appendChild(svgEl("rect", { x, y: y + h - 88, width: w, height: 88, class: "frame-thick" }));
         drawRows(frame, x, y + h - 88, w, 88, [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8]);
@@ -1709,6 +1765,7 @@
         const w = Math.min(size.w - margin * 2 - 36, 150);
         const h = Math.min(size.h - margin * 2 - 76, 170);
         frame.appendChild(textEl("図面目次", x + w / 2, y - 8, { fontSize: 4, anchor: "middle" }));
+        frameWhiteUnderlay(frame, x, y, w, h);
         frame.appendChild(svgEl("rect", { x, y, width: w, height: h, class: "frame-thick" }));
         const rows = 16;
         for (let i = 1; i < rows; i++) {
@@ -1730,6 +1787,7 @@
         frame.appendChild(textEl(page.name || "", (L + R) / 2, 22.5, { fontSize: 3.5, anchor: "middle" }));
         const tblTop = B - 49;
         const xrefR = 105.8;
+        frameWhiteUnderlay(frame, L, tblTop, R - L, B - tblTop);
         frame.appendChild(svgEl("rect", { x: L, y: tblTop, width: xrefR - L, height: B - tblTop, class: "frame-line" }));
         for (let i = 1; i < 13; i++) {
           const x = L + (xrefR - L) * i / 13;
