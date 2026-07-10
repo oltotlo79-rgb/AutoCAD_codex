@@ -3825,6 +3825,176 @@
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // ヒューズ(設備標準/JIS): 箱+貫通線。
+        fuse: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.9, 2.2] },
+            { t: "line", p: [7.1, 2.2, 10, 2.2] },
+            { t: "rect", p: [2.9, 1.1, 4.2, 2.2], fill: "white" },
+            { t: "line", p: [2.9, 2.2, 7.1, 2.2] },
+            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // ヒューズ(IEC): 箱のみ。
+        fuseBlank: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.9, 2.2] },
+            { t: "line", p: [7.1, 2.2, 10, 2.2] },
+            { t: "rect", p: [2.9, 1.1, 4.2, 2.2], fill: "white" },
+            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // ヒューズ(旧JIS): S字。
+        fuseWave: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.0, 2.2] },
+            { t: "arc", p: [4.0, 2.2, 1.0, 180, 360] },
+            { t: "arc", p: [6.0, 2.2, 1.0, 0, 180] },
+            { t: "line", p: [7.0, 2.2, 10, 2.2] },
+            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 切替スイッチ(3位置): 中央ポジション線つき。
+        selectorSwitch3: {
+          w: 10, h: 5,
+          anchors: [[0, 3.2], [10, 3.2]],
+          prims: [
+            { t: "line", p: [0, 3.2, 2.8, 3.2] },
+            { t: "line", p: [7.2, 3.2, 10, 3.2] },
+            { t: "circle", p: [3.4, 3.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 3.2, 0.6], fill: "white" },
+            { t: "pline", pts: [[3.4, 2.3], [3.4, 1.4], [4.1, 1.4]] },
+            { t: "pline", pts: [[6.6, 2.3], [6.6, 1.4], [5.9, 1.4]] },
+            { t: "line", p: [5, 1.4, 5, 2.6] },
+            { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // リミットスイッチ(ローラーレバー)。
+        limitSwitchRoller: {
+          w: 10, h: 4.6,
+          anchors: [[0, 2.8], [10, 2.8]],
+          prims: [
+            { t: "line", p: [0, 2.8, 2.8, 2.8] },
+            { t: "line", p: [7.2, 2.8, 10, 2.8] },
+            { t: "circle", p: [3.4, 2.8, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 2.8, 0.6], fill: "white" },
+            { t: "line", p: [3.6, 2.3, 5.7, 0.7] },
+            { t: "circle", p: [6.15, 0.4, 0.55], fill: "white" },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 限時コイル: 円+T。
+        coilTimer: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.1, 2.2] },
+            { t: "line", p: [6.9, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.9], fill: "white" },
+            { t: "text", p: [5, 2.2], size: 2.2, anchor: "middle", value: "T" },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "catalog" }
+          ]
+        },
+        // カウンタコイル: 円+C。
+        coilCounter: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.1, 2.2] },
+            { t: "line", p: [6.9, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.9], fill: "white" },
+            { t: "text", p: [5, 2.2], size: 2.2, anchor: "middle", value: "C" },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "catalog" }
+          ]
+        },
+        // 限時a接点(オフディレー): 限時記号∪。
+        timerContactNOOff: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.88, 2.2] },
+            { t: "line", p: [5.12, 2.2, 8, 2.2] },
+            { t: "rect", p: [2.88, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "rect", p: [4.77, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "arc", p: [4, 5.4, 1.2, 0, 180] },
+            { t: "line", p: [2.8, 5.4, 5.2, 5.4] },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [6.8, 6.4], size: 1.7, anchor: "start", field: "refNo" }
+          ]
+        },
+        // 限時b接点(オフディレー)。
+        timerContactNCOff: {
+          w: 8, h: 4.4,
+          anchors: [[0, 2.2], [8, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 2.88, 2.2] },
+            { t: "line", p: [5.12, 2.2, 8, 2.2] },
+            { t: "rect", p: [2.88, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "rect", p: [4.77, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "line", p: [2.5, 5.0, 5.5, -0.6] },
+            { t: "arc", p: [4, 5.4, 1.2, 0, 180] },
+            { t: "line", p: [2.8, 5.4, 5.2, 5.4] },
+            { t: "text", p: [4, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [6.8, 6.4], size: 1.7, anchor: "start", field: "refNo" }
+          ]
+        },
+        // サーミスタ: 箱+貫通斜線+t°。
+        resistorThermistor: {
+          w: 10, h: 2.6,
+          anchors: [[0, 1.3], [10, 1.3]],
+          prims: [
+            { t: "line", p: [0, 1.3, 2.5, 1.3] },
+            { t: "line", p: [7.5, 1.3, 10, 1.3] },
+            { t: "rect", p: [2.5, 0, 5, 2.6], fill: "white" },
+            { t: "line", p: [2.0, 3.3, 6.4, -0.7] },
+            { t: "line", p: [2.0, 3.3, 3.2, 3.3] },
+            { t: "text", p: [6.8, -0.9], size: 1.6, anchor: "start", value: "t°" },
+            { t: "text", p: [5, -2.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 変圧器(JIS二巻線円形): 上=一次/下=二次の円。寸法・上下ラインは巻線バー形と共通。
+        transformerCircles: {
+          w: 14, h: 17,
+          anchors: [[0, 5.5], [14, 5.5], [0, 15.0], [14, 15.0], [3.4, 0.9], [10.6, 0.9]],
+          prims: [
+            { t: "line", p: [0, 5.5, 4.18, 5.5] },
+            { t: "line", p: [9.82, 5.5, 14, 5.5] },
+            { t: "circle", p: [7, 7.4, 3.4], fill: "white" },
+            { t: "line", p: [0, 15.0, 4.18, 15.0] },
+            { t: "line", p: [9.82, 15.0, 14, 15.0] },
+            { t: "circle", p: [7, 13.1, 3.4], fill: "white" },
+            { t: "text", p: [7, -1.4], size: 2.2, anchor: "middle", field: "label" },
+            { t: "text", p: [7, 17.6], size: 2, anchor: "middle", field: "rating" }
+          ]
+        },
+        // 遮断器(漏電): 実測形+E表示。
+        breakerElb: {
+          w: 12, h: 5,
+          anchors: [[0, 3], [12, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 1.9, 3] },
+            { t: "arc", p: [4.75, 3, 2.25, 180, 360] },
+            { t: "circle", p: [2.5, 3, 0.6], fill: "white" },
+            { t: "circle", p: [7, 3, 0.6], fill: "white" },
+            { t: "line", p: [7.6, 3, 8.4, 3] },
+            { t: "pline", pts: [[8.4, 3], [8.4, 1.9], [9.4, 1.9], [9.4, 4.1], [10.2, 4.1], [10.2, 3], [12, 3]] },
+            { t: "circle", p: [4.75, 6.4, 1.0], fill: "white" },
+            { t: "text", p: [4.75, 6.4], size: 1.6, anchor: "middle", value: "E" },
+            { t: "text", p: [4.75, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4.75, -3.4], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [9.3, 0.9], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
         // 可変抵抗: 標準抵抗+斜め矢印。
         resistorVariable: {
           w: 10, h: 2.6,
@@ -4051,8 +4221,13 @@
           case "contactNC": return variant === "jis" ? "contactNCJis" : (variant === "iec" ? "contactNCIec" : "contactNC");
           case "thermalRelay": return "thermalRelay";
           case "thermalElement": return "thermalElement";
-          case "breaker": return "breaker";
-          case "coil": return variant === "box" ? "coilBox" : "coil";
+          case "breaker": return variant === "elb" ? "breakerElb" : "breaker";
+          case "coil": {
+            if (variant === "box") return "coilBox";
+            if (variant === "timer") return "coilTimer";
+            if (variant === "counter") return "coilCounter";
+            return "coil";
+          }
           case "lamp": {
             const lv = element.lampVariant || "pilot";
             if (lv === "pilot") return "lamp";
@@ -4068,11 +4243,11 @@
           case "pushButton":
             if ((element.pbStyle || "momentary") !== "emergency") return "pushButton";
             return variant === "bar" ? "pushButtonEmergencyBar" : "pushButtonEmergency";
-          case "selectorSwitch": return "selectorSwitch";
-          case "limitSwitch": return "limitSwitch";
+          case "selectorSwitch": return variant === "three" ? "selectorSwitch3" : "selectorSwitch";
+          case "limitSwitch": return variant === "roller" ? "limitSwitchRoller" : "limitSwitch";
           case "pressureSwitch": return "pressureSwitch";
           case "motor": return "motor";
-          case "transformer": return "transformer";
+          case "transformer": return variant === "circles" ? "transformerCircles" : "transformer";
           case "meter": return "meter";
           case "inductor": return "inductor";
           case "heater": return "heater";
@@ -4080,10 +4255,14 @@
           case "terminal": return (element.terminalShape || "circle") === "circle" ? "terminal" : null;
           case "resistor": {
             const rs = element.resistorStyle || "box";
-            return rs === "varistor" ? "varistor" : (rs === "variable" ? "resistorVariable" : "resistor");
+            if (rs === "varistor") return "varistor";
+            if (rs === "variable") return "resistorVariable";
+            if (rs === "thermistor") return "resistorThermistor";
+            return "resistor";
           }
-          case "timerContactNO": return "timerContactNO";
-          case "timerContactNC": return "timerContactNC";
+          case "timerContactNO": return variant === "off" ? "timerContactNOOff" : "timerContactNO";
+          case "timerContactNC": return variant === "off" ? "timerContactNCOff" : "timerContactNC";
+          case "fuse": return variant === "blank" ? "fuseBlank" : (variant === "wave" ? "fuseWave" : "fuse");
           case "floatSwitch": return "floatSwitch";
           case "thermoSwitch": return "thermoSwitch";
           case "bell": return "bell";
@@ -4938,10 +5117,17 @@
       const SYMBOL_VARIANT_OPTIONS = {
         contactNO: [["standard", "縦バー（設備標準）"], ["jis", "円端子＋開き線"], ["iec", "斜め線のみ（IEC）"]],
         contactNC: [["standard", "縦バー＋斜線（設備標準）"], ["jis", "円端子＋閉じ線"], ["iec", "斜め線＋止め（IEC）"]],
-        coil: [["standard", "円（設備標準）"], ["box", "箱形"]],
+        timerContactNO: [["standard", "オンディレー（∩）"], ["off", "オフディレー（∪）"]],
+        timerContactNC: [["standard", "オンディレー（∩）"], ["off", "オフディレー（∪）"]],
+        coil: [["standard", "円（設備標準）"], ["box", "箱形"], ["timer", "限時（円＋T）"], ["counter", "カウンタ（円＋C）"]],
         ground: [["standard", "斜線ハッチ（設備標準）"], ["bars", "横棒3本"], ["circle", "清浄接地（円囲み）"]],
         diode: [["standard", "標準"], ["led", "LED（矢印つき）"], ["zener", "ツェナー"]],
         capacitor: [["standard", "標準（平行板）"], ["polarized", "有極（＋と曲板）"]],
+        fuse: [["standard", "箱＋貫通線（設備標準）"], ["blank", "箱のみ（IEC）"], ["wave", "S字（旧JIS）"]],
+        breaker: [["standard", "実測形（円＋アーク＋トリップ）"], ["elb", "漏電（E表示つき）"]],
+        selectorSwitch: [["standard", "2位置"], ["three", "3位置"]],
+        limitSwitch: [["standard", "箱形アクチュエータ"], ["roller", "ローラーレバー"]],
+        transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "二巻線円形（JIS）"]],
         pushButtonEmergency: [["standard", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]]
       };
 
@@ -5048,7 +5234,7 @@
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
           `;
         }
-        if (["coil", "ground", "diode", "capacitor"].includes(element.type)) {
+        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer"].includes(element.type)) {
           return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
@@ -5084,6 +5270,7 @@
         if (["fuse", "breaker"].includes(element.type)) {
           const orientation = element.orientation || "horizontal";
           return `
+            ${symbolVariantSelectHtml(element)}
             <label>保護部品方向</label>
             <select data-bind="orientation">
               <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横配線用</option>
@@ -5103,6 +5290,7 @@
               <option value="box"${style === "box" ? " selected" : ""}>標準(枠)</option>
               <option value="varistor"${style === "varistor" ? " selected" : ""}>バリスタ(斜線)</option>
               <option value="variable"${style === "variable" ? " selected" : ""}>可変(矢印)</option>
+              <option value="thermistor"${style === "thermistor" ? " selected" : ""}>サーミスタ(t°)</option>
             </select>
             <label>方向</label>
             <select data-bind="orientation">
@@ -5541,7 +5729,7 @@
           limitSwitch: { ...base, w: 10, h: 4.6, label: "LS", orientation: "horizontal" },
           pressureSwitch: { ...base, w: 10, h: 6, label: "PS", orientation: "horizontal" },
           coil: { ...base, w: 10, h: 4.4, label: "CR" },
-          fuse: { ...base, w: 12, h: 4.5, label: "F", orientation: "horizontal" },
+          fuse: { ...base, w: 10, h: 4.4, label: "F", orientation: "horizontal" },
           breaker: { ...base, w: 12, h: 5, label: "CB", orientation: "horizontal", refNo: "" },
           lamp: { ...base, w: 10, h: 4.4, label: "PL", lampVariant: "pilot", lampColor: "W" },
           buzzer: { ...base, w: 14, h: 9, label: "BZ", buzzerVariant: "horn" },
@@ -5991,7 +6179,14 @@
         page.elements.push(element);
         breakWiresForInlineElement(page, element);
         selectSingle(element.id);
-        commitHistory("要素を配置しました。");
+        // バリエーションを持つ部品は、初心者向けにデザイン切替の案内を出す
+        const variantKey = element.type === "pushButton"
+          ? ((element.pbStyle || "momentary") === "emergency" ? "pushButtonEmergency" : "")
+          : element.type;
+        const hasVariants = !!SYMBOL_VARIANT_OPTIONS[variantKey] || ["resistor", "lamp"].includes(element.type);
+        commitHistory(hasVariants
+          ? paletteLabel(element.type) + "を配置しました。右パネルの「シンボルデザイン」で形状を切り替えられます。"
+          : "要素を配置しました。");
         setActiveTool("select");
         render();
       }
@@ -10800,7 +10995,8 @@
             <li>右パネルの<b>「テンプレートからページ追加」</b>で骨組みを作る（設備ラダー／AC電源回路／PLC入出力回路など）</li>
             <li>左の<b>部品パレット</b>から部品をドラッグして配置（カテゴリをクリックで開閉、検索も可）</li>
             <li><b>W</b>キーまたは「配線」で配線をドラッグ作図（端子・接点へ自動吸着）</li>
-            <li>部品を選択して右パネルで<b>タグ・線番・属性</b>を編集（コイルと接点を同じタグにすると自動で相互参照）</li>
+            <li>部品を選択して右パネルで<b>タグ・線番・属性</b>を編集（コイルと接点を同じタグにすると自動で相互参照）。
+              多くの部品は<b>「シンボルデザイン」</b>でJIS/IEC等の別デザインに切り替え可能（寸法・接続点は共通）</li>
             <li>「線番採番」→「監査」→上部の<b>PDF印刷</b>で仕上げ</li>
           </ol>
           <div class="panel-title">よく使う機能の場所</div>
