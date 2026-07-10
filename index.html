@@ -7281,6 +7281,8 @@
           wireTypes: deepClone(state.wireTypes),
           layers: deepClone(state.layers),
           auditRules: deepClone(state.settings.auditRules || {}),
+          customSymbols: deepClone(state.customSymbols || []),
+          catalog: deepClone(state.catalog || []),
           frameVariant: currentPage()?.frameVariant || "ladder"
         };
         download("standard-pack.json", JSON.stringify(pack, null, 2), "application/json");
@@ -7314,6 +7316,23 @@
         if (Array.isArray(pack.wireTypes) && pack.wireTypes.length) state.wireTypes = deepClone(pack.wireTypes);
         if (Array.isArray(pack.layers) && pack.layers.length) state.layers = deepClone(pack.layers);
         if (pack.auditRules && typeof pack.auditRules === "object") state.settings.auditRules = deepClone(pack.auditRules);
+        if (Array.isArray(pack.customSymbols)) {
+          state.customSymbols = state.customSymbols || [];
+          pack.customSymbols.forEach(symbol => {
+            if (!symbol || !symbol.id) return;
+            if (state.customSymbols.some(item => item.id === symbol.id)) return;
+            state.customSymbols.push(deepClone(symbol));
+          });
+        }
+        if (Array.isArray(pack.catalog)) {
+          state.catalog = state.catalog || [];
+          pack.catalog.forEach(item => {
+            if (!item) return;
+            const existing = item.catalog ? state.catalog.find(row => row.catalog === item.catalog) : null;
+            if (existing) Object.assign(existing, deepClone(item));
+            else state.catalog.push(deepClone(item));
+          });
+        }
         if (pack.frameVariant) {
           const page = currentPage();
           if (page) page.frameVariant = pack.frameVariant;
