@@ -1020,6 +1020,7 @@
               <option value="catalog">部品カタログ</option>
               <option value="symbolManager">ユーザー部品管理</option>
               <option value="symbolBuilder">シンボルビルダー（マウス作図）</option>
+              <option value="historyTimeline">履歴タイムライン（操作をさかのぼる）</option>
               <option value="revisionHistory">改訂履歴</option>
             </optgroup>
             <optgroup label="帳票・確認">
@@ -1652,6 +1653,7 @@
       let clipboardElement = null;
       let installLocationClipboard = null;
       let history = [];
+      let historyReasons = []; // historyと同じ並びの{reason, at}(履歴タイムライン表示用)
       let historyIndex = -1;
       let pageCounter = 1;
       let printMode = "single";
@@ -1755,6 +1757,7 @@
       // Undo履歴を破棄して現在stateを初期スナップショットとして積む。
       function resetHistory() {
         history = [];
+        historyReasons = [];
         historyIndex = -1;
         commitHistory("初期化");
       }
@@ -1814,9 +1817,13 @@
         const snapshot = JSON.stringify(state);
         if (history[historyIndex] === snapshot) return;
         history = history.slice(0, historyIndex + 1);
+        historyReasons = historyReasons.slice(0, historyIndex + 1);
         history.push(snapshot);
+        historyReasons.push({ reason: reason || "変更", at: new Date().toISOString() });
         if (history.length > HISTORY_LIMIT) {
-          history.splice(0, history.length - HISTORY_LIMIT);
+          const over = history.length - HISTORY_LIMIT;
+          history.splice(0, over);
+          historyReasons.splice(0, over);
         }
         historyIndex = history.length - 1;
         try {
@@ -1832,6 +1839,44 @@
           }
         }
         setStatus(reason || "変更を記録しました。");
+      }
+
+      // 履歴タイムライン: Undo履歴を一覧し、任意の時点へワンクリックで移動する。
+      // restoreHistory(index移動)を使うため、移動後もCtrl+Y(やり直し)で前へ戻れる。
+      function showHistoryTimeline() {
+        if (!history.length) {
+          setStatus("履歴がありません。");
+          return;
+        }
+        const formatAt = iso => {
+          try { return new Date(iso).toLocaleTimeString("ja-JP"); } catch (_) { return ""; }
+        };
+        const rows = [];
+        for (let index = history.length - 1; index >= 0; index--) {
+          const meta = historyReasons[index] || {};
+          const isCurrent = index === historyIndex;
+          rows.push(`<tr${isCurrent ? ' style="background:#e6f4f1;font-weight:700"' : ""}>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(formatAt(meta.at))}</td>
+            <td>${escapeHtml(meta.reason || "変更")}</td>
+            <td>${isCurrent ? "◀ 現在" : `<button type="button" data-history-jump="${index}">この時点へ</button>`}</td>
+          </tr>`);
+        }
+        openDialog("履歴タイムライン", `
+          <p class="muted">操作の履歴（最大${HISTORY_LIMIT}件）です。任意の時点へ戻れます。
+          戻った後も <b>Ctrl+Y</b>（やり直し）や、この一覧から新しい側の時点を選べば元に戻せます。
+          ※新しい時点へ進めるのは、戻った後に<b>別の編集をするまで</b>です（編集するとそこから先の履歴は作り直されます）。</p>
+          <table class="report-table">
+            <thead><tr><th>#</th><th>時刻</th><th>操作</th><th></th></tr></thead>
+            <tbody>${rows.join("")}</tbody>
+          </table>`);
+        qsa("[data-history-jump]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            restoreHistory(Number(button.dataset.historyJump));
+            closeDialog();
+            setStatus("履歴の時点へ移動しました（Ctrl+Y または履歴タイムラインで前へ戻せます）。");
+          });
+        });
       }
 
       // 履歴インデックスのスナップショットへstateを差し替える(Undo/Redoの実体)。
@@ -15602,6 +15647,7 @@
           wireSequence: showWireSequenceDialog,
           addRung: addRungToCurrentPage,
           rungShift: showRungShiftDialog,
+          historyTimeline: showHistoryTimeline,
           wireColumn: showWireColumnDialog,
           wireRow: showWireRowDialog,
           twistedPair: showTwistedPairDialog,
