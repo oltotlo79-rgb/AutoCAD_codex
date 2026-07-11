@@ -1907,6 +1907,9 @@
         }
       }
 
+      // Undo履歴へ現在stateを積み、localStorageへ自動バックアップする。
+      // 変更操作は必ず最後にこれを呼ぶ(直前と同一なら何もしない)。
+      // reasonはステータス表示と履歴タイムラインの操作名に使う。
       function commitHistory(reason = "") {
         syncPageTotals();
         const snapshot = JSON.stringify(state);
@@ -2043,6 +2046,7 @@
 
       // パレット「最近使用」: 配置した種別を新しい順に保持(セッション内)。
       const recentPaletteTypes = [];
+      // 配置した種別を「最近使用」の先頭へ積む(重複は繰上げ、最大件数はrenderPalette側で切る)。
       function noteRecentPaletteType(type) {
         if (!type || type === "select") return;
         const index = recentPaletteTypes.indexOf(type);
@@ -2196,6 +2200,7 @@
 
       // 実描画によるパレットアイコンHTML(種別ごとにキャッシュ)。生成不可の種別は手描きアイコンへ退避。
       const paletteIconCache = new Map();
+      // パレット項目のアイコンHTMLを返す。静的SVG辞書を優先し、無い種別は実描画で生成してキャッシュする。
       function paletteIconHtml(item) {
         if (String(item.type).startsWith("custom:")) return iconSvg(item.icon);
         if (paletteIconCache.has(item.type)) return paletteIconCache.get(item.type);
@@ -2358,6 +2363,7 @@
       const pageSvgPool = new Map(); // pageId -> { slot, header, svg }
       let stageMode = "single"; // 初期HTMLは単一#canvas構成
 
+      // ページ表示モードが「並べて表示」か(タブ表示=false)。
       function isMultiPageView() {
         return state.settings.multiPageView === true;
       }
@@ -6294,6 +6300,8 @@
       // 直近で自動スクロールした選択ID(選択が変わった時だけ右パネルをスクロールするため)。
       let lastScrolledSelectionId = null;
 
+      // 右パネル「選択中の要素」を再構築する。複数選択=一括操作UI(整列/一括変更/ロック等)、
+      // 単一選択=種別別フィールド+スタイル+操作ボタン群。選択が変わった時は該当位置へ自動スクロール。
       function renderSelectionPanel() {
         const panel = qs("#selectionPanel");
         const selected = selectedElements();
@@ -7978,6 +7986,7 @@
         render();
       }
 
+      // ユーザー部品(登録回路)をクリック位置へ配置する。テンプレ座標へオフセットを加えて複製し、IDを再発行する。
       function placeCustomSymbol(id, x, y) {
         const symbol = (state.customSymbols || []).find(item => item.id === id);
         const page = currentPage();
@@ -8280,6 +8289,8 @@
         });
       }
 
+      // 現在ページをcount枚複製する。offset指定時は線番/タグ/ピン文字/頁名の末尾番号を
+      // 1枚ごとに一括加算する(X/Y/B/W等の接頭辞・桁数を保持、16進アドレスは16進で加算)。
       function duplicatePage(count = 1, offset = 0) {
         const page = currentPage();
         if (!page) return;
@@ -12127,6 +12138,8 @@
       // 圧迫するため大きすぎるファイルは受け付けない。
       const UNDERLAY_MAX_BYTES = 25 * 1024 * 1024;
 
+      // 下絵画像ファイルを読み込みDataURL化してonLoad(dataUrl, 幅px, 高px)へ渡す。
+      // 画像以外/上限超過/デコード不能は要素を作らず中止し、理由をステータス表示する(resolve(false))。
       function readUnderlayImageFile(file, onLoad) {
         return new Promise(resolve => {
           if (!file || !String(file.type || "").startsWith("image/")) {
@@ -12177,6 +12190,7 @@
         render();
       }
 
+      // 1枚の画像を上下2分割し、半分ごとに下絵ページを追加する(A3スキャン→A4半页×2の運用向け)。
       async function addTwoUpUnderlayPages(name, dataUrl, imageWidth, imageHeight) {
         const base = currentPage();
         const baseTitle = base?.title || {};
@@ -13636,6 +13650,8 @@
       const REPLACE_FIELDS = ["wireNo", "label", "text", "tag", "note", "cellText", "pinText", "rightPinText", "terminalLabels", "description", "fromOverride", "toOverride"];
       const REPLACE_FIELD_LABELS = { wireNo: "線番", label: "ラベル", text: "文字", tag: "タグ", note: "属性メモ", cellText: "表セル", pinText: "ピン文字", rightPinText: "右ピン文字", terminalLabels: "端子名", description: "説明", fromOverride: "FROM", toOverride: "TO" };
 
+      // 一括置換の対象(ページ/要素/フィールド/変更前値)を全ページから収集する。
+      // REPLACE_FIELDSにある文字列フィールドのみが対象(数値・配列は対象外)。
       function collectReplaceMatches(query) {
         const matches = [];
         state.pages.forEach(page => {
@@ -16491,6 +16507,8 @@
       const touchPoints = new Map();
       let pinchState = null;
 
+      // タッチ用pointerdown前処理。2本指を検出したら進行中ドラッグを中断してピンチ開始状態を作る。
+      // trueを返した場合、呼び出し元は通常のポインタ処理を行わない。
       function handleTouchDown(event) {
         if (event.pointerType !== "touch") return false;
         touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -16508,6 +16526,8 @@
         return false;
       }
 
+      // ピンチ中の移動処理。指間距離の比でズーム、中点の移動量でワークスペースをパンする。
+      // trueを返した場合、呼び出し元は通常のポインタ処理を行わない。
       function handleTouchMove(event) {
         if (event.pointerType !== "touch" || !touchPoints.has(event.pointerId)) return false;
         touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -16530,6 +16550,8 @@
         return true;
       }
 
+      // タッチ離しの後処理。2本未満になったらピンチを終了する。
+      // ピンチ由来のupは作図確定処理へ流さない(trueで呼び出し元が中断)。
       function handleTouchUp(event) {
         if (event.pointerType !== "touch") return false;
         touchPoints.delete(event.pointerId);
@@ -17152,6 +17174,8 @@
         qs("#contextMenu")?.classList.add("hidden");
       }
 
+      // 右クリックメニューを組み立てて表示する。items: {label, run, disabled}の配列("-"は区切り線)。
+      // 画面端では位置を内側へ補正する。閉じる処理は外側クリック/スクロール/Esc(グローバル登録)。
       function showContextMenu(event, items) {
         const menu = qs("#contextMenu");
         if (!menu) return;
@@ -17178,6 +17202,8 @@
         menu.style.top = Math.round(Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8)) + "px";
       }
 
+      // キャンバス右クリックの入口。要素上=編集メニュー(コイル/接点なら参照ジャンプ付き)、
+      // 空白=貼付/全体表示。並べて表示中は対象ページを先にアクティブ化してから組み立てる。
       function onCanvasContextMenu(event) {
         event.preventDefault();
         activatePageFromEvent(event);
