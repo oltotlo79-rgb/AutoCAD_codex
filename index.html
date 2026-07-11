@@ -1769,6 +1769,7 @@
       // アプリ初期化: 既定1ページを作って履歴をリセットし初回描画。
       function initProject() {
         ensureProjectDefaults();
+        state.schemaVersion = SCHEMA_VERSION; // 新規図面は現行版(将来版データを開いた後の版数を引き継がない)
         state.pages = [createPage({ name: "P1", frameVariant: "ladder", title: "電気図面" })];
         state.activePageId = state.pages[0].id;
         setSelection([]);
@@ -7928,6 +7929,39 @@
         updateCanvasHint();
       }
 
+      // 進行中ドラッグの取消(Esc)。作図中=作成途中の要素を破棄、移動中=開始時位置へ復元、
+      // それ以外(リサイズ/点編集等)は復元情報がある場合のみ戻し、なければ中断だけ行う。
+      // いずれもcommit前の仮変更なので履歴には何も積まれない。
+      function cancelActiveDrag() {
+        const page = currentPage();
+        const drag = dragState;
+        dragState = null;
+        if (!page || !drag) {
+          render();
+          return;
+        }
+        if (drag.mode === "draw") {
+          const drawing = selectedElement();
+          if (drawing) page.elements = page.elements.filter(item => item.id !== drawing.id);
+          setSelection([]);
+        } else if (drag.mode === "move" && Array.isArray(drag.originals)) {
+          drag.originals.forEach(original => {
+            const target = page.elements.find(item => item.id === original.id);
+            if (!target) return;
+            if (original.points) target.points = deepClone(original.points);
+            else {
+              target.x = original.x;
+              target.y = original.y;
+            }
+          });
+        } else if (drag.original && (drag.elementId || drag.original.id)) {
+          const target = page.elements.find(item => item.id === (drag.elementId || drag.original.id));
+          if (target) Object.assign(target, deepClone(drag.original));
+        }
+        render();
+        setStatus("操作を取り消しました。");
+      }
+
       // 配置モードを抜けて選択ツールへ戻る(Escや配置完了時)。
       function cancelPlacementMode(clearSelection = false) {
         activeTool = "select";
@@ -11652,7 +11686,7 @@
           if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
           Object.assign(state, restored);
           if (!restored.titleLayouts) delete state.titleLayouts;
-          state.schemaVersion = SCHEMA_VERSION;
+          state.schemaVersion = Math.max(SCHEMA_VERSION, Math.floor(Number(restored.schemaVersion || 1)));
           ensureProjectDefaults();
           setSelection([]);
           pageCounter = state.pages.length + 1;
@@ -11722,7 +11756,7 @@
           if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
           Object.assign(state, restored);
           if (!restored.titleLayouts) delete state.titleLayouts;
-          state.schemaVersion = SCHEMA_VERSION;
+          state.schemaVersion = Math.max(SCHEMA_VERSION, Math.floor(Number(restored.schemaVersion || 1)));
           ensureProjectDefaults();
           setSelection([]);
           pageCounter = state.pages.length + 1;
@@ -11805,10 +11839,19 @@
       }
 
       // 画像ファイルをdataURL化し寸法を得てコールバックへ渡す共通処理。
+      // 下絵画像の上限(byte)。base64化でさらに約1.33倍になり、自動バックアップ(localStorage)も
+      // 圧迫するため大きすぎるファイルは受け付けない。
+      const UNDERLAY_MAX_BYTES = 25 * 1024 * 1024;
+
       function readUnderlayImageFile(file, onLoad) {
         return new Promise(resolve => {
           if (!file || !String(file.type || "").startsWith("image/")) {
             setStatus("PNG/JPEG/WebP/SVG画像を選択してください。");
+            resolve(false);
+            return;
+          }
+          if (file.size > UNDERLAY_MAX_BYTES) {
+            setStatus("下絵画像が大きすぎます（上限25MB）。画像を縮小・圧縮してから読み込んでください: " + (file.name || ""));
             resolve(false);
             return;
           }
@@ -11825,12 +11868,9 @@
                 });
             };
             image.onerror = () => {
-              Promise.resolve(onLoad(dataUrl, 16, 11))
-                .then(() => resolve(true))
-                .catch(error => {
-                  setStatus("下絵画像の処理に失敗しました: " + error.message);
-                  resolve(false);
-                });
+              // 解釈できない画像は要素を作らず中止する(壊れたデータを図面へ持ち込まない)
+              setStatus("画像を解釈できませんでした（ファイルが壊れているか未対応形式です）: " + (file.name || ""));
+              resolve(false);
             };
             image.src = dataUrl;
           };
@@ -11971,18 +12011,28 @@
 
       // JSONファイルを読み込みstateへ復元(検証+履歴リセット)。
       function openProjectFile(file) {
+        if (file && file.size > 80 * 1024 * 1024) {
+          setStatus("JSONファイルが大きすぎます（上限80MB）。下絵画像を減らした版を読み込んでください。");
+          return;
+        }
         const reader = new FileReader();
+        reader.onerror = () => setStatus("ファイルを読み込めませんでした: " + (file?.name || ""));
         reader.onload = () => {
           try {
             const loaded = migrateProjectData(JSON.parse(reader.result));
             if (!loaded.pages || !Array.isArray(loaded.pages)) throw new Error("pages が見つかりません。");
-            state.schemaVersion = SCHEMA_VERSION;
+            // 将来版データは版数を維持する(現行版へ格下げ保存すると新しい版の情報だと分からなくなる)
+            state.schemaVersion = Math.max(SCHEMA_VERSION, Math.floor(Number(loaded.schemaVersion || 1)));
             state.app = loaded.app || state.app;
             state.version = loaded.version || state.version;
             state.settings = { ...state.settings, ...(loaded.settings || {}) };
             state.layers = loaded.layers || state.layers;
             state.wireTypes = loaded.wireTypes || state.wireTypes;
             state.customSymbols = loaded.customSymbols || [];
+            // カタログ・取込済み標準パック・PLCプリセットも正式な保存対象(欠けると往復で消える)
+            state.catalog = Array.isArray(loaded.catalog) ? loaded.catalog : [];
+            state.standardPacks = Array.isArray(loaded.standardPacks) ? loaded.standardPacks : [];
+            state.plcModules = Array.isArray(loaded.plcModules) ? loaded.plcModules : [];
             if (loaded.titleLayouts) state.titleLayouts = loaded.titleLayouts; else delete state.titleLayouts;
             state.project = { ...state.project, ...(loaded.project || {}) };
             ensureProjectDefaults();
@@ -12020,20 +12070,33 @@
           canvas.width = Math.round(size.w * scale);
           canvas.height = Math.round(size.h * scale);
           const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            URL.revokeObjectURL(url);
+            setStatus("PNG出力に失敗しました（描画コンテキストを確保できません）。");
+            return;
+          }
           ctx.fillStyle = "#fff";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
           URL.revokeObjectURL(url);
           canvas.toBlob(pngBlob => {
+            if (!pngBlob) {
+              setStatus("PNG出力に失敗しました（画像が大きすぎる可能性。ズームや用紙を確認してください）。");
+              return;
+            }
             const link = document.createElement("a");
             link.href = URL.createObjectURL(pngBlob);
             link.download = (page.name || "page") + ".png";
             link.click();
             URL.revokeObjectURL(link.href);
+            setStatus("PNGを書き出しました。");
           }, "image/png");
         };
+        image.onerror = () => {
+          URL.revokeObjectURL(url);
+          setStatus("PNG出力に失敗しました（ページのSVGを画像化できませんでした）。");
+        };
         image.src = url;
-        setStatus("PNGを書き出しました。");
       }
 
       // 印刷用シートDOM(全ページ)を構築(等倍1面/ A3二面付けはprintModeで切替)。
@@ -16788,12 +16851,42 @@
       // Delete=削除、矢印=1mm移動(Shiftで5mm)、Esc=配置キャンセル。入力欄フォーカス中は無視。
       function onKeyDown(event) {
         const tag = document.activeElement?.tagName;
-        const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
+        const editing = ["INPUT", "TEXTAREA", "SELECT"].includes(tag) || document.activeElement?.isContentEditable;
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
           event.preventDefault();
           saveProject();
           return;
         }
+        // Esc: メニュー → ダイアログ → (入力欄は既定動作) → ドラッグ取消 → 配置終了 → 選択解除
+        if (event.key === "Escape") {
+          const menu = qs("#contextMenu");
+          if (menu && !menu.classList.contains("hidden")) {
+            hideContextMenu();
+            return;
+          }
+          const backdrop = qs("#dialogBackdrop");
+          if (backdrop && !backdrop.classList.contains("hidden")) {
+            closeDialog();
+            return;
+          }
+          if (editing) return;
+          if (dragState) {
+            cancelActiveDrag();
+            return;
+          }
+          if (activeTool !== "select") {
+            cancelPlacementMode();
+            return;
+          }
+          if (selectedIds.length) {
+            setSelection([]);
+            render();
+            setStatus("選択を解除しました。");
+          }
+          return;
+        }
+        // 入力欄でのCtrl+Z/Y等は文字編集(ブラウザ既定)へ委ねる。図面Undoにしない。
+        if (editing) return;
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
           event.preventDefault();
           restoreHistory(historyIndex - 1);
@@ -16804,7 +16897,6 @@
           restoreHistory(historyIndex + 1);
           return;
         }
-        if (editing) return;
         // 配線ドラッグ中のスペース: L字⇔コの字(Z)の折れ形状を巡回
         if (event.key === " " && dragState && dragState.mode === "draw") {
           const drawing = selectedElement();
