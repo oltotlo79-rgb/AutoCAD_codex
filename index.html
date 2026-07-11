@@ -872,6 +872,60 @@
       background: var(--accent);
     }
 
+    /* --- ページ並べて表示(1スロット=見出し+ページSVG。activeが編集対象) --- */
+    .stage.multi-row {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      gap: 44px;
+    }
+    .stage.multi-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+    .page-slot { margin-bottom: 36px; flex: none; }
+    .page-slot-head {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      width: max-content;
+      margin: 0 auto 6px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 12px;
+      color: #5a6a7a;
+      cursor: pointer;
+      user-select: none;
+      transition: color .16s var(--ease), background-color .16s var(--ease), border-color .16s var(--ease);
+    }
+    .page-slot-head:hover { background: #dde4ec; border-color: #ccd6e0; }
+    .page-slot-head .slot-label { padding: 1px 6px; }
+    .page-slot-head .slot-move {
+      min-height: 0;
+      padding: 1px 6px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 11px;
+      box-shadow: none;
+      border-radius: 999px;
+    }
+    .page-slot-head .slot-move:hover { background: rgba(20, 31, 44, .12); box-shadow: none; transform: none; }
+    .page-slot-head .slot-move:disabled { opacity: .35; }
+    .page-slot.active .page-slot-head {
+      color: #fff;
+      background: var(--accent);
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+    .page-slot.active .drawing-page {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
     /* --- 右クリックコンテキストメニュー --- */
     .context-menu {
       position: fixed;
@@ -970,6 +1024,12 @@
             <button type="button" id="actualSizeBtn">標準</button>
           </div>
           <button type="button" id="fitPageBtn" style="width:100%;margin-top:8px">全体表示</button>
+          <label for="pageViewMode">ページ表示</label>
+          <select id="pageViewMode" title="タブ=1ページずつ ／ 並べて表示=全ページを並べてどのページも直接編集（見出しの◀▶で並び替え）">
+            <option value="tab">タブ（1ページずつ）</option>
+            <option value="row">並べて表示（横）</option>
+            <option value="column">並べて表示（縦）</option>
+          </select>
           <div class="row">
             <div>
               <label for="gridSize">グリッド mm</label>
@@ -2256,6 +2316,8 @@
             state.activePageId = page.id;
             setSelection([]);
             render();
+            // 並べて表示中はタブクリックで該当ページへスクロール
+            if (isMultiPageView()) pageSvgPool.get(page.id)?.slot.scrollIntoView({ block: "start", behavior: "smooth" });
           });
           tab.addEventListener("dblclick", () => {
             const name = prompt("ページ名", page.name || "");
@@ -2285,12 +2347,155 @@
           renderPalette();
           renderTabs();
         }
-        const page = currentPage();
-        if (!page) return;
-        const svg = qs("#canvas");
-        drawPageSvg(svg, page, { selection: true, scaled: true, grid: true });
+        renderCanvasView(options);
         if (!options.light) syncInspector();
         updateCanvasHint();
+      }
+
+      // ===== ページ表示モード(タブ=1ページずつ / 並べて表示=全ページを縦に並べて直接編集) =====
+      // 並べて表示では各ページが専用SVGを持ち、クリックしたページが自動的に編集対象(アクティブ)になる。
+      // 既存コードの qs("#canvas") 参照を壊さないよう、常にアクティブページのSVGへ id="canvas" を付け替える。
+      const pageSvgPool = new Map(); // pageId -> { slot, header, svg }
+      let stageMode = "single"; // 初期HTMLは単一#canvas構成
+
+      function isMultiPageView() {
+        return state.settings.multiPageView === true;
+      }
+
+      // アクティブページを切り替える(選択解除+id付替え+タブ強調のみ。再描画は呼び出し側)。
+      function activatePage(pageId, opts = {}) {
+        if (!pageId || state.activePageId === pageId) return false;
+        state.activePageId = pageId;
+        if (opts.clearSelection !== false) setSelection([]);
+        syncCanvasIds();
+        renderTabs();
+        return true;
+      }
+
+      // 並べて表示中: アクティブページのSVGだけに id="canvas" を持たせ、枠を強調する。
+      function syncCanvasIds() {
+        if (!isMultiPageView()) return;
+        pageSvgPool.forEach((entry, pageId) => {
+          const active = pageId === state.activePageId;
+          if (active) entry.svg.id = "canvas";
+          else entry.svg.removeAttribute("id");
+          entry.slot.classList.toggle("active", active);
+        });
+      }
+
+      // 表示モードに応じてstage直下のDOM構成を作り直す(モード切替時のみ)。
+      function ensureStageMode() {
+        const stage = qs(".stage");
+        const want = isMultiPageView() ? "multi" : "single";
+        if (stageMode === want) return stage;
+        stage.innerHTML = "";
+        pageSvgPool.clear();
+        if (want === "single") {
+          const svg = svgEl("svg", { id: "canvas", class: "drawing-page", role: "img", "aria-label": "図面キャンバス" });
+          attachCanvasListeners(svg);
+          stage.appendChild(svg);
+        }
+        stageMode = want;
+        return stage;
+      }
+
+      // 並び方向。既定は横(row)。
+      function multiPageDirection() {
+        return state.settings.multiPageDirection === "column" ? "column" : "row";
+      }
+
+      // 並べて表示中のページ並び替え(見出しの◀▶/▲▼ボタンから)。
+      function movePageBySlot(pageId, delta) {
+        const index = state.pages.findIndex(page => page.id === pageId);
+        const target = index + delta;
+        if (index < 0 || target < 0 || target >= state.pages.length) return;
+        const [page] = state.pages.splice(index, 1);
+        state.pages.splice(target, 0, page);
+        syncPageTotals();
+        commitHistory("ページの並び順を変更しました。");
+        render();
+        pageSvgPool.get(pageId)?.slot.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      }
+
+      // キャンバス描画の入口。単一=従来どおり、並べて表示=全ページのスロットを順序同期して描画。
+      // lightレンダ(ドラッグ中)は編集中ページのSVGだけを再描画してコストを抑える。
+      function renderCanvasView(options = {}) {
+        const stage = ensureStageMode();
+        const multi = isMultiPageView();
+        const direction = multiPageDirection();
+        stage.classList.toggle("multi-row", multi && direction === "row");
+        stage.classList.toggle("multi-col", multi && direction === "column");
+        if (!multi) {
+          const page = currentPage();
+          if (page) drawPageSvg(qs("#canvas"), page, { selection: true, scaled: true, grid: true });
+          return;
+        }
+        const alive = new Set();
+        state.pages.forEach((page, index) => {
+          alive.add(page.id);
+          let entry = pageSvgPool.get(page.id);
+          if (!entry) {
+            const slot = document.createElement("div");
+            slot.className = "page-slot";
+            const header = document.createElement("div");
+            header.className = "page-slot-head";
+            const prevBtn = document.createElement("button");
+            prevBtn.type = "button";
+            prevBtn.className = "slot-move";
+            prevBtn.title = "このページを前へ";
+            const label = document.createElement("span");
+            label.className = "slot-label";
+            label.title = "クリックでこのページを編集対象にします";
+            const nextBtn = document.createElement("button");
+            nextBtn.type = "button";
+            nextBtn.className = "slot-move";
+            nextBtn.title = "このページを後へ";
+            header.appendChild(prevBtn);
+            header.appendChild(label);
+            header.appendChild(nextBtn);
+            const svg = svgEl("svg", { class: "drawing-page", "data-page-id": page.id, role: "img" });
+            attachCanvasListeners(svg);
+            header.addEventListener("click", () => {
+              activatePage(page.id);
+              render();
+            });
+            prevBtn.addEventListener("click", event => {
+              event.stopPropagation();
+              movePageBySlot(page.id, -1);
+            });
+            nextBtn.addEventListener("click", event => {
+              event.stopPropagation();
+              movePageBySlot(page.id, 1);
+            });
+            slot.appendChild(header);
+            slot.appendChild(svg);
+            entry = { slot, header, label, prevBtn, nextBtn, svg };
+            pageSvgPool.set(page.id, entry);
+          }
+          entry.label.textContent = (index + 1) + " / " + state.pages.length + "　" + (page.name || "P" + (index + 1));
+          entry.prevBtn.textContent = direction === "column" ? "▲" : "◀";
+          entry.nextBtn.textContent = direction === "column" ? "▼" : "▶";
+          entry.prevBtn.disabled = index === 0;
+          entry.nextBtn.disabled = index === state.pages.length - 1;
+          stage.appendChild(entry.slot); // append順でページ並びを常に同期
+          const isActive = page.id === state.activePageId;
+          if (options.light && !isActive) return;
+          drawPageSvg(entry.svg, page, { selection: isActive, scaled: true, grid: true });
+        });
+        pageSvgPool.forEach((entry, pageId) => {
+          if (!alive.has(pageId)) {
+            entry.slot.remove();
+            pageSvgPool.delete(pageId);
+          }
+        });
+        syncCanvasIds();
+      }
+
+      // ポインタ操作の対象ページを解決し、未アクティブなら切り替える(並べて表示用)。
+      function activatePageFromEvent(event) {
+        const pageSvg = event.target && event.target.closest ? event.target.closest("svg.drawing-page") : null;
+        const pageId = pageSvg?.dataset?.pageId;
+        if (pageId && pageId !== state.activePageId) activatePage(pageId);
       }
 
       // 1ページ分のSVGを組み立てる中核。options: selection=選択枠, scaled=画面表示用ズーム, grid=グリッド,
@@ -6024,6 +6229,7 @@
         setValue("zoomRange", state.settings.zoom);
         setValue("gridSize", state.settings.grid);
         setValue("snapToggle", state.settings.snap ? "on" : "off");
+        setValue("pageViewMode", state.settings.multiPageView ? (state.settings.multiPageDirection === "column" ? "column" : "row") : "tab");
         setValue("objectSnapToggle", state.settings.objectSnap ? "on" : "off");
         setValue("underlayOutputToggle", state.settings.outputUnderlays ? "on" : "off");
         setValue("wireNumberFormat", state.settings.wireNumberFormat || "%S-%N");
@@ -7265,7 +7471,8 @@
 
       // ポインタイベント→用紙mm座標へ変換(getScreenCTMの逆行列)。raw指定でスナップなしの生座標。
       function canvasPoint(event, options = {}) {
-        const svg = qs("#canvas");
+        // 並べて表示ではイベントの発生したページSVG基準で座標変換する(単一表示は#canvas)
+        const svg = (event.target && event.target.closest && event.target.closest("svg.drawing-page")) || qs("#canvas");
         const point = svg.createSVGPoint();
         point.x = event.clientX;
         point.y = event.clientY;
@@ -16120,6 +16327,18 @@
         qs("#zoomInBtn").addEventListener("click", () => setZoom(state.settings.zoom * 1.25, true));
         qs("#actualSizeBtn").addEventListener("click", () => setZoom(3.78, true));
         qs("#fitPageBtn").addEventListener("click", fitPageToWorkspace);
+        qs("#pageViewMode").addEventListener("change", event => {
+          const value = event.target.value;
+          state.settings.multiPageView = value !== "tab";
+          if (value !== "tab") state.settings.multiPageDirection = value === "column" ? "column" : "row";
+          commitHistory(state.settings.multiPageView
+            ? "全ページ並べて表示（" + (value === "column" ? "縦" : "横") + "）に切り替えました。クリックしたページが編集対象になります。"
+            : "タブ表示（1ページずつ）に切り替えました。");
+          render();
+          if (state.settings.multiPageView) {
+            pageSvgPool.get(state.activePageId)?.slot.scrollIntoView({ block: "nearest", inline: "nearest" });
+          }
+        });
         qs("#gridSize").addEventListener("change", event => {
           state.settings.grid = Number(event.target.value || 2.5);
           commitHistory("グリッドを変更しました。");
@@ -16178,13 +16397,27 @@
         updatePageField("pageLocation", (page, value) => { page.title.location = value; });
         updatePageField("pageSideNote", (page, value) => { page.title.sideNote = value; });
 
-        const svg = qs("#canvas");
+        attachCanvasListeners(qs("#canvas"));
+        // メニュー外のクリック/スクロール/リサイズで右クリックメニューを閉じる
+        document.addEventListener("pointerdown", event => {
+          if (!event.target.closest("#contextMenu")) hideContextMenu();
+        });
+        qs(".workspace")?.addEventListener("scroll", hideContextMenu, { passive: true });
+        window.addEventListener("resize", hideContextMenu);
+        window.addEventListener("keydown", onKeyDown);
+      }
+
+      // ページSVG1枚に必要な入力リスナー一式を付ける。
+      // 単一表示の#canvasにも、並べて表示の各ページSVG生成時にも同じものを使う。
+      function attachCanvasListeners(svg) {
+        if (!svg) return;
         svg.addEventListener("dragover", event => {
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
         });
         svg.addEventListener("drop", event => {
           event.preventDefault();
+          activatePageFromEvent(event);
           const type = event.dataTransfer.getData("text/plain");
           const point = canvasPoint(event);
           if (type) placeElement(type, point.x, point.y);
@@ -16195,12 +16428,6 @@
         svg.addEventListener("pointercancel", onCanvasPointerUp);
         svg.addEventListener("dblclick", onCanvasDoubleClick);
         svg.addEventListener("contextmenu", onCanvasContextMenu);
-        // メニュー外のクリック/スクロール/リサイズで右クリックメニューを閉じる
-        document.addEventListener("pointerdown", event => {
-          if (!event.target.closest("#contextMenu")) hideContextMenu();
-        });
-        qs(".workspace")?.addEventListener("scroll", hideContextMenu, { passive: true });
-        window.addEventListener("resize", hideContextMenu);
         svg.addEventListener("wheel", onCanvasWheel, { passive: false });
         svg.addEventListener("pointercancel", event => {
           if (event.pointerType === "touch") {
@@ -16208,8 +16435,6 @@
             if (touchPoints.size < 2) pinchState = null;
           }
         });
-
-        window.addEventListener("keydown", onKeyDown);
       }
 
       // ===== タッチ操作(ピンチズーム+二本指パン) =====
@@ -16280,6 +16505,7 @@
       // 部品配置 → 要素選択(移動開始) → 空白(範囲選択開始)。選択はevent.targetのdata-id基準。
       function onCanvasPointerDown(event) {
         if (handleTouchDown(event)) return; // 2本指=ピンチ開始(通常操作へ流さない)
+        activatePageFromEvent(event); // 並べて表示: クリックしたページを編集対象へ
         const svg = qs("#canvas");
         const point = canvasPoint(event, { connectionOnly: activeTool === "wire", raw: activeTool === "select" });
         const pointHandle = event.target.closest("[data-point-index]");
@@ -16906,6 +17132,7 @@
 
       function onCanvasContextMenu(event) {
         event.preventDefault();
+        activatePageFromEvent(event);
         const page = currentPage();
         if (!page) return;
         const targetG = event.target.closest("[data-id]");
@@ -16957,6 +17184,7 @@
 
       // ダブルクリックでその場編集を開始。
       function onCanvasDoubleClick(event) {
+        activatePageFromEvent(event);
         const targetElement = event.target.closest("[data-id]");
         if (!targetElement) return;
         selectSingle(targetElement.dataset.id);
