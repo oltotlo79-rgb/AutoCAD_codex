@@ -6,12 +6,13 @@
 
 必要環境:
     - Python 3 + markdown パッケージ (pip install markdown)
-    - PyMuPDF (pip install pymupdf) … ページ番号の型押しに使用(無ければ番号なしで完成)
+    - PyMuPDF (pip install pymupdf) … ページ番号の型押しと目次リンク検証に使用
+      (無ければ番号なし・リンク未検証で完成)
     - Google Chrome (ヘッドレス印刷に使用)
 
 処理の流れ:
-    manual.md → (markdown変換+表紙/目次/コールアウト装飾) → HTML
-             → Chrome headless print-to-pdf → PyMuPDFでページ番号を型押し
+    manual.md → (markdown変換+表紙/リンク付き目次/コールアウト装飾) → HTML
+             → Chrome headless print-to-pdf → PyMuPDFでページ番号を型押し・目次リンク検証
 """
 import datetime
 import html as html_lib
@@ -48,26 +49,31 @@ for image_source in re.findall(r'!\[[^\]]*\]\(([^)\s]+)', md_text):
 if missing_images:
     raise FileNotFoundError("manual image not found: " + ", ".join(missing_images))
 
-# ---- 目次データを見出しから作る(h2=章, h3=節) ----
-toc_items = []
-for line in md_text.splitlines():
-    m2 = re.match(r"^## (.+)$", line)
-    m3 = re.match(r"^### (.+)$", line)
-    if m2:
-        toc_items.append(("c", m2.group(1)))
-    elif m3:
-        toc_items.append(("s", m3.group(1)))
+# ---- 本文をHTMLへ変換 ----
+renderer = markdown.Markdown(
+    extensions=["tables", "fenced_code", "attr_list", "toc"],
+    extension_configs={"toc": {"toc_depth": "2-3", "marker": ""}},
+)
+body = renderer.convert(md_text)
 
+# ---- 本文と同じ見出しIDから、クリック可能な目次を作る(h2=章, h3=節) ----
+def iter_toc(items):
+    for item in items:
+        yield item
+        yield from iter_toc(item.get("children", []))
+
+
+toc_items = list(iter_toc(renderer.toc_tokens))
 toc_html_parts = []
-for kind, title in toc_items:
-    cls = "toc-chapter" if kind == "c" else "toc-section"
-    toc_html_parts.append(f'<div class="{cls}">{title}</div>')
+for item in toc_items:
+    cls = "toc-chapter" if item["level"] == 2 else "toc-section"
+    target = html_lib.escape(item["id"], quote=True)
+    label = html_lib.escape(html_lib.unescape(item["name"]))
+    toc_html_parts.append(f'<a class="{cls}" href="#{target}">{label}</a>')
 toc_html = "\n".join(toc_html_parts)
 
-# ---- 本文をHTMLへ変換 ----
-body = markdown.markdown(md_text, extensions=["tables", "fenced_code", "attr_list"])
 # 先頭の h1(書名)は表紙で表現するため除去
-body = re.sub(r"^<h1>.*?</h1>\s*", "", body, count=1, flags=re.S)
+body = re.sub(r"^<h1\b[^>]*>.*?</h1>\s*", "", body, count=1, flags=re.S)
 # コールアウト: 💡/⚠️ で始まる引用をヒント/注意ボックスへ
 body = body.replace("<blockquote>\n<p>💡", '<blockquote class="hint">\n<p>💡')
 body = body.replace("<blockquote>\n<p>⚠️", '<blockquote class="warn">\n<p>⚠️')
@@ -158,6 +164,7 @@ html = f"""<!doctype html>
     font-size: 17pt; border-bottom: 3px solid {ACCENT};
   }}
   .toc-columns {{ column-count: 2; column-gap: 10mm; }}
+  .toc-chapter, .toc-section {{ display: block; text-decoration: none; }}
   .toc-chapter {{
     font-weight: 700; font-size: 10.2pt; color: {INK};
     margin: 9px 0 3px; padding: 3px 8px;
@@ -289,20 +296,54 @@ with tempfile.TemporaryDirectory() as tmp:
 
 print(f"PDF written: {PDF_PATH}")
 
-# ---- ページ番号の型押し(表紙を除く) ----
+# ---- ページ番号の型押し(表紙を除く)と目次リンク検証 ----
 try:
     import fitz  # PyMuPDF
-    doc = fitz.open(PDF_PATH)
-    for i in range(1, doc.page_count):
-        page = doc[i]
-        w, h = page.rect.width, page.rect.height
-        label = str(i + 1)
-        page.insert_text((w / 2 - 3 * len(label), h - 24), label,
-                         fontsize=9, fontname="helv", color=(0.24, 0.33, 0.31))
-        page.draw_line(fitz.Point(42, h - 34), fitz.Point(w - 42, h - 34),
-                       color=(0.06, 0.44, 0.39), width=0.7)
-    doc.saveIncr()
-    doc.close()
-    print(f"page numbers stamped: 2..{i + 1}")
-except Exception as error:  # PyMuPDF が無い環境でも番号なしで完成させる
-    print("page numbering skipped:", error)
+except ImportError as error:  # PyMuPDF が無い環境でも番号なし・未検証で完成させる
+    print("page numbering and TOC link verification skipped:", error)
+else:
+    with fitz.open(PDF_PATH) as doc:
+        page_count = doc.page_count
+        for i in range(1, page_count):
+            page = doc[i]
+            w, h = page.rect.width, page.rect.height
+            label = str(i + 1)
+            page.insert_text((w / 2 - 3 * len(label), h - 24), label,
+                             fontsize=9, fontname="helv", color=(0.24, 0.33, 0.31))
+            page.draw_line(fitz.Point(42, h - 34), fitz.Point(w - 42, h - 34),
+                           color=(0.06, 0.44, 0.39), width=0.7)
+        doc.saveIncr()
+    print(f"page numbers stamped: 2..{page_count}")
+
+    expected_targets = {item["id"] for item in toc_items}
+    with fitz.open(PDF_PATH) as check_doc:
+        destinations = check_doc.resolve_names()
+        linked_targets = set()
+        invalid_links = []
+        for source_page, page in enumerate(check_doc):
+            for link in page.get_links():
+                target = link.get("nameddest")
+                if target not in expected_targets:
+                    continue
+                linked_targets.add(target)
+                if (link.get("kind") not in (fitz.LINK_GOTO, fitz.LINK_NAMED)
+                        or not 0 <= link.get("page", -1) < check_doc.page_count):
+                    invalid_links.append((source_page, target, link))
+
+        missing_destinations = expected_targets - destinations.keys()
+        invalid_destinations = {
+            target: destinations[target]
+            for target in expected_targets & destinations.keys()
+            if not 0 <= destinations[target].get("page", -1) < check_doc.page_count
+        }
+        missing_links = expected_targets - linked_targets
+
+    if missing_destinations or invalid_destinations or missing_links or invalid_links:
+        raise RuntimeError(
+            "invalid PDF TOC links: "
+            f"missing_destinations={sorted(missing_destinations)}, "
+            f"invalid_destinations={invalid_destinations}, "
+            f"missing_links={sorted(missing_links)}, "
+            f"invalid_links={invalid_links}"
+        )
+    print(f"TOC links verified: {len(expected_targets)}")
