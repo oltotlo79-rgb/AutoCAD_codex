@@ -14,6 +14,7 @@
              → Chrome headless print-to-pdf → PyMuPDFでページ番号を型押し
 """
 import datetime
+import html as html_lib
 import pathlib
 import re
 import subprocess
@@ -26,6 +27,7 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 MD_PATH = REPO / "docs" / "manual.md"
 PDF_PATH = REPO / "docs" / "PDF" / "manual.pdf"
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+BASE_URI = MD_PATH.parent.as_uri().rstrip("/") + "/"
 
 ACCENT = "#0f6f63"      # 深緑(アプリのアクセント色と同じ)
 ACCENT_LIGHT = "#e3efec"
@@ -33,6 +35,18 @@ ACCENT2 = "#d96332"     # 補助色(オレンジ)
 INK = "#1a232c"
 
 md_text = MD_PATH.read_text(encoding="utf-8")
+
+# Markdownから参照しているローカル画像を、PDF生成前に検査する。
+# 誤記したパスのまま「画像だけ抜けたPDF」を配布しないための事前チェック。
+missing_images = []
+for image_source in re.findall(r'!\[[^\]]*\]\(([^)\s]+)', md_text):
+    if re.match(r"^[a-z]+://", image_source, flags=re.I):
+        continue
+    image_path = MD_PATH.parent.joinpath(*pathlib.PurePosixPath(image_source).parts)
+    if not image_path.is_file():
+        missing_images.append(image_source)
+if missing_images:
+    raise FileNotFoundError("manual image not found: " + ", ".join(missing_images))
 
 # ---- 目次データを見出しから作る(h2=章, h3=節) ----
 toc_items = []
@@ -51,12 +65,23 @@ for kind, title in toc_items:
 toc_html = "\n".join(toc_html_parts)
 
 # ---- 本文をHTMLへ変換 ----
-body = markdown.markdown(md_text, extensions=["tables", "fenced_code"])
+body = markdown.markdown(md_text, extensions=["tables", "fenced_code", "attr_list"])
 # 先頭の h1(書名)は表紙で表現するため除去
 body = re.sub(r"^<h1>.*?</h1>\s*", "", body, count=1, flags=re.S)
 # コールアウト: 💡/⚠️ で始まる引用をヒント/注意ボックスへ
 body = body.replace("<blockquote>\n<p>💡", '<blockquote class="hint">\n<p>💡')
 body = body.replace("<blockquote>\n<p>⚠️", '<blockquote class="warn">\n<p>⚠️')
+
+# 単独行の画像を図版へ変換し、title（なければalt）をキャプションに使う。
+def image_to_figure(match):
+    image_tag = match.group(1)
+    title_match = re.search(r'\stitle="([^"]*)"', image_tag)
+    alt_match = re.search(r'\salt="([^"]*)"', image_tag)
+    caption = html_lib.unescape((title_match or alt_match).group(1)) if (title_match or alt_match) else ""
+    caption_html = f"<figcaption>{html_lib.escape(caption)}</figcaption>" if caption else ""
+    return f"<figure>{image_tag}{caption_html}</figure>"
+
+body = re.sub(r"<p>(<img\b[^>]*>)</p>", image_to_figure, body)
 
 today = datetime.date.today().strftime("%Y-%m-%d")
 
@@ -85,14 +110,16 @@ html = f"""<!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<base href="{BASE_URI}">
 <title>Electrical Drawing Studio 取扱説明書</title>
 <style>
   @page {{ size: A4; margin: 17mm 15mm 19mm 15mm; }}
   * {{ box-sizing: border-box; }}
   body {{
     font-family: "Yu Gothic UI", "Meiryo", sans-serif;
-    font-size: 10.3pt; line-height: 1.92; color: {INK};
+    font-size: 10pt; line-height: 1.78; color: {INK};
     margin: 0;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }}
 
   /* ===== 表紙 ===== */
@@ -153,7 +180,8 @@ html = f"""<!doctype html>
     padding-left: 10px; border-left: 4.5px solid {ACCENT2};
     page-break-after: avoid;
   }}
-  p {{ margin: 7px 0; text-align: justify; }}
+  h4 {{ font-size: 10.7pt; color: #24483f; margin: 15px 0 5px; page-break-after: avoid; }}
+  p {{ margin: 7px 0; text-align: justify; orphans: 2; widows: 2; }}
 
   /* ===== コールアウト ===== */
   blockquote {{
@@ -170,6 +198,8 @@ html = f"""<!doctype html>
     border-collapse: collapse; width: 100%; margin: 10px 0;
     font-size: 9.3pt; line-height: 1.7; page-break-inside: avoid;
   }}
+  thead {{ display: table-header-group; }}
+  tr {{ page-break-inside: avoid; }}
   th {{
     background: {ACCENT}; color: #fff; font-weight: 600;
     padding: 5px 9px; text-align: left; border: 1px solid {ACCENT};
@@ -190,9 +220,30 @@ html = f"""<!doctype html>
   }}
   pre code {{ background: none; padding: 0; color: {INK}; font-size: 8.8pt; line-height: 1.55; }}
   ul, ol {{ padding-left: 24px; margin: 7px 0; }}
-  li {{ margin: 2.5px 0; }}
+  li {{ margin: 2.5px 0; orphans: 2; widows: 2; }}
   strong {{ color: #0b4a42; }}
   hr {{ border: none; border-top: 1px solid #c8d4d1; margin: 18px 0; }}
+
+  /* ===== 操作画面 ===== */
+  figure {{
+    margin: 12px auto 16px; padding: 3mm;
+    border: 1px solid #cbd8d5; border-radius: 4px;
+    background: #f7faf9; text-align: center;
+    break-inside: avoid; page-break-inside: avoid;
+  }}
+  figure img {{
+    display: block; width: auto; height: auto;
+    max-width: 100%; max-height: 205mm; margin: 0 auto;
+    object-fit: contain; border: 1px solid #b6c5c2; border-radius: 3px;
+    box-shadow: 0 2px 7px rgba(21, 53, 47, .14);
+  }}
+  figure img.shot-full {{ width: 100%; }}
+  figure img.shot-wide {{ width: 86%; }}
+  figure img.shot-panel {{ max-width: 68%; }}
+  figcaption {{
+    margin-top: 2.5mm; color: #4c5d59; font-size: 8.4pt;
+    line-height: 1.45; text-align: left;
+  }}
 </style>
 </head>
 <body>
@@ -231,7 +282,8 @@ with tempfile.TemporaryDirectory() as tmp:
     html_path.write_text(html, encoding="utf-8")
     PDF_PATH.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([
-        CHROME, "--headless", "--disable-gpu", "--no-pdf-header-footer",
+        CHROME, "--headless", "--disable-gpu", "--allow-file-access-from-files",
+        "--no-pdf-header-footer",
         f"--print-to-pdf={PDF_PATH}", html_path.as_uri()
     ], check=True)
 
