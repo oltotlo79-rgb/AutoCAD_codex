@@ -358,3 +358,23 @@ PLC CSVの新仕様(17点/設備標準様式)に合わせて全面改訂(§3.3, 
 
 - 各件とも実UI合成イベントで動作検証済み。テスト痕跡はUndo/削除で除去し、localStorageのテスト世代もクリア済み。
 - 途中の45秒CDPタイムアウトは長尺テストスクリプト起因の一過性(コード側は1msで正常動作を確認)。
+
+## 10. codexロードマップ指摘のP0検証・修正(2026-07-11 続)
+
+`docs/feature-improvement-roadmap.md`(codex由来)のP0指摘を全件コード照合し、確定した欠陥を修正した。
+
+| ID | 検証結果 | 対応 | コミット |
+|---|---|---|---|
+| R-01 | **確定**: openProjectFileがcatalog/standardPacks/plcModulesを復元せず(バックアップ経路と非対称=往復で消える)。将来版schemaVersionも現行版へ格下げ保存 | 3フィールド復元+将来版の版数維持(3読込点)+新規作成時の版リセット(粘着バグも発見・修正) | be28b25 |
+| R-02 | **確定**: onKeyDownにEscape分岐が存在せず(ヒント・manual記載と不一致)、Ctrl+Z/Yがediting判定より先で入力欄Undoが図面Undoに化ける | Esc優先順(メニュー→ダイアログ→入力欄既定→ドラッグ取消→配置終了→選択解除)+cancelActiveDrag(作図中要素破棄/移動復元)+editing判定をCtrl+Z/Yの前へ | be28b25 |
+| R-03 | **確定**: 壊れ画像を16×11mmで追加続行、PNG出力にonerror/toBlob(null)処理なし、JSON読込にonerror/上限なし | 下絵25MB上限+decode失敗は中止、JSON80MB上限+onerror、PNGはctx/toBlob/onerrorガード+成功後にのみ完了表示 | be28b25 |
+| R-05 | **確定**: 一括置換がプレビューなし即適用 | 置換プレビュー(ページ/種別/項目/前後の表+行チェック+全選択/解除)、選択適用=1コミット=1 Undo、400件表示上限を明示 | 0cb3e66 |
+| R-06 | **確定**: packVersionのみ検証・同一id重複push・半適用リスク | validateStandardPack(項目パス付き)、同一idは更新扱い、適用失敗時ロールバック | 0cb3e66 |
+| R-04 | 妥当(未実装) | テスト/CI基盤はリポジトリ構成変更(src分割・package.json導入)を伴うためユーザー判断待ち | — |
+| D-01 | **確定**: implementation-plan.mdにmanual.pdf未生成等の古い記述 | 3箇所を現状へ更新 | 0cb3e66 |
+
+検証はすべて実UI(合成File/DataTransfer/KeyboardEvent)で実施:
+round-trip復元・将来版99維持・Esc各段・入力欄Ctrl+Z安全・破損画像中止・部分置換+1回Undo・不正パック拒否+重複更新。
+最終回帰: ピン規律53種0違反、コンソールエラー0。
+
+P1/P2(F/A/U系)は本ロードマップをbacklogとして管理し、着手時に個別スコープ判断とする。
