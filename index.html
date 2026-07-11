@@ -10336,21 +10336,90 @@
         setStatus("標準パックを書き出しました。");
       }
 
-      // 標準パックJSONを読み込み・検証して適用(packVersion=1のみ)。
+      // 標準パックの形を検証する(不正パックで状態を壊さないための入口検査)。
+      // エラーは「どの項目が」分かるようパス付きで返す。
+      function validateStandardPack(pack) {
+        const errors = [];
+        if (!pack || typeof pack !== "object" || Array.isArray(pack)) return ["パック全体: オブジェクトではありません"];
+        if (pack.packVersion !== 1) errors.push("packVersion: 1 のみ対応です");
+        if (!pack.id || typeof pack.id !== "string") errors.push("id: 文字列が必要です");
+        const arrayChecks = [
+          ["wireTypes", item => item && typeof item.id === "string" && typeof item.label === "string", "id/label付きの配列"],
+          ["layers", item => item && typeof item.id === "string" && typeof item.label === "string", "id/label付きの配列"],
+          ["customSymbols", item => item && typeof item.id === "string", "id付きの配列"],
+          ["catalog", item => item && typeof item === "object" && !Array.isArray(item), "オブジェクトの配列"],
+          ["plcModules", item => item && typeof item.label === "string", "label付きの配列"]
+        ];
+        arrayChecks.forEach(([key, isValid, description]) => {
+          if (pack[key] === undefined) return;
+          if (!Array.isArray(pack[key])) {
+            errors.push(key + ": " + description + "が必要です");
+            return;
+          }
+          pack[key].forEach((item, index) => {
+            if (!isValid(item)) errors.push(key + "[" + index + "]: 形式が不正です");
+          });
+        });
+        ["auditRules", "reportColumns", "componentTagPrefixes", "titleLayouts"].forEach(key => {
+          if (pack[key] !== undefined && (typeof pack[key] !== "object" || Array.isArray(pack[key]))) {
+            errors.push(key + ": オブジェクトが必要です");
+          }
+        });
+        return errors;
+      }
+
+      // 標準パックJSONを読み込み・検証して適用。
+      // - 入口検証NGなら状態を一切変えず、項目パス付きで理由を表示する
+      // - 同じidのパックは重複追加せず更新として置き換える
+      // - 適用途中の失敗時は退避しておいた設定へ戻す(半分だけ適用された状態を残さない)
       function importStandardPackFile(file) {
         const reader = new FileReader();
+        reader.onerror = () => setStatus("標準パックを読み込めませんでした: " + (file?.name || ""));
         reader.onload = () => {
+          let pack;
           try {
-            const pack = JSON.parse(reader.result);
-            if (!pack || pack.packVersion !== 1) throw new Error("packVersion が不正です。");
+            pack = JSON.parse(reader.result);
+          } catch (error) {
+            setStatus("標準パックの取込に失敗しました: JSONを解釈できません（" + error.message + "）");
+            return;
+          }
+          const errors = validateStandardPack(pack);
+          if (errors.length) {
+            setStatus("標準パックの取込を中止しました: " + errors.slice(0, 3).join(" ／ ") + (errors.length > 3 ? " 他" + (errors.length - 3) + "件" : ""));
+            return;
+          }
+          const rollback = {
+            settings: deepClone(state.settings),
+            wireTypes: deepClone(state.wireTypes),
+            layers: deepClone(state.layers),
+            plcModules: deepClone(state.plcModules || []),
+            customSymbols: deepClone(state.customSymbols || []),
+            catalog: deepClone(state.catalog || []),
+            titleLayouts: state.titleLayouts ? deepClone(state.titleLayouts) : undefined
+          };
+          try {
             state.standardPacks = state.standardPacks || [];
-            state.standardPacks.push(pack);
+            const existingIndex = state.standardPacks.findIndex(item => item && item.id === pack.id);
+            const isUpdate = existingIndex >= 0;
+            if (isUpdate) state.standardPacks[existingIndex] = pack;
+            else state.standardPacks.push(pack);
             state.settings.standard = pack.id;
             applyStandardPack(pack);
-            commitHistory("標準パック「" + (pack.label || pack.id) + "」を適用しました。");
+            commitHistory("標準パック「" + (pack.label || pack.id) + "」を" + (isUpdate ? "更新して" : "") + "適用しました。");
             render();
           } catch (error) {
-            setStatus("標準パックの取込に失敗しました: " + error.message);
+            Object.assign(state, {
+              settings: rollback.settings,
+              wireTypes: rollback.wireTypes,
+              layers: rollback.layers,
+              plcModules: rollback.plcModules,
+              customSymbols: rollback.customSymbols,
+              catalog: rollback.catalog
+            });
+            if (rollback.titleLayouts) state.titleLayouts = rollback.titleLayouts; else delete state.titleLayouts;
+            state.standardPacks = (state.standardPacks || []).filter(item => item !== pack);
+            render();
+            setStatus("標準パックの適用中に失敗したため、取込前の設定へ戻しました: " + error.message);
           }
         };
         reader.readAsText(file);
@@ -13308,6 +13377,26 @@
       }
 
       // 検索一致箇所を一括置換(対象フィールドを走査)。
+      // 一括置換の対象(ページ/要素/フィールド/変更前)を全ページから収集する。
+      const REPLACE_FIELDS = ["wireNo", "label", "text", "tag", "note", "cellText", "pinText", "rightPinText", "terminalLabels", "description", "fromOverride", "toOverride"];
+      const REPLACE_FIELD_LABELS = { wireNo: "線番", label: "ラベル", text: "文字", tag: "タグ", note: "属性メモ", cellText: "表セル", pinText: "ピン文字", rightPinText: "右ピン文字", terminalLabels: "端子名", description: "説明", fromOverride: "FROM", toOverride: "TO" };
+
+      function collectReplaceMatches(query) {
+        const matches = [];
+        state.pages.forEach(page => {
+          page.elements.forEach(element => {
+            REPLACE_FIELDS.forEach(field => {
+              const value = element[field];
+              if (typeof value === "string" && value.includes(query)) {
+                matches.push({ page, element, field, before: value });
+              }
+            });
+          });
+        });
+        return matches;
+      }
+
+      // 一括置換: 即時適用せず、対象一覧をプレビューし行ごとに選択してから1回のUndo単位で適用する。
       function runReplaceAll() {
         const query = qs("#searchQuery").value;
         const replacement = qs("#replaceValue").value;
@@ -13315,26 +13404,56 @@
           setStatus("置換する検索語を入力してください。");
           return;
         }
-        const fields = ["wireNo", "label", "text", "tag", "note", "cellText", "pinText", "rightPinText", "terminalLabels", "description", "fromOverride", "toOverride"];
-        let count = 0;
-        state.pages.forEach(page => {
-          page.elements.forEach(element => {
-            fields.forEach(field => {
-              const value = element[field];
-              if (typeof value === "string" && value.includes(query)) {
-                element[field] = value.replaceAll(query, replacement);
-                count += 1;
-              }
-            });
-          });
-        });
-        if (!count) {
+        const matches = collectReplaceMatches(query);
+        if (!matches.length) {
           setStatus("置換対象が見つかりませんでした。");
           return;
         }
-        commitHistory(count + "箇所を置換しました。");
-        render();
-        runSearch();
+        const LIMIT = 400;
+        const shown = matches.slice(0, LIMIT);
+        openDialog("一括置換プレビュー", `
+          <p class="muted">「${escapeHtml(query)}」→「${escapeHtml(replacement)}」の置換対象 <b>${matches.length}件</b>。
+          適用したい行にチェックを入れて「選択した置換を実行」を押してください。適用は1回のUndo（Ctrl+Z）でまとめて戻せます。
+          「取消」する場合はこのままダイアログを閉じてください（図面は変わりません）。</p>
+          <div class="inline" style="gap:8px;margin-bottom:6px">
+            <button type="button" id="replaceCheckAllBtn">全選択</button>
+            <button type="button" id="replaceUncheckAllBtn">全解除</button>
+          </div>
+          <div style="max-height:340px;overflow:auto">
+            <table class="report-table">
+              <thead><tr><th></th><th>ページ</th><th>種別</th><th>項目</th><th>変更前</th><th>変更後</th></tr></thead>
+              <tbody>${shown.map((m, index) => `<tr>
+                <td><input type="checkbox" data-replace-row="${index}" checked style="width:auto;min-height:0"></td>
+                <td>${escapeHtml(m.page.name || "")}</td>
+                <td>${escapeHtml(paletteLabel(m.element.type) || m.element.type)}</td>
+                <td>${escapeHtml(REPLACE_FIELD_LABELS[m.field] || m.field)}</td>
+                <td>${escapeHtml(m.before)}</td>
+                <td>${escapeHtml(m.before.replaceAll(query, replacement))}</td>
+              </tr>`).join("")}</tbody>
+            </table>
+          </div>
+          ${matches.length > LIMIT ? `<p class="muted" style="color:#b45309">対象が${matches.length}件あるため先頭${LIMIT}件のみ表示・適用対象にしています。検索語を絞って複数回に分けてください。</p>` : ""}
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="replaceApplyBtn" class="primary">選択した置換を実行</button>
+          </div>`, { wide: true });
+        qs("#replaceCheckAllBtn").addEventListener("click", () => qsa("[data-replace-row]", qs("#dialogBody")).forEach(cb => { cb.checked = true; }));
+        qs("#replaceUncheckAllBtn").addEventListener("click", () => qsa("[data-replace-row]", qs("#dialogBody")).forEach(cb => { cb.checked = false; }));
+        qs("#replaceApplyBtn").addEventListener("click", () => {
+          const selected = qsa("[data-replace-row]", qs("#dialogBody"))
+            .filter(cb => cb.checked)
+            .map(cb => shown[Number(cb.dataset.replaceRow)])
+            .filter(Boolean);
+          if (!selected.length) {
+            setStatus("置換する行が選択されていません。");
+            return;
+          }
+          selected.forEach(m => {
+            m.element[m.field] = String(m.element[m.field]).replaceAll(query, replacement);
+          });
+          commitHistory(selected.length + "箇所を置換しました。");
+          closeDialog();
+          render();
+        });
       }
 
       // 検索を実行し一致要素の一覧(ジャンプつき)を表示。
