@@ -8679,24 +8679,27 @@
       }
 
       // 目次ページ(空の目次表つき)をテンプレートとして追加。
+      // 図枠は基本(compact)にする: index図枠は自前の空目次グリッドを持つため、
+      // 表要素と二重になり罫線と文字が重なってしまう。
       function addIndexPage() {
         const page = createPage({
           name: "目次" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
-          frameVariant: "index",
+          frameVariant: "compact",
           title: "図面目次"
         });
+        page.elements.push(textElement(88, 31, "図面目次", 4, 0, 40));
         page.elements.push({
           id: uid("el"),
           type: "table",
           x: 28,
-          y: 52,
+          y: 40,
           w: 150,
           h: 170,
           rows: 16,
           cols: 4,
-          label: "図面目次",
+          label: "",
           cellText: "No.\t図番\t図名\t備考\n1\t\t\t\n2\t\t\t\n3\t\t\t",
           rotation: 0,
           stroke: state.settings.stroke
@@ -9125,12 +9128,14 @@
           title: "リレー回路"
         });
         (rails.length ? rails : ["P1"]).forEach((name, i) => {
-          const x = round(32.5 - 4 * i);
-          page.elements.push(...facilityRailElements(name, x, "+", 22 + 3 * i));
-          page.elements.push(textElement(x - 2, 219 + 3 * i, name, 2.2, 0, 12));
+          // 複数レールは右方向へ展開する(左へ広げると図枠の行番号帯(x≈25.5)を貫通するため)
+          const x = round(32.5 + 4 * i);
+          page.elements.push(...facilityRailElements(name, x, "+", 22)); // 全レール同じ高さ(段差をつけると3本目の⊕が線上端へ食い込む)
+          // 下端レール名: fork矢の開脚(y217〜220)を避け、矢の先端より下へ中央合わせで置く
+          page.elements.push(textElement(round(x - name.length * 0.62), 221.8, name, 2.2, 0, 12));
         });
         page.elements.push(...facilityRailElements(rightName, 146.5, "-", 22));
-        page.elements.push(textElement(144.5, 219, rightName, 2.2, 0, 12));
+        page.elements.push(textElement(round(146.5 - rightName.length * 0.62), 221.8, rightName, 2.2, 0, 12));
         if (note) page.elements.push(textElement(40, 24.5, note, 1.9, 0, 20));
         state.pages.push(page);
         state.activePageId = page.id;
@@ -9344,7 +9349,7 @@
           title: "インターロック接続"
         });
         const boxTop = 33;
-        const boxBottom = 255;
+        const boxBottom = 217; // 行20(y=217)まで。255だと図枠下部の機器符号表帯(y224〜)を貫通してしまう
         const leftBox = { x1: 38, x2: 104 };
         const rightBox = { x1: 118, x2: 176 };
         page.elements.push({ ...defaultElement("rect", leftBox.x1, boxTop), w: leftBox.x2 - leftBox.x1, h: boxBottom - boxTop, label: "" });
@@ -9879,12 +9884,14 @@
           title: "AC電源回路"
         });
         (rails.length ? rails : ["R01"]).forEach((name, i) => {
-          const x = round(32.5 - 4 * i);
-          page.elements.push(...facilityRailElements(name, x, "+", 22 + 3 * i));
-          page.elements.push(textElement(x - 2, 219 + 3 * i, name, 2.2, 0, 12));
+          // 複数レールは右方向へ展開する(左へ広げると図枠の行番号帯(x≈25.5)を貫通するため)
+          const x = round(32.5 + 4 * i);
+          page.elements.push(...facilityRailElements(name, x, "+", 22)); // 全レール同じ高さ(段差をつけると3本目の⊕が線上端へ食い込む)
+          // 下端レール名: fork矢の開脚(y217〜220)を避け、矢の先端より下へ中央合わせで置く
+          page.elements.push(textElement(round(x - name.length * 0.62), 221.8, name, 2.2, 0, 12));
         });
         page.elements.push(...facilityRailElements(rightName, 146.5, "-", 22));
-        page.elements.push(textElement(144.5, 219, rightName, 2.2, 0, 12));
+        page.elements.push(textElement(round(146.5 - rightName.length * 0.62), 221.8, rightName, 2.2, 0, 12));
         const motorY = round(LADDER_GRID.top + LADDER_GRID.pitch * 2);
         const railXs = (rails.length ? rails : ["R01"]).map((_, i) => round(32.5 - 4 * i));
         for (let i = 0; i < 3; i++) {
@@ -10066,16 +10073,17 @@
           name: "目次" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
-          frameVariant: "index",
+          frameVariant: "compact", // index図枠の空目次グリッドと二重にならないよう基本図枠にする
           title: "図面目次"
         });
+        page.elements.push(textElement(88, 31, "図面目次", 4, 0, 40));
         page.elements.push({
-          ...defaultElement("table", 28, 52),
+          ...defaultElement("table", 28, 40),
           rows: rowsData.length + 1,
           cols: 4,
           w: 150,
           h: Math.max(40, Math.min(200, (rowsData.length + 1) * 7)),
-          label: "図面目次",
+          label: "",
           colWidths: "12,38,60,40",
           cellText: ["No.\t図番\t図名\tページ名", ...rowsData].join("\n"),
           reportTable: true
