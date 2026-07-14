@@ -1672,6 +1672,62 @@
       // 互換判定にはschemaVersionのみを使う。
       // 将来データ構造を変えるとき: SCHEMA_VERSIONを+1し、MIGRATIONSへ「旧版数: 変換関数」を1件追加する。
       const SCHEMA_VERSION = 3;
+
+      // schema v3公開後に変圧器3デザインの上タップを主ピンの1行上へ移したため、
+      // 旧v3図面に残る上タップ配線だけを新アンカーへ追従させる。スキーマ構造は変わらないので
+      // 版数は据え置き、旧座標に一致する点だけを動かす冪等な互換補修として全読込で実行する。
+      function alignLegacyTransformerTopTapConnections(data) {
+        const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.02;
+        const elementLists = [];
+        (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+          if (isPlainObject(page) && Array.isArray(page.elements)) elementLists.push(page.elements);
+        });
+        const collectCustomSymbolTemplates = symbols => {
+          (Array.isArray(symbols) ? symbols : []).forEach(symbol => {
+            if (!isPlainObject(symbol)) return;
+            if (Array.isArray(symbol.templates)) elementLists.push(symbol.templates);
+            else if (isPlainObject(symbol.template)) elementLists.push([symbol.template]);
+          });
+        };
+        collectCustomSymbolTemplates(data.customSymbols);
+        (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach(pack => {
+          if (isPlainObject(pack)) collectCustomSymbolTemplates(pack.customSymbols);
+        });
+        elementLists.forEach(elements => {
+          const moves = [];
+          elements.forEach(element => {
+            if (!isPlainObject(element) || element.type !== "transformer") return;
+            if (Math.abs(Number(element.w || 0) - 15) >= 0.02) return;
+            const angle = Number(element.rotation || 0) * Math.PI / 180;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const globalAt = (localX, localY) => ({
+              x: Number(element.x || 0) + localX * cos - localY * sin,
+              y: Number(element.y || 0) + localX * sin + localY * cos
+            });
+            [5, 10].forEach(localX => {
+              const before = globalAt(localX, 0.5);
+              const after = globalAt(localX, -4);
+              moves.push([before.x, before.y, after.x, after.y]);
+            });
+          });
+          if (!moves.length) return;
+          elements.forEach(element => {
+            if (!isPlainObject(element)) return;
+            if (["wire", "line", "arrow", "mechanicalLink"].includes(element.type) && Array.isArray(element.points)) {
+              element.points.forEach(point => {
+                const move = moves.find(item => near(item[0], point[0]) && near(item[1], point[1]));
+                if (move) { point[0] = round(move[2]); point[1] = round(move[3]); }
+              });
+            } else if (element.type === "junction") {
+              const move = moves.find(item => near(item[0], element.x || 0) && near(item[1], element.y || 0));
+              if (move) { element.x = round(move[2]); element.y = round(move[3]); }
+            }
+          });
+        });
+        return data;
+      }
+
       const MIGRATIONS = {
         // 1→2: schemaVersion欄の導入。構造変更はないが、欠落しがちな頁下位欄を補完する。
         1: data => {
@@ -1874,6 +1930,7 @@
           data = step(data) || data;
           version += 1;
         }
+        data = alignLegacyTransformerTopTapConnections(data);
         data.schemaVersion = SCHEMA_VERSION;
         return data;
       }
@@ -7054,6 +7111,7 @@
           case "meter": {
             if (variant === "box") return "meterBox";
             if (variant === "double") return "meterDouble";
+            if (variant === "needle") return "meterNeedle";
             return "meter";
           }
           case "inductor": return variant === "core" ? "inductorCore" : (variant === "box" ? "inductorBox" : "inductor");
@@ -11252,6 +11310,33 @@
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="acBuildBtn" class="primary">ページ追加</button>
           </div>`);
+        const syncVoltageDefaults = () => {
+          const singlePhase = qs("#acVolt")?.value === "100";
+          const replaceKnownDefault = (selector, threePhaseValue, singlePhaseValue) => {
+            const input = qs(selector);
+            if (!input) return;
+            const value = String(input.value || "").replace(/\s+/g, "");
+            const threePhase = threePhaseValue.replace(/\s+/g, "");
+            const single = singlePhaseValue.replace(/\s+/g, "");
+            if (singlePhase && value === threePhase) input.value = singlePhaseValue;
+            if (!singlePhase && value === single) input.value = threePhaseValue;
+          };
+          replaceKnownDefault("#acInRails", "R,S,T", "R,N");
+          replaceKnownDefault("#acOutRails", "R01,S01,T01", "R01,N01");
+          replaceKnownDefault("#acElbModel", "NV63-CVF 3P 20A", "NV63-CVF 2P 20A");
+          const transformer = qs("#acTr");
+          if (transformer) {
+            if (singlePhase) {
+              if (!transformer.disabled) transformer.dataset.previousValue = transformer.value;
+              transformer.value = "off";
+              transformer.disabled = true;
+            } else if (transformer.disabled) {
+              transformer.disabled = false;
+              transformer.value = transformer.dataset.previousValue || "100VA";
+            }
+          }
+        };
+        qs("#acVolt").addEventListener("change", syncVoltageDefaults);
         qs("#acBuildBtn").addEventListener("click", buildAcPowerPage);
       }
 
@@ -11262,7 +11347,7 @@
           <b>サーボ</b>=CB→MC接点→サーボアンプ(2軸)→モータ＋エンコーダ送り＋ブレーキ回路、
           <b>インバータ</b>=遮断器3極→インバータ→MC接点→サーマル→モータ＋ブレーキ／整流＋CC-Linkツイストペア。</p>
           <div class="row">
-            <div><label>駆動方式</label><select id="acDrive"><option value="servo">サーボアンプ（2軸）</option><option value="inverter">インバータ</option></select></div>
+            <div><label>駆動方式</label><select id="acDrive"><option value="servo">サーボアンプ</option><option value="inverter">インバータ</option></select></div>
             <div><label>接地レール名（空欄で省略）</label><input id="acGround" value="G"></div>
           </div>
           <div class="row">
@@ -11286,7 +11371,7 @@
             <div><label>位置決めユニット名（サーボ時）</label><input id="acPosUnit" value="QD77MS2"></div>
           </div>
           <div class="row">
-            <div><label>モータタグ（インバータ時M1／サーボ時SM）</label><input id="acMotorTag" value="SM1"></div>
+            <div><label>モータ先頭タグ（インバータ時M1／サーボ時SM1）</label><input id="acMotorTag" value="SM1"></div>
             <div><label>サーマルタグ（インバータ時）</label><input id="acThermalTag" value="OL1"></div>
           </div>
           <div class="row">
@@ -11304,6 +11389,22 @@
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="acMotorBuildBtn" class="primary">ページ追加</button>
           </div>`);
+        const syncDriveDefaults = () => {
+          const inverter = (qs("#acDrive")?.value || "servo") === "inverter";
+          const replaceKnownDefault = (selector, servoValue, inverterValue) => {
+            const input = qs(selector);
+            if (!input) return;
+            const value = String(input.value || "").replace(/\s+/g, "");
+            const servo = servoValue.replace(/\s+/g, "");
+            const inv = inverterValue.replace(/\s+/g, "");
+            if (inverter && value === servo) input.value = inverterValue;
+            if (!inverter && value === inv) input.value = servoValue;
+          };
+          replaceKnownDefault("#acRails", "R1,S1,T1", "R01,S01,T01");
+          replaceKnownDefault("#acContactTag", "MS1M", "MC2M1");
+          replaceKnownDefault("#acMotorTag", "SM1", "M1");
+        };
+        qs("#acDrive").addEventListener("change", syncDriveDefaults);
         qs("#acMotorBuildBtn").addEventListener("click", () => {
           if ((qs("#acDrive")?.value || "servo") === "servo") buildAcServoPage();
           else buildAcMotorInverterPage();
@@ -11324,6 +11425,7 @@
         while (railNames.length < 3) railNames.push("L" + (railNames.length + 1));
         const groundName = String(qs("#acGround")?.value ?? "G").trim();
         const motorTag = qs("#acMotorTag")?.value || "M1";
+        const motorModel = qs("#acMotorModel")?.value || "";
         const contactTag = qs("#acContactTag")?.value || "MC2M1";
         const thermalTag = qs("#acThermalTag")?.value || "OL1";
         const cbTag = qs("#acCbTag")?.value || "CB1";
@@ -11495,7 +11597,7 @@
           els.push({ ...defaultElement("wire", xTerm, y), points: [[xTerm, y], [147.5, y]] });
           els.push({ ...defaultElement("terminal", 0, 0), x: round(xTerm - 0.9), y: round(y - 0.9), label: "" });
         });
-        els.push({ ...defaultElement("motor", 146.6, round(yP[0] - 3)), label: motorTag, tag: motorTag });
+        els.push({ ...defaultElement("motor", 146.6, round(yP[0] - 3)), label: motorTag, tag: motorTag, description: motorModel });
         // モータ接地(右下端子→下へ→接地)。接地ピンは第1ピン+(12.5,12.5)=グリッド点
         const mgx = round(146.6 + 13.4);
         const mgy = round(yP[0] - 3 + 15.5);
@@ -11515,8 +11617,14 @@
         const volt = qs("#acVolt")?.value === "100" ? 100 : 200;
         const groundName = String(qs("#acGround")?.value ?? "G").trim();
         const phaseCount = volt === 200 ? 3 : 2;
-        const inNames = String(qs("#acInRails")?.value || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, phaseCount);
-        const outNames = String(qs("#acOutRails")?.value || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, phaseCount);
+        const rawInNames = String(qs("#acInRails")?.value || "");
+        const rawOutNames = String(qs("#acOutRails")?.value || "");
+        const normalizedInNames = rawInNames.replace(/\s+/g, "");
+        const normalizedOutNames = rawOutNames.replace(/\s+/g, "");
+        const effectiveInNames = volt === 100 && normalizedInNames === "R,S,T" ? "R,N" : rawInNames;
+        const effectiveOutNames = volt === 100 && normalizedOutNames === "R01,S01,T01" ? "R01,N01" : rawOutNames;
+        const inNames = effectiveInNames.split(",").map(s => s.trim()).filter(Boolean).slice(0, phaseCount);
+        const outNames = effectiveOutNames.split(",").map(s => s.trim()).filter(Boolean).slice(0, phaseCount);
         while (inNames.length < phaseCount) inNames.push((volt === 200 ? ["R", "S", "T"] : ["R", "N"])[inNames.length]);
         while (outNames.length < phaseCount) outNames.push(inNames[outNames.length] + "01");
         const elbTag = qs("#acElbTag")?.value || "ELB0";
@@ -11670,9 +11778,16 @@
           els.push(textElement(126, round((yA + yB) / 2 - 1), "GOT電源", 2, 0, 14));
         }
         // --- 電線サイズ表+SCCR注記(見本の表を簡略化) ---
+        const wireTableRows = [
+          "線番\t電線サイズ\t色",
+          inNames.join(" ") + "\t6.0mm2\t黒",
+          "AC101 AC102\t2.5mm2\t赤",
+          "P1 P10 N1\t2.5/1.5mm2\t青"
+        ];
+        if (groundName) wireTableRows.push(groundName + "\t6.0mm2\t緑/黄");
         els.push({
-          id: uid("el"), type: "table", x: 117.5, y: 32.5, w: 55, h: 32.5, rows: 5, cols: 3, label: "",
-          cellText: "線番\t電線サイズ\t色\n" + inNames.join(" ") + "\t6.0mm2\t黒\nAC101 AC102\t2.5mm2\t赤\nP1 P10 N1\t2.5/1.5mm2\t青\n" + (groundName || "G") + "\t6.0mm2\t緑/黄",
+          id: uid("el"), type: "table", x: 117.5, y: 32.5, w: 55, h: wireTableRows.length * 6.5, rows: wireTableRows.length, cols: 3, label: "",
+          cellText: wireTableRows.join("\n"),
           rotation: 0, stroke: state.settings.stroke
         });
         els.push(textElement(117.5, 69.4, "※1 図面にて指示なき小線は1.0mm2(AWG18)にて配線", 1.7, 0, 60));
@@ -11696,6 +11811,11 @@
         const axes = qs("#acAxes")?.value === "1" ? 1 : 2;
         const ampModel = qs("#acAmpModel")?.value || "MR-J4W2-22B";
         const motorModel = qs("#acMotorModel")?.value || "0.2kW HG-KR23BK";
+        const firstMotorTag = String(qs("#acMotorTag")?.value || "SM1").trim() || "SM1";
+        const motorTagMatch = firstMotorTag.match(/^(.*?)(\d+)$/);
+        const motorTags = Array.from({ length: axes }, (_, index) => motorTagMatch
+          ? motorTagMatch[1] + String(Number(motorTagMatch[2]) + index)
+          : firstMotorTag + String(index + 1));
         const m1Name = qs("#acMotor1Name")?.value || "モータ1";
         const m2Name = qs("#acMotor2Name")?.value || "モータ2";
         const brTag = qs("#acBrakeRelay")?.value || "CRMBR";
@@ -11732,8 +11852,10 @@
         // --- サーボアンプ箱 ---
         els.push({ ...defaultElement("rect", boxL, 47.5), w: round(boxR - boxL), h: 95, label: "" });
         els.push(textElement(round((boxL + boxR) / 2 - String(ampModel).length * 1.1), 50.2, ampModel, 2.2, 0, 34));
-        [["L1", 55], ["L2", 60], ["L3", 65], ["L11", 72.5], ["L12", 77.5], ["P3", 85], ["P4", 90], ["P", 95], ["D", 100],
-         ["DICOM(23)", 112.5], ["EM2(10)", 117.5], ["DOCOM(26)", 122.5], ["MBR-A(12)", 127.5], ["MBR-B(25)", 132.5]].forEach(([t, y]) => {
+        const amplifierPins = [["L1", 55], ["L2", 60], ["L3", 65], ["L11", 72.5], ["L12", 77.5], ["P3", 85], ["P4", 90], ["P", 95], ["D", 100],
+          ["DICOM(23)", 112.5], ["EM2(10)", 117.5], ["DOCOM(26)", 122.5], ["MBR-A(12)", 127.5]];
+        if (axes > 1) amplifierPins.push(["MBR-B(25)", 132.5]);
+        amplifierPins.forEach(([t, y]) => {
           els.push(textElement(boxL + 1.5, round(y + 0.7), t, 1.7, 0, 16));
         });
         // P3-P4短絡ジャンパ
@@ -11751,10 +11873,12 @@
         els.push({ ...defaultElement("wire", 37.5, 127.5), points: [[37.5, 127.5], [75, 127.5]] });
         els.push({ ...defaultElement("coil", 75, round(127.5 - 2.2)), label: brTag + "1", tag: brTag + "1", description: "LY2N DC24V" });
         els.push({ ...defaultElement("wire", 85, 127.5), points: [[85, 127.5], [boxL, 127.5]] });
-        els.push(defaultElement("junction", 70, 127.5));
-        els.push({ ...defaultElement("wire", 70, 127.5), points: [[70, 127.5], [70, 132.5], [75, 132.5]] });
-        els.push({ ...defaultElement("coil", 75, round(132.5 - 2.2)), label: brTag + "2", tag: brTag + "2", description: "LY2N DC24V" });
-        els.push({ ...defaultElement("wire", 85, 132.5), points: [[85, 132.5], [boxL, 132.5]] });
+        if (axes > 1) {
+          els.push(defaultElement("junction", 70, 127.5));
+          els.push({ ...defaultElement("wire", 70, 127.5), points: [[70, 127.5], [70, 132.5], [75, 132.5]] });
+          els.push({ ...defaultElement("coil", 75, round(132.5 - 2.2)), label: brTag + "2", tag: brTag + "2", description: "LY2N DC24V" });
+          els.push({ ...defaultElement("wire", 85, 132.5), points: [[85, 132.5], [boxL, 132.5]] });
+        }
         // --- 位置決めユニット→CN1A ---
         els.push(textElement(50, 138.2, posUnit, 2, 0, 20));
         els.push({ ...defaultElement("arrow", 67.5, 137.5), points: [[67.5, 137.5], [75, 137.5]], label: "", arrowStyle: "chevron" });
@@ -11770,6 +11894,7 @@
         for (let a = 0; a < axes; a++) {
           const [yU, yPe, yEnc, yBrk] = axisRows[a];
           const n = a + 1;
+          const motorTag = motorTags[a];
           ["U", "V", "W"].forEach((ph, i) => {
             const y = round(yU + 5 * i);
             els.push(textElement(boxR - 4, round(y + 0.7), ph, 1.7, 0, 6));
@@ -11778,14 +11903,14 @@
             els.push({ ...defaultElement("terminal", 0, 0), x: round(145 - 0.9), y: round(y - 0.9), label: "" });
           });
           els.push(textElement(boxR - 4, round(yPe + 0.7), "PE", 1.7, 0, 6));
-          els.push({ ...defaultElement("motor", 154.1, round(yU - 3)), label: "SM" + n, tag: "SM" + n });
+          els.push({ ...defaultElement("motor", 154.1, round(yU - 3)), label: motorTag, tag: motorTag, description: motorModel });
           els.push({ ...defaultElement("wire", boxR, yPe), points: [[boxR, yPe], [170, yPe], [170, round(yU + 12.5)], [round(155 + 12.5), round(yU + 12.5)]] });
           els.push(textElement(150, round(yU - 5), motorNames[a] + "（" + motorModel + "）", 1.7, 0, 34));
           // エンコーダ送り(CN2A/CN2B)
           els.push({ ...defaultElement("rect", boxR, round(yEnc - 1.25)), w: 2.5, h: 2.5, label: "" });
           els.push(textElement(boxR - 9, round(yEnc + 0.7), "CN2" + (a === 0 ? "A" : "B"), 1.7, 0, 9));
           els.push({ ...defaultElement("wire", round(boxR + 2.5), yEnc), points: [[round(boxR + 2.5), yEnc], [150, yEnc]] });
-          els.push({ ...defaultElement("arrow", 150, yEnc), points: [[150, yEnc], [167.5, yEnc]], label: "SM" + n + "エンコーダ", arrowStyle: "open", signalRole: "source" });
+          els.push({ ...defaultElement("arrow", 150, yEnc), points: [[150, yEnc], [167.5, yEnc]], label: motorTag + "エンコーダ", arrowStyle: "open", signalRole: "source" });
           // ブレーキ回路(P24/N24受け→リレー接点→バリスタ+ブレーキコイル)
           const yBrkB = round(yBrk + 10);
           els.push({ ...defaultElement("arrow", 30, yBrk), points: [[30, yBrk], [37.5, yBrk]], label: "P24", arrowStyle: "chevron", signalRole: "destination" });
@@ -11802,7 +11927,7 @@
           els.push({ ...defaultElement("wire", 37.5, yBrkB), points: [[37.5, yBrkB], [55, yBrkB]] });
           els.push({ ...defaultElement("contactNO", 55, round(yBrkB - 2.2)), label: "", tag: brTag + n });
           els.push({ ...defaultElement("wire", 65, yBrkB), points: [[65, yBrkB], [120, yBrkB]], wireNo: "B" + n + "2", wireNoAlign: "start" });
-          els.push(textElement(125, round(yBrk + 4), "SM" + n + "ブレーキ", 1.8, 0, 16));
+          els.push(textElement(125, round(yBrk + 4), motorTag + "ブレーキ", 1.8, 0, 16));
         }
         state.pages.push(page);
         state.activePageId = page.id;
@@ -11895,8 +12020,10 @@
           els.push({ ...defaultElement("breaker", 145, round(yC - 3)), w: 10, h: 5, symbolVariant: "cp", label: "CP8", refNo: "1A" });
           els.push({ ...defaultElement("breaker", 145, round(yD - 3)), w: 10, h: 5, symbolVariant: "cp", label: "", refNo: "" });
           els.push({ ...defaultElement("mechanicalLink", 150, 0), points: [[150, yC], [150, yD]] });
-          els.push({ ...defaultElement("arrow", 155, yC), points: [[155, yC], [172.5, yC]], label: "P24", arrowStyle: "open", signalRole: "source" });
-          els.push({ ...defaultElement("arrow", 155, yD), points: [[155, yD], [172.5, yD]], label: "N24", arrowStyle: "open", signalRole: "source" });
+          els.push({ ...defaultElement("wire", 155, yC), points: [[155, yC], [160, yC]] });
+          els.push({ ...defaultElement("arrow", 160, yC), points: [[160, yC], [172.5, yC]], label: "P24", arrowStyle: "open", signalRole: "source" });
+          els.push({ ...defaultElement("wire", 155, yD), points: [[155, yD], [160, yD]] });
+          els.push({ ...defaultElement("arrow", 160, yD), points: [[160, yD], [172.5, yD]], label: "N24", arrowStyle: "open", signalRole: "source" });
           els.push(textElement(140, 103.4, "サーボモーターブレーキ電源", 1.8, 0, 34));
         }
         // 接地送り(行9)
@@ -11905,7 +12032,7 @@
           els.push(defaultElement("junction", 30, yG));
           els.push({ ...defaultElement("wire", 30, yG), points: [[30, yG], [147.5, yG]] });
           els.push({ ...defaultElement("ground", 145.5, yG), label: "" });
-          els.push({ ...defaultElement("arrow", 152.5, yG), points: [[152.5, yG], [172.5, yG]], label: groundName, arrowStyle: "open", signalRole: "source" });
+          els.push({ ...defaultElement("arrow", 147.5, yG), points: [[147.5, yG], [172.5, yG]], label: groundName, arrowStyle: "open", signalRole: "source" });
         }
         state.pages.push(page);
         state.activePageId = page.id;
@@ -11937,8 +12064,8 @@
       function buildPlcPowerPage() {
         const baseName = qs("#plcpBase")?.value || "PLC BASE";
         const slots = String(qs("#plcpSlots")?.value || "").split(",").map(s => s.trim()).filter(Boolean);
-        const pcr1 = String(qs("#plcpPcr1")?.value || "PCR1M,PCR1M1").split(",").map(s => s.trim());
-        const pcr2 = String(qs("#plcpPcr2")?.value || "PCR2M,PCR2M1").split(",").map(s => s.trim());
+        const pcr1 = String(qs("#plcpPcr1")?.value ?? "PCR1M,PCR1M1").split(",").map(s => s.trim()).filter(Boolean);
+        const pcr2 = String(qs("#plcpPcr2")?.value ?? "PCR2M,PCR2M1").split(",").map(s => s.trim()).filter(Boolean);
         const page = createPage({ name: "PLC電源回路", size: "A4", orientation: "portrait", frameVariant: "ladder", title: "PLC電源回路" });
         const els = page.elements;
         [["G", 30], ["N1", 35], ["P0", 40]].forEach(([name, x]) => {
@@ -15686,9 +15813,10 @@
             接地4種、ヒューズ3種、ダイオード4種、変圧器3種、論理ゲート3種、押しボタンa/b接点（設備標準・JIS C 0617）、
             リミットスイッチ箱形NO/NC・ローラーNO/NC、圧力/フロート/温度/フロー/フットスイッチのa/b接点、
             切替接点（c接点）、照光式/パーム押しボタン、切替スイッチJIS形、ブリッジ整流◇、避雷器2種、
-            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セルなど約105様式。<b>寸法と接続ピンは共通</b>なので、
-            切り替えても配線は一切ずれません。複数選択+「同種を全選択」からの<b>一括切替</b>も可能です。
-            全シンボルの接続ピン間隔は<b>2.5mmグリッドの倍数</b>に統一されており、どのピンから配線してもグリッドに乗ります。</p>
+            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、箱形コンセント、蛍光灯、針付き計器など100種類以上。
+            切替時は<b>第1接続ピンの位置を保持</b>するため、そのピンへ接続した配線はずれません。ピン構成が共通のデザインではほかの接続点も維持され、
+            縦連結接点や切替接点などでは必要な接続ピンが追加されます。複数選択+「同種を全選択」からの<b>一括切替</b>も可能です。
+            接続ピンは原則<b>2.5mmグリッドの倍数</b>、縦連結非常停止・変圧器の上下段・箱形コンセントの受電2ピンは<b>設備行ピッチ9.5mm</b>に統一され、どのピンから配線しても対応するグリッドに乗ります。</p>
             <p style="margin:4px 0"><b>非常停止ボタン</b>は既定が一般形（キノコ＋b接点）になり、
             <b>JIS C 0617形</b>（キノコ＋破線の機械連動＋IEC様式b接点）、連動する複数接点を持つ非常停止用に
             <b>縦連結2接点/3接点</b>と<b>JIS縦連結2接点/3接点</b>（いずれも破線の機械連動つき、接点間は行ピッチ9.5mm）、
@@ -15701,7 +15829,7 @@
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
               <li><b>回路ライブラリ</b>（パレット下部）: 自己保持／起動停止／タイマ遅延／ランプ行／ブザー行／非常停止行を1クリック配置</li>
               <li><b>テンプレート</b>（右パネル）: 設備ラダー／AC電源回路（受電・分岐: 200V三相・100V単相を選択可）／AC電源回路（モータ: サーボ2軸・1軸／インバータ）／DC電源回路／PLC電源回路／セーフティリレー回路／PLC入出力回路／端子接続図／インターロック／目次／機器配置</li>
-              <li><b>AC電源回路（一括）</b>は見本図面の「AC電源_モータ」構成を再現: G+相レール→遮断器3極→インバータ箱→MC接点→サーマル→端子→モータ（接地付き）、ブレーキ接点→整流器→ブレーキコイル、CC-Linkツイストペア（DA/DB/DG/SLD）</li>
+              <li><b>AC電源回路（受電・分岐）</b>: 200V三相または100V単相の受電、ELB、盤内照明・ファン・REC・コンセント・GOTへのCP分岐を生成。<b>AC電源回路（モータ）</b>: サーボ1/2軸またはインバータのモータ回路を生成</li>
               <li><b>一括生成</b>（機能メニュー）: ラング回路・非常停止チェーン・電源投入・ブレーキ／整流・モータ分岐・PLCユニット・ツイストペア・盤レイアウト連携</li>
               <li>端子・PLCは<b>CSV取込</b>でページ量産（文字コード自動判定）。部品カタログもCSV入出力可</li>
             </ul>`)}
@@ -16934,15 +17062,19 @@
             if (auditRuleOn("emptyLabel") && ["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "transformer", "ground", "motor", "fan", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
               issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "ラベルが未入力です。", target: element.type });
             }
-            const prefix = tagPrefix(element.type);
+            // 信号矢印はlabelがページ間参照名であり、部品タグの採番対象ではない。
+            const prefix = element.type === "arrow" ? "" : tagPrefix(element.type);
             if (prefix) {
               if (!element.tag) {
                 issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "部品タグが未採番です。", target: element.label || paletteLabel(element.type) });
               } else {
-                const key = element.type + "::" + element.tag;
-                const list = componentTags.get(key) || [];
-                list.push({ page: page.name, pageId: page.id, elementId: element.id, type: paletteLabel(element.type), tag: element.tag });
-                componentTags.set(key, list);
+                // 同一リレーの複数接点は同じタグを共有するのが正常。親部品だけ重複監査へ載せる。
+                if (!contactChildTypes().has(element.type)) {
+                  const key = element.type + "::" + element.tag;
+                  const list = componentTags.get(key) || [];
+                  list.push({ page: page.name, pageId: page.id, elementId: element.id, type: paletteLabel(element.type), tag: element.tag });
+                  componentTags.set(key, list);
+                }
               }
               if (element.fixedTag && !element.tag) {
                 issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "部品タグ固定ですがタグが空です。", target: element.label || paletteLabel(element.type) });
