@@ -2296,9 +2296,12 @@
             }
           });
         }
-        ["x", "y", "w", "h", "rotation"].forEach(key => {
+        ["x", "y", "w", "h", "rotation", "pitch"].forEach(key => {
           if (element[key] !== undefined && !Number.isFinite(element[key])) errors.push(path + "." + key + ": 有限数が必要です");
         });
+        if (element.pitch !== undefined && Number(element.pitch) < 2.5) {
+          errors.push(path + ".pitch: 2.5以上の有限数が必要です。");
+        }
         if (element.type === "underlayImage" && element.imageData !== undefined && typeof element.imageData !== "string") {
           errors.push(path + ".imageData: 文字列が必要です");
         }
@@ -5178,6 +5181,25 @@
 
       // ===== ラダー行グリッドと行アドレス(頁番号+行番号2桁) =====
       const LADDER_GRID = { top: 27, pitch: 9.5, rows: 20 };
+      // 設備図枠の行番号は9.5mm間隔だが、テンプレートの電気接続点は作図方眼(2.5mm)へ載せる。
+      // 旧保存図面の行座標は変更せず、新規生成時だけこの固定方眼へ丸める。
+      const TEMPLATE_GRID_STEP = 2.5;
+      const TEMPLATE_CIRCUIT_PITCH = 10;
+      const TEMPLATE_RAIL_BOTTOM = 217.5;
+      const TEMPLATE_UNIT_MAX_ROWS = 19;
+
+      function templateGridCoordinate(value) {
+        return round(Math.round(Number(value || 0) / TEMPLATE_GRID_STEP) * TEMPLATE_GRID_STEP);
+      }
+
+      function templateGridRow(index) {
+        return templateGridCoordinate(LADDER_GRID.top + LADDER_GRID.pitch * Number(index || 0));
+      }
+
+      function templateGridPair(index) {
+        const first = templateGridRow(index);
+        return [first, round(first + TEMPLATE_CIRCUIT_PITCH)];
+      }
 
       // y座標→最寄りの行番号(00-20)。
       function ladderRowAt(y) {
@@ -5585,6 +5607,29 @@
             { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
+        // テンプレート専用10mmピッチ版。既存保存図面の9.5mm記号を変えず、2.5mm方眼へ両段を載せる。
+        pushButtonEmergencyGridMulti2: {
+          w: 10, h: 16.5,
+          anchors: [[0, 4.4], [10, 4.4], [0, 14.4], [10, 14.4]],
+          prims: [
+            { t: "line", p: [0, 4.4, 2.8, 4.4] },
+            { t: "line", p: [7.2, 4.4, 10, 4.4] },
+            { t: "circle", p: [3.4, 4.4, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 4.4, 0.6], fill: "white" },
+            { t: "line", p: [2.6, 3.5, 7.4, 3.5] },
+            { t: "line", p: [5, 3.5, 5, 1.7] },
+            { t: "arc", p: [5, 1.7, 1.7, 180, 360] },
+            { t: "line", p: [3.3, 1.7, 6.7, 1.7] },
+            { t: "line", p: [5, 3.5, 5, 13.5], dash: "1.2 1.4" },
+            { t: "line", p: [0, 14.4, 2.8, 14.4] },
+            { t: "line", p: [7.2, 14.4, 10, 14.4] },
+            { t: "circle", p: [3.4, 14.4, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 14.4, 0.6], fill: "white" },
+            { t: "line", p: [2.6, 13.5, 7.4, 13.5] },
+            { t: "text", p: [5, 18.1], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
         // 非常停止・縦連結3接点: 連動3接点版(段ピッチ9.5mm)。
         pushButtonEmergencyMulti3: {
           w: 10, h: 25.5,
@@ -5881,6 +5926,37 @@
             { t: "circle", p: [10, 15.0, 0.55], fill: "white" },
             { t: "text", p: [7.5, -1.4], size: 2.2, anchor: "middle", field: "label" },
             { t: "text", p: [7.5, 17.6], size: 2, anchor: "middle", field: "rating" }
+          ]
+        },
+        // ACテンプレート専用10mmピッチ版。標準9.5mm版は旧図面・手動配置用として保持する。
+        transformerGrid10: {
+          w: 15, h: 17.5,
+          anchors: [[0, 5.5], [15, 5.5], [0, 15.5], [15, 15.5], [5, -4.5], [10, -4.5]],
+          prims: [
+            { t: "rect", p: [6.05, 0.7, 0.85, 15.0], fill: "white" },
+            { t: "rect", p: [8.1, 0.7, 0.85, 15.0], fill: "white" },
+            { t: "line", p: [5, -3.95, 5, 0.9] },
+            { t: "line", p: [5, 0.9, 6.05, 0.9] },
+            { t: "circle", p: [5, -4.5, 0.55], fill: "white" },
+            { t: "line", p: [0, 5.5, 4.45, 5.5] },
+            { t: "line", p: [5.55, 5.5, 6.05, 5.5] },
+            { t: "circle", p: [5, 5.5, 0.55], fill: "white" },
+            { t: "line", p: [5.55, 10.5, 6.05, 10.5] },
+            { t: "circle", p: [5, 10.5, 0.55], fill: "white" },
+            { t: "line", p: [0, 15.5, 4.45, 15.5] },
+            { t: "line", p: [5.55, 15.5, 6.05, 15.5] },
+            { t: "circle", p: [5, 15.5, 0.55], fill: "white" },
+            { t: "line", p: [10, -3.95, 10, 0.9] },
+            { t: "line", p: [8.95, 0.9, 10, 0.9] },
+            { t: "circle", p: [10, -4.5, 0.55], fill: "white" },
+            { t: "line", p: [10.55, 5.5, 15, 5.5] },
+            { t: "line", p: [8.95, 5.5, 9.45, 5.5] },
+            { t: "circle", p: [10, 5.5, 0.55], fill: "white" },
+            { t: "line", p: [10.55, 15.5, 15, 15.5] },
+            { t: "line", p: [8.95, 15.5, 9.45, 15.5] },
+            { t: "circle", p: [10, 15.5, 0.55], fill: "white" },
+            { t: "text", p: [7.5, -1.4], size: 2.2, anchor: "middle", field: "label" },
+            { t: "text", p: [0, 18.1], size: 2, anchor: "end", field: "rating" }
           ]
         },
         ground: {
@@ -6593,6 +6669,23 @@
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // ACテンプレート専用10mm受電ピッチ版。筐体意匠は見本準拠の箱形を共有する。
+        outletBoxGrid10: {
+          w: 10, h: 14,
+          anchors: [[0, 2], [0, 12]],
+          prims: [
+            { t: "line", p: [0, 2, 2.5, 2] },
+            { t: "line", p: [0, 12, 2.5, 12] },
+            { t: "rect", p: [2.5, 0, 7.5, 13.5], fill: "white" },
+            { t: "line", p: [5.5, 3.2, 5.5, 6.2] },
+            { t: "line", p: [7.5, 3.2, 7.5, 5.4] },
+            { t: "line", p: [6.5, 8.4, 6.5, 10.4] },
+            { t: "line", p: [6.5, 10.4, 6.5, 12] },
+            { t: "line", p: [5.3, 12, 7.7, 12] },
+            { t: "line", p: [5.8, 12.8, 7.2, 12.8] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         // 回転灯: 台座+ドーム+光線。
         beacon: {
           w: 10, h: 6,
@@ -7206,7 +7299,10 @@
           case "contactNC": return variant === "jis" ? "contactNCJis" : (variant === "iec" ? "contactNCIec" : "contactNC");
           case "thermalRelay": return variant === "box" ? "thermalRelayBox" : "thermalRelay";
           case "disconnector": return "disconnector";
-          case "outlet": return variant === "box" ? "outletBox" : "outlet";
+          case "outlet": {
+            if (variant === "boxGrid10") return "outletBoxGrid10";
+            return variant === "box" ? "outletBox" : "outlet";
+          }
           case "beacon": return "beacon";
           case "thermalElement": return "thermalElement";
           case "breaker": {
@@ -7246,6 +7342,7 @@
               // 既定(standard)は一般形。旧来の設備標準(キノコ+ひねり解除環)はfacilityで選択。
               if (variant === "facility") return "pushButtonEmergency";
               if (variant === "bar") return "pushButtonEmergencyBar";
+              if (variant === "gridMulti2") return "pushButtonEmergencyGridMulti2";
               if (variant === "multi2") return "pushButtonEmergencyMulti2";
               if (variant === "multi3") return "pushButtonEmergencyMulti3";
               if (variant === "jis") return "pushButtonEmergencyJis";
@@ -7283,7 +7380,10 @@
           }
           case "pressureSwitch": return variant === "nc" ? "pressureSwitchNC" : "pressureSwitch";
           case "motor": return variant === "double" ? "motorDouble" : "motor";
-          case "transformer": return variant === "circles" ? "transformerCircles" : (variant === "circlesCore" ? "transformerCirclesCore" : "transformer");
+          case "transformer": {
+            if (variant === "grid10") return "transformerGrid10";
+            return variant === "circles" ? "transformerCircles" : (variant === "circlesCore" ? "transformerCirclesCore" : "transformer");
+          }
           case "meter": {
             if (variant === "box") return "meterBox";
             if (variant === "double") return "meterDouble";
@@ -7618,11 +7718,12 @@
       function plcUnitGeometry(element) {
         const rows = Math.max(1, Number(element.rows || 8));
         const w = Number(element.w || 10);
-        const pitch = 9.5;
+        // 旧保存要素は9.5mmのまま、新規テンプレートはelement.pitch=10で方眼整合する。
+        const pitch = Math.max(2.5, Number(element.pitch || 9.5));
         return { rows, w, pitch, h: rows * pitch, cx: w / 2 };
       }
 
-      // PLCユニット列(縦カラム+上下波形破断線+アドレス円)の描画。行ピッチ9.5mm固定。
+      // PLCユニット列(縦カラム+上下波形破断線+アドレス円)の描画。旧要素9.5mm、新規テンプレート10mm。
       function drawPlcUnitColumn(g, element, stroke) {
         const geo = plcUnitGeometry(element);
         const { rows, w, h, pitch, cx } = geo;
@@ -8354,9 +8455,20 @@
       // 選択中要素に対応する「シンボルデザイン」セレクトHTML(バリエーションが無い種別は空文字)。
       function symbolVariantSelectHtml(element) {
         const key = variantOptionsKeyFor(element);
-        const options = SYMBOL_VARIANT_OPTIONS[key];
-        if (!options) return "";
         const current = element.symbolVariant || "standard";
+        const baseOptions = SYMBOL_VARIANT_OPTIONS[key];
+        if (!baseOptions) return "";
+        // 自動生成した10mm形状を別形状と取り違えず、変更後も選び直せるよう専用候補を明示する。
+        const templateVariantOptions = {
+          transformer: ["grid10", "巻線バー＋タップ（テンプレート専用10mm）"],
+          outlet: ["boxGrid10", "箱形（テンプレート専用10mm）"],
+          pushButtonEmergency: ["gridMulti2", "縦連結2接点（テンプレート専用10mm）"]
+        };
+        const templateOption = templateVariantOptions[key];
+        let options = templateOption && !baseOptions.some(([value]) => value === templateOption[0])
+          ? [...baseOptions, templateOption]
+          : baseOptions;
+        if (!options.some(([value]) => value === current)) options = [[current, current], ...options];
         return `
             <label>シンボルデザイン（規格・様式切替）</label>
             <select data-bind="symbolVariant">
@@ -8685,7 +8797,7 @@
               <option value="unit"${plcStyle === "unit" ? " selected" : ""}>ユニット列(端子円+破断線)</option>
             </select>
             <label>I/O行数</label>
-            <input data-bind="rows" data-kind="number" type="number" min="1" step="1" value="${Number(element.rows || 8)}">
+            <input data-bind="rows" data-kind="number" type="number" min="1"${plcStyle === "unit" && Number(element.pitch || 9.5) >= TEMPLATE_CIRCUIT_PITCH ? ` max="${TEMPLATE_UNIT_MAX_ROWS}"` : ""} step="1" value="${Number(element.rows || 8)}">
             <label>I/O名（1行1点）</label>
             <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
           `;
@@ -8827,7 +8939,7 @@
         const element = selectedElement();
         if (!element) return;
         const key = input.dataset.bind;
-        const value = input.type === "checkbox" ? input.checked : (input.dataset.kind === "number" ? Number(input.value) : input.value);
+        let value = input.type === "checkbox" ? input.checked : (input.dataset.kind === "number" ? Number(input.value) : input.value);
         const pointMatch = key.match(/^p(\d+)(x|y)$/);
         // 形状・向き・デザイン等の切替で要素寸法が変わる可能性のあるキー。
         // 切替の前後で第1接続ピンの絶対位置を保存し、寸法変更によるピンのズレを常に打ち消す。
@@ -8841,6 +8953,11 @@
           return anchors && anchors.length ? anchors[0] : null;
         };
         const pinBefore = !pointMatch && GEOMETRY_KEYS.includes(key) ? firstPinOf(element) : null;
+        if (key === "rows" && element.type === "plcBlock" && (element.plcStyle || "grid") === "unit"
+          && Number(element.pitch || 9.5) >= TEMPLATE_CIRCUIT_PITCH) {
+          value = Math.max(1, Math.min(TEMPLATE_UNIT_MAX_ROWS, Math.floor(Number(value || 1))));
+          input.value = String(value);
+        }
         if (pointMatch && element.points?.[Number(pointMatch[1])]) {
           element.points[Number(pointMatch[1])][pointMatch[2] === "x" ? 0 : 1] = value;
         } else {
@@ -8865,7 +8982,7 @@
           if (element.type === "plcBlock" && ["plcStyle", "rows"].includes(key)) {
             if ((element.plcStyle || "grid") === "unit") {
               element.w = 10;
-              element.h = Math.max(1, Number(element.rows || 8)) * 9.5;
+              element.h = Math.max(1, Number(element.rows || 8)) * Math.max(2.5, Number(element.pitch || 9.5));
             } else if (key === "plcStyle") {
               element.w = 50;
               element.h = Math.max(2, Number(element.rows || 8)) * 6 + 10;
@@ -8913,7 +9030,7 @@
         const count = Math.max(1, Number(element.count || 8));
         if (element.type === "terminalStrip" && element.stripStyle === "unit" && element.orientation === "vertical") {
           element.w = Number(element.levels) === 2 ? 20 : 10;
-          element.h = count * 9.5;
+          element.h = count * Math.max(2.5, Number(element.pitch || 9.5));
           return;
         }
         const pitch = element.type === "connector" ? 7 : 8;
@@ -9633,6 +9750,7 @@
         // 左から横配線 → ユニット列端子台(波形破断線+端子円)、線番は終点寄せ表示
         const count = Math.max(1, Number(options.count || 16));
         const startNo = Number(options.start || 1);
+        const pitch = Math.max(TEMPLATE_GRID_STEP, Number(options.pitch || TEMPLATE_CIRCUIT_PITCH));
         // 端子円中心をグリッド点(x+97.5)に置き、配線も同じ中心まで届かせる。
         const ringX = round(x + 97.5);
         const stripW = 10;
@@ -9642,7 +9760,8 @@
           x: stripX,
           y: round(y),
           w: stripW,
-          h: count * 9.5,
+          h: count * pitch,
+          pitch,
           count,
           start: startNo,
           prefix: options.terminalPrefix || "",
@@ -9652,7 +9771,7 @@
           label: options.label || "TB1"
         };
         for (let i = 0; i < count; i++) {
-          const cy = round(y + 9.5 * i + 4.75);
+          const cy = round(y + pitch * i + pitch / 2);
           const wireNo = (options.wirePrefix || "W") + String(startNo + i).padStart(2, "0");
           page.elements.push({
             ...defaultElement("wire", x, cy),
@@ -9925,7 +10044,7 @@
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
         page.elements.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
-        addReferenceTerminalWiringSet(page, 32.5, 31.75, {
+        addReferenceTerminalWiringSet(page, 32.5, 32.5, {
           label: "TB1",
           terminalPrefix: "",
           wirePrefix: "W",
@@ -9933,7 +10052,7 @@
           count: 16
         });
         for (let i = 0; i < 16; i++) {
-          page.elements.push(defaultElement("junction", 32.5, round(36.5 + 9.5 * i)));
+          page.elements.push(defaultElement("junction", 32.5, round(37.5 + TEMPLATE_CIRCUIT_PITCH * i)));
         }
         state.pages.push(page);
         state.activePageId = page.id;
@@ -10161,11 +10280,12 @@
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
         const strip = {
-          ...defaultElement("terminalStrip", 125, 31.75),
+          ...defaultElement("terminalStrip", 125, 32.5),
           x: 125,
-          y: 31.75,
+          y: 32.5,
           w: 10,
-          h: rows.length * 9.5,
+          h: rows.length * TEMPLATE_CIRCUIT_PITCH,
+          pitch: TEMPLATE_CIRCUIT_PITCH,
           count: rows.length,
           start: 1 + offset,
           prefix: "",
@@ -10177,7 +10297,7 @@
           note: "取込元: " + fileName
         };
         rows.forEach((row, index) => {
-          const y = round(36.5 + 9.5 * index);
+          const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * index);
           page.elements.push(defaultElement("junction", 32.5, y));
           page.elements.push({
             ...defaultElement("wire", 32.5, y),
@@ -10225,17 +10345,18 @@
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
         const unit = {
-          ...defaultElement("plcBlock", 125, 31.75),
+          ...defaultElement("plcBlock", 125, 32.5),
           plcStyle: "unit",
           rows: rows.length,
           w: 10,
-          h: rows.length * 9.5,
+          h: rows.length * TEMPLATE_CIRCUIT_PITCH,
+          pitch: TEMPLATE_CIRCUIT_PITCH,
           label: "PLC(" + pageNo + "/" + totalPages + ")",
           pinText: rows.map(row => row.address).join("\n"),
           note: "取込元: " + fileName
         };
         rows.forEach((row, index) => {
-          const y = round(36.5 + 9.5 * index);
+          const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * index);
           const plcName = (unit.label || "PLC") + ":" + row.address;
           const deviceName = row.device || row.signal || "";
           const input = row.direction !== "output";
@@ -10506,7 +10627,7 @@
         const size = pageSize(page);
         const html = `
           <div class="row">
-            <div><label>本数</label><input id="wireRowCount" type="number" min="1" max="${Math.max(1, Math.floor(((page.frameVariant === "ladder" ? 217 : snapToGrid(size.h - 57.5)) - 55) / 12.5) + 1)}" step="1" value="6"></div>
+            <div><label>本数</label><input id="wireRowCount" type="number" min="1" max="${Math.max(1, Math.floor(((page.frameVariant === "ladder" ? TEMPLATE_RAIL_BOTTOM : snapToGrid(size.h - 57.5)) - 55) / 12.5) + 1)}" step="1" value="6"></div>
             <div><label>ピッチ mm</label><input id="wireRowPitch" type="number" min="2.5" step="2.5" value="12.5"></div>
           </div>
           <div class="row">
@@ -10537,7 +10658,7 @@
         const x2 = snap(Number(qs("#wireRowX2").value || 182.5));
         const startY = snap(Number(qs("#wireRowY").value || 55));
         const size = pageSize(page);
-        const bottomLimit = page.frameVariant === "ladder" ? 217 : snapToGrid(size.h - 57.5);
+        const bottomLimit = page.frameVariant === "ladder" ? TEMPLATE_RAIL_BOTTOM : snapToGrid(size.h - 57.5);
         const maxCount = Math.max(0, Math.floor((bottomLimit - startY + .001) / pitch) + 1);
         if (count > maxCount || x1 < 20 || x2 > size.w - 20 || x2 <= x1) {
           setStatus("横配線行が用紙の作図範囲を越えます。本数・開始位置・範囲を見直してください。");
@@ -10713,14 +10834,14 @@
         items.push({ ...defaultElement("polarityMark", round(x - 1.3), markY), label: name, sign });
         items.push({
           ...defaultElement("wire", x, 30),
-          points: [[x, 30], [x, 217]],
+          points: [[x, 30], [x, TEMPLATE_RAIL_BOTTOM]],
           wireNo: "",
           hideWireNo: true,
           ladderRail: name,
           wireType: state.settings.currentWireType
         });
         items.push({ ...defaultElement("arrow", x, 35), points: [[x, 35], [x, 30]], label: "", arrowStyle: "fork", ladderRail: name });
-        items.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, 217]], label: "", arrowStyle: "fork", ladderRail: name });
+        items.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork", ladderRail: name });
         return items;
       }
 
@@ -10857,18 +10978,19 @@
         page.elements.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
         const unitX = 47.5; // ユニット中央(47.5+5=52.5)=端子中心=グリッド点
         addresses.forEach((address, i) => {
-          const y = round(36.5 + 9.5 * i);
+          const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * i);
           // 端子中心52.5=グリッド点。配線はユニット列の端子円中心まで届かせる。
           page.elements.push({ ...defaultElement("wire", 52.5, y), points: [[52.5, y], [135, y]], wireNo: "", wireNoAlign: "start" });
           page.elements.push({ ...defaultElement("coil", 135, round(y - 2.2)), label: "", tag: "" });
           page.elements.push({ ...defaultElement("wire", 145, y), points: [[145, y], [147.5, y]] });
         });
         page.elements.push({
-          ...defaultElement("plcBlock", unitX, 31.75),
+          ...defaultElement("plcBlock", unitX, 32.5),
           plcStyle: "unit",
           rows: count,
           w: 10,
-          h: count * 9.5,
+          h: count * TEMPLATE_CIRCUIT_PITCH,
+          pitch: TEMPLATE_CIRCUIT_PITCH,
           label: unitName,
           pinText: addresses.join("\n")
         });
@@ -10903,18 +11025,19 @@
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
         page.elements.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
         const unit = {
-          ...defaultElement("plcBlock", 125, 31.75),
+          ...defaultElement("plcBlock", 125, 32.5),
           plcStyle: "unit",
           rows: count,
           w: 10,
-          h: count * 9.5,
+          h: count * TEMPLATE_CIRCUIT_PITCH,
+          pitch: TEMPLATE_CIRCUIT_PITCH,
           label: unitName,
           pinText: addresses.join("\n")
         };
         const feederX = 47.5;
         if (withContacts && addresses.length) {
-          const yFirst = round(36.5);
-          const yLast = round(36.5 + 9.5 * (addresses.length - 1));
+          const yFirst = 37.5;
+          const yLast = round(yFirst + TEMPLATE_CIRCUIT_PITCH * (addresses.length - 1));
           page.elements.push(defaultElement("junction", 32.5, yFirst));
           page.elements.push({ ...defaultElement("wire", 32.5, yFirst), points: [[32.5, yFirst], [feederX, yFirst]] });
           if (addresses.length > 1) {
@@ -10922,7 +11045,7 @@
           }
         }
         addresses.forEach((address, i) => {
-          const y = round(36.5 + 9.5 * i);
+          const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * i);
           if (withContacts) {
             page.elements.push(defaultElement("junction", feederX, y));
             page.elements.push({ ...defaultElement("contactNO", 52.5, y - 2.2), label: "" });
@@ -10980,7 +11103,7 @@
           title: "インターロック接続"
         });
         const boxTop = 32.5;
-        const boxBottom = 217; // 行20(y=217)まで。255だと図枠下部の機器符号表帯(y224〜)を貫通してしまう
+        const boxBottom = TEMPLATE_RAIL_BOTTOM; // 図枠下部の機器符号表帯(y224〜)より上の方眼線まで
         const leftBox = { x1: 37.5, x2: 105 };
         const rightBox = { x1: 117.5, x2: 175 };
         page.elements.push({ ...defaultElement("rect", leftBox.x1, boxTop), w: leftBox.x2 - leftBox.x1, h: boxBottom - boxTop, label: "" });
@@ -11006,11 +11129,12 @@
           });
         });
         page.elements.push(textElement(rightBox.x1 + 2, boxTop - 3.5, rightName, 2.6, 0, 60));
-        let rowIndex = 2;
+        let signalIndex = 0;
+        const nextSignalY = () => round(45 + 17.5 * signalIndex++);
         // 境界端子は中心102.5=グリッド点。配線は円中心まで届かせ、後から積む端子円が隠す
         const termCx = round(leftBox.x2 - 2.5);
-        for (let i = 0; i < outCount; i++, rowIndex += 2) {
-          const y = round(LADDER_GRID.top + LADDER_GRID.pitch * rowIndex);
+        for (let i = 0; i < outCount; i++) {
+          const y = nextSignalY();
           page.elements.push({ ...defaultElement("wire", 45, y), points: [[45, y], [termCx, y]] });
           page.elements.push({
             ...defaultElement("arrow", termCx, y),
@@ -11021,8 +11145,8 @@
           });
           page.elements.push({ ...defaultElement("terminal", 0, 0), x: round(termCx - 0.9), y: round(y - 0.9), label: "" });
         }
-        for (let i = 0; i < inCount; i++, rowIndex += 2) {
-          const y = round(LADDER_GRID.top + LADDER_GRID.pitch * rowIndex);
+        for (let i = 0; i < inCount; i++) {
+          const y = nextSignalY();
           page.elements.push({
             ...defaultElement("arrow", rightBox.x1, y),
             points: [[rightBox.x1 + 15, y], [termCx, y]],
@@ -11049,7 +11173,7 @@
             <div><label>開始アドレス</label><input id="plcUnitStart" value="X100"></div>
           </div>
           <div class="row">
-            <div><label>点数</label><input id="plcUnitCount" type="number" min="1" max="20" step="1" value="16"></div>
+            <div><label>点数</label><input id="plcUnitCount" type="number" min="1" max="${TEMPLATE_UNIT_MAX_ROWS}" step="1" value="16"></div>
             <div><label>端子中心X mm</label><input id="plcUnitX" type="number" step="2.5" value="130"></div>
           </div>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
@@ -11058,15 +11182,16 @@
         qs("#plcUnitBuildBtn").addEventListener("click", () => {
           const page = currentPage();
           if (!page) return;
-          const count = Math.max(1, Math.min(20, Math.floor(Number(qs("#plcUnitCount").value || 16))));
+          const count = Math.max(1, Math.min(TEMPLATE_UNIT_MAX_ROWS, Math.floor(Number(qs("#plcUnitCount").value || 16))));
           const addresses = plcAddressSequence(qs("#plcUnitStart").value || "X000", count);
           const centerX = snap(Number(qs("#plcUnitX").value || 130));
           const unit = {
-            ...defaultElement("plcBlock", round(centerX - 5), 31.75),
+            ...defaultElement("plcBlock", round(centerX - 5), 32.5),
             plcStyle: "unit",
             rows: count,
             w: 10,
-            h: count * 9.5,
+            h: count * TEMPLATE_CIRCUIT_PITCH,
+            pitch: TEMPLATE_CIRCUIT_PITCH,
             label: qs("#plcUnitName").value || "PLC",
             pinText: addresses.join("\n")
           };
@@ -11705,12 +11830,12 @@
         const railTop = (name, x) => {
           els.push({
             ...defaultElement("wire", x, 30),
-            points: [[x, 30], [x, 217]],
+            points: [[x, 30], [x, TEMPLATE_RAIL_BOTTOM]],
             wireNo: "", hideWireNo: true, ladderRail: name,
             wireType: state.settings.currentWireType
           });
           els.push({ ...defaultElement("arrow", x, 35), points: [[x, 35], [x, 30]], label: "", arrowStyle: "fork", ladderRail: name });
-          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, 217]], label: "", arrowStyle: "fork", ladderRail: name });
+          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork", ladderRail: name });
           els.push(textElement(round(x - name.length * 0.62), 22.6, name, 2.2, 0, 12));
         };
         if (groundName) {
@@ -11747,9 +11872,9 @@
           els.push(cb);
         });
         els.push({
-          // 機械連動線は各CPのアーチ頂点へ正確に接続する（電気グリッド検査の対象外）。
+          // 機械連動線は標準遮断器のアーチ頂点(r=2.25)へ正確に接続する（電気グリッド検査の対象外）。
           ...defaultElement("mechanicalLink", round(xCB + 4.75), 0),
-          points: [[round(xCB + 4.75), round(yP[0] - 2.35)], [round(xCB + 4.75), round(yP[2] - 2.35)]]
+          points: [[round(xCB + 4.75), round(yP[0] - 2.25)], [round(xCB + 4.75), round(yP[2] - 2.25)]]
         });
         // --- 遮断器→インバータ(線番R1/S1/T1)。ブレーキ送りのタップ junction 付き ---
         const branchNos = railNames.map(acBranchWireNo);
@@ -11897,14 +12022,15 @@
         const page = createPage({ name: "AC電源回路", size: "A4", orientation: "portrait", frameVariant: "ladder", title: "AC電源回路" });
         const els = page.elements;
         const phaseXs = [35, 40, 45].slice(0, phaseCount);
-        const row = i => round(LADDER_GRID.top + LADDER_GRID.pitch * i);
+        // 各2線回路を10mm間隔にし、上下とも2.5mm方眼へ載せる。
+        const pair = index => templateGridPair(index);
         const yElbTop = 52.5;
         const yElbBot = 65; // 縦向きCP(12.5mmピンピッチ)の下端
         // --- 接地レール+メインアースブロック(点線枠+端子2) ---
         if (groundName) {
-          els.push({ ...defaultElement("wire", 30, 30), points: [[30, 30], [30, 217]], wireNo: "", hideWireNo: true, ladderRail: groundName, wireType: state.settings.currentWireType });
+          els.push({ ...defaultElement("wire", 30, 30), points: [[30, 30], [30, TEMPLATE_RAIL_BOTTOM]], wireNo: "", hideWireNo: true, ladderRail: groundName, wireType: state.settings.currentWireType });
           els.push({ ...defaultElement("arrow", 30, 35), points: [[30, 35], [30, 30]], label: "", arrowStyle: "fork", ladderRail: groundName });
-          els.push({ ...defaultElement("arrow", 30, 212.5), points: [[30, 212.5], [30, 217]], label: "", arrowStyle: "fork", ladderRail: groundName });
+          els.push({ ...defaultElement("arrow", 30, 212.5), points: [[30, 212.5], [30, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork", ladderRail: groundName });
           els.push(textElement(round(30 - groundName.length * 0.62), 22.6, groundName, 2.2, 0, 12));
           els.push({ ...defaultElement("polarityMark", 28.7, 219.9), label: "", sign: "+" });
           els.push({ ...defaultElement("rect", 25, yElbTop), w: 10, h: 12.5, label: "", dash: "1.4 1.2" });
@@ -11917,9 +12043,9 @@
         inNames.forEach((name, i) => {
           const x = phaseXs[i];
           els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, yElbTop]], wireNo: "", hideWireNo: true, wireType: state.settings.currentWireType });
-          els.push({ ...defaultElement("wire", x, yElbBot), points: [[x, yElbBot], [x, 217]], wireNo: "", hideWireNo: true, ladderRail: outNames[i], wireType: state.settings.currentWireType });
+          els.push({ ...defaultElement("wire", x, yElbBot), points: [[x, yElbBot], [x, TEMPLATE_RAIL_BOTTOM]], wireNo: "", hideWireNo: true, ladderRail: outNames[i], wireType: state.settings.currentWireType });
           els.push({ ...defaultElement("arrow", x, 35), points: [[x, 35], [x, 30]], label: "", arrowStyle: "fork" });
-          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, 217]], label: "", arrowStyle: "fork" });
+          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork" });
           els.push(textElement(round(x - name.length * 0.62), 22.6, name, 2.2, 0, 12));
           els.push(textElement(round(x - outNames[i].length * 0.62), 222.4, outNames[i], 2.2, 0, 12));
           els.push({ ...defaultElement("breaker", x - 2, yElbTop), w: 5, h: 12.5, symbolVariant: "cp", orientation: "vertical", cpLinked: true, label: i === phaseCount - 1 ? elbTag : "", refNo: "" });
@@ -11944,15 +12070,16 @@
         };
         // --- 電源表示灯PL0(行1-2) ---
         if (withPl) {
-          els.push(defaultElement("junction", phaseXs[0], row(1)));
-          els.push({ ...defaultElement("wire", phaseXs[0], row(1)), points: [[phaseXs[0], row(1)], [52.5, row(1)]] });
-          els.push({ ...defaultElement("lamp", 52.5, round(row(1) - 2.2)), label: "PL0", tag: "PL0", lampColor: "W" });
-          els.push({ ...defaultElement("wire", 62.5, row(1)), points: [[62.5, row(1)], [67.5, row(1)], [67.5, row(2)], [phaseXs[1], row(2)]] });
-          els.push(defaultElement("junction", phaseXs[1], row(2)));
+          const [yA, yB] = pair(1);
+          els.push(defaultElement("junction", phaseXs[0], yA));
+          els.push({ ...defaultElement("wire", phaseXs[0], yA), points: [[phaseXs[0], yA], [52.5, yA]] });
+          els.push({ ...defaultElement("lamp", 52.5, round(yA - 2.2)), label: "PL0", tag: "PL0", lampColor: "W" });
+          els.push({ ...defaultElement("wire", 62.5, yA), points: [[62.5, yA], [67.5, yA], [67.5, yB], [phaseXs[1], yB]] });
+          els.push(defaultElement("junction", phaseXs[1], yB));
         }
         // --- 盤内照明(CP0→SS0→FL1、行6-7) ---
         if (withLight) {
-          const yA = row(6), yB = row(7);
+          const [yA, yB] = pair(6);
           pushCp2("CP0", "1A", yA, yB);
           // 配線を先に描き、白抜き端子円・SS0・ポジション記号を上へ重ねる。
           els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [75, yA]] });
@@ -11969,7 +12096,7 @@
         }
         // --- ファン(CP01→FAN1、行9-10) ---
         if (withFan) {
-          const yA = row(9), yB = row(10);
+          const [yA, yB] = pair(9);
           pushCp2("CP01", "2A", yA, yB);
           els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "203", wireNoAlign: "start" });
           els.push({ ...defaultElement("fan", 105, round(yA - 7.5)), label: "FAN1", tag: "FAN1" });
@@ -11978,7 +12105,7 @@
         }
         // --- REC(DC電源)送り(CP1、行12-13) ---
         if (withRec) {
-          const yA = row(12), yB = row(13);
+          const [yA, yB] = pair(12);
           pushCp2("CP1", "3A", yA, yB);
           els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [140, yA]], wireNo: "205" });
           els.push({ ...defaultElement("arrow", 140, yA), points: [[140, yA], [172.5, yA]], label: "205", arrowStyle: "open", signalRole: "source" });
@@ -11988,17 +12115,17 @@
         }
         // --- 変圧器(200V→100V)+盤内コンセント(行15-16) ---
         if (withSc1 || trVA !== "off") {
-          const yA = row(15), yB = row(16);
+          const [yA, yB] = pair(15);
           pushCp2("CP2", "3A", yA, yB);
           let cpX = 67.5;
           if (trVA !== "off") {
             els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "207", wireNoAlign: "start" });
             els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]], wireNo: "208", wireNoAlign: "start" });
-            els.push({ ...defaultElement("transformer", 105, round(yA - 5.5)), label: "Tr1", tag: "Tr1", rating: trVA === "500VA" ? "500VA" : "100VA TRH100-21S" });
+            els.push({ ...defaultElement("transformer", 105, round(yA - 5.5)), w: 15, h: 17.5, symbolVariant: "grid10", label: "Tr1", tag: "Tr1", rating: trVA === "500VA" ? "500VA" : "100VA TRH100-21S" });
             els.push(textElement(97.5, round(yA - 1.2), "200V", 1.6, 0, 8));
             els.push(textElement(97.5, round(yB - 1.2), "0V", 1.6, 0, 8));
-            els.push(textElement(125, round(yA + 3.2), "100V", 1.6, 0, 8));
-            els.push(textElement(125, round(yB + 3.2), "0V", 1.6, 0, 8));
+            els.push(textElement(121.5, round(yA + 3.2), "100V", 1.6, 0, 8));
+            els.push(textElement(121.5, round(yB + 3.2), "0V", 1.6, 0, 8));
             if (withSc1) {
               els.push({ ...defaultElement("wire", 120, yA), points: [[120, yA], [130, yA]], wireNo: "R100", wireNoAlign: "start" });
               els.push({ ...defaultElement("wire", 120, yB), points: [[120, yB], [130, yB]], wireNo: "S100", wireNoAlign: "start" });
@@ -12012,14 +12139,14 @@
             els.push({ ...defaultElement("mechanicalLink", cpLinkX, 0), points: [[cpLinkX, round(yA - 2.35)], [cpLinkX, round(yB - 2.35)]] });
             els.push({ ...defaultElement("wire", cpX + 12.5, yA), points: [[round(cpX + 12.5), yA], [147.5, yA]], wireNo: "101", wireNoAlign: "start" });
             els.push({ ...defaultElement("wire", cpX + 12.5, yB), points: [[round(cpX + 12.5), yB], [147.5, yB]], wireNo: "102", wireNoAlign: "start" });
-            els.push({ ...defaultElement("outlet", 147.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "box", label: "SC1", tag: "SC1" });
+            els.push({ ...defaultElement("outlet", 147.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "boxGrid10", label: "SC1", tag: "SC1" });
             els.push(textElement(160, round(yA + 1.4), "制御盤内", 1.8, 0, 12));
             els.push(textElement(160, round(yA + 4.4), "コンセント", 1.8, 0, 12));
           }
         }
         // --- 操作盤コンセント(CP4→CP11→SC2、行17-18) ---
         if (withSc2) {
-          const yA = row(17), yB = row(18);
+          const [yA, yB] = pair(17);
           pushCp2("CP4", "2A", yA, yB);
           els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "105", wireNoAlign: "start" });
           els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]], wireNo: "106", wireNoAlign: "start" });
@@ -12028,13 +12155,13 @@
           els.push({ ...defaultElement("mechanicalLink", 109.75, 0), points: [[109.75, round(yA - 2.35)], [109.75, round(yB - 2.35)]] });
           els.push({ ...defaultElement("wire", 117.5, yA), points: [[117.5, yA], [122.5, yA]], wireNo: "107", wireNoAlign: "start" });
           els.push({ ...defaultElement("wire", 117.5, yB), points: [[117.5, yB], [122.5, yB]], wireNo: "108", wireNoAlign: "start" });
-          els.push({ ...defaultElement("outlet", 122.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "box", label: "SC2", tag: "SC2" });
+          els.push({ ...defaultElement("outlet", 122.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "boxGrid10", label: "SC2", tag: "SC2" });
           els.push(textElement(135, round(yA + 1.4), "操作盤", 1.8, 0, 12));
           els.push(textElement(135, round(yA + 4.4), "コンセント", 1.8, 0, 12));
         }
         // --- GOT電源送り(CP12、行19-20) ---
         if (withGot) {
-          const yA = row(19), yB = row(20);
+          const [yA, yB] = pair(19);
           pushCp2("CP12", "1A", yA, yB);
           els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [90, yA]], wireNo: "109" });
           els.push({ ...defaultElement("arrow", 90, yA), points: [[90, yA], [122.5, yA]], label: "109", arrowStyle: "open", signalRole: "source" });
@@ -12090,9 +12217,9 @@
         const railXs = [35, 40, 45];
         const railAll = groundName ? [[groundName, 30], [rails[0], 35], [rails[1], 40], [rails[2], 45]] : rails.map((n, i) => [n, railXs[i]]);
         railAll.forEach(([name, x]) => {
-          els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, 217]], wireNo: "", hideWireNo: true, ladderRail: name, wireType: state.settings.currentWireType });
+          els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, TEMPLATE_RAIL_BOTTOM]], wireNo: "", hideWireNo: true, ladderRail: name, wireType: state.settings.currentWireType });
           els.push({ ...defaultElement("arrow", x, 35), points: [[x, 35], [x, 30]], label: "", arrowStyle: "fork", ladderRail: name });
-          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, 217]], label: "", arrowStyle: "fork", ladderRail: name });
+          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork", ladderRail: name });
           els.push(textElement(round(x - name.length * 0.62), 22.6, name, 2.2, 0, 12));
           if (!groundName || name !== groundName) els.push(textElement(round(x - name.length * 0.62), 222.4, name, 2.2, 0, 12));
         });
@@ -12149,7 +12276,8 @@
         els.push(textElement(50, 138.2, posUnit, 2, 0, 20));
         els.push({ ...defaultElement("arrow", 67.5, 137.5), points: [[67.5, 137.5], [75, 137.5]], label: "", arrowStyle: "chevron" });
         els.push({ ...defaultElement("wire", 75, 137.5), points: [[75, 137.5], [boxL, 137.5]] });
-        els.push({ ...defaultElement("rect", boxL - 2.5, 136.25), w: 2.5, h: 2.5, label: "" });
+        // CNコネクタは見本どおり2.5mm角を配線中心へ置く。辺は±1.25mmとなる意図的な描画例外。
+        els.push({ ...defaultElement("rect", boxL - 2.5, 136.25), w: 2.5, h: 2.5, label: "", gridEdgeException: true });
         els.push(textElement(boxL + 1.5, 138.2, "CN1A", 1.7, 0, 10));
         // --- 箱の接地 ---
         els.push({ ...defaultElement("wire", 122.5, 142.5), points: [[122.5, 142.5], [122.5, 147.5]] });
@@ -12173,7 +12301,7 @@
           els.push({ ...defaultElement("wire", boxR, yPe), points: [[boxR, yPe], [170, yPe], [170, round(yU + 12.5)], [round(155 + 12.5), round(yU + 12.5)]] });
           els.push(textElement(150, round(yU - 5), motorNames[a] + "（" + motorModel + "）", 1.7, 0, 34));
           // エンコーダ送り(CN2A/CN2B)
-          els.push({ ...defaultElement("rect", boxR, round(yEnc - 1.25)), w: 2.5, h: 2.5, label: "" });
+          els.push({ ...defaultElement("rect", boxR, round(yEnc - 1.25)), w: 2.5, h: 2.5, label: "", gridEdgeException: true });
           els.push(textElement(boxR - 9, round(yEnc + 0.7), "CN2" + (a === 0 ? "A" : "B"), 1.7, 0, 9));
           els.push({ ...defaultElement("wire", round(boxR + 2.5), yEnc), points: [[round(boxR + 2.5), yEnc], [150, yEnc]] });
           els.push({ ...defaultElement("arrow", 150, yEnc), points: [[150, yEnc], [167.5, yEnc]], label: motorTag + "エンコーダ", arrowStyle: "open", signalRole: "source" });
@@ -12238,16 +12366,15 @@
         const els = page.elements;
         const railAll = groundName ? [[groundName, 30], [rails[0], 35], [rails[1], 40]] : [[rails[0], 35], [rails[1], 40]];
         railAll.forEach(([name, x]) => {
-          els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, 217]], wireNo: "", hideWireNo: true, ladderRail: name, wireType: state.settings.currentWireType });
+          els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, TEMPLATE_RAIL_BOTTOM]], wireNo: "", hideWireNo: true, ladderRail: name, wireType: state.settings.currentWireType });
           els.push({ ...defaultElement("arrow", x, 35), points: [[x, 35], [x, 30]], label: "", arrowStyle: "fork", ladderRail: name });
-          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, 217]], label: "", arrowStyle: "fork", ladderRail: name });
+          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork", ladderRail: name });
           els.push(textElement(round(x - name.length * 0.62), 22.6, name, 2.2, 0, 12));
         });
         if (groundName) els.push({ ...defaultElement("polarityMark", 28.7, 219.9), label: "", sign: "+" });
         els.push(textElement(50, 24.5, "(AC200V)", 1.9, 0, 16));
         els.push(textElement(117.5, 24.5, "(DC24V)", 1.9, 0, 16));
-        const yA = round(LADDER_GRID.top + LADDER_GRID.pitch * 2);   // 46
-        const yB = round(LADDER_GRID.top + LADDER_GRID.pitch * 3);   // 55.5
+        const [yA, yB] = templateGridPair(2); // 45 / 55: CP1両極とREC入出力を方眼へ整合
         // CP1 2極 → REC1
         els.push(defaultElement("junction", 35, yA));
         els.push({ ...defaultElement("wire", 35, yA), points: [[35, yA], [55, yA]] });
@@ -12349,15 +12476,15 @@
         const page = createPage({ name: "PLC電源回路", size: "A4", orientation: "portrait", frameVariant: "ladder", title: "PLC電源回路" });
         const els = page.elements;
         [["G", 30], ["N1", 35], ["P0", 40]].forEach(([name, x]) => {
-          els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, 217]], wireNo: "", hideWireNo: true, ladderRail: name, wireType: state.settings.currentWireType });
+          els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, TEMPLATE_RAIL_BOTTOM]], wireNo: "", hideWireNo: true, ladderRail: name, wireType: state.settings.currentWireType });
           els.push({ ...defaultElement("arrow", x, 35), points: [[x, 35], [x, 30]], label: "", arrowStyle: "fork", ladderRail: name });
-          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, 217]], label: "", arrowStyle: "fork", ladderRail: name });
+          els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork", ladderRail: name });
           els.push(textElement(round(x - name.length * 0.62), 22.6, name, 2.2, 0, 12));
         });
         els.push({ ...defaultElement("polarityMark", 28.7, 219.9), label: "", sign: "+" });
         els.push(textElement(50, 24.5, "(DC24V)", 1.9, 0, 16));
         // CP4 → P0A → ベースDC+
-        const yIn = 103, yN = 107.5, yG = 112.5;
+        const yIn = 102.5, yN = 107.5, yG = 112.5;
         els.push(defaultElement("junction", 40, yIn));
         els.push({ ...defaultElement("wire", 40, yIn), points: [[40, yIn], [55, yIn]] });
         els.push({ ...defaultElement("breaker", 55, round(yIn - 3)), w: 12.5, h: 5, symbolVariant: "cp", label: "CP4", refNo: "2A" });
@@ -12387,7 +12514,7 @@
         els.push(textElement(baseL + 1.5, round(yN + 0.7), "DC-", 1.6, 0, 12));
         els.push(textElement(baseL + 1.5, round(yG + 0.7), "⏚", 1.6, 0, 12));
         // 分岐行(入出力COM/制御電源/運転準備/動力供給)
-        const row = i => round(LADDER_GRID.top + LADDER_GRID.pitch * i);
+        const row = i => round(templateGridRow(14) + TEMPLATE_CIRCUIT_PITCH * (i - 14));
         const pushOut = (y, cpTag, rating, contacts, wireNo, note) => {
           els.push(defaultElement("junction", 40, y));
           let sx = 40;
@@ -12452,12 +12579,12 @@
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
         els.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
-        const row = i => round(LADDER_GRID.top + LADDER_GRID.pitch * i);
+        const row = i => templateGridRow(i);
         const boxL = 85, boxR = 110;
         const yT11 = row(2), yT21 = row(3), yT12 = row(4), yT22 = row(5);
         // ユニット箱
         els.push({ ...defaultElement("rect", boxL, 40), w: round(boxR - boxL), h: 170, label: "" });
-        els.push(textElement(round((boxL + boxR) / 2 - unitTag.length * 1.1), 43.4, unitTag, 2.2, 0, 24));
+        els.push(textElement(round((boxL + boxR) / 2 - unitTag.length * 1.1), 37.5, unitTag, 2.2, 0, 24));
         // 非常停止PB(縦連結2接点×2)の入力ループ
         const pb1X = 50, pb2X = 70;
         // 配線を先に描き、白抜き端子円を持つPBを上へ重ねる。
@@ -12467,8 +12594,8 @@
         els.push({ ...defaultElement("wire", boxL, yT21), points: [[boxL, yT21], [pb2X + 10, yT21]], wireNo: "1N30", wireNoAlign: "start" });
         els.push({ ...defaultElement("wire", pb1X + 10, yT21), points: [[pb1X + 10, yT21], [pb2X, yT21]] });
         els.push({ ...defaultElement("wire", pb1X, yT21), points: [[pb1X, yT21], [45, yT21], [45, yT22], [boxL, yT22]], wireNo: "1N32", wireNoAlign: "end", gapPoints: [[45, yT12]] });
-        els.push({ ...defaultElement("pushButton", pb1X, round(yT11 - 4.4)), pbStyle: "emergency", symbolVariant: "multi2", w: 10, h: 16, label: "PBE1", tag: "PBE1", description: pb1Name });
-        els.push({ ...defaultElement("pushButton", pb2X, round(yT11 - 4.4)), pbStyle: "emergency", symbolVariant: "multi2", w: 10, h: 16, label: "PBE2", tag: "PBE2", description: pb2Name });
+        els.push({ ...defaultElement("pushButton", pb1X, round(yT11 - 4.4)), pbStyle: "emergency", symbolVariant: "gridMulti2", w: 10, h: 16.5, label: "PBE1", tag: "PBE1", description: pb1Name });
+        els.push({ ...defaultElement("pushButton", pb2X, round(yT11 - 4.4)), pbStyle: "emergency", symbolVariant: "gridMulti2", w: 10, h: 16.5, label: "PBE2", tag: "PBE2", description: pb2Name });
         [["T11", yT11], ["T21", yT21], ["T12", yT12], ["T22", yT22]].forEach(([t, y]) => {
           els.push(textElement(boxL + 8, round(y + 0.7), t, 1.7, 0, 8));
         });
@@ -16099,13 +16226,14 @@
           ${section("シンボルデザイン（JIS/IEC切替）", `
             <p style="margin:4px 0">部品を選択→右パネルの<b>「シンボルデザイン」</b>で同じ部品のまま別様式へ切替できます。
             接点（縦バー/円端子/IEC線）、限時接点（縦バー/IEC×オン・オフディレー）、コイル（円/箱/ラッチ/限時T/カウンタC/フリッカF/盤間中継◫◫）、
-            接地4種、ヒューズ3種、ダイオード4種、変圧器3種、論理ゲート3種、押しボタンa/b接点（設備標準・JIS C 0617）、
+            接地4種、ヒューズ3種、ダイオード4種、変圧器3種＋テンプレート専用10mm形、論理ゲート3種、押しボタンa/b接点（設備標準・JIS C 0617）、
             リミットスイッチ箱形NO/NC・ローラーNO/NC、圧力/フロート/温度/フロー/フットスイッチのa/b接点、
             切替接点（c接点）、照光式/パーム押しボタン、切替スイッチJIS形、ブリッジ整流◇、避雷器2種、
             コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、箱形コンセント、蛍光灯、針付き計器など100種類以上。
             切替時は<b>第1接続ピンの位置を保持</b>するため、そのピンへ接続した配線はずれません。ピン構成が共通のデザインではほかの接続点も維持され、
             縦連結接点や切替接点などでは必要な接続ピンが追加されます。複数選択+「同種を全選択」からの<b>一括切替</b>も可能です。
-            接続ピンは原則<b>2.5mmグリッドの倍数</b>、縦連結非常停止・変圧器の上下段・箱形コンセントの受電2ピンは<b>設備行ピッチ9.5mm</b>に統一され、どのピンから配線しても対応するグリッドに乗ります。</p>
+            接続ピンは原則<b>2.5mmグリッドの倍数</b>です。手動配置用の縦連結非常停止・変圧器の上下段・箱形コンセントは<b>設備行ピッチ9.5mm</b>を保持し、
+            ページテンプレートでは同じ意匠の<b>10mm専用形</b>へ切り替えて全ピンを2.5mm方眼へ載せます。</p>
             <p style="margin:4px 0"><b>非常停止ボタン</b>は既定が一般形（キノコ＋b接点）になり、
             <b>JIS C 0617形</b>（キノコ＋破線の機械連動＋IEC様式b接点）、連動する複数接点を持つ非常停止用に
             <b>縦連結2接点/3接点</b>と<b>JIS縦連結2接点/3接点</b>（いずれも破線の機械連動つき、接点間は行ピッチ9.5mm）、
@@ -20005,6 +20133,7 @@
         readProjectStore,
         validateTitleLayouts,
         validateStandardPack,
+        selectElement: id => { selectSingle(id); render(); },
         commitHistory,
         restoreHistory,
         state,

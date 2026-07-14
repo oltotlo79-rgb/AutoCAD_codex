@@ -190,6 +190,16 @@ test("破損JSON・空ページ・将来版を拒否して現在図面を保持�
       expected: "schemaVersion"
     },
     {
+      name: "invalid-unit-pitch.json",
+      body: { schemaVersion: 4, pages: [{ id: "p1", title: {}, elements: [{ id: "plc", type: "plcBlock", x: 0, y: 0, pitch: "10" }] }] },
+      expected: "pitch"
+    },
+    {
+      name: "too-small-unit-pitch.json",
+      body: { schemaVersion: 4, pages: [{ id: "p1", title: {}, elements: [{ id: "plc", type: "plcBlock", x: 0, y: 0, pitch: 1 }] }] },
+      expected: "pitch"
+    },
+    {
       name: "unsafe-key.json",
       raw: '{"schemaVersion":3,"pages":[{"id":"p1","title":{},"elements":[]}],"__proto__":{"polluted":true}}',
       expected: "使用できないキー"
@@ -761,17 +771,20 @@ test("ACモータは駆動方式の既定値を同期し1軸とモータタグ�
     return {
       rails: current.elements.filter(element => element.type === "wire" && element.ladderRail).map(element => element.ladderRail).sort(),
       motors: current.elements.filter(element => element.type === "motor").map(element => element.tag),
-      contactTags: [...new Set(current.elements.filter(element => element.type === "contactNO").map(element => element.tag).filter(Boolean))]
+      contactTags: [...new Set(current.elements.filter(element => element.type === "contactNO").map(element => element.tag).filter(Boolean))],
+      mechanicalLink: current.elements.find(element => element.type === "mechanicalLink")?.points
     };
   });
   expect(inverter.rails).toEqual(["G", "R01", "S01", "T01"]);
   expect(inverter.motors).toEqual(["M1"]);
   expect(inverter.contactTags).toContain("MC2M1");
+  expect(inverter.mechanicalLink).toEqual([[59.75, 90.25], [59.75, 100.25]]);
 });
 
-test("新テンプレート全バリエーションの接続点はグリッド上にありIDも重複しない", async ({ page }) => {
-  test.setTimeout(30_000);
+test("全テンプレートの接続点・配線・主要枠は2.5mmグリッド上にありIDも重複しない", async ({ page }) => {
+  test.setTimeout(60_000);
   const cases = [
+    { name: "facility", option: "facilityLadder", button: "#ladBuildBtn", setup: [], expected: { wire: 2 } },
     { name: "ac200", option: "acPower", button: "#acBuildBtn", setup: [], expected: { breaker: 19, transformer: 1 } },
     { name: "ac100", option: "acPower", button: "#acBuildBtn", setup: [["#acVolt", "100"]], expected: { breaker: 18, transformer: 0 } },
     { name: "servo2", option: "acMotor", button: "#acMotorBuildBtn", setup: [], expected: { motor: 2, resistor: 2 } },
@@ -779,28 +792,51 @@ test("新テンプレート全バリエーションの接続点はグリッド�
     { name: "inverter", option: "acMotor", button: "#acMotorBuildBtn", setup: [["#acDrive", "inverter"]], expected: { motor: 1, thermalElement: 2 } },
     { name: "dc", option: "dcPower", button: "#dcBuildBtn", setup: [], expected: { breaker: 4, ground: 2 } },
     { name: "plc", option: "plcPower", button: "#plcpBuildBtn", setup: [], expected: { breaker: 4, contactNO: 4 } },
-    { name: "safety", option: "safetyRelay", button: "#sfBuildBtn", setup: [], expected: { pushButton: 2, contactNO: 2, contactNC: 1 } }
+    { name: "safety", option: "safetyRelay", button: "#sfBuildBtn", setup: [], expected: { pushButton: 2, contactNO: 2, contactNC: 1 } },
+    { name: "plc-io", option: "plcInput", button: "#plcInBuildBtn", setup: [], expected: { plcBlock: 1, contactNO: 16 } },
+    { name: "terminal", option: "terminalSheet", button: null, setup: [], expected: { terminalStrip: 1 } },
+    { name: "interlock", option: "interlock", button: "#ilBuildBtn", setup: [], expected: { terminal: 8 } },
+    { name: "ladder", option: "ladder", button: null, setup: [], expected: { wire: 12 } },
+    { name: "index", option: "index", button: null, setup: [], expected: { table: 1 } },
+    { name: "layout", option: "layout", button: null, setup: [], expected: { installationBox: 1 } }
   ];
 
   for (const item of cases) {
     await page.goto(appUrl, { waitUntil: "load" });
     await page.locator("#templateMenu").selectOption(item.option);
     for (const [selector, value] of item.setup) await page.locator(selector).selectOption(value);
-    await page.locator(item.button).click();
+    if (item.button) await page.locator(item.button).click();
     const result = await page.evaluate(() => {
       const current = window.__edsTest.state.pages.find(entry => entry.id === window.__edsTest.state.activePageId);
-      const onGridX = value => Math.abs(value / 2.5 - Math.round(value / 2.5)) < 0.001;
-      const onGridY = value => onGridX(value) || Array.from({ length: 21 }, (_, index) => 27 + 9.5 * index).some(row => Math.abs(row - value) < 0.001);
+      const onGrid = value => Number.isFinite(value) && Math.abs(value / 2.5 - Math.round(value / 2.5)) < 0.001;
       const violations = [];
       const counts = {};
       for (const element of current.elements) {
         counts[element.type] = (counts[element.type] || 0) + 1;
         // mechanicalLinkは操作軸の描画であり、電気接続ピンではない。CP弧頂点の実測位置を優先する。
-        const points = element.type === "mechanicalLink" ? [] : Array.isArray(element.points)
+        const points = element.type === "mechanicalLink" ? [] : element.type === "junction"
+          ? [{ x: Number(element.x), y: Number(element.y) }]
+          : Array.isArray(element.points)
           ? element.points.map(point => ({ x: Number(point[0]), y: Number(point[1]) }))
           : window.__edsTest.elementConnectionAnchors(element);
+        if (element.type !== "mechanicalLink" && Array.isArray(element.gapPoints)) {
+          points.push(...element.gapPoints.map(point => ({ x: Number(point[0]), y: Number(point[1]) })));
+        }
+        if (["rect", "installationBox"].includes(element.type) && !element.gridEdgeException) {
+          points.push(
+            { x: Number(element.x), y: Number(element.y) },
+            { x: Number(element.x) + Number(element.w), y: Number(element.y) + Number(element.h) }
+          );
+        }
+        if ((element.type === "plcBlock" && element.plcStyle === "unit")
+          || (element.type === "terminalStrip" && element.stripStyle === "unit")) {
+          points.push(
+            { x: Number(element.x), y: Number(element.y) },
+            { x: Number(element.x) + Number(element.w), y: Number(element.y) + Number(element.h) }
+          );
+        }
         points.forEach(point => {
-          if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !onGridX(point.x) || !onGridY(point.y)) {
+          if (!onGrid(point.x) || !onGrid(point.y)) {
             violations.push({ type: element.type, x: point.x, y: point.y });
           }
         });
@@ -904,16 +940,27 @@ test("端子台・PLCユニット列はSVG・吸着点・DXFで同じ端子円�
       rows: 2,
       pinText: "X0\nX1"
     };
+    const plcGrid = {
+      ...window.__edsTest.defaultElement("plcBlock", 190, 32.5),
+      id: "plc-grid-unit",
+      plcStyle: "unit",
+      w: 10,
+      h: 20,
+      rows: 2,
+      pitch: 10,
+      pinText: "Y0\nY1"
+    };
     window.__edsTest.installProjectData({
       schemaVersion: 4,
       activePageId: "p1",
-      pages: [{ id: "p1", name: "unit-test", size: "A4", orientation: "portrait", title: {}, elements: [strip, stripTwo, plc] }]
+      pages: [{ id: "p1", name: "unit-test", size: "A4", orientation: "portrait", title: {}, elements: [strip, stripTwo, plc, plcGrid] }]
     });
     const current = window.__edsTest.state.pages.find(item => item.id === "p1");
     return {
       stripAnchors: window.__edsTest.elementConnectionAnchors(strip),
       stripTwoAnchors: window.__edsTest.elementConnectionAnchors(stripTwo),
       plcAnchors: window.__edsTest.elementConnectionAnchors(plc),
+      plcGridAnchors: window.__edsTest.elementConnectionAnchors(plcGrid),
       dxf: window.__edsTest.buildDxf(current)
     };
   });
@@ -921,10 +968,12 @@ test("端子台・PLCユニット列はSVG・吸着点・DXFで同じ端子円�
   expect(result.stripAnchors).toEqual([{ x: 130, y: 36.5 }, { x: 130, y: 46 }]);
   expect(result.stripTwoAnchors).toEqual([{ x: 155, y: 36.5 }, { x: 165, y: 36.5 }]);
   expect(result.plcAnchors).toEqual([{ x: 180, y: 36.5 }, { x: 180, y: 46 }]);
+  expect(result.plcGridAnchors).toEqual([{ x: 195, y: 37.5 }, { x: 195, y: 47.5 }]);
   await expect(page.locator('g[data-id="strip-one"] circle')).toHaveCount(2);
   expect(await page.locator('g[data-id="strip-one"] circle').evaluateAll(nodes => nodes.map(node => [Number(node.getAttribute("cx")), Number(node.getAttribute("cy"))]))).toEqual([[5, 4.75], [5, 14.25]]);
   expect(await page.locator('g[data-id="strip-two"] circle').evaluateAll(nodes => nodes.map(node => [Number(node.getAttribute("cx")), Number(node.getAttribute("cy"))]))).toEqual([[5, 4.75], [15, 4.75]]);
   expect(await page.locator('g[data-id="plc-unit"] circle').evaluateAll(nodes => nodes.map(node => [Number(node.getAttribute("cx")), Number(node.getAttribute("cy"))]))).toEqual([[5, 4.75], [5, 14.25]]);
+  expect(await page.locator('g[data-id="plc-grid-unit"] circle').evaluateAll(nodes => nodes.map(node => [Number(node.getAttribute("cx")), Number(node.getAttribute("cy"))]))).toEqual([[5, 5], [5, 15]]);
 
   const lines = result.dxf.trim().split(/\r?\n/);
   const circles = [];
@@ -939,8 +988,76 @@ test("端子台・PLCユニット列はSVG・吸着点・DXFで同じ端子円�
     if (entity[8] === "SYMBOL" && Number(entity[40]) === 3.2) circles.push([Number(entity[10]), Number(entity[20])]);
   }
   expect(circles).toEqual(expect.arrayContaining([
-    [130, 260.5], [130, 251], [155, 260.5], [165, 260.5], [180, 260.5], [180, 251]
+    [130, 260.5], [130, 251], [155, 260.5], [165, 260.5], [180, 260.5], [180, 251], [195, 259.5], [195, 249.5]
   ]));
+
+  await page.locator('g[data-id="plc-grid-unit"]').click();
+  await expect(page.locator('#selectionPanel input[data-bind="rows"]')).toHaveValue("2");
+  await page.locator('#selectionPanel input[data-bind="rows"]').fill("3");
+  await page.locator('#selectionPanel input[data-bind="rows"]').press("Tab");
+  expect(await page.evaluate(() => {
+    const unit = window.__edsTest.state.pages[0].elements.find(element => element.id === "plc-grid-unit");
+    return {
+      h: unit.h,
+      pitch: unit.pitch,
+      anchors: window.__edsTest.elementConnectionAnchors(unit)
+    };
+  })).toEqual({
+    h: 30,
+    pitch: 10,
+    anchors: [{ x: 195, y: 37.5 }, { x: 195, y: 47.5 }, { x: 195, y: 57.5 }]
+  });
+  await page.locator('#selectionPanel input[data-bind="rows"]').fill("20");
+  await page.locator('#selectionPanel input[data-bind="rows"]').press("Tab");
+  expect(await page.evaluate(() => {
+    const unit = window.__edsTest.state.pages[0].elements.find(element => element.id === "plc-grid-unit");
+    return { rows: unit.rows, h: unit.h, bottom: unit.y + unit.h };
+  })).toEqual({ rows: 19, h: 190, bottom: 222.5 });
+});
+
+test("テンプレート専用10mm形状を属性パネルで正しく保持する", async ({ page }) => {
+  await page.locator("#templateMenu").selectOption("acPower");
+  await page.locator("#acBuildBtn").click();
+  const acSymbols = await page.evaluate(() => {
+    const current = window.__edsTest.state.pages.find(item => item.id === window.__edsTest.state.activePageId);
+    return ["Tr1", "SC1", "SC2"].map(tag => {
+      const element = current.elements.find(item => item.tag === tag);
+      return { id: element.id, variant: element.symbolVariant };
+    });
+  });
+  expect(acSymbols.map(item => item.variant)).toEqual(["grid10", "boxGrid10", "boxGrid10"]);
+  for (const symbol of acSymbols) {
+    await page.evaluate(id => window.__edsTest.selectElement(id), symbol.id);
+    await expect(page.locator('#selectionPanel select[data-bind="symbolVariant"]')).toHaveValue(symbol.variant);
+  }
+  expect(await page.evaluate(() => {
+    const normalized = window.__edsTest.normalizeProjectData(window.__edsTest.state);
+    const current = normalized.pages.find(item => item.id === normalized.activePageId);
+    return ["Tr1", "SC1", "SC2"].map(tag => current.elements.find(item => item.tag === tag)?.symbolVariant);
+  })).toEqual(["grid10", "boxGrid10", "boxGrid10"]);
+
+  await page.goto(appUrl, { waitUntil: "load" });
+  await page.locator("#templateMenu").selectOption("safetyRelay");
+  await page.locator("#sfBuildBtn").click();
+  const pushButtonId = await page.evaluate(() => {
+    const current = window.__edsTest.state.pages.find(item => item.id === window.__edsTest.state.activePageId);
+    return current.elements.find(item => item.type === "pushButton").id;
+  });
+  await page.evaluate(id => window.__edsTest.selectElement(id), pushButtonId);
+  await expect(page.locator('#selectionPanel select[data-bind="symbolVariant"]')).toHaveValue("gridMulti2");
+});
+
+test("PLCユニット単体生成は10mmピッチを保ち機器符号表へ侵入しない", async ({ page }) => {
+  await page.locator("#actionMenu").selectOption("plcUnit");
+  await page.locator("#plcUnitCount").fill("20");
+  await page.locator("#plcUnitBuildBtn").click();
+  const unit = await page.evaluate(() => {
+    const current = window.__edsTest.state.pages.find(item => item.id === window.__edsTest.state.activePageId);
+    const element = current.elements.find(item => item.type === "plcBlock" && item.plcStyle === "unit");
+    return { rows: element.rows, pitch: element.pitch, y: element.y, h: element.h, bottom: element.y + element.h };
+  });
+  expect(unit).toEqual({ rows: 19, pitch: 10, y: 32.5, h: 190, bottom: 222.5 });
+  expect(unit.bottom).toBeLessThan(224);
 });
 
 test("端子接続図・PLC入出力・汎用ラダーは端子の重ね順と母線表示を保つ", async ({ page }) => {
@@ -1056,15 +1173,15 @@ test("AC受電テンプレートはSS0・線番円・切→入表示を見本順
     };
   });
 
-  expect(result.selectorAnchors).toEqual([{ x: 75, y: 84 }, { x: 85, y: 84 }]);
+  expect(result.selectorAnchors).toEqual([{ x: 75, y: 85 }, { x: 85, y: 85 }]);
   expect(result.marks).toEqual([
-    { label: "切", style: "line", anchor: { x: 92.5, y: 84 } },
-    { label: "入", style: "box", anchor: { x: 102.5, y: 84 } }
+    { label: "切", style: "line", anchor: { x: 92.5, y: 85 } },
+    { label: "入", style: "box", anchor: { x: 102.5, y: 85 } }
   ]);
   expect(result.numberedTerminals).toEqual(expect.arrayContaining([
-    { label: "201", anchor: { x: 75, y: 84 } },
-    { label: "201A", anchor: { x: 85, y: 84 } },
-    { label: "202", anchor: { x: 75, y: 93.5 } }
+    { label: "201", anchor: { x: 75, y: 85 } },
+    { label: "201A", anchor: { x: 85, y: 85 } },
+    { label: "202", anchor: { x: 75, y: 95 } }
   ]));
   expect(result.standalonePositionText).toBe(0);
   expect(result.cpWidths).toEqual([12.5]);
