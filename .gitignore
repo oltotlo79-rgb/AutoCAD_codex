@@ -1,6 +1,9 @@
 .codex_tmp/
 .vscode/
+node_modules/
 test-results/
+playwright-report/
+blob-report/
 *.tmp
 *.bak
 *.log

@@ -1,0 +1,16 @@
+{
+  "name": "electrical-drawing-studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "check": "node scripts/check-inline-script.js && node --check playwright.config.js && node --check tests/index.spec.js",
+    "lint": "npm run check",
+    "test:install": "playwright install chromium",
+    "test": "playwright test",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}

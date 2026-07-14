@@ -1649,8 +1649,16 @@
       const qsa = (selector, root = document) => Array.from(root.querySelectorAll(selector));
       // SVG名前空間URI(createElementNS用)。
       const svgNS = "http://www.w3.org/2000/svg";
+      // ローカル日付をYYYY-MM-DDで返す。UTC変換による日付ずれを避ける。
+      function formatLocalDate(date = new Date()) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+
       // 今日の日付(YYYY-MM-DD)。新規ページ・改訂の既定値に使用。
-      const today = new Date().toISOString().slice(0, 10);
+      const today = formatLocalDate();
 
       // アプリ全体の状態(単一の真実)。JSON保存/読込・Undo履歴・自動バックアップは全てこのオブジェクトの
       // JSON.stringifyスナップショットで行う。pages[].elements[]が図面要素の本体。
@@ -1663,9 +1671,10 @@
       const MIGRATIONS = {
         // 1→2: schemaVersion欄の導入。構造変更はないが、欠落しがちな頁下位欄を補完する。
         1: data => {
-          (data.pages || []).forEach(page => {
-            if (!page.title || typeof page.title !== "object") page.title = {};
-            if (!Array.isArray(page.elements)) page.elements = [];
+          (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+            if (!isPlainObject(page)) return;
+            if (page.title === undefined) page.title = {};
+            if (page.elements === undefined) page.elements = [];
           });
           return data;
         },
@@ -1674,102 +1683,162 @@
         // 旧ピン位置で終端していた配線・接続点(junction)を新ピンへ追従させる。
         2: data => {
           const near = (a, b) => Math.abs(a - b) < 0.02;
-          (data.pages || []).forEach(page => {
-            const els = page.elements || [];
+          const elementLists = [];
+          (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+            if (isPlainObject(page) && Array.isArray(page.elements)) elementLists.push(page.elements);
+          });
+          const collectCustomSymbolTemplates = symbols => {
+            (Array.isArray(symbols) ? symbols : []).forEach(symbol => {
+              if (!isPlainObject(symbol)) return;
+              if (Array.isArray(symbol.templates)) elementLists.push(symbol.templates);
+              else if (isPlainObject(symbol.template)) elementLists.push([symbol.template]);
+            });
+          };
+          collectCustomSymbolTemplates(data.customSymbols);
+          (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach(pack => {
+            if (isPlainObject(pack)) collectCustomSymbolTemplates(pack.customSymbols);
+          });
+          elementLists.forEach(els => {
             const moves = [];
             const addMove = (x0, y0, x1, y1) => { if (!near(x0, x1) || !near(y0, y1)) moves.push([x0, y0, x1, y1]); };
             els.forEach(el => {
-              if (Number(el.rotation || 0) !== 0) return; // 回転要素はまれなので対象外(寸法もそのまま)
+              if (!isPlainObject(el)) return;
               const t = el.type;
               const x = Number(el.x || 0), y = Number(el.y || 0);
               const w = Number(el.w || 0), h = Number(el.h || 0);
+              const angle = Number(el.rotation || 0) * Math.PI / 180;
+              const cos = Math.cos(angle), sin = Math.sin(angle);
               const vertical = el.orientation === "vertical";
+              let nextX = x, nextY = y;
+              const globalAt = (originX, originY, localX, localY) => ({
+                x: originX + localX * cos - localY * sin,
+                y: originY + localX * sin + localY * cos
+              });
+              const shiftOrigin = (dx, dy) => {
+                nextX = round(x + dx * cos - dy * sin);
+                nextY = round(y + dx * sin + dy * cos);
+                el.x = nextX;
+                el.y = nextY;
+              };
+              const addLocalMove = (oldX, oldY, newX, newY) => {
+                const before = globalAt(x, y, oldX, oldY);
+                const after = globalAt(nextX, nextY, newX, newY);
+                addMove(before.x, before.y, after.x, after.y);
+              };
               const contactAy = { contactNO: 2.2, contactNC: 2.2, timerContactNO: 2.2, timerContactNC: 2.2, thermalRelay: 2.4, thermalElement: 3 };
               const contactAxV = { contactNO: 2.2, contactNC: 2.2, timerContactNO: 2.2, timerContactNC: 2.2, thermalRelay: 1.6, thermalElement: 0 };
               if (contactAy[t] !== undefined) {
                 if (!vertical && near(w, 8)) {
-                  const ay = y + contactAy[t];
-                  addMove(x, ay, x - 1, ay);
-                  addMove(x + 8, ay, x + 9, ay);
-                  el.x = round(x - 1);
+                  shiftOrigin(-1, 0);
+                  addLocalMove(0, contactAy[t], 0, contactAy[t]);
+                  addLocalMove(8, contactAy[t], 10, contactAy[t]);
                   el.w = 10;
                 } else if (vertical && near(h, 8)) {
-                  const ax = x + contactAxV[t];
-                  addMove(ax, y, ax, y - 1);
-                  addMove(ax, y + 8, ax, y + 9);
-                  el.y = round(y - 1);
+                  shiftOrigin(0, -1);
+                  addLocalMove(contactAxV[t], 0, contactAxV[t], 0);
+                  addLocalMove(contactAxV[t], 8, contactAxV[t], 10);
                   el.h = 10;
                 }
                 return;
               }
               if (t === "contactBlock") {
                 if (!vertical && near(w, 14)) {
-                  addMove(x, y + 4, x - 0.5, y + 4);
-                  addMove(x + 14, y + 4, x + 14.5, y + 4);
-                  el.x = round(x - 0.5);
+                  shiftOrigin(-0.5, 0);
+                  addLocalMove(0, 4, 0, 4);
+                  addLocalMove(14, 4, 15, 4);
                   el.w = 15;
                 } else if (vertical && near(h, 14)) {
-                  addMove(x + 4, y, x + 4, y - 0.5);
-                  addMove(x + 4, y + 14, x + 4, y + 14.5);
-                  el.y = round(y - 0.5);
+                  shiftOrigin(0, -0.5);
+                  addLocalMove(4, 0, 4, 0);
+                  addLocalMove(4, 14, 4, 15);
                   el.h = 15;
                 }
                 return;
               }
               if (t === "breaker") {
                 if (!vertical && near(w, 12)) {
-                  addMove(x + 12, y + 3, x + 12.5, y + 3);
+                  addLocalMove(12, 3, 12.5, 3);
                   el.w = 12.5;
                 } else if (vertical && near(h, 12)) {
-                  addMove(x + 2, y + 12, x + 2, y + 12.5);
+                  addLocalMove(2, 12, 2, 12.5);
                   el.h = 12.5;
                 }
                 return;
               }
               if (t === "motor" && near(w, 16) && near(h, 16)) {
-                addMove(x + 0.9, y + 2.4, x + 0.9, y + 3);
-                addMove(x + 0.9, y + 13.6, x + 0.9, y + 13);
-                addMove(x + 14.6, y + 14.6, x + 13.4, y + 15.5);
+                addLocalMove(0.9, 2.4, 0.9, 3);
+                addLocalMove(0.9, 13.6, 0.9, 13);
+                addLocalMove(14.6, 14.6, 13.4, 15.5);
                 return;
               }
               if (t === "transformer" && near(w, 14)) {
-                addMove(x, y + 5.5, x - 0.5, y + 5.5);
-                addMove(x + 14, y + 5.5, x + 14.5, y + 5.5);
-                addMove(x, y + 15, x - 0.5, y + 15);
-                addMove(x + 14, y + 15, x + 14.5, y + 15);
-                addMove(x + 3.4, y + 0.9, x + 4.5, y + 0.5);
-                addMove(x + 10.6, y + 0.9, x + 9.5, y + 0.5);
-                el.x = round(x - 0.5);
+                shiftOrigin(-0.5, 0);
+                addLocalMove(0, 5.5, 0, 5.5);
+                addLocalMove(14, 5.5, 15, 5.5);
+                addLocalMove(0, 15, 0, 15);
+                addLocalMove(14, 15, 15, 15);
+                addLocalMove(3.4, 0.9, 5, 0.5);
+                addLocalMove(10.6, 0.9, 10, 0.5);
                 el.w = 15;
                 return;
               }
               const midPinWiden = { buzzer: [14, 15], fan: [14, 15], sensor: [24, 25], powerSupply: [34, 35] };
               if (midPinWiden[t] && near(w, midPinWiden[t][0])) {
-                const [ow, nw] = midPinWiden[t];
-                addMove(x, y + h / 2, x - 0.5, y + h / 2);
-                addMove(x + ow, y + h / 2, x + ow + 0.5, y + h / 2);
-                el.x = round(x - 0.5);
-                el.w = nw;
+                const [oldW, newW] = midPinWiden[t];
+                shiftOrigin(-0.5, 0);
+                addLocalMove(0, h / 2, 0, h / 2);
+                addLocalMove(oldW, h / 2, newW, h / 2);
+                el.w = newW;
                 return;
               }
               if (t === "solenoidValve" && near(w, 26)) {
-                addMove(x, y + h / 2, x + 0.5, y + h / 2);
-                addMove(x + 26, y + h / 2, x + 25.5, y + h / 2);
-                el.x = round(x + 0.5);
+                shiftOrigin(0.5, 0);
+                addLocalMove(0, h / 2, 0, h / 2);
+                addLocalMove(26, h / 2, 25, h / 2);
                 el.w = 25;
+                return;
+              }
+              if (t === "deviceBox" && near(w, 28) && near(h, 16)) {
+                const pins = Math.max(0, Math.floor(Number(el.pins || 4)));
+                const oldFirstY = pins ? h / (pins + 1) : h / 2;
+                const newFirstY = pins ? 25 / (pins + 1) : 25 / 2;
+                shiftOrigin(0, oldFirstY - newFirstY);
+                for (let i = 0; i < pins; i++) {
+                  const oldPinY = h * (i + 1) / (pins + 1);
+                  const newPinY = 25 * (i + 1) / (pins + 1);
+                  addLocalMove(0, oldPinY, 0, newPinY);
+                  addLocalMove(28, oldPinY, 30, newPinY);
+                }
+                el.w = 30;
+                el.h = 25;
+                return;
+              }
+              if (t === "terminalBox" && near(w, 22) && near(h, 18)) {
+                const rows = Math.max(2, Math.floor(Number(el.rows || 3)));
+                const oldFirstY = h * 0.5 / rows;
+                const newFirstY = 15 * 0.5 / rows;
+                shiftOrigin(0, oldFirstY - newFirstY);
+                for (let i = 0; i < rows; i++) {
+                  const oldPinY = h * (i + 0.5) / rows;
+                  const newPinY = 15 * (i + 0.5) / rows;
+                  addLocalMove(0, oldPinY, 0, newPinY);
+                  addLocalMove(22, oldPinY, 22.5, newPinY);
+                }
+                el.w = 22.5;
+                el.h = 15;
                 return;
               }
               if (t === "pushButton" && (el.pbStyle || "momentary") === "emergency" && near(h, 5)
                 && !["multi2", "multi3", "jisMulti2", "jisMulti3"].includes(el.symbolVariant || "standard")) {
-                // 旧データはキノコ形ジオメトリ(h7)に対しh5のままで、接続点が中央寄せでy+3.4にあった。
-                // h=7へ直しy-1すると接続点の絶対位置(y+4.4-1)は変わらない。
-                el.y = round(y - 1);
+                // h=7へ直し、ローカルY方向へ1mmずらして接続点の絶対位置を保つ。
+                shiftOrigin(0, -1);
                 el.h = 7;
                 return;
               }
             });
             if (!moves.length) return;
             els.forEach(el => {
+              if (!isPlainObject(el)) return;
               if (["wire", "line", "arrow", "mechanicalLink"].includes(el.type) && Array.isArray(el.points)) {
                 el.points.forEach(pt => {
                   const m = moves.find(mv => near(mv[0], pt[0]) && near(mv[1], pt[1]));
@@ -1787,17 +1856,17 @@
 
       // 読み込んだプロジェクトデータを現行スキーマへ移行して返す。
       function migrateProjectData(data) {
-        if (!data || typeof data !== "object") return data;
-        let version = Math.floor(Number(data.schemaVersion || 1));
+        if (!isPlainObject(data)) throw new Error("プロジェクト全体がオブジェクトではありません。");
+        findUnsafeJsonKeyPath(data);
+        const rawVersion = data.schemaVersion === undefined ? 1 : Number(data.schemaVersion);
+        if (!Number.isInteger(rawVersion) || rawVersion < 1) throw new Error("schemaVersion は1以上の整数である必要があります。");
+        let version = rawVersion;
         if (version > SCHEMA_VERSION) {
-          // 新しいアプリで保存されたデータ。読み込みは試みる(前方互換は保証外)。
-          // 呼び出し元が直後に成功メッセージを出すため、警告は後から上書き表示する。
-          setTimeout(() => setStatus("注意: このデータは新しい形式(版" + version + ")で保存されています。表示が崩れる場合は新しい版のアプリを使用してください。"), 50);
-          return data;
+          throw new Error("このデータは新しい形式 (v" + version + ") です。v" + SCHEMA_VERSION + "対応の本アプリでは上書きせず、新しい版のアプリで開いてください。");
         }
         while (version < SCHEMA_VERSION) {
           const step = MIGRATIONS[version];
-          if (!step) break;
+          if (!step) throw new Error("schemaVersion " + version + " からの移行処理がありません。");
           data = step(data) || data;
           version += 1;
         }
@@ -1851,6 +1920,8 @@
         },
         pages: []
       };
+      // 外部データの欠落項目は現在開いている図面ではなく、この起動時既定値から補う。
+      const INITIAL_STATE_JSON = JSON.stringify(state);
 
       let selectedId = null;
       let selectedIds = [];
@@ -1861,6 +1932,9 @@
       let installLocationClipboard = null;
       let history = [];
       let historyReasons = []; // historyと同じ並びの{reason, at}(履歴タイムライン表示用)
+      let historyImageRefs = []; // 各履歴スナップショットが参照する下絵アセットID集合
+      const historyImageAssets = new Map(); // 下絵data URLは履歴ごとに複製せず1回だけ保持
+      const historyImageRefByData = new Map(); // 同一画像を複数要素で使う場合も同じアセットを共有
       let historyIndex = -1;
       let pageCounter = 1;
       let printMode = "single";
@@ -1873,6 +1947,255 @@
       // JSON往復による深いコピー(関数や循環参照は不可の前提)。
       function deepClone(value) {
         return JSON.parse(JSON.stringify(value));
+      }
+
+      // 配列やnullを除く通常のJSONオブジェクトかを判定する。
+      function isPlainObject(value) {
+        if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+        const prototype = Object.getPrototypeOf(value);
+        return prototype === Object.prototype || prototype === null;
+      }
+
+      // JSON内のprototype汚染につながるキーを階層を問わず拒否する。
+      function findUnsafeJsonKeyPath(root, rootPath = "プロジェクト全体") {
+        const unsafeKeys = new Set(["__proto__", "constructor", "prototype"]);
+        const stack = [{ value: root, path: rootPath }];
+        while (stack.length) {
+          const { value, path } = stack.pop();
+          if (Array.isArray(value)) {
+            value.forEach((item, index) => stack.push({ value: item, path: path + "[" + index + "]" }));
+            continue;
+          }
+          if (!isPlainObject(value)) continue;
+          Object.keys(value).forEach(key => {
+            if (unsafeKeys.has(key)) throw new Error(path + "." + key + ": 使用できないキーです。");
+            stack.push({ value: value[key], path: path + "." + key });
+          });
+        }
+      }
+
+      // stateの参照自体は維持しつつ、任意キーを含め内容を完全に入れ替える。
+      function replaceStateContents(next) {
+        Object.setPrototypeOf(state, Object.prototype);
+        Object.keys(state).forEach(key => { delete state[key]; });
+        Object.keys(next).forEach(key => {
+          Object.defineProperty(state, key, {
+            value: next[key],
+            enumerable: true,
+            writable: true,
+            configurable: true
+          });
+        });
+      }
+
+      // 表題欄レイアウトの全階層を検証し、描画中の例外や履歴汚染を防ぐ。
+      function validateTitleLayouts(layouts, path = "titleLayouts") {
+        const errors = [];
+        if (!isPlainObject(layouts)) return [path + ": オブジェクトが必要です"];
+        try {
+          findUnsafeJsonKeyPath(layouts, path);
+        } catch (error) {
+          return [error.message];
+        }
+        const positiveNumber = (value, itemPath, allowZero = false) => {
+          if (value === undefined) return;
+          if (!Number.isFinite(value) || (allowZero ? value < 0 : value <= 0)) errors.push(itemPath + ": 正の数値が必要です");
+        };
+        Object.entries(layouts).forEach(([variant, layout]) => {
+          const basePath = path + "." + variant;
+          if (!isPlainObject(layout)) {
+            errors.push(basePath + ": オブジェクトが必要です");
+            return;
+          }
+          positiveNumber(layout.w, basePath + ".w");
+          positiveNumber(layout.h, basePath + ".h");
+          positiveNumber(layout.maxWidthInset, basePath + ".maxWidthInset", true);
+          ["rows", "cols"].forEach(key => {
+            if (layout[key] === undefined) return;
+            if (!Array.isArray(layout[key])) {
+              errors.push(basePath + "." + key + ": 配列が必要です");
+              return;
+            }
+            layout[key].forEach((value, index) => {
+              if (key === "cols" && value === "rest") return;
+              if (!Number.isFinite(value) || value <= 0) errors.push(basePath + "." + key + "[" + index + "]: 正の数値が必要です");
+            });
+          });
+          if (!Array.isArray(layout.cells)) {
+            errors.push(basePath + ".cells: 配列が必要です");
+            return;
+          }
+          layout.cells.forEach((cell, index) => {
+            const cellPath = basePath + ".cells[" + index + "]";
+            if (!isPlainObject(cell)) {
+              errors.push(cellPath + ": オブジェクトが必要です");
+              return;
+            }
+            if (!["label", "field", "revBlock"].includes(cell.t)) errors.push(cellPath + ".t: label/field/revBlock のいずれかが必要です");
+            if (cell.t === "label" && typeof cell.text !== "string") errors.push(cellPath + ".text: 文字列が必要です");
+            if (cell.t === "field" && typeof cell.field !== "string") errors.push(cellPath + ".field: 文字列が必要です");
+            ["dx", "dy"].forEach(key => {
+              if (cell[key] !== undefined && !Number.isFinite(cell[key])) errors.push(cellPath + "." + key + ": 数値が必要です");
+            });
+            positiveNumber(cell.size, cellPath + ".size");
+            if (cell.anchor !== undefined && !["start", "middle", "end"].includes(cell.anchor)) errors.push(cellPath + ".anchor: start/middle/end のいずれかが必要です");
+            if (cell.t === "revBlock") {
+              positiveNumber(cell.wFromRight, cellPath + ".wFromRight");
+              positiveNumber(cell.rowH, cellPath + ".rowH");
+              if (cell.rows !== undefined && (!Number.isInteger(cell.rows) || cell.rows <= 0)) errors.push(cellPath + ".rows: 正の整数が必要です");
+            }
+          });
+        });
+        return errors;
+      }
+
+      // 要素レコードを検証する。ユーザー部品テンプレートではidを省略可能とする。
+      function validateElementRecord(element, path, requireId = true) {
+        const errors = [];
+        if (!isPlainObject(element)) return [path + ": オブジェクトが必要です"];
+        if (requireId && (typeof element.id !== "string" || !element.id)) errors.push(path + ".id: 空でない文字列が必要です");
+        if (typeof element.type !== "string" || !element.type) errors.push(path + ".type: 空でない文字列が必要です");
+        if (element.points !== undefined) {
+          if (!Array.isArray(element.points)) errors.push(path + ".points: 配列が必要です");
+          else element.points.forEach((point, index) => {
+            if (!Array.isArray(point) || point.length < 2 || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) {
+              errors.push(path + ".points[" + index + "]: 有限数2値の配列が必要です");
+            }
+          });
+        }
+        ["x", "y", "w", "h", "rotation"].forEach(key => {
+          if (element[key] !== undefined && !Number.isFinite(element[key])) errors.push(path + "." + key + ": 有限数が必要です");
+        });
+        if (element.type === "underlayImage" && element.imageData !== undefined && typeof element.imageData !== "string") {
+          errors.push(path + ".imageData: 文字列が必要です");
+        }
+        return errors;
+      }
+
+      // ユーザー部品のテンプレート配列を検証する。
+      function validateCustomSymbol(symbol, path) {
+        const errors = [];
+        if (!isPlainObject(symbol)) return [path + ": オブジェクトが必要です"];
+        if (typeof symbol.id !== "string" || !symbol.id) errors.push(path + ".id: 空でない文字列が必要です");
+        if (symbol.templates !== undefined && !Array.isArray(symbol.templates)) errors.push(path + ".templates: 配列が必要です");
+        if (symbol.template !== undefined && !isPlainObject(symbol.template)) errors.push(path + ".template: オブジェクトが必要です");
+        const templates = Array.isArray(symbol.templates) ? symbol.templates : (isPlainObject(symbol.template) ? [symbol.template] : []);
+        if (!templates.length) errors.push(path + ": template または空でないtemplatesが必要です");
+        templates.forEach((template, index) => errors.push(...validateElementRecord(template, path + ".templates[" + index + "]", false)));
+        return errors;
+      }
+
+      // 移行済みプロジェクトのJSON形状を検証する。型違反は補完せず読込を中止する。
+      function validateProjectData(data) {
+        const errors = [];
+        if (!isPlainObject(data)) return ["プロジェクト全体: オブジェクトが必要です"];
+        if (!Array.isArray(data.pages) || !data.pages.length) return ["pages: 1件以上の配列が必要です"];
+        const pageIds = new Set();
+        data.pages.forEach((page, pageIndex) => {
+          const pagePath = "pages[" + pageIndex + "]";
+          if (!isPlainObject(page)) {
+            errors.push(pagePath + ": オブジェクトが必要です");
+            return;
+          }
+          if (typeof page.id !== "string" || !page.id) errors.push(pagePath + ".id: 空でない文字列が必要です");
+          else if (pageIds.has(page.id)) errors.push(pagePath + ".id: 重複しています");
+          else pageIds.add(page.id);
+          if (page.title !== undefined && !isPlainObject(page.title)) errors.push(pagePath + ".title: オブジェクトが必要です");
+          if (!Array.isArray(page.elements)) {
+            errors.push(pagePath + ".elements: 配列が必要です");
+            return;
+          }
+          const elementIds = new Set();
+          page.elements.forEach((element, elementIndex) => {
+            const elementPath = pagePath + ".elements[" + elementIndex + "]";
+            errors.push(...validateElementRecord(element, elementPath));
+            if (isPlainObject(element) && typeof element.id === "string") {
+              if (elementIds.has(element.id)) errors.push(elementPath + ".id: 同一ページ内で重複しています");
+              elementIds.add(element.id);
+            }
+          });
+        });
+        ["settings", "project"].forEach(key => {
+          if (data[key] !== undefined && !isPlainObject(data[key])) errors.push(key + ": オブジェクトが必要です");
+        });
+        ["layers", "wireTypes", "customSymbols", "catalog", "standardPacks", "plcModules"].forEach(key => {
+          if (data[key] !== undefined && !Array.isArray(data[key])) errors.push(key + ": 配列が必要です");
+        });
+        (Array.isArray(data.layers) ? data.layers : []).forEach((item, index) => {
+          if (!isPlainObject(item) || typeof item.id !== "string" || typeof item.label !== "string") errors.push("layers[" + index + "]: id/label付きオブジェクトが必要です");
+        });
+        (Array.isArray(data.wireTypes) ? data.wireTypes : []).forEach((item, index) => {
+          if (!isPlainObject(item) || typeof item.id !== "string" || typeof item.label !== "string") errors.push("wireTypes[" + index + "]: id/label付きオブジェクトが必要です");
+        });
+        (Array.isArray(data.customSymbols) ? data.customSymbols : []).forEach((symbol, index) => errors.push(...validateCustomSymbol(symbol, "customSymbols[" + index + "]")));
+        (Array.isArray(data.catalog) ? data.catalog : []).forEach((item, index) => { if (!isPlainObject(item)) errors.push("catalog[" + index + "]: オブジェクトが必要です"); });
+        (Array.isArray(data.plcModules) ? data.plcModules : []).forEach((item, index) => { if (!isPlainObject(item)) errors.push("plcModules[" + index + "]: オブジェクトが必要です"); });
+        (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach((pack, index) => validateStandardPack(pack).forEach(error => errors.push("standardPacks[" + index + "]." + error)));
+        if (data.titleLayouts !== undefined) errors.push(...validateTitleLayouts(data.titleLayouts));
+        if (isPlainObject(data.project)) {
+          if (data.project.titleMap !== undefined && !isPlainObject(data.project.titleMap)) errors.push("project.titleMap: オブジェクトが必要です");
+          if (data.project.revisions !== undefined && !Array.isArray(data.project.revisions)) errors.push("project.revisions: 配列が必要です");
+          (Array.isArray(data.project.revisions) ? data.project.revisions : []).forEach((item, index) => {
+            if (!isPlainObject(item)) errors.push("project.revisions[" + index + "]: オブジェクトが必要です");
+          });
+        }
+        if (isPlainObject(data.settings)) {
+          ["componentTagPrefixes", "auditRules", "reportColumns"].forEach(key => {
+            if (data.settings[key] !== undefined && !isPlainObject(data.settings[key])) errors.push("settings." + key + ": オブジェクトが必要です");
+          });
+        }
+        return errors;
+      }
+
+      // 外部JSONを現在スキーマへ移行し、起動時既定値と合成した完全な候補stateを返す。
+      function normalizeProjectData(raw) {
+        // rawは各読込経路でJSON.parseした直後の専用オブジェクトなので、巨大な下絵文字列を再複製せずそのまま移行する。
+        const migrated = migrateProjectData(raw);
+        const errors = validateProjectData(migrated);
+        if (errors.length) throw new Error(errors.slice(0, 3).join(" ／ ") + (errors.length > 3 ? " 他" + (errors.length - 3) + "件" : ""));
+        const base = JSON.parse(INITIAL_STATE_JSON);
+        const candidate = { ...base, ...migrated };
+        candidate.schemaVersion = SCHEMA_VERSION;
+        candidate.settings = { ...base.settings, ...(migrated.settings || {}) };
+        candidate.layers = migrated.layers === undefined ? base.layers : migrated.layers;
+        candidate.wireTypes = migrated.wireTypes === undefined ? base.wireTypes : migrated.wireTypes;
+        candidate.customSymbols = migrated.customSymbols || [];
+        candidate.catalog = migrated.catalog || [];
+        candidate.standardPacks = migrated.standardPacks || [];
+        candidate.plcModules = migrated.plcModules || [];
+        candidate.project = {
+          ...base.project,
+          ...(migrated.project || {}),
+          titleMap: { ...base.project.titleMap, ...(migrated.project?.titleMap || {}) }
+        };
+        if (!Array.isArray(candidate.project.revisions)) candidate.project.revisions = [];
+        candidate.pages = migrated.pages.map((page, index) => ({
+          ...page,
+          name: typeof page.name === "string" && page.name ? page.name : "P" + (index + 1),
+          size: typeof page.size === "string" ? page.size : "A4",
+          orientation: typeof page.orientation === "string" ? page.orientation : "portrait",
+          frameVariant: typeof page.frameVariant === "string" ? page.frameVariant : "ladder",
+          title: {
+            drawingNo: candidate.project.drawingNo || "",
+            title: candidate.project.title || "電気図面",
+            revision: candidate.project.revision || "",
+            designer: candidate.project.designer || "",
+            date: candidate.project.date || today,
+            facility: candidate.project.facility || "",
+            installation: "",
+            location: "",
+            page: String(index + 1),
+            total: String(migrated.pages.length),
+            ...(page.title || {})
+          },
+          elements: page.elements
+        }));
+        candidate.activePageId = candidate.pages.some(page => page.id === migrated.activePageId)
+          ? migrated.activePageId
+          : candidate.pages[0].id;
+        if (migrated.titleLayouts !== undefined) candidate.titleLayouts = migrated.titleLayouts;
+        else delete candidate.titleLayouts;
+        return candidate;
       }
 
       // アクティブページを返す(見つからなければ先頭ページ)。
@@ -1966,6 +2289,9 @@
       function resetHistory() {
         history = [];
         historyReasons = [];
+        historyImageRefs = [];
+        historyImageAssets.clear();
+        historyImageRefByData.clear();
         historyIndex = -1;
         commitHistory("初期化");
       }
@@ -1975,6 +2301,11 @@
       // Undo履歴の保持上限。全量スナップショット方式のため、下絵入り大規模図面での
       // メモリ肥大を防ぐ(超過分は古い方から破棄)。
       const HISTORY_LIMIT = 60;
+      const HISTORY_MAX_CHARS = 16 * 1024 * 1024;
+      // 現在stateが参照する画像は不可避なので除外し、過去履歴だけが保持する画像を別枠で制限する。
+      // 25MB入力（data URL約33MB）を少なくとも1世代Undoできるよう64MBとする。
+      const HISTORY_IMAGE_MAX_CHARS = 64 * 1024 * 1024;
+      const HISTORY_IMAGE_REF_KEY = "__edsHistoryImageRef";
       let backupFailureWarned = false;
 
       // ===== 自動バックアップの世代管理 =====
@@ -2020,26 +2351,102 @@
         }
       }
 
+      // 下絵画像だけをアセット参照へ置き換えたUndo用スナップショットを作る。
+      // JSON保存・localStorageバックアップにはこの省略形式を使わず、完全なstateを書き込む。
+      function serializeHistorySnapshot() {
+        const refs = new Set();
+        const snapshot = JSON.stringify(state, function(key, value) {
+          if (key !== "imageData" || this?.type !== "underlayImage" || typeof value !== "string" || !value) return value;
+          let ref = typeof this.imageAssetId === "string" ? this.imageAssetId : "";
+          const sharedRef = historyImageRefByData.get(value);
+          if (sharedRef) {
+            ref = sharedRef;
+          } else if (!ref || (historyImageAssets.has(ref) && historyImageAssets.get(ref) !== value)) {
+            ref = uid("asset");
+          }
+          historyImageAssets.set(ref, value);
+          historyImageRefByData.set(value, ref);
+          refs.add(ref);
+          return { [HISTORY_IMAGE_REF_KEY]: ref };
+        });
+        return { snapshot, refs };
+      }
+
+      // Undo用参照を実data URLへ戻す。アセット欠落時はstateを触る前に失敗させる。
+      function parseHistorySnapshot(snapshot) {
+        return JSON.parse(snapshot, function(key, value) {
+          if (key !== "imageData" || this?.type !== "underlayImage"
+              || !isPlainObject(value) || Object.keys(value).length !== 1
+              || typeof value[HISTORY_IMAGE_REF_KEY] !== "string") return value;
+          const ref = value[HISTORY_IMAGE_REF_KEY];
+          if (!historyImageAssets.has(ref)) throw new Error("履歴の下絵画像が見つかりません: " + ref);
+          return historyImageAssets.get(ref);
+        });
+      }
+
+      // 分岐切捨て・件数/容量上限で参照されなくなった下絵を解放する。
+      function pruneHistoryImageAssets() {
+        const used = new Set();
+        historyImageRefs.forEach(refs => refs.forEach(ref => used.add(ref)));
+        historyImageAssets.forEach((value, ref) => { if (!used.has(ref)) historyImageAssets.delete(ref); });
+        historyImageRefByData.clear();
+        historyImageAssets.forEach((value, ref) => historyImageRefByData.set(value, ref));
+      }
+
+      // Undo履歴のコンパクトJSON文字数。
+      function historySnapshotChars() {
+        return history.reduce((sum, item) => sum + item.length, 0);
+      }
+
+      // 最新stateではなく過去履歴だけが参照する一意な下絵画像の文字数。
+      function historicalImageAssetChars() {
+        const currentRefs = historyImageRefs[historyImageRefs.length - 1] || new Set();
+        let total = 0;
+        historyImageAssets.forEach((value, ref) => {
+          if (!currentRefs.has(ref)) total += value.length;
+        });
+        return total;
+      }
+
+      // Undo保持の追加負担（コンパクトJSON＋過去だけが持つ画像）。
+      function historyRetainedChars() {
+        return historySnapshotChars() + historicalImageAssetChars();
+      }
+
+      // 最新の完全スナップショットを自動バックアップへ保存する。
+      function persistAutomaticBackup(snapshot) {
+        rotateBackupGenerations();
+        localStorage.setItem(BACKUP_KEY, snapshot);
+      }
+
       // Undo履歴へ現在stateを積み、localStorageへ自動バックアップする。
       // 変更操作は必ず最後にこれを呼ぶ(直前と同一なら何もしない)。
       // reasonはステータス表示と履歴タイムラインの操作名に使う。
       function commitHistory(reason = "") {
         syncPageTotals();
-        const snapshot = JSON.stringify(state);
+        const compact = serializeHistorySnapshot();
+        const snapshot = compact.snapshot;
         if (history[historyIndex] === snapshot) return;
         history = history.slice(0, historyIndex + 1);
         historyReasons = historyReasons.slice(0, historyIndex + 1);
+        historyImageRefs = historyImageRefs.slice(0, historyIndex + 1);
         history.push(snapshot);
         historyReasons.push({ reason: reason || "変更", at: new Date().toISOString() });
-        if (history.length > HISTORY_LIMIT) {
-          const over = history.length - HISTORY_LIMIT;
-          history.splice(0, over);
-          historyReasons.splice(0, over);
+        historyImageRefs.push(compact.refs);
+        // Redo分岐を切った直後の未参照画像を、容量判定より先に解放する。
+        pruneHistoryImageAssets();
+        while (history.length > 1 && (history.length > HISTORY_LIMIT
+            || historySnapshotChars() > HISTORY_MAX_CHARS
+            || historicalImageAssetChars() > HISTORY_IMAGE_MAX_CHARS)) {
+          history.shift();
+          historyReasons.shift();
+          historyImageRefs.shift();
+          pruneHistoryImageAssets();
         }
         historyIndex = history.length - 1;
+        pruneHistoryImageAssets();
         try {
-          rotateBackupGenerations();
-          localStorage.setItem(BACKUP_KEY, snapshot);
+          persistAutomaticBackup(JSON.stringify(state));
           backupFailureWarned = false;
         } catch (_) {
           // 容量超過やプライベートモードで失敗し得る。無言で止めず一度だけ警告する。
@@ -2093,12 +2500,83 @@
       // 履歴インデックスのスナップショットへstateを差し替える(Undo/Redoの実体)。
       function restoreHistory(index) {
         if (index < 0 || index >= history.length) return;
-        const restored = JSON.parse(history[index]);
-        Object.assign(state, restored);
-        ensureProjectDefaults();
-        historyIndex = index;
-        setSelection([]);
-        render();
+        const previous = {
+          state: { ...state },
+          historyIndex,
+          pageCounter,
+          selectedId,
+          selectedIds: selectedIds.slice()
+        };
+        try {
+          const restored = parseHistorySnapshot(history[index]);
+          replaceStateContents(restored);
+          ensureProjectDefaults();
+          if (!state.pages.some(page => page.id === state.activePageId)) state.activePageId = state.pages[0]?.id || "";
+          pageCounter = state.pages.length + 1;
+          historyIndex = index;
+          setSelection([]);
+          render();
+          try {
+            persistAutomaticBackup(JSON.stringify(state));
+            backupFailureWarned = false;
+          } catch (_) {
+            if (!backupFailureWarned) {
+              backupFailureWarned = true;
+              setStatus("履歴は復元しましたが、自動バックアップを保存できません。上部「保存」でJSON保存してください。");
+            }
+          }
+        } catch (error) {
+          replaceStateContents(previous.state);
+          historyIndex = previous.historyIndex;
+          pageCounter = previous.pageCounter;
+          selectedId = previous.selectedId;
+          selectedIds = previous.selectedIds;
+          try { render(); } catch (_) { /* 元状態の再描画失敗より元の原因を優先する */ }
+          setStatus("履歴の復元に失敗しました: " + error.message);
+        }
+      }
+
+      // 検証済み候補stateを一括反映する。描画まで成功しなければstate・履歴・選択を完全に戻す。
+      function installProjectData(raw, successMessage) {
+        const candidate = normalizeProjectData(raw);
+        const previous = {
+          state: { ...state },
+          history,
+          historyReasons,
+          historyImageRefs,
+          historyImageAssets: new Map(historyImageAssets),
+          historyImageRefByData: new Map(historyImageRefByData),
+          historyIndex,
+          pageCounter,
+          selectedId,
+          selectedIds: selectedIds.slice()
+        };
+        try {
+          replaceStateContents(candidate);
+          ensureProjectDefaults();
+          pageCounter = state.pages.length + 1;
+          setSelection([]);
+          syncPageTotals();
+          render();
+          resetHistory();
+          setStatus(successMessage);
+          return true;
+        } catch (error) {
+          replaceStateContents(previous.state);
+          history = previous.history;
+          historyReasons = previous.historyReasons;
+          historyImageRefs = previous.historyImageRefs;
+          historyImageAssets.clear();
+          previous.historyImageAssets.forEach((value, key) => historyImageAssets.set(key, value));
+          historyImageRefByData.clear();
+          previous.historyImageRefByData.forEach((value, key) => historyImageRefByData.set(key, value));
+          historyIndex = previous.historyIndex;
+          pageCounter = previous.pageCounter;
+          selectedId = previous.selectedId;
+          selectedIds = previous.selectedIds;
+          try { render(); } catch (_) { /* 元状態の再描画失敗より元の原因を優先する */ }
+          throw error;
+        }
       }
 
       // 画面右上のステータスバーへメッセージを表示。長文は省略表示になるためtitleで全文も持たせる。
@@ -2238,27 +2716,44 @@
             group: "custom"
           }))
         ];
+        const matchedTypes = new Set();
         const matches = allItems.filter(item => {
           if (!filter) return true;
-          return String(item.label || "").toLowerCase().includes(filter)
+          const matched = String(item.label || "").toLowerCase().includes(filter)
             || String(item.type || "").toLowerCase().includes(filter);
+          if (!matched || matchedTypes.has(item.type)) return false;
+          matchedTypes.add(item.type);
+          return true;
         });
         if (!matches.length) {
           grid.innerHTML = '<div class="muted">該当する部品がありません。</div>';
           return;
         }
         const makeItem = item => {
+          const label = String(item.label || item.type || "部品");
           const button = document.createElement("div");
           button.className = "palette-item" + (activeTool === item.type ? " active" : "");
           button.draggable = true;
           button.dataset.type = item.type;
-          button.title = item.label + "を配置（ドラッグ or クリック→用紙クリック）";
-          button.innerHTML = paletteIconHtml(item) + '<div class="palette-label">' + item.label + "</div>";
+          button.setAttribute("role", "button");
+          button.tabIndex = 0;
+          button.setAttribute("aria-label", label + "を配置");
+          button.title = label + "を配置（ドラッグ or クリック→用紙クリック）";
+          button.innerHTML = paletteIconHtml(item);
+          const labelElement = document.createElement("div");
+          labelElement.className = "palette-label";
+          labelElement.textContent = label;
+          button.appendChild(labelElement);
           button.addEventListener("dragstart", event => {
             event.dataTransfer.setData("text/plain", item.type);
             event.dataTransfer.effectAllowed = "copy";
           });
           button.addEventListener("click", () => {
+            setActiveTool(item.type);
+          });
+          button.addEventListener("keydown", event => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
             setActiveTool(item.type);
           });
           return button;
@@ -2698,9 +3193,11 @@
       // 作図補助グリッド(細+太)をパターンとして敷く。印刷・出力には含めない。
       function drawGrid(svg, size) {
         const step = state.settings.grid || 2.5;
+        const gridPatternId = uid("gridPattern");
+        const majorGridPatternId = uid("majorGridPattern");
         const defs = svgEl("defs");
         const pattern = svgEl("pattern", {
-          id: "gridPattern",
+          id: gridPatternId,
           width: step,
           height: step,
           patternUnits: "userSpaceOnUse"
@@ -2713,7 +3210,7 @@
         }));
         defs.appendChild(pattern);
         const major = svgEl("pattern", {
-          id: "majorGridPattern",
+          id: majorGridPatternId,
           width: MAJOR_GRID_MM,
           height: MAJOR_GRID_MM,
           patternUnits: "userSpaceOnUse"
@@ -2726,8 +3223,8 @@
         }));
         defs.appendChild(major);
         svg.appendChild(defs);
-        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#gridPattern)", opacity: .62 }));
-        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#majorGridPattern)", opacity: .48 }));
+        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#" + gridPatternId + ")", opacity: .62 }));
+        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#" + majorGridPatternId + ")", opacity: .48 }));
       }
 
       // 図枠の振り分け: frameVariantに応じて各図枠描画関数を呼ぶ。
@@ -8827,61 +9324,6 @@
         }
       }
 
-      // 端子配線セット用の端子台要素を生成。
-      function referenceTerminalStrip(x, y, w, h, count, start, label, orientation = "horizontal") {
-        return {
-          ...defaultElement("terminalStrip", x, y),
-          x,
-          y,
-          w,
-          h,
-          count,
-          start,
-          prefix: "",
-          orientation,
-          terminalShape: "circle",
-          label,
-          rotation: 0,
-          layer: "symbols"
-        };
-      }
-
-      // 横向き端子1個を生成。
-      function horizontalTerminalAt(cx, cy, label, shape = "square") {
-        const w = 9;
-        const h = 6;
-        return {
-          ...defaultElement("terminal", cx - w / 2, cy - h / 2),
-          x: round(cx - w / 2),
-          y: round(cy - h / 2),
-          w,
-          h,
-          label,
-          orientation: "horizontal",
-          terminalShape: shape,
-          rotation: 0,
-          layer: "symbols"
-        };
-      }
-
-      // 縦向き端子1個を生成。
-      function verticalTerminalAt(cx, cy, label, shape = "square") {
-        const w = 6;
-        const h = 10;
-        return {
-          ...defaultElement("terminal", cx - w / 2, cy - h / 2),
-          x: round(cx - w / 2),
-          y: round(cy - h / 2),
-          w,
-          h,
-          label,
-          orientation: "vertical",
-          terminalShape: shape,
-          rotation: 0,
-          layer: "symbols"
-        };
-      }
-
       // 文字要素を生成(座標・サイズ・回転・幅)。テンプレート生成系で多用。
       function textElement(x, y, text, fontSize = 2.4, rotation = 0, w = 24) {
         return {
@@ -8934,6 +9376,10 @@
               target.y = original.y;
             }
           });
+          (drag.attachedWires || []).forEach(original => {
+            const target = page.elements.find(item => item.id === original.id);
+            if (target && Array.isArray(original.points)) target.points = deepClone(original.points);
+          });
         } else if (drag.original && (drag.elementId || drag.original.id)) {
           const target = page.elements.find(item => item.id === (drag.elementId || drag.original.id));
           if (target) Object.assign(target, deepClone(drag.original));
@@ -8955,9 +9401,14 @@
       function applyStandard(id) {
         const pack = (state.standardPacks || []).find(item => item.id === id);
         if (pack) {
+          const errors = validateStandardPack(pack);
+          if (errors.length) {
+            setStatus("標準パックを適用できません: " + errors.slice(0, 3).join(" ／ "));
+            return false;
+          }
           state.settings.standard = id;
           applyStandardPack(pack);
-          return;
+          return true;
         }
         const standard = STANDARDS.find(item => item.id === id) || STANDARDS[0];
         state.settings.standard = standard.id;
@@ -8967,6 +9418,7 @@
         if (standard.componentTagPrefixes) state.settings.componentTagPrefixes = { ...standard.componentTagPrefixes };
         const page = currentPage();
         if (page && !page.frameVariant) page.frameVariant = standard.frameVariant;
+        return true;
       }
 
       // 用紙全体が収まるようズームを自動調整。
@@ -9084,6 +9536,13 @@
           return;
         }
         const index = state.pages.findIndex(page => page.id === state.activePageId);
+        if (index < 0) {
+          state.activePageId = state.pages[0].id;
+          setSelection([]);
+          render();
+          setStatus("アクティブページ情報を修復しました。もう一度削除してください。");
+          return;
+        }
         state.pages.splice(index, 1);
         state.activePageId = state.pages[Math.max(0, index - 1)].id;
         setSelection([]);
@@ -11533,12 +11992,19 @@
       function validateStandardPack(pack) {
         const errors = [];
         if (!pack || typeof pack !== "object" || Array.isArray(pack)) return ["パック全体: オブジェクトではありません"];
+        try {
+          findUnsafeJsonKeyPath(pack, "パック全体");
+        } catch (error) {
+          return [error.message];
+        }
         if (pack.packVersion !== 1) errors.push("packVersion: 1 のみ対応です");
         if (!pack.id || typeof pack.id !== "string") errors.push("id: 文字列が必要です");
+        if (pack.grid !== undefined && (!Number.isFinite(pack.grid) || pack.grid <= 0)) errors.push("grid: 正の数値が必要です");
+        if (pack.frameVariant !== undefined && typeof pack.frameVariant !== "string") errors.push("frameVariant: 文字列が必要です");
         const arrayChecks = [
           ["wireTypes", item => item && typeof item.id === "string" && typeof item.label === "string", "id/label付きの配列"],
           ["layers", item => item && typeof item.id === "string" && typeof item.label === "string", "id/label付きの配列"],
-          ["customSymbols", item => item && typeof item.id === "string", "id付きの配列"],
+          ["customSymbols", item => isPlainObject(item) && typeof item.id === "string", "id付きの配列"],
           ["catalog", item => item && typeof item === "object" && !Array.isArray(item), "オブジェクトの配列"],
           ["plcModules", item => item && typeof item.label === "string", "label付きの配列"]
         ];
@@ -11557,6 +12023,8 @@
             errors.push(key + ": オブジェクトが必要です");
           }
         });
+        (Array.isArray(pack.customSymbols) ? pack.customSymbols : []).forEach((symbol, index) => errors.push(...validateCustomSymbol(symbol, "customSymbols[" + index + "]")));
+        if (pack.titleLayouts !== undefined && isPlainObject(pack.titleLayouts)) errors.push(...validateTitleLayouts(pack.titleLayouts));
         return errors;
       }
 
@@ -11587,18 +12055,20 @@
             plcModules: deepClone(state.plcModules || []),
             customSymbols: deepClone(state.customSymbols || []),
             catalog: deepClone(state.catalog || []),
-            titleLayouts: state.titleLayouts ? deepClone(state.titleLayouts) : undefined
+            standardPacks: deepClone(state.standardPacks || []),
+            titleLayouts: state.titleLayouts ? deepClone(state.titleLayouts) : undefined,
+            frameVariants: state.pages.map(page => page.frameVariant)
           };
           try {
             state.standardPacks = state.standardPacks || [];
             const existingIndex = state.standardPacks.findIndex(item => item && item.id === pack.id);
             const isUpdate = existingIndex >= 0;
-            if (isUpdate) state.standardPacks[existingIndex] = pack;
-            else state.standardPacks.push(pack);
+            if (isUpdate) state.standardPacks[existingIndex] = deepClone(pack);
+            else state.standardPacks.push(deepClone(pack));
             state.settings.standard = pack.id;
             applyStandardPack(pack);
-            commitHistory("標準パック「" + (pack.label || pack.id) + "」を" + (isUpdate ? "更新して" : "") + "適用しました。");
             render();
+            commitHistory("標準パック「" + (pack.label || pack.id) + "」を" + (isUpdate ? "更新して" : "") + "適用しました。");
           } catch (error) {
             Object.assign(state, {
               settings: rollback.settings,
@@ -11606,10 +12076,11 @@
               layers: rollback.layers,
               plcModules: rollback.plcModules,
               customSymbols: rollback.customSymbols,
-              catalog: rollback.catalog
+              catalog: rollback.catalog,
+              standardPacks: rollback.standardPacks
             });
             if (rollback.titleLayouts) state.titleLayouts = rollback.titleLayouts; else delete state.titleLayouts;
-            state.standardPacks = (state.standardPacks || []).filter(item => item !== pack);
+            state.pages.forEach((page, index) => { page.frameVariant = rollback.frameVariants[index]; });
             render();
             setStatus("標準パックの適用中に失敗したため、取込前の設定へ戻しました: " + error.message);
           }
@@ -11648,8 +12119,8 @@
           state.catalog = state.catalog || [];
           pack.catalog.forEach(item => {
             if (!item) return;
-            const existing = item.catalog ? state.catalog.find(row => row.catalog === item.catalog) : null;
-            if (existing) Object.assign(existing, deepClone(item));
+            const existingIndex = item.catalog ? state.catalog.findIndex(row => row.catalog === item.catalog) : -1;
+            if (existingIndex >= 0) state.catalog[existingIndex] = { ...state.catalog[existingIndex], ...deepClone(item) };
             else state.catalog.push(deepClone(item));
           });
         }
@@ -11681,23 +12152,29 @@
         qs("#titleLayoutApplyBtn").addEventListener("click", () => {
           try {
             const parsed = JSON.parse(qs("#titleLayoutJson").value);
-            if (!parsed || typeof parsed !== "object") throw new Error("オブジェクトではありません。");
-            ["compact", "detailed"].forEach(key => {
-              if (parsed[key] && !Array.isArray(parsed[key].cells)) throw new Error(key + ".cells が配列ではありません。");
-            });
-            state.titleLayouts = parsed;
-            commitHistory("表題欄レイアウトを更新しました。");
-            closeDialog();
-            render();
+            const errors = validateTitleLayouts(parsed);
+            if (errors.length) throw new Error(errors.slice(0, 3).join(" ／ ") + (errors.length > 3 ? " 他" + (errors.length - 3) + "件" : ""));
+            const hadLayouts = Object.prototype.hasOwnProperty.call(state, "titleLayouts");
+            const previous = hadLayouts ? deepClone(state.titleLayouts) : undefined;
+            try {
+              state.titleLayouts = deepClone(parsed);
+              render();
+              commitHistory("表題欄レイアウトを更新しました。");
+              closeDialog();
+            } catch (error) {
+              if (hadLayouts) state.titleLayouts = previous; else delete state.titleLayouts;
+              try { render(); } catch (_) { /* 元レイアウトの再描画失敗より元の原因を優先する */ }
+              throw error;
+            }
           } catch (error) {
             setStatus("表題欄レイアウトの適用に失敗しました: " + error.message);
           }
         });
         qs("#titleLayoutResetBtn").addEventListener("click", () => {
           delete state.titleLayouts;
+          render();
           commitHistory("表題欄レイアウトを既定に戻しました。");
           closeDialog();
-          render();
         });
       }
 
@@ -11714,8 +12191,7 @@
           const reader = new FileReader();
           reader.onload = () => {
             try {
-              const oldData = migrateProjectData(JSON.parse(reader.result));
-              if (!oldData.pages || !Array.isArray(oldData.pages)) throw new Error("pages が見つかりません。");
+              const oldData = normalizeProjectData(JSON.parse(reader.result));
               showDiffViewer(oldData, file.name);
             } catch (error) {
               setStatus("比較ファイルの読み込みに失敗しました: " + error.message);
@@ -12934,8 +13410,7 @@
               return;
             }
             if (!confirm("バックアップを復元しますか？\n現在の画面内容は置き換わります。")) return;
-            applyBackupSnapshot(snapshot);
-            closeDialog();
+            if (applyBackupSnapshot(snapshot)) closeDialog();
           });
         });
       }
@@ -12943,19 +13418,11 @@
       // バックアップ文字列をstateへ反映する(スキーマ移行+履歴リセット)。
       function applyBackupSnapshot(snapshot) {
         try {
-          const restored = migrateProjectData(JSON.parse(snapshot));
-          if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
-          Object.assign(state, restored);
-          if (!restored.titleLayouts) delete state.titleLayouts;
-          state.schemaVersion = Math.max(SCHEMA_VERSION, Math.floor(Number(restored.schemaVersion || 1)));
-          ensureProjectDefaults();
-          setSelection([]);
-          pageCounter = state.pages.length + 1;
-          resetHistory();
-          render();
-          setStatus("ブラウザ内バックアップを復元しました。");
+          installProjectData(JSON.parse(snapshot), "ブラウザ内バックアップを復元しました。");
+          return true;
         } catch (error) {
           setStatus("復元に失敗しました: " + error.message);
+          return false;
         }
       }
 
@@ -12966,7 +13433,20 @@
       function readProjectStore() {
         try {
           const parsed = JSON.parse(localStorage.getItem(PROJECT_STORE_KEY) || "{}");
-          return parsed && typeof parsed === "object" ? parsed : {};
+          if (!isPlainObject(parsed)) return Object.create(null);
+          const safe = Object.create(null);
+          Object.entries(parsed).forEach(([key, entry]) => {
+            if (!isPlainObject(entry) || typeof entry.snapshot !== "string" || !entry.snapshot) return;
+            const id = typeof entry.id === "string" && entry.id ? entry.id : key;
+            safe[id] = {
+              ...entry,
+              id,
+              label: typeof entry.label === "string" ? entry.label : "無題",
+              savedAt: typeof entry.savedAt === "string" ? entry.savedAt : "",
+              pages: Number.isFinite(entry.pages) ? entry.pages : "?"
+            };
+          });
+          return safe;
         } catch (_) {
           return {};
         }
@@ -12975,6 +13455,7 @@
       // プロジェクト保管庫を書き戻す(容量超過は失敗を通知してfalse)。
       function writeProjectStore(store) {
         try {
+          if (!isPlainObject(store)) throw new Error("保管庫データがオブジェクトではありません。");
           localStorage.setItem(PROJECT_STORE_KEY, JSON.stringify(store));
           return true;
         } catch (error) {
@@ -13013,17 +13494,7 @@
         if (!entry) return;
         if (!confirm("プロジェクト「" + (entry.label || "") + "」を読み込みますか？\n現在の画面内容は置き換わります（必要ならJSON保存してください）。")) return;
         try {
-          const restored = migrateProjectData(JSON.parse(entry.snapshot));
-          if (!restored.pages || !Array.isArray(restored.pages)) throw new Error("pages が見つかりません。");
-          Object.assign(state, restored);
-          if (!restored.titleLayouts) delete state.titleLayouts;
-          state.schemaVersion = Math.max(SCHEMA_VERSION, Math.floor(Number(restored.schemaVersion || 1)));
-          ensureProjectDefaults();
-          setSelection([]);
-          pageCounter = state.pages.length + 1;
-          resetHistory();
-          render();
-          setStatus("プロジェクト「" + (entry.label || "") + "」を読み込みました。");
+          installProjectData(JSON.parse(entry.snapshot), "プロジェクト「" + (entry.label || "") + "」を読み込みました。");
           closeDialog();
         } catch (error) {
           setStatus("プロジェクトの読込に失敗しました: " + error.message);
@@ -13283,30 +13754,7 @@
         reader.onerror = () => setStatus("ファイルを読み込めませんでした: " + (file?.name || ""));
         reader.onload = () => {
           try {
-            const loaded = migrateProjectData(JSON.parse(reader.result));
-            if (!loaded.pages || !Array.isArray(loaded.pages)) throw new Error("pages が見つかりません。");
-            // 将来版データは版数を維持する(現行版へ格下げ保存すると新しい版の情報だと分からなくなる)
-            state.schemaVersion = Math.max(SCHEMA_VERSION, Math.floor(Number(loaded.schemaVersion || 1)));
-            state.app = loaded.app || state.app;
-            state.version = loaded.version || state.version;
-            state.settings = { ...state.settings, ...(loaded.settings || {}) };
-            state.layers = loaded.layers || state.layers;
-            state.wireTypes = loaded.wireTypes || state.wireTypes;
-            state.customSymbols = loaded.customSymbols || [];
-            // カタログ・取込済み標準パック・PLCプリセットも正式な保存対象(欠けると往復で消える)
-            state.catalog = Array.isArray(loaded.catalog) ? loaded.catalog : [];
-            state.standardPacks = Array.isArray(loaded.standardPacks) ? loaded.standardPacks : [];
-            state.plcModules = Array.isArray(loaded.plcModules) ? loaded.plcModules : [];
-            if (loaded.titleLayouts) state.titleLayouts = loaded.titleLayouts; else delete state.titleLayouts;
-            state.project = { ...state.project, ...(loaded.project || {}) };
-            ensureProjectDefaults();
-            state.pages = loaded.pages;
-            state.activePageId = loaded.activePageId || state.pages[0].id;
-            pageCounter = state.pages.length + 1;
-            setSelection([]);
-            resetHistory();
-            render();
-            setStatus("JSONを読み込みました。");
+            installProjectData(JSON.parse(reader.result), "JSONを読み込みました。");
           } catch (error) {
             setStatus("読み込みに失敗しました: " + error.message);
           }
@@ -14770,8 +15218,9 @@
       }
 
       // ===== 改訂履歴管理 =====
-      function showRevisionHistory() {
-        const revisions = state.project.revisions || [];
+      function showRevisionHistory(draftRevisions) {
+        // 行追加・削除はダイアログ内の下書きだけを更新し、「適用」まではstateを変更しない。
+        const revisions = Array.isArray(draftRevisions) ? draftRevisions : deepClone(state.project.revisions || []);
         const rows = revisions.map((entry, index) => `
           <tr data-rev-row="${index}">
             <td><input data-rev-field="rev" value="${escapeAttr(entry.rev || "")}" style="width:56px"></td>
@@ -14790,19 +15239,28 @@
             <button type="button" id="addRevisionBtn">行追加</button>
             <button type="button" id="applyRevisionBtn" class="primary">適用</button>
           </div>`);
-        const collect = () => {
+        const collect = (includeEmpty = false) => {
           const list = [];
           qsa("[data-rev-row]", qs("#dialogBody")).forEach(row => {
             const entry = {};
             qsa("[data-rev-field]", row).forEach(input => { entry[input.dataset.revField] = input.value; });
-            if (entry.rev || entry.date || entry.note) list.push(entry);
+            if (includeEmpty || entry.rev || entry.date || entry.note) list.push(entry);
           });
           return list;
         };
+        qsa("[data-rev-delete]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            const index = Number(button.dataset.revDelete);
+            const revisions = collect(true);
+            if (!Number.isInteger(index) || index < 0 || index >= revisions.length) return;
+            revisions.splice(index, 1);
+            showRevisionHistory(revisions);
+          });
+        });
         qs("#addRevisionBtn").addEventListener("click", () => {
-          state.project.revisions = collect();
-          state.project.revisions.push({ rev: "", date: state.project.date || today, note: "" });
-          showRevisionHistory();
+          const revisions = collect(true);
+          revisions.push({ rev: "", date: state.project.date || today, note: "" });
+          showRevisionHistory(revisions);
         });
         qs("#applyRevisionBtn").addEventListener("click", () => {
           state.project.revisions = collect();
@@ -17420,7 +17878,10 @@
         });
         updatePageField("pageName", (page, value) => { page.name = value || page.name; });
         qs("#drawingStandard").addEventListener("change", event => {
-          applyStandard(event.target.value);
+          if (!applyStandard(event.target.value)) {
+            render();
+            return;
+          }
           commitHistory("標準設定を変更しました。");
           render();
         });
@@ -18285,11 +18746,13 @@
         if (editing) return;
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
           event.preventDefault();
+          if (dragState) cancelActiveDrag();
           restoreHistory(historyIndex - 1);
           return;
         }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
           event.preventDefault();
+          if (dragState) cancelActiveDrag();
           restoreHistory(historyIndex + 1);
           return;
         }
@@ -18359,8 +18822,37 @@
       attachEvents();
       initProject();
 
-      // 自動テスト用の内部フック(通常操作では使用しない)。接続点のグリッド整合検証などに使う。
-      window.__edsTest = { defaultElementAtPlacement, elementConnectionAnchors, defaultElement, SYMBOL_GEO, diffProjects, showDiffViewer };
+      // 自動テスト用の内部フック(通常操作では使用しない)。接続点・移行・履歴の回帰検証に使う。
+      window.__edsTest = {
+        defaultElementAtPlacement,
+        elementConnectionAnchors,
+        defaultElement,
+        SYMBOL_GEO,
+        diffProjects,
+        showDiffViewer,
+        migrateProjectData: data => migrateProjectData(deepClone(data)),
+        normalizeProjectData: data => normalizeProjectData(deepClone(data)),
+        installProjectData: (data, message = "テストデータを読み込みました。") => installProjectData(deepClone(data), message),
+        applyBackupSnapshot,
+        readProjectStore,
+        validateTitleLayouts,
+        validateStandardPack,
+        commitHistory,
+        restoreHistory,
+        state,
+        historyDiagnostics: () => ({
+          count: history.length,
+          index: historyIndex,
+          totalChars: historySnapshotChars(),
+          imageAssetCount: historyImageAssets.size,
+          imageAssetChars: Array.from(historyImageAssets.values()).reduce((sum, item) => sum + item.length, 0),
+          historicalImageAssetChars: historicalImageAssetChars(),
+          retainedChars: historyRetainedChars(),
+          maxRetainedChars: HISTORY_MAX_CHARS + HISTORY_IMAGE_MAX_CHARS,
+          maxHistoricalImageAssetChars: HISTORY_IMAGE_MAX_CHARS,
+          snapshotsContainImageData: history.some(item => item.includes("data:image/"))
+        })
+      };
     })();
   </script>
 </body>
