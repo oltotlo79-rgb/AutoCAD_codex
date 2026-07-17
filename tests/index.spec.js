@@ -86,6 +86,48 @@ test("Y座標・文字配置・線の接続点・ページ設定を編集でき�
   await expect(page.locator("svg#canvas").getByText("PAGE ONE")).toHaveCount(1);
 });
 
+test("分数座標の接続点でも直線を15度補正し、部品座標は第1接続点を基準にする", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4,
+    activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [
+        { id: "device", type: "deviceBox", x: 120.32, y: 40.32, w: 30, h: 25, pins: 4, label: "", layer: "symbols" },
+        { id: "line", type: "line", points: [[120.32, 45.32], [150, 45.32]], layer: "layout" }
+      ]
+    }]
+  }));
+  const snap = await page.evaluate(() => ({
+    horizontal: window.__edsTest.snapLineEndpoint([120.32, 45.32], { x: 160.8, y: 46.1 }),
+    vertical: window.__edsTest.snapLineEndpoint([120.32, 45.32], { x: 121, y: 90.2 }),
+    fifteen: window.__edsTest.snapLineEndpoint([120.32, 45.32], { x: 160, y: 56 })
+  }));
+  expect(snap.horizontal[1]).toBe(45.32);
+  expect(snap.vertical[0]).toBe(120.32);
+  expect(Math.abs(Math.atan2(snap.fifteen[1] - 45.32, snap.fifteen[0] - 120.32) * 180 / Math.PI - 15)).toBeLessThan(.05);
+
+  await page.locator('[data-id="device"]').click();
+  await expect(page.locator('[data-bind="x"]')).toHaveValue("120.32");
+  await expect(page.locator('[data-bind="y"]')).toHaveValue("251.68");
+  await page.locator('[data-bind="x"]').fill("125");
+  await page.locator('[data-bind="x"]').press("Enter");
+  const result = await page.evaluate(() => {
+    const element = window.__edsTest.state.pages[0].elements.find(item => item.id === "device");
+    return {
+      labelCount: document.querySelectorAll('[data-id="device"] text').length,
+      anchors: window.__edsTest.elementConnectionAnchors(element)
+    };
+  });
+  expect(result.anchors[0].x).toBe(125);
+  expect(result.anchors.every(anchor => Math.abs((anchor.y - result.anchors[0].y) / 2.5 - Math.round((anchor.y - result.anchors[0].y) / 2.5)) < .001)).toBe(true);
+  expect(result.labelCount).toBe(0);
+
+  await page.evaluate(() => window.__edsTest.selectElement("line"));
+  await expect(page.locator('[data-endpoint-role="start"]')).toHaveText("始");
+  await expect(page.locator('[data-endpoint-role="end"]')).toHaveText("終");
+});
+
 test.afterEach(async ({ page }) => {
   const issues = runtimeIssues.get(page);
   expect(issues?.consoleErrors ?? [], "console errorが発生していないこと").toEqual([]);

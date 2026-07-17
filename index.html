@@ -4970,6 +4970,28 @@
       }
 
       // 機器箱(汎用ボックス)の描画。pins/pinText/rightPinTextで左右の端子番号文字を表示。
+      function cleanConnectionOffset(value) {
+        return round(Math.round(Number(value || 0) / 2.5) * 2.5);
+      }
+
+      function deviceBoxPinY(element, index) {
+        const h = Number(element.h || 20);
+        const pins = Math.max(0, Number(element.pins || 4));
+        return cleanConnectionOffset(h * (index + 1) / (pins + 1));
+      }
+
+      function terminalBoxPinY(element, index) {
+        const h = Number(element.h || 18);
+        const rows = Math.max(2, Number(element.rows || 3));
+        return cleanConnectionOffset(h * (index + .5) / rows);
+      }
+
+      function plcGridPinY(element, index) {
+        const rows = Math.max(2, Number(element.rows || 8));
+        const h = Number(element.h || rows * 6 + 10);
+        return cleanConnectionOffset(5 + (index + 1) * ((h - 10) / rows));
+      }
+
       function drawDeviceBox(g, element, stroke) {
         const w = Number(element.w || 28);
         const h = Number(element.h || 20);
@@ -4977,9 +4999,9 @@
         const leftLabels = String(element.pinText || "").split(/\r?\n/);
         const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
-        multilineText(g, element.label || "機器", w / 2, h / 2 - 1.2, 3.1, { fontSize: 2.1, anchor: "middle" });
+        if (element.label) multilineText(g, element.label, w / 2, h / 2 - 1.2, 3.1, { fontSize: 2.1, anchor: "middle" });
         for (let i = 0; i < pins; i++) {
-          const y = h * (i + 1) / (pins + 1);
+          const y = deviceBoxPinY(element, i);
           if (leftLabels[i]) {
             g.appendChild(textEl(leftLabels[i], 1.5, y, { fontSize: 2.2 }));
           }
@@ -5002,7 +5024,8 @@
         g.appendChild(textEl(element.label || "PLC", w / 2, 5, { fontSize: 2.5, anchor: "middle" }));
         const labels = String(element.pinText || "").split(/\r?\n/);
         for (let i = 1; i <= rows; i++) {
-          const y = 8 + i * ((h - 10) / rows);
+          const pinY = plcGridPinY(element, i - 1);
+          const y = pinY + 3;
           g.appendChild(svgEl("line", { x1: 0, y1: y, x2: w, y2: y, class: "symbol-line", stroke }));
           g.appendChild(svgEl("line", { x1: -8, y1: y - 3, x2: 0, y2: y - 3, class: "symbol-line", stroke }));
           g.appendChild(textEl(labels[i - 1] || String(i).padStart(2, "0"), 3, y - 3, { fontSize: 2 }));
@@ -5072,7 +5095,7 @@
           g.appendChild(svgEl("line", { x1: 0, y1: h * i / rows, x2: w, y2: h * i / rows, class: "symbol-line", stroke }));
         }
         for (let i = 0; i < rows; i++) {
-          const y = h * (i + .5) / rows;
+          const y = terminalBoxPinY(element, i);
           g.appendChild(svgEl("line", { x1: -6, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
           g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 6, y2: y, class: "symbol-line", stroke }));
         }
@@ -7876,14 +7899,31 @@
         });
         if (selected.length === 1 && selected[0].points && !isElementLocked(selected[0])) {
           selected[0].points.forEach((point, index) => {
+            const isStart = index === 0;
+            const isEnd = index === selected[0].points.length - 1;
             svg.appendChild(svgEl("rect", {
               x: point[0] - 1.7,
               y: point[1] - 1.7,
               width: 3.4,
               height: 3.4,
               class: "point-handle",
+              fill: isStart ? "#1976d2" : (isEnd ? "#e65100" : null),
               "data-point-index": index
             }));
+            if (selected[0].type === "line" && (isStart || isEnd)) {
+              svg.appendChild(svgEl("text", {
+                x: point[0],
+                y: point[1] - 3.2,
+                class: "svg-text",
+                "font-size": 2.4,
+                "text-anchor": "middle",
+                "dominant-baseline": "middle",
+                fill: isStart ? "#1976d2" : "#e65100",
+                "font-weight": "700",
+                "pointer-events": "none",
+                "data-endpoint-role": isStart ? "start" : "end"
+              }, [document.createTextNode(isStart ? "始" : "終")]));
+            }
           });
         }
       }
@@ -8406,10 +8446,11 @@
 
       // 位置・寸法など全要素共通の編集フィールド定義。
       function normalFields(element) {
+        const anchor = primaryConnectionPoint(element) || { x: Number(element.x || 0), y: Number(element.y || 0) };
         return `
           <div class="row">
-            <div><label>X mm</label><input data-bind="x" data-kind="number" type="number" step="0.5" value="${round(element.x || 0)}"></div>
-            <div><label>Y mm（上が＋）</label><input data-bind="y" data-coordinate-y="true" data-kind="number" type="number" step="0.5" value="${round(pageSize(currentPage()).h - Number(element.y || 0))}"></div>
+            <div><label>接続点 X mm</label><input data-bind="x" data-anchor-coordinate="true" data-kind="number" type="number" step="0.5" value="${round(anchor.x)}"></div>
+            <div><label>接続点 Y mm（上が＋）</label><input data-bind="y" data-anchor-coordinate="true" data-coordinate-y="true" data-kind="number" type="number" step="0.5" value="${round(pageSize(currentPage()).h - anchor.y)}"></div>
           </div>
           <div class="row">
             <div><label>幅 mm</label><input data-bind="w" data-kind="number" type="number" step="0.5" value="${round(element.w || defaultElement(element.type).w || 20)}"></div>
@@ -9087,7 +9128,15 @@
           value = Math.max(1, Math.min(TEMPLATE_UNIT_MAX_ROWS, Math.floor(Number(value || 1))));
           input.value = String(value);
         }
-        if (pointMatch && element.points?.[Number(pointMatch[1])]) {
+        if (input.dataset.anchorCoordinate === "true" && (key === "x" || key === "y")) {
+          const anchor = firstPinOf(element);
+          if (anchor) {
+            const current = key === "x" ? anchor.x : anchor.y;
+            element[key] = round(Number(element[key] || 0) + value - current);
+          } else {
+            element[key] = value;
+          }
+        } else if (pointMatch && element.points?.[Number(pointMatch[1])]) {
           element.points[Number(pointMatch[1])][pointMatch[2] === "x" ? 0 : 1] = value;
         } else {
           element[key] = value;
@@ -9508,7 +9557,7 @@
         if (element.type === "terminalBox") {
           const rows = Math.max(2, Number(element.rows || 3));
           for (let i = 0; i < rows; i++) {
-            const y = h * (i + .5) / rows;
+            const y = terminalBoxPinY(element, i);
             add(0, y);
             add(w, y);
           }
@@ -9521,7 +9570,7 @@
         if (element.type === "deviceBox") {
           const pins = Math.max(0, Number(element.pins || 4));
           for (let i = 0; i < pins; i++) {
-            const y = h * (i + 1) / (pins + 1);
+            const y = deviceBoxPinY(element, i);
             add(0, y);
             add(w, y);
           }
@@ -9535,12 +9584,18 @@
           }
           const rows = Math.max(2, Number(element.rows || 8));
           for (let i = 1; i <= rows; i++) {
-            const y = 8 + i * ((h - 10) / rows) - 3;
+            const y = plcGridPinY(element, i - 1);
             add(0, y);
           }
           return anchors;
         }
         return anchors;
+      }
+
+      function primaryConnectionPoint(element) {
+        if (!element || element.points) return null;
+        const anchors = elementConnectionAnchors(element);
+        return anchors && anchors.length ? anchors[0] : null;
       }
 
       // 要素ローカル座標の接続点→絶対座標(回転考慮)。
@@ -19552,6 +19607,17 @@
 
       // ドラッグ中の処理。dragState.modeで分岐: draw=配線/直線の終点更新(直交スナップ)、move=選択移動
       // (グリッド/行スナップした差分で全要素+接続配線端点を追従)、resize/point/marqueeも同様。
+      function snapLineEndpoint(start, target) {
+        const dx = target.x - start[0];
+        const dy = target.y - start[1];
+        const angle = Math.atan2(dy, dx);
+        const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+        const ux = Math.cos(snappedAngle);
+        const uy = Math.sin(snappedAngle);
+        const length = dx * ux + dy * uy;
+        return [round(start[0] + length * ux), round(start[1] + length * uy)];
+      }
+
       function onCanvasPointerMove(event) {
         if (handleTouchMove(event)) return; // ピンチ中はズーム/パンのみ
         if (!dragState) return;
@@ -19585,15 +19651,8 @@
             rebuildDrawingWire(element, dragState, event.shiftKey === true);
           } else if (element.type === "line") {
             const start = element.points[0];
-            const dx = point.x - start[0];
-            const dy = point.y - start[1];
-            const length = Math.hypot(dx, dy);
-            const angle = Math.atan2(dy, dx);
-            const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
-            element.points[element.points.length - 1] = [
-              round(start[0] + length * Math.cos(snappedAngle)),
-              round(start[1] + length * Math.sin(snappedAngle))
-            ];
+            const rawPoint = canvasPoint(event, { raw: true });
+            element.points[element.points.length - 1] = snapLineEndpoint(start, rawPoint);
           } else {
             element.points[element.points.length - 1] = [point.x, point.y];
           }
@@ -20275,6 +20334,8 @@
       window.__edsTest = {
         defaultElementAtPlacement,
         elementConnectionAnchors,
+        primaryConnectionPoint,
+        snapLineEndpoint,
         defaultElement,
         SYMBOL_GEO,
         geoPrims,
