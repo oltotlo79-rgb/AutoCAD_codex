@@ -128,6 +128,81 @@ test("分数座標の接続点でも直線を15度補正し、部品座標は第
   await expect(page.locator('[data-endpoint-role="end"]')).toHaveText("終");
 });
 
+test("ACE拡張8機能を管理・生成・同期できる", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p1", cables: [], plcModules: [], userCircuits: [],
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [
+        { id: "coil", type: "coil", x: 30, y: 40, w: 10, h: 7, tag: "CR1", label: "CR1", manufacturer: "旧", catalog: "OLD", installation: "盤A", location: "上段", layer: "symbols" },
+        { id: "foot", type: "rect", x: 80, y: 40, w: 20, h: 12, label: "CR1", panelRef: "CR1", manufacturer: "新", catalog: "NEW", description: "盤側", layer: "layout" },
+        { id: "strip", type: "terminalStrip", x: 50, y: 80, w: 10, h: 30, count: 3, orientation: "vertical", label: "TB1", layer: "symbols" },
+        { id: "cable", type: "cableMarker", x: 30, y: 120, w: 28, h: 12, label: "C1", cableTag: "C1", coreNo: "1", layer: "symbols" },
+        { id: "wire", type: "wire", points: [[20, 45], [70, 45]], wireNo: "101", layer: "wires" }
+      ]
+    }]
+  }));
+
+  await page.locator("#actionMenu").selectOption("cableManager");
+  await page.locator('[data-cable-field="color"]').fill("黒");
+  await page.locator('[data-cable-field="gauge"]').fill("1.25sq");
+  await page.locator("#applyCableBtn").click();
+  expect(await page.evaluate(() => window.__edsTest.state.cables[0])).toMatchObject({ tag: "C1", core: "1", color: "黒", gauge: "1.25sq" });
+
+  await page.locator("#actionMenu").selectOption("locationView");
+  await expect(page.locator("#dialogBody")).toContainText("盤A");
+  await page.locator("#dialogClose").click();
+
+  await page.locator("#actionMenu").selectOption("terminalEditor");
+  await page.locator('[data-terminal-field="terminalLabels"]').fill("3,1,2");
+  await page.locator('[data-terminal-field="spares"]').fill("2");
+  await page.locator('[data-terminal-field="accessories"]').fill("エンド板");
+  await page.locator("#applyTerminalEditorBtn").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "strip"))).toMatchObject({ terminalLabels: "3\n1\n2", spares: "2", accessories: "エンド板" });
+
+  await page.evaluate(() => window.__edsTest.syncPanelFootprints("toSchematic"));
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "coil").catalog)).toBe("NEW");
+  await page.evaluate(() => {
+    const coil = window.__edsTest.state.pages[0].elements.find(item => item.id === "coil");
+    coil.catalog = "SYNC";
+    window.__edsTest.syncPanelFootprints("toPanel");
+  });
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "foot").catalog)).toBe("SYNC");
+
+  await page.locator("#actionMenu").selectOption("plcModuleManager");
+  await page.locator("#plcDbAdd").click();
+  const plcRow = page.locator("[data-plc-db-row]").last();
+  await plcRow.locator('[data-plc-db="label"]').fill("MELSEC入力");
+  await plcRow.locator('[data-plc-db="manufacturer"]').fill("三菱");
+  await plcRow.locator('[data-plc-db="catalog"]').fill("QX40");
+  await plcRow.locator('[data-plc-db="count"]').fill("16");
+  await page.locator("#plcDbApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.plcModules[0].catalog)).toBe("QX40");
+
+  const beforeDin = await page.evaluate(() => window.__edsTest.state.pages[0].elements.length);
+  await page.locator("#actionMenu").selectOption("dinRail");
+  await page.locator("#dinLength").fill("50");
+  await page.locator("#dinBuild").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.length)).toBeGreaterThan(beforeDin);
+
+  await page.evaluate(() => window.__edsTest.selectElement("coil"));
+  page.once("dialog", dialog => dialog.accept("自己保持回路"));
+  await page.locator("#actionMenu").selectOption("saveUserCircuit");
+  expect(await page.evaluate(() => window.__edsTest.state.userCircuits[0].name)).toBe("自己保持回路");
+  const beforeCircuit = await page.evaluate(() => window.__edsTest.state.pages[0].elements.length);
+  await page.locator("#actionMenu").selectOption("insertUserCircuit");
+  await page.locator("#userCircuitInsert").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.length)).toBe(beforeCircuit + 1);
+
+  const avoided = await page.evaluate(() => {
+    const wire = window.__edsTest.state.pages[0].elements.find(item => item.id === "wire");
+    const original = { x: 31, y: 43.2, anchor: "start" };
+    return window.__edsTest.avoidWireNumberCollision(wire, original);
+  });
+  expect(avoided.y).not.toBe(43.2);
+  expect(avoided.leader).toBe(true);
+});
+
 test.afterEach(async ({ page }) => {
   const issues = runtimeIssues.get(page);
   expect(issues?.consoleErrors ?? [], "console errorが発生していないこと").toEqual([]);

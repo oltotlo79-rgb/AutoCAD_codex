@@ -1100,10 +1100,16 @@
               <option value="motorCircuit">モータ分岐回路</option>
               <option value="plcUnit">PLCユニット</option>
               <option value="panelLink">盤レイアウト連携</option>
+              <option value="dinRail">DINレール／配線ダクト</option>
+              <option value="insertUserCircuit">ユーザー回路を挿入</option>
             </optgroup>
             <optgroup label="一覧・管理">
               <option value="projects">プロジェクト管理（ブラウザ内保存）</option>
               <option value="terminalEditor">端子台エディタ</option>
+              <option value="cableManager">ケーブル・芯線エディタ</option>
+              <option value="locationView">設置場所・接続ビュー</option>
+              <option value="plcModuleManager">PLCモジュールDB</option>
+              <option value="saveUserCircuit">選択範囲をユーザー回路登録</option>
               <option value="tagRules">部品タグ規則</option>
               <option value="wireTypeManager">配線種別管理</option>
               <option value="layerManager">レイヤ管理</option>
@@ -2358,7 +2364,7 @@
         ["settings", "project"].forEach(key => {
           if (data[key] !== undefined && !isPlainObject(data[key])) errors.push(key + ": オブジェクトが必要です");
         });
-        ["layers", "wireTypes", "customSymbols", "catalog", "standardPacks", "plcModules"].forEach(key => {
+        ["layers", "wireTypes", "customSymbols", "catalog", "standardPacks", "plcModules", "cables", "userCircuits"].forEach(key => {
           if (data[key] !== undefined && !Array.isArray(data[key])) errors.push(key + ": 配列が必要です");
         });
         (Array.isArray(data.layers) ? data.layers : []).forEach((item, index) => {
@@ -2403,6 +2409,8 @@
         candidate.catalog = migrated.catalog || [];
         candidate.standardPacks = migrated.standardPacks || [];
         candidate.plcModules = migrated.plcModules || [];
+        candidate.cables = migrated.cables || [];
+        candidate.userCircuits = migrated.userCircuits || [];
         candidate.project = {
           ...base.project,
           ...(migrated.project || {}),
@@ -2499,6 +2507,8 @@
         if (!Array.isArray(state.catalog)) state.catalog = [];
         if (!Array.isArray(state.standardPacks)) state.standardPacks = [];
         if (!Array.isArray(state.plcModules)) state.plcModules = [];
+        if (!Array.isArray(state.cables)) state.cables = [];
+        if (!Array.isArray(state.userCircuits)) state.userCircuits = [];
         if (!state.settings.reportColumns || typeof state.settings.reportColumns !== "object") state.settings.reportColumns = {};
         return state.project;
       }
@@ -3196,6 +3206,7 @@
       // パレット/タブ/右パネルの再構築を省いて描画コストを下げる。
       // 印刷用シートはここでは作らない(印刷直前にrenderPrintSheets()が生成する)。
       function render(options = {}) {
+        wireLabelAvoidCache.clear();
         crossRefCache = null;
         if (!options.light) {
           renderPalette();
@@ -4069,7 +4080,15 @@
         }));
         wireGapMarkers(element).forEach(gap => drawWireGap(g, gap));
         if (element.wireNo && !element.hideWireNo) {
-          const pos = wireNoAnchorPoint(element);
+          const originalPos = wireNoAnchorPoint(element);
+          const pos = avoidWireNumberCollision(element, originalPos);
+          if (pos.leader) {
+            g.appendChild(svgEl("line", {
+              x1: originalPos.x, y1: originalPos.y + 1,
+              x2: pos.x, y2: pos.y + 1,
+              class: "symbol-line", stroke: style.color, "stroke-width": .22
+            }));
+          }
           g.appendChild(textEl(element.wireNo, pos.x, pos.y, { fontSize: 2.3, anchor: pos.anchor }));
           if (element.fixedWireNo) {
             g.appendChild(textEl("FIX", pos.x, pos.y + 4, { fontSize: 1.6, anchor: pos.anchor }));
@@ -4974,6 +4993,39 @@
         return round(Math.round(Number(value || 0) / 2.5) * 2.5);
       }
 
+      const wireLabelAvoidCache = new Map();
+      function avoidWireNumberCollision(element, position) {
+        if (state.settings.autoWireLabelAvoid === false || element.wireNoManualPosition) return position;
+        const cacheKey = element.id + ":" + round(position.x) + ":" + round(position.y);
+        if (wireLabelAvoidCache.has(cacheKey)) return wireLabelAvoidCache.get(cacheKey);
+        const page = currentPage();
+        if (!page) return position;
+        const width = Math.max(4, String(element.wireNo || "").length * 1.45);
+        const elementIndex = page.elements.findIndex(item => item.id === element.id);
+        const collides = y => page.elements.some((item, itemIndex) => {
+          if (item.type === "wire" && item.id !== element.id && itemIndex < elementIndex && item.wireNo && !item.hideWireNo) {
+            const other = avoidWireNumberCollision(item, wireNoAnchorPoint(item));
+            const otherWidth = Math.max(4, String(item.wireNo).length * 1.45);
+            return position.x + width > other.x - 1 && position.x < other.x + otherWidth + 1
+              && y + 1.7 > other.y - 1.7 && y - 1.7 < other.y + 1.7;
+          }
+          if (item.id === element.id || item.type === "wire" || item.type === "junction") return false;
+          const box = elementBounds(item);
+          if (!box) return false;
+          return position.x + width > box.x - 5 && position.x < box.x + box.w + 5
+            && y + 1.5 > box.y - 5 && y - 1.5 < box.y + box.h + 5;
+        });
+        for (const offset of [0, -4, 4, -8, 8, -12, 12, -16, 16, -20, 20]) {
+          if (!collides(position.y + offset)) {
+            const resolved = { ...position, y: position.y + offset, leader: offset !== 0 };
+            wireLabelAvoidCache.set(cacheKey, resolved);
+            return resolved;
+          }
+        }
+        wireLabelAvoidCache.set(cacheKey, position);
+        return position;
+      }
+
       function deviceBoxPinY(element, index) {
         const h = Number(element.h || 20);
         const pins = Math.max(0, Number(element.pins || 4));
@@ -5066,7 +5118,10 @@
         const h = Number(element.h || 12);
         g.appendChild(svgEl("line", { x1: -12, y1: h / 2, x2: w + 12, y2: h / 2, class: "symbol-line", stroke }));
         g.appendChild(svgEl("ellipse", { cx: w / 2, cy: h / 2, rx: w / 2, ry: h / 2, class: "symbol-fill", stroke }));
-        g.appendChild(textEl(element.label || "C", w / 2, h / 2, { fontSize: 2.4, anchor: "middle" }));
+        const tag = element.cableTag || element.label || "C";
+        const detail = [element.coreNo, element.coreColor, element.gauge].filter(Boolean).join("/");
+        g.appendChild(textEl(tag, w / 2, detail ? h / 2 - 1.5 : h / 2, { fontSize: 2.4, anchor: "middle" }));
+        if (detail) g.appendChild(textEl(detail, w / 2, h / 2 + 2, { fontSize: 1.7, anchor: "middle" }));
       }
 
       // ケーブル束(束線+結束マーク)の描画。
@@ -8992,7 +9047,12 @@
             </select>
             ${element.type === "rect" ? `
             <label>枠線破線（例: 1.4 1.2）</label>
-            <input data-bind="dash" type="text" value="${escapeAttr(element.dash || "")}" placeholder="実線のまま=空欄">` : ""}
+            <input data-bind="dash" type="text" value="${escapeAttr(element.dash || "")}" placeholder="実線のまま=空欄">
+            ${element.panelRef ? `<details class="attr-panel" open><summary>盤フットプリント</summary>
+              <label>回路図タグ参照</label><input data-bind="panelRef" value="${escapeAttr(element.panelRef)}">
+              <div class="row"><div><label>メーカー</label><input data-bind="manufacturer" value="${escapeAttr(element.manufacturer || "")}"></div><div><label>品番</label><input data-bind="catalog" value="${escapeAttr(element.catalog || "")}"></div></div>
+              <label>説明</label><input data-bind="description" value="${escapeAttr(element.description || "")}">
+            </details>` : ""}` : ""}
           `;
         }
         if (element.type === "dimension") {
@@ -9566,6 +9626,20 @@
         if (element.type === "ground") {
           add(w / 2, 0);
           return anchors;
+        }
+        if (element.type === "cableMarker") {
+          return `
+            <label>ケーブルタグ</label><input data-bind="cableTag" type="text" value="${escapeAttr(element.cableTag || element.label || "")}">
+            <div class="row">
+              <div><label>芯番号</label><input data-bind="coreNo" type="text" value="${escapeAttr(element.coreNo || "")}"></div>
+              <div><label>芯色</label><input data-bind="coreColor" type="text" value="${escapeAttr(element.coreColor || "")}"></div>
+            </div>
+            <div class="row">
+              <div><label>線径</label><input data-bind="gauge" type="text" value="${escapeAttr(element.gauge || "")}"></div>
+              <div><label>状態</label><select data-bind="coreStatus"><option value="used"${(element.coreStatus || "used") === "used" ? " selected" : ""}>使用</option><option value="spare"${element.coreStatus === "spare" ? " selected" : ""}>予備</option></select></div>
+            </div>
+            <label><input data-bind="shielded" type="checkbox" ${element.shielded ? "checked" : ""} style="width:auto;min-height:auto"> シールド</label>
+          `;
         }
         if (element.type === "deviceBox") {
           const pins = Math.max(0, Number(element.pins || 4));
@@ -13396,8 +13470,12 @@
             <td>${escapeHtml(row.page)}</td><td>${escapeHtml(row.installation)}</td><td>${escapeHtml(row.location)}</td>
           </tr>`).join("")}</tbody></table>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="panelPullBtn">盤→回路図</button>
+            <button type="button" id="panelSyncBtn">回路図→盤</button>
             <button type="button" id="panelInsertBtn" class="primary">挿入</button>
           </div>`);
+        qs("#panelSyncBtn").addEventListener("click", () => { closeDialog(); syncPanelFootprints("toPanel"); });
+        qs("#panelPullBtn").addEventListener("click", () => { closeDialog(); syncPanelFootprints("toSchematic"); });
         qs("#panelInsertBtn").addEventListener("click", () => {
           const picked = qsa("[data-panel-pick]", qs("#dialogBody"))
             .filter(input => input.checked)
@@ -13426,6 +13504,188 @@
         closeDialog();
         commitHistory(created.length + "個のフットプリントを挿入しました。");
         render();
+      }
+
+      // ===== ケーブル・芯線管理 =====
+      function cableCoreRows() {
+        const stored = Array.isArray(state.cables) ? state.cables : [];
+        const markers = [];
+        state.pages.forEach(page => page.elements.filter(item => item.type === "cableMarker").forEach(element => {
+          markers.push({
+            tag: element.cableTag || element.label || "",
+            core: element.coreNo || "", color: element.coreColor || "", gauge: element.gauge || "",
+            status: element.coreStatus || "used", shielded: !!element.shielded,
+            from: element.from || "", to: element.to || ""
+          });
+        }));
+        const keyed = new Map();
+        [...stored, ...markers].forEach(row => keyed.set([row.tag, row.core].join("\u0000"), { ...row }));
+        return [...keyed.values()];
+      }
+
+      function showCableManager() {
+        const rows = cableCoreRows();
+        const rowHtml = (row = {}) => `<tr data-cable-row>
+          <td><input data-cable-field="tag" value="${escapeAttr(row.tag || "")}"></td>
+          <td><input data-cable-field="core" value="${escapeAttr(row.core || "")}" style="width:58px"></td>
+          <td><input data-cable-field="color" value="${escapeAttr(row.color || "")}" style="width:64px"></td>
+          <td><input data-cable-field="gauge" value="${escapeAttr(row.gauge || "")}" style="width:70px"></td>
+          <td><select data-cable-field="status"><option value="used"${row.status !== "spare" ? " selected" : ""}>使用</option><option value="spare"${row.status === "spare" ? " selected" : ""}>予備</option></select></td>
+          <td><input data-cable-field="from" value="${escapeAttr(row.from || "")}"></td>
+          <td><input data-cable-field="to" value="${escapeAttr(row.to || "")}"></td>
+          <td><input data-cable-field="shielded" type="checkbox" ${row.shielded ? "checked" : ""} style="width:auto;min-height:auto"></td>
+          <td><button type="button" data-cable-delete>削除</button></td></tr>`;
+        openDialog("ケーブル・芯線エディタ", `
+          <p class="muted">ケーブルタグ+芯番号を一意に管理します。予備芯、色、線径、シールド、From/Toを帳票用データとして保存します。</p>
+          <table class="report-table"><thead><tr><th>ケーブル</th><th>芯</th><th>色</th><th>線径</th><th>状態</th><th>From</th><th>To</th><th>シールド</th><th></th></tr></thead>
+          <tbody id="cableRows">${rows.map(rowHtml).join("")}</tbody></table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="addCableCoreBtn">芯追加</button><button id="applyCableBtn" class="primary">適用</button></div>`);
+        const bindDelete = () => qsa("[data-cable-delete]", qs("#dialogBody")).forEach(button => button.onclick = () => button.closest("tr").remove());
+        bindDelete();
+        qs("#addCableCoreBtn").onclick = () => { qs("#cableRows").insertAdjacentHTML("beforeend", rowHtml()); bindDelete(); };
+        qs("#applyCableBtn").onclick = () => {
+          const seen = new Set();
+          const rows = qsa("[data-cable-row]", qs("#dialogBody")).map(row => {
+            const value = key => qs(`[data-cable-field="${key}"]`, row);
+            return {
+              tag: value("tag").value.trim(), core: value("core").value.trim(),
+              color: value("color").value.trim(), gauge: value("gauge").value.trim(),
+              status: value("status").value, from: value("from").value.trim(), to: value("to").value.trim(),
+              shielded: value("shielded").checked
+            };
+          }).filter(row => row.tag && !seen.has(row.tag + "\u0000" + row.core) && seen.add(row.tag + "\u0000" + row.core));
+          state.cables = rows;
+          state.pages.forEach(page => page.elements.filter(item => item.type === "cableMarker").forEach(marker => {
+            const match = rows.find(row => row.tag === (marker.cableTag || marker.label) && (!marker.coreNo || row.core === marker.coreNo));
+            if (!match) return;
+            Object.assign(marker, { cableTag: match.tag, coreNo: match.core, coreColor: match.color, gauge: match.gauge, coreStatus: match.status, shielded: match.shielded, from: match.from, to: match.to });
+          }));
+          closeDialog(); commitHistory("ケーブル・芯線情報を更新しました。"); render();
+        };
+      }
+
+      // ===== 設置場所・接続ビュー =====
+      function showLocationView() {
+        const rows = [];
+        state.pages.forEach(page => page.elements.forEach(element => {
+          if (!supportsElectricalAttributes(element)) return;
+          const tag = componentTag(element);
+          if (!tag) return;
+          const anchors = elementConnectionAnchors(element);
+          const connected = [];
+          page.elements.filter(item => item.type === "wire").forEach(wire => {
+            const ends = [wire.points?.[0], wire.points?.[wire.points.length - 1]].filter(Boolean);
+            if (anchors.some(anchor => ends.some(point => Math.hypot(anchor.x - point[0], anchor.y - point[1]) < .7))) {
+              connected.push(wire.wireNo || "未採番");
+            }
+          });
+          rows.push({ page, element, tag, installation: element.installation || page.title?.installation || "未設定", location: element.location || page.title?.location || "未設定", wires: [...new Set(connected)].join(", ") });
+        }));
+        rows.sort((a, b) => (a.installation + a.location + a.tag).localeCompare(b.installation + b.location + b.tag, "ja"));
+        openDialog("設置場所・接続ビュー", rows.length ? `
+          <table class="report-table"><thead><tr><th>設備</th><th>場所</th><th>タグ</th><th>種別</th><th>ページ</th><th>接続線番</th><th></th></tr></thead><tbody>
+          ${rows.map((row, index) => `<tr><td>${escapeHtml(row.installation)}</td><td>${escapeHtml(row.location)}</td><td>${escapeHtml(row.tag)}</td><td>${escapeHtml(paletteLabel(row.element.type))}</td><td>${escapeHtml(row.page.name)}</td><td>${escapeHtml(row.wires)}</td><td><button data-location-jump="${index}">表示</button></td></tr>`).join("")}
+          </tbody></table>` : '<p class="muted">タグ付き部品がありません。</p>');
+        qsa("[data-location-jump]", qs("#dialogBody")).forEach(button => button.onclick = () => {
+          const row = rows[Number(button.dataset.locationJump)];
+          state.activePageId = row.page.id; selectSingle(row.element.id); closeDialog(); render();
+        });
+      }
+
+      // ===== PLCモジュールDB =====
+      function showPlcModuleManager() {
+        const rows = state.plcModules || [];
+        const rowHtml = (item = {}) => `<tr data-plc-db-row>
+          <td><input data-plc-db="label" value="${escapeAttr(item.label || "")}"></td>
+          <td><input data-plc-db="manufacturer" value="${escapeAttr(item.manufacturer || "")}"></td>
+          <td><input data-plc-db="catalog" value="${escapeAttr(item.catalog || "")}"></td>
+          <td><select data-plc-db="direction"><option value="input"${item.direction !== "output" ? " selected" : ""}>入力</option><option value="output"${item.direction === "output" ? " selected" : ""}>出力</option></select></td>
+          <td><input data-plc-db="start" value="${escapeAttr(item.start || "X000")}" style="width:72px"></td>
+          <td><input data-plc-db="count" type="number" min="1" max="64" value="${Number(item.count || 16)}" style="width:60px"></td>
+          <td><input data-plc-db="powerPins" value="${escapeAttr(item.powerPins || "")}" placeholder="24V,0V"></td>
+          <td><button data-plc-db-delete>削除</button></td></tr>`;
+        openDialog("PLCモジュールDB", `<table class="report-table"><thead><tr><th>名称</th><th>メーカー</th><th>型式</th><th>I/O</th><th>開始</th><th>点数</th><th>電源端子</th><th></th></tr></thead><tbody id="plcDbRows">${rows.map(rowHtml).join("")}</tbody></table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="plcDbAdd">追加</button><button id="plcDbApply" class="primary">適用</button></div>`);
+        const bind = () => qsa("[data-plc-db-delete]", qs("#dialogBody")).forEach(button => button.onclick = () => button.closest("tr").remove());
+        bind(); qs("#plcDbAdd").onclick = () => { qs("#plcDbRows").insertAdjacentHTML("beforeend", rowHtml()); bind(); };
+        qs("#plcDbApply").onclick = () => {
+          state.plcModules = qsa("[data-plc-db-row]", qs("#dialogBody")).map(row => {
+            const v = key => qs(`[data-plc-db="${key}"]`, row).value;
+            return { label: v("label").trim(), manufacturer: v("manufacturer").trim(), catalog: v("catalog").trim(), direction: v("direction"), unit: v("label").trim(), start: v("start").trim(), count: Math.max(1, Number(v("count") || 16)), powerPins: v("powerPins").trim() };
+          }).filter(item => item.label);
+          closeDialog(); commitHistory("PLCモジュールDBを更新しました。"); render();
+        };
+      }
+
+      // ===== DINレール・配線ダクト =====
+      function showDinRailDialog() {
+        openDialog("DINレール／配線ダクト", `<div class="row"><div><label>種類</label><select id="dinKind"><option value="rail">DINレール</option><option value="duct">配線ダクト</option></select></div><div><label>長さ mm</label><input id="dinLength" type="number" min="10" step="2.5" value="150"></div></div>
+          <div class="row"><div><label>X</label><input id="dinX" type="number" step="2.5" value="30"></div><div><label>Y</label><input id="dinY" type="number" step="2.5" value="60"></div></div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="dinBuild" class="primary">生成</button></div>`);
+        qs("#dinBuild").onclick = () => {
+          const page = currentPage(); if (!page) return;
+          const kind = qs("#dinKind").value, length = Math.max(10, Number(qs("#dinLength").value || 150));
+          const x = Number(qs("#dinX").value || 30), y = Number(qs("#dinY").value || 60);
+          const created = [{ ...defaultElement("rect", x, y), w: length, h: kind === "rail" ? 7.5 : 20, label: kind === "rail" ? "DINレール" : "配線ダクト", dash: kind === "duct" ? "3 2" : "", layer: "layout", accessoryType: kind }];
+          if (kind === "rail") for (let at = 5; at < length; at += 10) created.push({ ...defaultElement("circle", x + at - 1, y + 2.75), w: 2, h: 2, label: "", layer: "layout" });
+          page.elements.push(...created); setSelection(created.map(item => item.id)); closeDialog(); commitHistory((kind === "rail" ? "DINレール" : "配線ダクト") + "を生成しました。"); render();
+        };
+      }
+
+      // ===== ユーザー回路 =====
+      function saveSelectedAsUserCircuit() {
+        const selected = selectedElements();
+        if (!selected.length) { setStatus("登録する回路要素を選択してください。"); return; }
+        const name = prompt("ユーザー回路名", "回路" + ((state.userCircuits || []).length + 1));
+        if (!name) return;
+        const box = unionBounds(selected.map(elementBounds).filter(Boolean));
+        const elements = deepClone(selected);
+        elements.forEach(item => translateElement(item, -box.x, -box.y));
+        state.userCircuits.push({ id: uid("circuit"), name, w: box.w, h: box.h, elements });
+        commitHistory("ユーザー回路「" + name + "」を登録しました。"); setStatus("ユーザー回路を登録しました。");
+      }
+
+      function showUserCircuitInsertDialog() {
+        const circuits = state.userCircuits || [];
+        if (!circuits.length) { openDialog("ユーザー回路", '<p class="muted">登録済みのユーザー回路がありません。</p>'); return; }
+        openDialog("ユーザー回路を挿入", `<label>回路</label><select id="userCircuitPick">${circuits.map((item, index) => `<option value="${index}">${escapeHtml(item.name)}</option>`).join("")}</select>
+          <div class="row"><div><label>X</label><input id="userCircuitX" type="number" step="2.5" value="30"></div><div><label>Y</label><input id="userCircuitY" type="number" step="2.5" value="40"></div></div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="userCircuitDelete">削除</button><button id="userCircuitInsert" class="primary">挿入</button></div>`);
+        qs("#userCircuitDelete").onclick = () => { circuits.splice(Number(qs("#userCircuitPick").value), 1); commitHistory("ユーザー回路を削除しました。"); showUserCircuitInsertDialog(); };
+        qs("#userCircuitInsert").onclick = () => {
+          const source = circuits[Number(qs("#userCircuitPick").value)], page = currentPage(); if (!source || !page) return;
+          const x = Number(qs("#userCircuitX").value || 0), y = Number(qs("#userCircuitY").value || 0);
+          const idMap = new Map(), created = deepClone(source.elements);
+          created.forEach(item => { const old = item.id; item.id = uid("el"); idMap.set(old, item.id); translateElement(item, x, y); });
+          page.elements.push(...created); setSelection(created.map(item => item.id)); closeDialog(); commitHistory("ユーザー回路「" + source.name + "」を挿入しました。"); render();
+        };
+      }
+
+      function syncPanelFootprints(direction = "toPanel") {
+        let count = 0;
+        state.pages.forEach(page => page.elements.filter(item => item.type === "rect" && item.panelRef).forEach(footprint => {
+          let source = null;
+          state.pages.some(candidate => (source = candidate.elements.find(item => item.id !== footprint.id && componentTag(item) === footprint.panelRef)) || false);
+          if (!source) return;
+          if (direction === "toSchematic") {
+            source.manufacturer = footprint.manufacturer || "";
+            source.catalog = footprint.catalog || "";
+            source.description = footprint.description || "";
+            source.installation = footprint.installation || source.installation || "";
+            source.location = footprint.location || source.location || "";
+          } else {
+            footprint.label = componentTag(source);
+            footprint.panelRef = componentTag(source);
+            footprint.manufacturer = source.manufacturer || "";
+            footprint.catalog = source.catalog || "";
+            footprint.description = source.description || "";
+            footprint.installation = source.installation || "";
+            footprint.location = source.location || "";
+          }
+          count += 1;
+        }));
+        if (!count) { setStatus("同期対象のフットプリントがありません。"); return; }
+        commitHistory(count + "個の盤フットプリントを" + (direction === "toSchematic" ? "回路図へ反映しました。" : "同期しました。")); render();
       }
 
       // ===== 標準パック外部化 =====
@@ -15761,7 +16021,7 @@
         }
         const html = `
           <table class="report-table">
-            <thead><tr><th>ページ</th><th>種別</th><th>名称</th><th>端子数</th><th>開始</th><th>方向</th><th>形状</th><th>接頭辞</th><th>ジャンパ</th></tr></thead>
+            <thead><tr><th>ページ</th><th>種別</th><th>名称</th><th>端子数</th><th>開始</th><th>方向</th><th>形状</th><th>接頭辞</th><th>端子順</th><th>ジャンパ</th><th>予備</th><th>アクセサリ</th><th>区分</th></tr></thead>
             <tbody>
               ${rows.map(({ page, element }) => `
                 <tr data-terminal-row="${element.id}">
@@ -15773,7 +16033,11 @@
                   <td><select data-terminal-field="orientation"><option value="horizontal"${(element.orientation || "horizontal") === "horizontal" ? " selected" : ""}>横</option><option value="vertical"${element.orientation === "vertical" ? " selected" : ""}>縦</option></select></td>
                   <td><select data-terminal-field="terminalShape"><option value="circle"${(element.terminalShape || "circle") === "circle" ? " selected" : ""}>丸</option><option value="square"${element.terminalShape === "square" ? " selected" : ""}>角</option></select></td>
                   <td><input data-terminal-field="prefix" value="${escapeAttr(element.prefix || "")}"></td>
+                  <td><input data-terminal-field="terminalLabels" value="${escapeAttr(String(element.terminalLabels || "").replace(/\r?\n/g, ","))}" placeholder="1,2,3"></td>
                   <td><input data-terminal-field="jumpers" value="${escapeAttr(element.jumpers || "")}" placeholder="1-2;3-5"></td>
+                  <td><input data-terminal-field="spares" value="${escapeAttr(element.spares || "")}" placeholder="7,8"></td>
+                  <td><input data-terminal-field="accessories" value="${escapeAttr(element.accessories || "")}" placeholder="エンド板"></td>
+                  <td><select data-terminal-field="connectionSide"><option value="both"${(element.connectionSide || "both") === "both" ? " selected" : ""}>両側</option><option value="internal"${element.connectionSide === "internal" ? " selected" : ""}>盤内</option><option value="external"${element.connectionSide === "external" ? " selected" : ""}>盤外</option></select></td>
                 </tr>
               `).join("")}
             </tbody>
@@ -15795,7 +16059,7 @@
           const beforeOrientation = element.orientation || "horizontal";
           qsa("[data-terminal-field]", row).forEach(input => {
             const key = input.dataset.terminalField;
-            element[key] = input.type === "number" ? Number(input.value || 0) : input.value;
+            element[key] = key === "terminalLabels" ? input.value.split(",").map(value => value.trim()).join("\n") : (input.type === "number" ? Number(input.value || 0) : input.value);
           });
           if (Number(element.count || 1) !== beforeCount || (element.orientation || "horizontal") !== beforeOrientation) {
             resizeTerminalElementForOrientation(element);
@@ -19219,8 +19483,14 @@
           motorCircuit: showMotorCircuitDialog,
           plcUnit: showPlcUnitBuilder,
           panelLink: showPanelLayoutLinkDialog,
+          dinRail: showDinRailDialog,
+          insertUserCircuit: showUserCircuitInsertDialog,
           projects: showProjectManager,
           terminalEditor: showTerminalEditor,
+          cableManager: showCableManager,
+          locationView: showLocationView,
+          plcModuleManager: showPlcModuleManager,
+          saveUserCircuit: saveSelectedAsUserCircuit,
           tagRules: showComponentTagRulesDialog,
           wireTypeManager: showWireTypeManager,
           layerManager: showLayerManager,
@@ -20336,6 +20606,10 @@
         elementConnectionAnchors,
         primaryConnectionPoint,
         snapLineEndpoint,
+        cableCoreRows,
+        syncPanelFootprints,
+        avoidWireNumberCollision,
+        saveSelectedAsUserCircuit,
         defaultElement,
         SYMBOL_GEO,
         geoPrims,
