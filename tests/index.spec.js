@@ -20,6 +20,72 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator("svg#canvas")).toBeVisible();
 });
 
+test("文字・端子名の連続入力中にフォーカスを維持する", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4,
+    activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [
+        { id: "text1", type: "text", x: 20, y: 20, w: 40, h: 10, text: "", fontSize: 3.5, layer: "notes" },
+        { id: "tb1", type: "terminalStrip", x: 20, y: 50, w: 30, h: 12, count: 2, terminalLabels: "", layer: "symbols" }
+      ]
+    }]
+  }));
+
+  await page.locator('[data-id="text1"]').click();
+  const text = page.locator('[data-bind="text"]');
+  await text.fill("ABC");
+  await expect(text).toBeFocused();
+  await expect(text).toHaveValue("ABC");
+
+  await page.locator('[data-id="tb1"]').click();
+  const terminals = page.locator('[data-bind="terminalLabels"]');
+  await terminals.fill("X1\nX2");
+  await expect(terminals).toBeFocused();
+  await expect(terminals).toHaveValue("X1\nX2");
+});
+
+test("Y座標・文字配置・線の接続点・ページ設定を編集できる", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4,
+    activePageId: "p1",
+    settings: { showPageName: false },
+    pages: [
+      {
+        id: "p1", name: "PAGE ONE", size: "A4", orientation: "portrait", frameVariant: "ladder", title: {},
+        elements: [
+          { id: "text1", type: "text", x: 20, y: 100, w: 40, h: 20, text: "ABC", fontSize: 3.5, layer: "notes" },
+          { id: "line1", type: "line", points: [[20, 30], [50, 30]], label: "", layer: "layout" }
+        ]
+      },
+      { id: "p2", name: "PAGE TWO", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: [] }
+    ]
+  }));
+
+  await expect(page.locator("svg#canvas").getByText("PAGE ONE")).toHaveCount(0);
+  await page.locator('[data-id="text1"]').click();
+  const y = page.locator('[data-bind="y"]');
+  const before = await page.evaluate(() => window.__edsTest.state.pages[0].elements[0].y);
+  await y.fill("250");
+  await y.press("Enter");
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements[0].y)).toBeLessThan(before);
+  await page.locator('[data-bind="align"]').selectOption("end");
+  await page.locator('[data-bind="verticalAlign"]').selectOption("bottom");
+  await expect(page.locator('[data-id="text1"] text')).toHaveAttribute("text-anchor", "end");
+
+  await page.locator('[data-id="line1"] line').click({ force: true });
+  await page.locator('[data-bind="showStartConnection"]').check();
+  await page.locator('[data-bind="showEndConnection"]').check();
+  await expect(page.locator('[data-id="line1"] circle')).toHaveCount(2);
+
+  await page.locator("#pageOrder").fill("2");
+  await page.locator("#pageOrder").press("Enter");
+  expect(await page.evaluate(() => window.__edsTest.state.pages.map(item => item.id))).toEqual(["p2", "p1"]);
+  await page.locator("#showPageNameToggle").check();
+  await expect(page.locator("svg#canvas").getByText("PAGE ONE")).toHaveCount(1);
+});
+
 test.afterEach(async ({ page }) => {
   const issues = runtimeIssues.get(page);
   expect(issues?.consoleErrors ?? [], "console errorが発生していないこと").toEqual([]);

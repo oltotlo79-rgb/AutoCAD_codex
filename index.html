@@ -1153,6 +1153,7 @@
         <select id="drawingStandard"></select>
         <label for="pageName">ページ名</label>
         <input id="pageName" type="text">
+        <label><input id="showPageNameToggle" type="checkbox" style="width:auto;min-height:auto"> 図面上部にページ名を表示</label>
         <div class="row">
           <div>
             <label for="paperSize">用紙</label>
@@ -1227,6 +1228,8 @@
             <button type="button" id="movePagePrevBtn">前へ</button>
             <button type="button" id="movePageNextBtn">後へ</button>
           </div>
+          <label for="pageOrder">ページ順</label>
+          <input id="pageOrder" type="number" min="1" step="1">
           <label for="templateMenu">テンプレートからページ追加</label>
           <select id="templateMenu">
             <option value="">選択してください…</option>
@@ -2126,7 +2129,8 @@
           currentWireType: "control",
           standard: "general",
           currentLayer: "symbols",
-          outputUnderlays: false
+          outputUnderlays: false,
+          showPageName: false
         },
         layers: [
           { id: "frame", label: "図枠", visible: true, locked: true, color: "#141a20" },
@@ -2479,6 +2483,7 @@
         if (!state.settings.componentTagFormat) state.settings.componentTagFormat = "%F%N";
         if (!state.settings.componentTagPrefixes || typeof state.settings.componentTagPrefixes !== "object") state.settings.componentTagPrefixes = {};
         if (typeof state.settings.outputUnderlays !== "boolean") state.settings.outputUnderlays = false;
+        if (typeof state.settings.showPageName !== "boolean") state.settings.showPageName = false;
         state.project = {
           title: "電気図面",
           drawingNo: "",
@@ -3663,7 +3668,9 @@
         for (let i = 0; i <= 20; i++) {
           frame.appendChild(textEl(String(i).padStart(2, "0"), 25.5, 27 + 9.5 * i, { fontSize: 3, anchor: "middle" }));
         }
-        frame.appendChild(textEl(page.name || "", (L + R) / 2, 22.5, { fontSize: 3.5, anchor: "middle" }));
+        if (state.settings.showPageName === true) {
+          frame.appendChild(textEl(page.name || "", (L + R) / 2, 22.5, { fontSize: 3.5, anchor: "middle" }));
+        }
         const tblTop = B - 49;
         const xrefR = 105.8;
         frameWhiteUnderlay(frame, L, tblTop, R - L, B - tblTop);
@@ -3873,6 +3880,7 @@
           }
         }
         if (drawGeoSymbol(g, element, stroke)) {
+          applyLabelPresentation(g, element);
           drawVisibleAttributes(g, element);
           svg.appendChild(g);
           return;
@@ -3921,8 +3929,32 @@
         if (element.type === "arrow") drawArrow(g, element, stroke);
         if (element.type === "dimension") drawDimension(g, element, stroke);
         if (element.type === "junction") drawJunction(g, element, stroke);
+        applyLabelPresentation(g, element);
         drawVisibleAttributes(g, element);
         svg.appendChild(g);
+      }
+
+      // シンボル固有の既定ラベル位置を基準に、利用者指定の移動量と文字サイズを適用する。
+      function applyLabelPresentation(g, element) {
+        if (!element?.label || element.type === "text" || element.type === "wire" || element.type === "line") return;
+        const matches = Array.from(g.querySelectorAll("text"))
+          .filter(node => node.textContent === String(element.label));
+        if (!matches.length) return;
+        const dx = Number(element.labelDx || 0);
+        const dy = -Number(element.labelDy || 0);
+        const fontSize = Number(element.labelFontSize || 0);
+        matches.forEach(node => {
+          if (dx || dy) {
+            const x = Number(node.getAttribute("x") || 0);
+            const y = Number(node.getAttribute("y") || 0);
+            node.setAttribute("x", String(round(x + dx)));
+            node.setAttribute("y", String(round(y + dy)));
+            node.querySelectorAll("tspan").forEach(tspan => {
+              if (tspan.hasAttribute("x")) tspan.setAttribute("x", String(round(Number(tspan.getAttribute("x") || 0) + dx)));
+            });
+          }
+          if (fontSize > 0) node.setAttribute("font-size", String(fontSize));
+        });
       }
 
       // 電気属性(タグ/説明など)のうち表示ONの行を要素脇へ描画。位置はattrX/attrYで調整可。
@@ -3959,19 +3991,26 @@
 
       // 文字要素の描画(複数行・回転・下線対応)。
       function drawText(g, element) {
-        multilineText(g, element.text || "文字", 0, 0, (element.fontSize || 3.5) * 1.25, {
+        const align = element.align || "start";
+        const verticalAlign = element.verticalAlign || "top";
+        const x = align === "middle" ? Number(element.w || 40) / 2 : (align === "end" ? Number(element.w || 40) : 0);
+        const lineCount = Math.max(1, String(element.text || "").split("\n").length);
+        const textHeight = (lineCount - 1) * (element.fontSize || 3.5) * 1.25;
+        const y = verticalAlign === "middle"
+          ? (Number(element.h || 8) - textHeight) / 2
+          : (verticalAlign === "bottom" ? Number(element.h || 8) - textHeight : 0);
+        multilineText(g, element.text || "文字", x, y, (element.fontSize || 3.5) * 1.25, {
           fontSize: element.fontSize || 3.5,
-          anchor: element.align || "start"
+          anchor: align
         });
         if (element.underline) {
           const size = Number(element.fontSize || 3.5);
           String(element.text || "").split("\n").forEach((line, index) => {
             if (!line.trim()) return;
             const w = line.length * size * 0.62;
-            const y = index * size * 1.25 + size * 0.72;
-            const anchor = element.align || "start";
-            const x0 = anchor === "middle" ? -w / 2 : (anchor === "end" ? -w : 0);
-            g.appendChild(svgEl("line", { x1: x0, y1: y, x2: x0 + w, y2: y, class: "symbol-line", stroke: element.stroke || state.settings.stroke }));
+            const lineY = y + index * size * 1.25 + size * 0.72;
+            const x0 = align === "middle" ? x - w / 2 : (align === "end" ? x - w : x);
+            g.appendChild(svgEl("line", { x1: x0, y1: lineY, x2: x0 + w, y2: lineY, class: "symbol-line", stroke: element.stroke || state.settings.stroke }));
           });
         }
       }
@@ -4181,9 +4220,15 @@
           "stroke-dasharray": element.dash || null
         }));
         }
+        if (element.showStartConnection) {
+          g.appendChild(svgEl("circle", { cx: a[0], cy: a[1], r: 0.75, fill: stroke, stroke: "none" }));
+        }
+        if (element.showEndConnection) {
+          g.appendChild(svgEl("circle", { cx: b[0], cy: b[1], r: 0.75, fill: stroke, stroke: "none" }));
+        }
         if (element.label) {
           const mid = pathMid(a, b);
-          g.appendChild(textEl(element.label, mid.x, mid.y - 3, { fontSize: 2.4, anchor: "middle" }));
+          g.appendChild(textEl(element.label, mid.x + Number(element.labelDx || 0), mid.y - 3 - Number(element.labelDy || 0), { fontSize: Number(element.labelFontSize || 2.4), anchor: "middle" }));
         }
         if ((element.signalRole || "reference") !== "reference") {
           g.appendChild(textEl(signalRoleLabel(element.signalRole), b[0], b[1] + 4.5, { fontSize: 2.1, anchor: "middle" }));
@@ -7903,6 +7948,8 @@
         renderStandardSelect();
         setValue("drawingStandard", state.settings.standard || "general");
         setValue("pageName", page.name);
+        qs("#showPageNameToggle").checked = state.settings.showPageName === true;
+        setValue("pageOrder", state.pages.findIndex(item => item.id === page.id) + 1);
         setValue("paperSize", page.size);
         setValue("paperOrientation", page.orientation);
         setValue("frameVariant", page.frameVariant);
@@ -8209,7 +8256,7 @@
         qsa("[data-bind]", panel).forEach(input => {
           input.addEventListener("change", () => updateSelectedFromInput(input));
           input.addEventListener("input", () => {
-            if (input.tagName === "TEXTAREA" || input.dataset.live === "true") updateSelectedFromInput(input, false);
+            if (input.tagName === "TEXTAREA" || input.type === "text" || input.dataset.live === "true") updateSelectedFromInput(input, false);
           });
         });
         qsa(".swatch", panel).forEach(button => {
@@ -8307,7 +8354,7 @@
         return `
           <div class="row">
             <div><label>X mm</label><input data-bind="x" data-kind="number" type="number" step="0.5" value="${round(element.x || 0)}"></div>
-            <div><label>Y mm</label><input data-bind="y" data-kind="number" type="number" step="0.5" value="${round(element.y || 0)}"></div>
+            <div><label>Y mm（上が＋）</label><input data-bind="y" data-coordinate-y="true" data-kind="number" type="number" step="0.5" value="${round(pageSize(currentPage()).h - Number(element.y || 0))}"></div>
           </div>
           <div class="row">
             <div><label>幅 mm</label><input data-bind="w" data-kind="number" type="number" step="0.5" value="${round(element.w || defaultElement(element.type).w || 20)}"></div>
@@ -8327,7 +8374,7 @@
           return `
             <div class="row">
               <div><label>${label} X</label><input data-bind="p${index}x" data-kind="number" type="number" step="0.5" value="${round(point[0])}"></div>
-              <div><label>${label} Y</label><input data-bind="p${index}y" data-kind="number" type="number" step="0.5" value="${round(point[1])}"></div>
+              <div><label>${label} Y（上が＋）</label><input data-bind="p${index}y" data-coordinate-y="true" data-kind="number" type="number" step="0.5" value="${round(pageSize(currentPage()).h - point[1])}"></div>
             </div>
           `;
         }).join("");
@@ -8345,6 +8392,18 @@
             <textarea data-bind="text">${escapeHtml(element.text || "")}</textarea>
             <label>文字サイズ mm</label>
             <input data-bind="fontSize" data-kind="number" type="number" step="0.2" value="${round(element.fontSize || 3.5)}">
+            <label>横位置</label>
+            <select data-bind="align">
+              <option value="start"${(element.align || "start") === "start" ? " selected" : ""}>左</option>
+              <option value="middle"${element.align === "middle" ? " selected" : ""}>中央</option>
+              <option value="end"${element.align === "end" ? " selected" : ""}>右</option>
+            </select>
+            <label>縦位置</label>
+            <select data-bind="verticalAlign">
+              <option value="top"${(element.verticalAlign || "top") === "top" ? " selected" : ""}>上</option>
+              <option value="middle"${element.verticalAlign === "middle" ? " selected" : ""}>中央</option>
+              <option value="bottom"${element.verticalAlign === "bottom" ? " selected" : ""}>下</option>
+            </select>
             <label><input data-bind="underline" type="checkbox" ${element.underline ? "checked" : ""} style="width:auto;min-height:auto"> 下線</label>
           `;
         }
@@ -8375,11 +8434,25 @@
           return `
             <label>線ラベル</label>
             <input data-bind="label" type="text" value="${escapeAttr(element.label || "")}">
+            <div class="row">
+              <div><label>ラベル位置 X</label><input data-bind="labelDx" data-kind="number" type="number" step="0.5" value="${round(element.labelDx || 0)}"></div>
+              <div><label>ラベル位置 Y（上が＋）</label><input data-bind="labelDy" data-kind="number" type="number" step="0.5" value="${round(element.labelDy || 0)}"></div>
+            </div>
+            <label>ラベル文字サイズ mm</label>
+            <input data-bind="labelFontSize" data-kind="number" type="number" min="0.5" step="0.2" value="${round(element.labelFontSize || 2.4)}">
+            <label><input data-bind="showStartConnection" type="checkbox" ${element.showStartConnection ? "checked" : ""} style="width:auto;min-height:auto"> 始点に接続点を表示</label>
+            <label><input data-bind="showEndConnection" type="checkbox" ${element.showEndConnection ? "checked" : ""} style="width:auto;min-height:auto"> 終点に接続点を表示</label>
           `;
         }
         return `
           <label>ラベル</label>
           <input data-bind="label" type="text" value="${escapeAttr(element.label || "")}">
+          <div class="row">
+            <div><label>ラベル位置 X</label><input data-bind="labelDx" data-kind="number" type="number" step="0.5" value="${round(element.labelDx || 0)}"></div>
+            <div><label>ラベル位置 Y（上が＋）</label><input data-bind="labelDy" data-kind="number" type="number" step="0.5" value="${round(element.labelDy || 0)}"></div>
+          </div>
+          <label>ラベル文字サイズ mm</label>
+          <input data-bind="labelFontSize" data-kind="number" type="number" min="0.5" step="0.2" value="${round(element.labelFontSize || 2.2)}">
         `;
       }
 
@@ -8940,6 +9013,7 @@
         if (!element) return;
         const key = input.dataset.bind;
         let value = input.type === "checkbox" ? input.checked : (input.dataset.kind === "number" ? Number(input.value) : input.value);
+        if (input.dataset.coordinateY === "true") value = pageSize(currentPage()).h - value;
         const pointMatch = key.match(/^p(\d+)(x|y)$/);
         // 形状・向き・デザイン等の切替で要素寸法が変わる可能性のあるキー。
         // 切替の前後で第1接続ピンの絶対位置を保存し、寸法変更によるピンのズレを常に打ち消す。
@@ -8998,7 +9072,7 @@
           }
         }
         if (save) commitHistory("要素を更新しました。");
-        render();
+        render(save ? {} : { light: true });
       }
 
       // 接点の向き変更時にw/hを入れ替える(旧経路互換)。
@@ -19105,6 +19179,24 @@
         qs("#deletePageBtn").addEventListener("click", deletePage);
         qs("#movePagePrevBtn").addEventListener("click", () => movePage(-1));
         qs("#movePageNextBtn").addEventListener("click", () => movePage(1));
+        qs("#pageOrder").addEventListener("change", event => {
+          const page = currentPage();
+          const from = state.pages.findIndex(item => item.id === page?.id);
+          const to = Math.max(0, Math.min(state.pages.length - 1, Math.floor(Number(event.target.value || 1)) - 1));
+          if (from < 0 || from === to) {
+            setValue("pageOrder", from + 1);
+            return;
+          }
+          state.pages.splice(to, 0, state.pages.splice(from, 1)[0]);
+          syncPageTotals();
+          commitHistory("ページ順を変更しました。");
+          render();
+        });
+        qs("#showPageNameToggle").addEventListener("change", event => {
+          state.settings.showPageName = event.target.checked;
+          commitHistory("ページ名の図面表示設定を変更しました。");
+          render();
+        });
         qsa("[data-tool]").forEach(button => {
           button.addEventListener("click", () => setActiveTool(button.dataset.tool));
         });
@@ -19436,6 +19528,17 @@
             // 配線: Shift=折れ向き反転、スペース=L字/コの字(Z)巡回(onKeyDown側でbendCycle更新)
             dragState.lastPoint = [point.x, point.y];
             rebuildDrawingWire(element, dragState, event.shiftKey === true);
+          } else if (element.type === "line") {
+            const start = element.points[0];
+            const dx = point.x - start[0];
+            const dy = point.y - start[1];
+            const length = Math.hypot(dx, dy);
+            const angle = Math.atan2(dy, dx);
+            const snappedAngle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+            element.points[element.points.length - 1] = [
+              round(start[0] + length * Math.cos(snappedAngle)),
+              round(start[1] + length * Math.sin(snappedAngle))
+            ];
           } else {
             element.points[element.points.length - 1] = [point.x, point.y];
           }
