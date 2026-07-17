@@ -5897,6 +5897,26 @@
             { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // 見本PDFの切替スイッチ＋「切」線表示＋「入」箱表示を一体化した配置用シンボル。
+        // 電気接続ピンは左側10mm区間のスイッチ本体に保持し、右側表示は注記として描く。
+        selectorSwitchOnOff: {
+          w: 30, h: 8,
+          anchors: [[0, 3.2], [10, 3.2]],
+          prims: [
+            { t: "line", p: [0, 3.2, 2.4, 3.2] },
+            { t: "line", p: [7.05, 3.2, 10, 3.2] },
+            { t: "circle", p: [3.0, 3.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.45, 3.2, 0.6], fill: "white" },
+            { t: "pline", pts: [[3.6, 3.2], [4.2, 3.2], [4.2, 1.95]] },
+            { t: "pline", pts: [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]] },
+            { t: "line", p: [17, 0.2, 17, 6.2] },
+            { t: "text", p: [17, -1.2], size: 2, anchor: "middle", value: "切" },
+            { t: "rect", p: [26, 2.1, 2, 2.2] },
+            { t: "line", p: [27, 0.2, 27, 6.2] },
+            { t: "text", p: [27, -1.2], size: 2, anchor: "middle", value: "入" },
+            { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         limitSwitch: {
           w: 10, h: 4.6,
           anchors: [[0, 2.8], [10, 2.8]],
@@ -7438,6 +7458,7 @@
             if (variant === "palm") return "pushButtonPalm";
             return "pushButton";
           case "selectorSwitch": {
+            if (variant === "onOff") return "selectorSwitchOnOff";
             if (variant === "three") return "selectorSwitch3";
             if (variant === "key") return "selectorSwitchKey";
             if (variant === "jis") return "selectorSwitchJis";
@@ -8509,7 +8530,7 @@
         thermalRelay: [["standard", "○✕○（設備標準）"], ["box", "箱形（内部⊓）"]],
         inductor: [["standard", "コブ3個"], ["core", "鉄心入り（上線2本）"], ["box", "箱形（IEC）"]],
         currentTransformer: [["standard", "円（CT）"], ["zct", "二重円（ZCT）"], ["coil", "貫通線＋コブ2（旧JIS）"]],
-        selectorSwitch: [["standard", "2位置（設備標準）"], ["jis", "2位置（JIS C 0617）"], ["three", "3位置"], ["key", "鍵付き"]],
+        selectorSwitch: [["standard", "2位置（設備標準）"], ["onOff", "入・切表示付き（見本形）"], ["jis", "2位置（JIS C 0617）"], ["three", "3位置"], ["key", "鍵付き"]],
         logicGate: [["and", "AND（&）"], ["or", "OR（≥1）"], ["not", "NOT（1＋否定丸）"]],
         limitSwitch: [["standard", "箱形アクチュエータ（NO）"], ["nc", "箱形・下側（NC/オーバーラン）"], ["roller", "ローラーレバー（NO）"], ["rollerNc", "ローラーレバー（NC）"]],
         transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "二巻線円形（JIS）"], ["circlesCore", "二巻線円形＋鉄心（JIS）"]],

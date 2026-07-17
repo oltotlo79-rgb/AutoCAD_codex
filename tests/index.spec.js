@@ -974,6 +974,49 @@ test("CP・切替スイッチ・入切表示は見本PDFの実測形状を共有
   expect(geometry.linkedCpStemCount).toBe(1);
 });
 
+test("切替スイッチは入・切表示付き見本形を単体で作図できる", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4,
+    activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [{
+        ...window.__edsTest.defaultElement("selectorSwitch", 30, 30),
+        id: "selector-onoff",
+        symbolVariant: "onOff",
+        w: 30,
+        h: 8,
+        label: "SS1"
+      }]
+    }]
+  }));
+  await page.evaluate(() => window.__edsTest.selectElement("selector-onoff"));
+
+  const variantSelect = page.locator('[data-bind="symbolVariant"]');
+  await expect(variantSelect.locator('option[value="onOff"]')).toHaveCount(1);
+  await expect(page.locator('[data-id="selector-onoff"] text').filter({ hasText: "切" })).toHaveCount(1);
+  await expect(page.locator('[data-id="selector-onoff"] text').filter({ hasText: "入" })).toHaveCount(1);
+
+  const result = await page.evaluate(() => {
+    const geo = window.__edsTest.SYMBOL_GEO.selectorSwitchOnOff;
+    const dxf = window.__edsTest.buildDxf(window.__edsTest.state.pages[0]);
+    return {
+      size: [geo.w, geo.h],
+      anchors: geo.anchors,
+      fixedLabels: geo.prims.filter(prim => prim.t === "text" && prim.value).map(prim => prim.value),
+      dxfHasOn: dxf.includes("入"),
+      dxfHasOff: dxf.includes("切")
+    };
+  });
+  expect(result).toEqual({
+    size: [30, 8],
+    anchors: [[0, 3.2], [10, 3.2]],
+    fixedLabels: ["切", "入"],
+    dxfHasOn: true,
+    dxfHasOff: true
+  });
+});
+
 test("遮断器バリエーションは重複を整理し端子円を線より前面に描く", async ({ page }) => {
   await page.evaluate(() => window.__edsTest.installProjectData({
     schemaVersion: 4,
