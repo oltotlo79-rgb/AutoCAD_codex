@@ -3125,7 +3125,7 @@
           pressureSwitch: `<svg ${common}><path ${stroke} d="M8 18h16M56 18h16"/><circle cx="30" cy="18" r="4" ${thin}/><circle cx="50" cy="18" r="4" ${thin}/><path ${stroke} d="M33 15l16 8"/><path ${thin} d="M38 24v6M31 36c1-7 15-7 16 0z"/></svg>`,
           coil: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><circle cx="40" cy="22" r="15" ${stroke}/></svg>`,
           fuse: `<svg ${common}><path ${stroke} d="M8 22h20M52 22h20"/><rect x="28" y="14" width="24" height="16" ${stroke}/></svg>`,
-          breaker: `<svg ${common}><path ${stroke} d="M4 26h7"/><circle cx="15" cy="26" r="3.5" ${thin}/><circle cx="41" cy="26" r="3.5" ${thin}/><path ${stroke} d="M15 26a13 13 0 0 1 26 0"/><path ${stroke} d="M45 26h4v-8h8v14h6v-6h9"/></svg>`,
+          breaker: `<svg ${common}><path ${stroke} d="M4 26h7M15 26a13 13 0 0 1 26 0M45 26h4v-8h8v14h6v-6h9"/><circle cx="15" cy="26" r="3.5" fill="#fff" ${thin}/><circle cx="41" cy="26" r="3.5" fill="#fff" ${thin}/></svg>`,
           lamp: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><circle cx="40" cy="22" r="13" ${stroke}/><path ${thin} d="M50 12l6-6M50 32l6 6M30 12l-6-6M30 32l-6 6"/></svg>`,
           buzzer: `<svg ${common}><path ${stroke} d="M8 24h14"/><circle cx="25" cy="24" r="3" ${thin}/><path ${stroke} d="M29 16c6-7 16-6 21 1l18-5M29 32c6 7 16 6 21-1l18 5M68 12c5 7 5 17 0 24"/></svg>`,
           solenoidValve: `<svg ${common}><path ${stroke} d="M8 22h16M56 22h16"/><rect x="24" y="12" width="14" height="20" ${stroke}/><path ${thin} d="M38 12l18 10-18 10M56 12v20"/></svg>`,
@@ -5451,6 +5451,38 @@
             { t: "text", p: [9.3, 0.9], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
+        // 円端子と上弧だけの簡略遮断器。トリップ段差を持たず、端子円を弧より後に描いて交差を隠す。
+        breakerArc: {
+          w: 12.5, h: 5,
+          anchors: [[0, 3], [12.5, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 1.9, 3] },
+            { t: "arc", p: [4.75, 3, 2.25, 180, 360] },
+            { t: "circle", p: [2.5, 3, 0.6], fill: "white" },
+            { t: "circle", p: [7, 3, 0.6], fill: "white" },
+            { t: "line", p: [7.6, 3, 12.5, 3] },
+            { t: "text", p: [4.75, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [4.75, -3.4], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [9.3, 0.9], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // 箱形配線用遮断器。斜め開閉線と右側トリップ短線でアーチ形と明確に区別する。
+        breakerMccb: {
+          w: 12.5, h: 5,
+          anchors: [[0, 3], [12.5, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 2, 3] },
+            { t: "rect", p: [2, 0.5, 7.5, 4.5], fill: "white" },
+            { t: "circle", p: [3, 3, 0.45], fill: "white" },
+            { t: "circle", p: [8.5, 3, 0.45], fill: "white" },
+            { t: "line", p: [3.45, 2.8, 8.05, 1.15] },
+            { t: "line", p: [7.55, 3.85, 8.9, 3.85] },
+            { t: "line", p: [9.5, 3, 12.5, 3] },
+            { t: "text", p: [5.75, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5.75, -3.4], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [10.2, 0.9], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
         // サーキットプロテクタ(アーチ形・1極): 見本.pdfの実測形。
         // 円中心間4.7mm・上弧r2.35mm・右側の段差トリップを含み、遮断器と同じ12.5mmピンピッチ。
         // 多極時だけcpLinked=trueとして操作軸の実線ステムを描き、弧頂点同士をmechanicalLinkで結ぶ。
@@ -5459,9 +5491,9 @@
           anchors: [[0, 3], [12.5, 3]],
           prims: [
             { t: "line", p: [0, 3, 1.8, 3] },
+            { t: "arc", p: [4.75, 3, 2.35, 180, 360] },
             { t: "circle", p: [2.4, 3, 0.6], fill: "white" },
             { t: "circle", p: [7.1, 3, 0.6], fill: "white" },
-            { t: "arc", p: [4.75, 3, 2.35, 180, 360] },
             { t: "line", p: [4.75, 0.65, 4.75, 4.2], when: "cpLinked" },
             { t: "line", p: [7.7, 3, 8.4, 3] },
             { t: "pline", pts: [[8.4, 3], [8.4, 2.3], [9.05, 2.3], [9.05, 3.7], [9.7, 3.7], [9.7, 3], [12.5, 3]] },
@@ -6205,11 +6237,11 @@
           w: 4, h: 5,
           anchors: [[2, 0]],
           prims: [
-            { t: "line", p: [2, 0, 2, 1.35] },
-            { t: "circle", p: [2, 3.4, 2.05] },
-            { t: "line", p: [0.8, 2.4, 3.2, 2.4] },
-            { t: "line", p: [1.3, 3.4, 2.7, 3.4] },
-            { t: "line", p: [1.8, 4.4, 2.2, 4.4] },
+            { t: "line", p: [2, 0, 2, 1.1] },
+            { t: "circle", p: [2, 3, 1.9] },
+            { t: "line", p: [0.9, 2.1, 3.1, 2.1] },
+            { t: "line", p: [1.35, 3, 2.65, 3] },
+            { t: "line", p: [1.8, 3.9, 2.2, 3.9] },
             { t: "text", p: [2, 6.9], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -7353,6 +7385,8 @@
           case "breaker": {
             if (variant === "elb") return "breakerElb";
             if (variant === "iec") return "breakerIec";
+            if (variant === "arc") return "breakerArc";
+            if (variant === "mccb") return "breakerMccb";
             if (variant === "cp") return "breakerCp";
             return "breaker";
           }
@@ -8467,7 +8501,7 @@
         diode: [["standard", "標準"], ["led", "LED（矢印つき）"], ["zener", "ツェナー"], ["thyristor", "サイリスタ（ゲート線）"], ["bridge", "ブリッジ整流（◇4端子）"]],
         capacitor: [["standard", "標準（平行板）"], ["polarized", "有極（＋と曲板）"], ["variable", "可変（貫通矢印）"]],
         fuse: [["standard", "箱＋貫通線（設備標準）"], ["blank", "箱のみ（IEC）"], ["wave", "S字（旧JIS）"]],
-        breaker: [["standard", "実測形（円＋アーク＋トリップ）"], ["elb", "漏電（E表示つき）"], ["iec", "×＋開き線（IEC）"], ["cp", "サーキットプロテクタ（アーチ形）"]],
+        breaker: [["standard", "実測形（円＋アーク＋トリップ）"], ["arc", "円＋アーク（トリップなし）"], ["mccb", "配線用遮断器（箱形）"], ["elb", "漏電（E表示つき）"], ["iec", "×＋開き線（IEC）"]],
         pushButton: [["standard", "押しa接点（設備標準）"], ["nc", "押しb接点（NC）"], ["jis", "押しa接点（JIS C 0617）"], ["jisNc", "押しb接点（JIS C 0617）"], ["illuminated", "照光式（ランプ内蔵）"], ["palm", "パーム（キノコ・a接点）"], ["pull", "引きボタン"], ["twist", "ひねりボタン"]],
         transistor: [["npn", "NPN"], ["pnp", "PNP"]],
         meter: [["standard", "円形"], ["box", "角形"], ["double", "二重円（積算計）"], ["needle", "円＋針（アナログ）"]],

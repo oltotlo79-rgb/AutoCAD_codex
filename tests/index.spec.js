@@ -974,6 +974,41 @@ test("CP・切替スイッチ・入切表示は見本PDFの実測形状を共有
   expect(geometry.linkedCpStemCount).toBe(1);
 });
 
+test("遮断器バリエーションは重複を整理し端子円を線より前面に描く", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4,
+    activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [{ ...window.__edsTest.defaultElement("breaker", 30, 30), id: "breaker1", label: "CB1" }]
+    }]
+  }));
+  await page.evaluate(() => window.__edsTest.selectElement("breaker1"));
+
+  const variantSelect = page.locator('[data-bind="symbolVariant"]');
+  await expect(variantSelect.locator('option[value="arc"]')).toHaveCount(1);
+  await expect(variantSelect.locator('option[value="mccb"]')).toHaveCount(1);
+  await expect(variantSelect.locator('option[value="cp"]')).toHaveCount(0);
+
+  const geometry = await page.evaluate(() => {
+    const geo = window.__edsTest.SYMBOL_GEO;
+    const shape = key => geo[key].prims.filter(prim => prim.t !== "text");
+    return {
+      arc: shape("breakerArc"),
+      mccb: shape("breakerMccb"),
+      cpTypes: shape("breakerCp").map(prim => prim.t),
+      standard: JSON.stringify(shape("breaker")),
+      arcSignature: JSON.stringify(shape("breakerArc")),
+      mccbSignature: JSON.stringify(shape("breakerMccb"))
+    };
+  });
+
+  expect(new Set([geometry.standard, geometry.arcSignature, geometry.mccbSignature]).size).toBe(3);
+  expect(geometry.arc.some(prim => prim.t === "pline")).toBe(false);
+  expect(geometry.mccb.some(prim => prim.t === "rect")).toBe(true);
+  expect(geometry.cpTypes.indexOf("arc")).toBeLessThan(geometry.cpTypes.indexOf("circle"));
+});
+
 test("端子台・PLCユニット列はSVG・吸着点・DXFで同じ端子円中心を使う", async ({ page }) => {
   const result = await page.evaluate(() => {
     const strip = {
