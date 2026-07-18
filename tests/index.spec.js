@@ -1895,3 +1895,84 @@ test("高速作画UIは集中表示・キー設定・ページナビゲータ・
   expect(await page.evaluate(() => window.__edsTest.state.settings.auditOverlay)).toBe(true);
   await expect(page.locator("#ribbonAudit")).toHaveClass(/active/);
 });
+
+test("追加センサ・電磁弁・電源バリエーションは接続点と線形状を共通定義で保つ", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const variants = [
+      ["sensor", "inductive"], ["sensor", "photo"], ["sensor", "capacitive"], ["sensor", "magnetic"],
+      ["solenoidValve", "double"], ["powerSupply", "acdc"], ["powerSupply", "dcdc"]
+    ];
+    const elements = variants.map(([type, symbolVariant], index) => ({
+      ...window.__edsTest.defaultElement(type, 20, 25 + index * 25),
+      id: `variant-${type}-${symbolVariant}`,
+      symbolVariant,
+      label: type.toUpperCase()
+    }));
+    window.__edsTest.installProjectData({
+      schemaVersion: 4,
+      activePageId: "variant-page",
+      pages: [{ id: "variant-page", name: "追加記号", size: "A4", orientation: "portrait", title: {}, elements }]
+    });
+    const current = window.__edsTest.state.pages[0];
+    return elements.map(element => {
+      const geo = window.__edsTest.SYMBOL_GEO[({
+        "sensor:inductive": "sensorInductive", "sensor:photo": "sensorPhoto",
+        "sensor:capacitive": "sensorCapacitive", "sensor:magnetic": "sensorMagnetic",
+        "solenoidValve:double": "solenoidValveDouble",
+        "powerSupply:acdc": "powerSupplyAcDc", "powerSupply:dcdc": "powerSupplyDcDc"
+      })[`${element.type}:${element.symbolVariant}`]];
+      const prims = window.__edsTest.geoPrims(element);
+      const finite = prims.every(prim => {
+        const values = prim.p || (prim.pts || []).flat();
+        return values.every(Number.isFinite);
+      });
+      const anchors = window.__edsTest.elementConnectionAnchors(element);
+      const group = document.querySelector(`g[data-id="${element.id}"]`);
+      return {
+        type: element.type,
+        variant: element.symbolVariant,
+        finite,
+        anchorCount: anchors.length,
+        pinPitch: Math.hypot(anchors[1].x - anchors[0].x, anchors[1].y - anchors[0].y),
+        lineCount: group?.querySelectorAll("line,path,rect,circle").length || 0,
+        geoWidth: geo.w,
+        dxfHasSymbol: window.__edsTest.buildDxf(current).includes("\nSYMBOL\n")
+      };
+    });
+  });
+  for (const item of result) {
+    expect(item.finite, `${item.type}:${item.variant}の座標`).toBe(true);
+    expect(item.anchorCount, `${item.type}:${item.variant}の接続点`).toBe(2);
+    expect(item.pinPitch, `${item.type}:${item.variant}のピン間隔`).toBe(item.geoWidth);
+    expect(item.lineCount, `${item.type}:${item.variant}のSVG形状`).toBeGreaterThan(3);
+    expect(item.dxfHasSymbol, `${item.type}:${item.variant}のDXF形状`).toBe(true);
+  }
+});
+
+test("全固定シンボル定義に非数値・ゼロ長線・重複点・不正寸法がない", async ({ page }) => {
+  const errors = await page.evaluate(() => {
+    const issues = [];
+    Object.entries(window.__edsTest.SYMBOL_GEO).forEach(([key, geo]) => {
+      if (!Number.isFinite(geo.w) || !Number.isFinite(geo.h) || geo.w <= 0 || geo.h <= 0) issues.push(`${key}:body`);
+      (geo.anchors || []).forEach((anchor, index) => {
+        if (anchor.length !== 2 || !anchor.every(Number.isFinite)) issues.push(`${key}:anchor:${index}`);
+      });
+      (geo.prims || []).forEach((prim, index) => {
+        const values = prim.p || (prim.pts || []).flat();
+        if (!values.every(Number.isFinite)) issues.push(`${key}:finite:${index}`);
+        if (prim.t === "line" && Math.hypot(prim.p[2] - prim.p[0], prim.p[3] - prim.p[1]) < .001) issues.push(`${key}:zero-line:${index}`);
+        if (prim.t === "rect" && (prim.p[2] <= 0 || prim.p[3] <= 0)) issues.push(`${key}:rect-size:${index}`);
+        if (["circle", "arc"].includes(prim.t) && prim.p[2] <= 0) issues.push(`${key}:radius:${index}`);
+        if (prim.t === "pline") {
+          if (!Array.isArray(prim.pts) || prim.pts.length < 2) issues.push(`${key}:pline-count:${index}`);
+          (prim.pts || []).slice(1).forEach((point, pointIndex) => {
+            const previous = prim.pts[pointIndex];
+            if (Math.hypot(point[0] - previous[0], point[1] - previous[1]) < .001) issues.push(`${key}:duplicate-point:${index}:${pointIndex}`);
+          });
+        }
+      });
+    });
+    return issues;
+  });
+  expect(errors).toEqual([]);
+});

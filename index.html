@@ -7487,6 +7487,93 @@
             { t: "text", p: [5, -0.6], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // 近接センサ（誘導形）: コイル面を右側へ配置し、リードとの不要交差を避ける。
+        sensorInductive: {
+          w: 25, h: 14,
+          anchors: [[0, 7], [25, 7]],
+          prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] },
+            { t: "rect", p: [4, 2, 17, 10], fill: "white" },
+            { t: "arc", p: [15, 7, 2.8, 270, 450] },
+            { t: "arc", p: [17.4, 7, 2.8, 270, 450] },
+            { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 光電センサ: 対向する発光矢印を検出面の内側へ収める。
+        sensorPhoto: {
+          w: 25, h: 14,
+          anchors: [[0, 7], [25, 7]],
+          prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] },
+            { t: "rect", p: [4, 2, 17, 10], fill: "white" },
+            { t: "circle", p: [10, 7, 2.2], fill: "white" },
+            { t: "line", p: [13, 4.7, 17.5, 3.1] }, { t: "pline", pts: [[16.5, 2.7], [17.5, 3.1], [16.9, 4]] },
+            { t: "line", p: [13, 7.1, 17.5, 5.5] }, { t: "pline", pts: [[16.5, 5.1], [17.5, 5.5], [16.9, 6.4]] },
+            { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 静電容量形近接センサ。
+        sensorCapacitive: {
+          w: 25, h: 14,
+          anchors: [[0, 7], [25, 7]],
+          prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] },
+            { t: "rect", p: [4, 2, 17, 10], fill: "white" },
+            { t: "line", p: [11.5, 4, 11.5, 10] }, { t: "line", p: [14, 4, 14, 10] },
+            { t: "line", p: [7, 7, 11.5, 7] }, { t: "line", p: [14, 7, 18.5, 7] },
+            { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 磁気（リード）センサ。
+        sensorMagnetic: {
+          w: 25, h: 14,
+          anchors: [[0, 7], [25, 7]],
+          prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] },
+            { t: "rect", p: [4, 2, 17, 10], fill: "white" },
+            { t: "circle", p: [9, 7, 0.65], fill: "white" }, { t: "circle", p: [16, 7, 0.65], fill: "white" },
+            { t: "line", p: [9.6, 6.7, 15.3, 4.6] },
+            { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 両ソレノイド電磁弁。中央弁箱と左右コイルを分離して線の重なりを防ぐ。
+        solenoidValveDouble: {
+          w: 25, h: 16,
+          anchors: [[0, 8], [25, 8]],
+          prims: [
+            { t: "line", p: [0, 8, 2, 8] }, { t: "line", p: [23, 8, 25, 8] },
+            { t: "rect", p: [2, 4, 5, 8], fill: "white" }, { t: "line", p: [2, 12, 7, 4] },
+            { t: "rect", p: [7, 2, 11, 12], fill: "white" }, { t: "line", p: [12.5, 2, 12.5, 14] },
+            { t: "pline", pts: [[8.5, 11.5], [11, 4.5], [11, 7]] },
+            { t: "pline", pts: [[14, 11.5], [16.5, 4.5], [16.5, 7]] },
+            { t: "rect", p: [18, 4, 5, 8], fill: "white" }, { t: "line", p: [18, 4, 23, 12] },
+            { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // AC/DC電源変換器。
+        powerSupplyAcDc: {
+          w: 35, h: 25,
+          anchors: [[0, 12.5], [35, 12.5]],
+          prims: [
+            { t: "line", p: [0, 12.5, 4, 12.5] }, { t: "line", p: [31, 12.5, 35, 12.5] },
+            { t: "rect", p: [4, 2.5, 27, 20], fill: "white" }, { t: "line", p: [4, 22.5, 31, 2.5] },
+            { t: "text", p: [11, 8], size: 3, anchor: "middle", value: "〜" },
+            { t: "text", p: [24, 17], size: 3, anchor: "middle", value: "⎓" },
+            { t: "text", p: [17.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // DC/DC絶縁変換器。
+        powerSupplyDcDc: {
+          w: 35, h: 25,
+          anchors: [[0, 12.5], [35, 12.5]],
+          prims: [
+            { t: "line", p: [0, 12.5, 4, 12.5] }, { t: "line", p: [31, 12.5, 35, 12.5] },
+            { t: "rect", p: [4, 2.5, 27, 20], fill: "white" }, { t: "line", p: [4, 22.5, 31, 2.5] },
+            { t: "text", p: [11, 8], size: 3, anchor: "middle", value: "⎓" },
+            { t: "text", p: [24, 17], size: 3, anchor: "middle", value: "⎓" },
+            { t: "text", p: [17.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         connectorPair: {
           w: 6, h: 3,
           anchors: [[0, 1.5], [6, 1.5]],
@@ -7654,6 +7741,19 @@
             return "gateAnd";
           }
           case "photocoupler": return "photocoupler";
+          case "sensor": {
+            if (variant === "inductive") return "sensorInductive";
+            if (variant === "photo") return "sensorPhoto";
+            if (variant === "capacitive") return "sensorCapacitive";
+            if (variant === "magnetic") return "sensorMagnetic";
+            return null;
+          }
+          case "solenoidValve": return variant === "double" ? "solenoidValveDouble" : null;
+          case "powerSupply": {
+            if (variant === "acdc") return "powerSupplyAcDc";
+            if (variant === "dcdc") return "powerSupplyDcDc";
+            return null;
+          }
           case "limitSwitch": {
             if (variant === "roller") return "limitSwitchRoller";
             if (variant === "rollerNc") return "limitSwitchRollerNC";
@@ -8743,7 +8843,10 @@
         thermoSwitch: [["standard", "a接点（t°）"], ["nc", "b接点（t°）"]],
         flowSwitch: [["standard", "a接点＋流路パドル"], ["nc", "b接点＋流路パドル"]],
         footSwitch: [["standard", "a接点＋踏板"], ["nc", "b接点＋踏板"]],
-        battery: [["standard", "2セル（長短2組）"], ["single", "単セル（長短1組）"]]
+        battery: [["standard", "2セル（長短2組）"], ["single", "単セル（長短1組）"]],
+        sensor: [["standard", "汎用センサ"], ["inductive", "誘導形近接センサ"], ["photo", "光電センサ"], ["capacitive", "静電容量形近接センサ"], ["magnetic", "磁気・リードセンサ"]],
+        solenoidValve: [["standard", "単ソレノイド弁"], ["double", "両ソレノイド方向切替弁"]],
+        powerSupply: [["standard", "直流電源（＋／－）"], ["acdc", "AC/DC変換器"], ["dcdc", "DC/DC変換器"]]
       };
 
       // 要素→SYMBOL_VARIANT_OPTIONSのキー解決(押しボタンは非常停止か否かで分岐)。
