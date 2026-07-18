@@ -1104,6 +1104,12 @@
               <option value="insertUserCircuit">ユーザー回路を挿入</option>
             </optgroup>
             <optgroup label="一覧・管理">
+              <option value="commandPalette">コマンドパレット</option>
+              <option value="favoriteManager">お気に入り設定</option>
+              <option value="attributeBrush">属性スポイト</option>
+              <option value="batchEdit">選択要素の一括編集</option>
+              <option value="quickProperties">クイックプロパティ</option>
+              <option value="smartAlign">接続点スマート整列</option>
               <option value="projects">プロジェクト管理（ブラウザ内保存）</option>
               <option value="terminalEditor">端子台エディタ</option>
               <option value="cableManager">ケーブル・芯線エディタ</option>
@@ -1536,6 +1542,7 @@
 
       // パレットのカテゴリ(アコーディオン)定義。表示順もこの配列順。
       const PALETTE_GROUPS = [
+        { id: "favorites", label: "★ お気に入り" },
         { id: "recent", label: "最近使用" },
         { id: "basic", label: "基本図形" },
         { id: "contact", label: "接点・スイッチ" },
@@ -2169,6 +2176,12 @@
       let selectedId = null;
       let selectedIds = [];
       let activeTool = "select";
+      let lastProductivityCommand = null;
+      let attributeBrush = null;
+      let selectionCycle = { key: "", index: 0 };
+      const navigationHistory = [];
+      let navigationIndex = -1;
+      let navigatingHistory = false;
       let paletteFilterText = "";
       let dragState = null;
       let clipboardElement = null;
@@ -2492,6 +2505,8 @@
         if (!state.settings.componentTagPrefixes || typeof state.settings.componentTagPrefixes !== "object") state.settings.componentTagPrefixes = {};
         if (typeof state.settings.outputUnderlays !== "boolean") state.settings.outputUnderlays = false;
         if (typeof state.settings.showPageName !== "boolean") state.settings.showPageName = false;
+        if (typeof state.settings.continuousPlacement !== "boolean") state.settings.continuousPlacement = true;
+        if (!Array.isArray(state.settings.favoriteTools)) state.settings.favoriteTools = [];
         state.project = {
           title: "電気図面",
           drawingNo: "",
@@ -2947,6 +2962,9 @@
         grid.innerHTML = "";
         const filter = paletteFilterText.trim().toLowerCase();
         const allItems = [
+          ...(state.settings.favoriteTools || []).map(type => ({
+            type, label: toolDisplayLabel(type), icon: "box", group: "favorites"
+          })),
           ...recentPaletteTypes.map(type => ({
             type,
             label: toolDisplayLabel(type),
@@ -9865,7 +9883,7 @@
         if (type === "terminalSheet") {
           addTerminalSheet(page, x, y);
           commitHistory("端子配線セットを配置しました。");
-          cancelPlacementMode(true);
+          if (!state.settings.continuousPlacement) cancelPlacementMode(true);
           return;
         }
         const element = defaultElementAtPlacement(type, x, y);
@@ -9880,7 +9898,7 @@
         commitHistory(hasVariants
           ? paletteLabel(element.type) + "を配置しました。右パネルの「シンボルデザイン」で形状を切り替えられます。"
           : "要素を配置しました。");
-        setActiveTool("select");
+        if (!state.settings.continuousPlacement) setActiveTool("select");
         render();
       }
 
@@ -9962,7 +9980,7 @@
         page.elements.push(...placed);
         setSelection(placed.map(element => element.id));
         commitHistory(doneMessage);
-        setActiveTool("select");
+        if (!state.settings.continuousPlacement) setActiveTool("select");
         render();
       }
 
@@ -9987,7 +10005,7 @@
         page.elements.push(...placed);
         setSelection(placed.map(element => element.id));
         commitHistory(placed.length > 1 ? "ユーザー回路を配置しました。" : "ユーザー部品を配置しました。");
-        setActiveTool("select");
+        if (!state.settings.continuousPlacement) setActiveTool("select");
         render();
       }
 
@@ -10070,6 +10088,7 @@
       // アクティブツール切替(select/wire/種別名/custom:id)。パレットの強調表示も更新。
       function setActiveTool(tool) {
         activeTool = tool;
+        if (tool !== "select") lastProductivityCommand = { kind: "tool", value: tool };
         qsa("[data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === tool));
         qs("#selectOnlyBtn")?.classList.toggle("active", tool === "select");
         renderPalette();
@@ -13688,6 +13707,132 @@
         commitHistory(count + "個の盤フットプリントを" + (direction === "toSchematic" ? "回路図へ反映しました。" : "同期しました。")); render();
       }
 
+      // ===== 高速作画支援 =====
+      function repeatLastProductivityCommand() {
+        const command = lastProductivityCommand;
+        if (!command) { setStatus("繰り返せる直前操作がありません。"); return; }
+        if (command.kind === "tool") setActiveTool(command.value);
+        else if (command.kind === "duplicate") duplicateSelected();
+        else if (command.kind === "action" && command.value) command.value();
+      }
+
+      function showFavoriteManager() {
+        const current = new Set(state.settings.favoriteTools || []);
+        const choices = [...PALETTE, ...BUILTIN_CIRCUITS.map(item => ({ type: "circuit:" + item.id, label: item.label }))]
+          .filter((item, index, all) => all.findIndex(other => other.type === item.type) === index);
+        openDialog("お気に入り設定", `<p class="muted">左パレット先頭へ固定する部品・回路を選択します。</p>
+          <label><input id="continuousPlacementToggle" type="checkbox" ${state.settings.continuousPlacement ? "checked" : ""} style="width:auto;min-height:auto"> 部品を配置後も同じ部品を連続配置する</label>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">${choices.map(item =>
+            `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-favorite-tool="${escapeAttr(item.type)}" ${current.has(item.type) ? "checked" : ""} style="width:auto;min-height:auto">${escapeHtml(item.label)}</label>`).join("")}</div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="favoriteApply" class="primary">適用</button></div>`);
+        qs("#favoriteApply").onclick = () => {
+          state.settings.favoriteTools = qsa("[data-favorite-tool]", qs("#dialogBody")).filter(input => input.checked).map(input => input.dataset.favoriteTool);
+          state.settings.continuousPlacement = qs("#continuousPlacementToggle").checked;
+          closeDialog(); commitHistory("お気に入りを更新しました。"); renderPalette();
+        };
+      }
+
+      function showCommandPalette() {
+        const commands = [
+          ...PALETTE.map(item => ({ label: "配置: " + item.label, kind: "tool", value: item.type })),
+          ...BUILTIN_CIRCUITS.map(item => ({ label: "配置: " + item.label, kind: "tool", value: "circuit:" + item.id })),
+          { label: "操作: 線番採番", run: autoWireNumbers }, { label: "操作: 接続点生成", run: autoJunctions },
+          { label: "確認: 図面監査", run: showAudit }, { label: "管理: 端子台エディタ", run: showTerminalEditor },
+          { label: "管理: ケーブル・芯線", run: showCableManager }, { label: "管理: 設置場所・接続", run: showLocationView },
+          { label: "編集: 属性スポイト", run: startAttributeBrush }, { label: "編集: 一括編集", run: showBatchEdit },
+          { label: "編集: 接続点スマート整列", run: smartAlignConnectionPoints }, { label: "編集: クイックプロパティ", run: showQuickProperties }
+        ];
+        openDialog("コマンドパレット", `<input id="commandSearch" autocomplete="off" placeholder="部品・機能を検索…" style="font-size:16px"><div id="commandResults" style="margin-top:8px;max-height:55vh;overflow:auto"></div>`);
+        const renderResults = () => {
+          const query = qs("#commandSearch").value.trim().toLowerCase();
+          const matched = commands.filter(command => !query || command.label.toLowerCase().includes(query)).slice(0, 30);
+          qs("#commandResults").innerHTML = matched.map((command, index) => `<button data-command-index="${commands.indexOf(command)}" class="${index === 0 ? "primary" : ""}" style="display:block;width:100%;text-align:left;margin:3px 0">${escapeHtml(command.label)}</button>`).join("");
+          qsa("[data-command-index]", qs("#commandResults")).forEach(button => button.onclick = () => {
+            const command = commands[Number(button.dataset.commandIndex)]; closeDialog();
+            if (command.kind === "tool") setActiveTool(command.value); else command.run?.();
+          });
+        };
+        qs("#commandSearch").oninput = renderResults;
+        qs("#commandSearch").onkeydown = event => { if (event.key === "Enter") qs("[data-command-index]", qs("#commandResults"))?.click(); };
+        renderResults(); setTimeout(() => qs("#commandSearch")?.focus(), 0);
+      }
+
+      const BRUSH_KEYS = ["manufacturer", "catalog", "rating", "installation", "location", "description", "stroke", "strokeWidth", "dash", "layer", "wireType", "orientation", "symbolVariant"];
+      function startAttributeBrush() {
+        const source = selectedElement();
+        if (!source) { setStatus("属性を取得する元要素を選択してください。"); return; }
+        attributeBrush = {};
+        BRUSH_KEYS.forEach(key => { if (source[key] !== undefined) attributeBrush[key] = deepClone(source[key]); });
+        setStatus("属性スポイト中: 適用先をクリックしてください。Escで終了");
+      }
+
+      function applyAttributeBrush(target) {
+        if (!attributeBrush || !target || isElementLocked(target)) return false;
+        Object.assign(target, deepClone(attributeBrush));
+        commitHistory("属性スポイトを適用しました。"); render();
+        return true;
+      }
+
+      function showBatchEdit() {
+        const rows = selectedElements();
+        if (!rows.length) { setStatus("一括編集する要素を選択してください。"); return; }
+        openDialog("選択要素の一括編集", `<table class="report-table"><thead><tr><th>種別</th><th>タグ/線番</th><th>説明</th><th>メーカー</th><th>品番</th><th>設備</th><th>場所</th></tr></thead><tbody>
+          ${rows.map(item => `<tr data-batch-id="${item.id}"><td>${escapeHtml(paletteLabel(item.type))}</td>
+            <td><input data-batch="identity" value="${escapeAttr(item.type === "wire" ? item.wireNo || "" : componentTag(item))}"></td>
+            <td><input data-batch="description" value="${escapeAttr(item.description || "")}"></td><td><input data-batch="manufacturer" value="${escapeAttr(item.manufacturer || "")}"></td>
+            <td><input data-batch="catalog" value="${escapeAttr(item.catalog || "")}"></td><td><input data-batch="installation" value="${escapeAttr(item.installation || "")}"></td><td><input data-batch="location" value="${escapeAttr(item.location || "")}"></td></tr>`).join("")}
+          </tbody></table><div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="batchApply" class="primary">適用</button></div>`);
+        qs("#batchApply").onclick = () => {
+          qsa("[data-batch-id]", qs("#dialogBody")).forEach(row => {
+            const item = currentPage().elements.find(element => element.id === row.dataset.batchId); if (!item) return;
+            qsa("[data-batch]", row).forEach(input => {
+              const key = input.dataset.batch;
+              if (key === "identity") { if (item.type === "wire") item.wireNo = input.value; else { item.tag = input.value; item.label = input.value; } }
+              else item[key] = input.value;
+            });
+          });
+          closeDialog(); commitHistory(rows.length + "件を一括編集しました。"); render();
+        };
+      }
+
+      function showQuickProperties() {
+        const item = selectedElement();
+        if (!item) { setStatus("要素を選択してください。"); return; }
+        openDialog("クイックプロパティ", `<div class="row"><div><label>タグ／ラベル／線番</label><input id="quickIdentity" value="${escapeAttr(item.type === "wire" ? item.wireNo || "" : (componentTag(item) || item.label || ""))}"></div>
+          <div><label>回転</label><input id="quickRotation" type="number" step="15" value="${Number(item.rotation || 0)}"></div></div>
+          <div class="row"><div><label>レイヤ</label><select id="quickLayer">${state.layers.map(layer => `<option value="${escapeAttr(layer.id)}"${item.layer === layer.id ? " selected" : ""}>${escapeHtml(layer.label)}</option>`).join("")}</select></div>
+          <div><label>説明</label><input id="quickDescription" value="${escapeAttr(item.description || "")}"></div></div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="quickApply" class="primary">適用</button></div>`);
+        qs("#quickApply").onclick = () => {
+          const identity = qs("#quickIdentity").value;
+          if (item.type === "wire") item.wireNo = identity; else { if (supportsElectricalAttributes(item)) item.tag = identity; item.label = identity; }
+          item.rotation = Number(qs("#quickRotation").value || 0); item.layer = qs("#quickLayer").value; item.description = qs("#quickDescription").value;
+          closeDialog(); commitHistory("クイックプロパティを更新しました。"); render();
+        };
+      }
+
+      function smartAlignConnectionPoints() {
+        const items = selectedElements().filter(item => !item.points && !isElementLocked(item));
+        if (items.length < 2) { setStatus("接続点整列には2個以上の部品を選択してください。"); return; }
+        const reference = primaryConnectionPoint(items[0]); if (!reference) return;
+        items.slice(1).forEach(item => {
+          const anchor = primaryConnectionPoint(item); if (!anchor) return;
+          translateElement(item, 0, round(reference.y - anchor.y));
+        });
+        commitHistory("第1接続点を同じYへ整列しました。"); render();
+      }
+
+      function cycleElementAtPoint(point) {
+        const hits = currentPage().elements.filter(isElementVisible).filter(item => {
+          const box = elementBounds(item); return box && point.x >= box.x - 1 && point.x <= box.x + box.w + 1 && point.y >= box.y - 1 && point.y <= box.y + box.h + 1;
+        }).reverse();
+        if (!hits.length) return null;
+        const key = round(point.x) + ":" + round(point.y) + ":" + hits.map(item => item.id).join(",");
+        selectionCycle.index = selectionCycle.key === key ? (selectionCycle.index + 1) % hits.length : 0;
+        selectionCycle.key = key;
+        return hits[selectionCycle.index];
+      }
+
       // ===== 標準パック外部化 =====
       function exportStandardPack() {
         const pack = {
@@ -14207,9 +14352,19 @@
             <div><label>間隔X mm</label><input id="arrDx" type="number" step="0.5" value="0"></div>
           </div>
           <label>間隔Y mm</label><input id="arrDy" type="number" step="0.5" value="9.5">
+          <svg id="arrPreview" viewBox="0 0 300 90" style="width:100%;height:90px;background:#f7f9fb;border:1px solid #c9d2dc;margin-top:8px"></svg>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="arrApplyBtn" class="primary">複製</button>
           </div>`);
+        const updatePreview = () => {
+          const count = Math.max(1, Math.min(20, Math.floor(Number(qs("#arrCount").value || 1))));
+          const dx = Number(qs("#arrDx").value || 0), dy = Number(qs("#arrDy").value || 0);
+          const scale = Math.min(4, 240 / Math.max(30, Math.abs(dx) * count + 20), 60 / Math.max(10, Math.abs(dy) * count + 10));
+          qs("#arrPreview").innerHTML = Array.from({ length: count + 1 }, (_, index) =>
+            `<rect x="${30 + dx * index * scale}" y="${20 + dy * index * scale}" width="28" height="16" rx="2" fill="${index ? "#dceeea" : "#fff"}" stroke="#0f6f63"/><text x="${44 + dx * index * scale}" y="${30 + dy * index * scale}" text-anchor="middle" font-size="8">${index ? "+" + index : "元"}</text>`).join("");
+        };
+        ["arrCount", "arrDx", "arrDy"].forEach(id => qs("#" + id).addEventListener("input", updatePreview));
+        updatePreview();
         qs("#arrApplyBtn").addEventListener("click", () => {
           const page = currentPage();
           const selected = selectedElements();
@@ -14227,6 +14382,7 @@
               copy.id = uid("el");
               copy.locked = false;
               delete copy.group;
+              incrementDuplicateAttributes(copy);
               translateElement(copy, dx * n, dy * n);
               created.push(copy);
             });
@@ -14410,6 +14566,22 @@
       }
 
       // 選択要素を少しずらして複製。
+      function incrementTrailingCode(value) {
+        return String(value || "").replace(/([0-9A-F]+)$/i, digits => {
+          const radix = /[A-F]/i.test(digits) ? 16 : 10;
+          return (parseInt(digits, radix) + 1).toString(radix).toUpperCase().padStart(digits.length, "0");
+        });
+      }
+
+      function incrementDuplicateAttributes(copy) {
+        ["tag", "label", "wireNo", "cableTag", "coreNo"].forEach(key => {
+          if (copy[key] && !copy["fixed" + key[0].toUpperCase() + key.slice(1)]) copy[key] = incrementTrailingCode(copy[key]);
+        });
+        if (copy.type === "plcBlock" && copy.pinText) {
+          copy.pinText = String(copy.pinText).split(/\r?\n/).map(incrementTrailingCode).join("\n");
+        }
+      }
+
       function duplicateSelected() {
         const page = currentPage();
         const selected = selectedElements();
@@ -14418,6 +14590,7 @@
           const copy = deepClone(element);
           copy.id = uid("el");
           copy.locked = false;
+          incrementDuplicateAttributes(copy);
           if (copy.points) copy.points = copy.points.map(point => [point[0] + 6, point[1] + 6]);
           else {
             copy.x = Number(copy.x || 0) + 6;
@@ -14428,6 +14601,7 @@
         page.elements.push(...copies);
         setSelection(copies.map(copy => copy.id));
         commitHistory(selected.length + "件の要素を複製しました。");
+        lastProductivityCommand = { kind: "duplicate" };
         render();
       }
 
@@ -17841,6 +18015,17 @@
       // 指定要素へジャンプ(ページ切替+選択+ワークスペースを要素中心へスクロール)。
       // 監査/検索/一覧のジャンプとクロスリファレンスのサーフィン移動が共用する。
       function jumpToElement(pageId, elementId) {
+        if (!navigatingHistory) {
+          const current = selectedElement();
+          navigationHistory.splice(navigationIndex + 1);
+          if (current && navigationHistory[navigationHistory.length - 1]?.elementId !== current.id) {
+            navigationHistory.push({ pageId: state.activePageId, elementId: current.id });
+          }
+          if (elementId && navigationHistory[navigationHistory.length - 1]?.elementId !== elementId) {
+            navigationHistory.push({ pageId: pageId || state.activePageId, elementId });
+          }
+          navigationIndex = navigationHistory.length - 1;
+        }
         if (pageId && state.activePageId !== pageId) state.activePageId = pageId;
         selectSingle(elementId);
         render();
@@ -17853,6 +18038,18 @@
           workspace.scrollLeft += (r.left + r.width / 2) - (wr.left + wr.width / 2);
           workspace.scrollTop += (r.top + r.height / 2) - (wr.top + wr.height / 2);
         }, 0);
+      }
+
+      function navigateElementHistory(delta) {
+        const next = navigationIndex + delta;
+        if (next < 0 || next >= navigationHistory.length) { setStatus("移動履歴がありません。"); return; }
+        navigationIndex = next;
+        const target = navigationHistory[next];
+        if (target) {
+          navigatingHistory = true;
+          jumpToElement(target.pageId, target.elementId);
+          navigatingHistory = false;
+        }
       }
 
       // CSVセルのエスケープ(引用符・改行対応)。
@@ -19465,6 +19662,12 @@
           event.target.value = "";
         });
         const MENU_ACTIONS = {
+          commandPalette: showCommandPalette,
+          favoriteManager: showFavoriteManager,
+          attributeBrush: startAttributeBrush,
+          batchEdit: showBatchEdit,
+          quickProperties: showQuickProperties,
+          smartAlign: smartAlignConnectionPoints,
           rungCircuit: showRungCircuitDialog,
           estopChain: showEStopChainDialog,
           powerOn: showPowerOnCircuitDialog,
@@ -19518,8 +19721,12 @@
         };
         qs("#actionMenu").addEventListener("change", event => {
           const action = MENU_ACTIONS[event.target.value];
+          const actionKey = event.target.value;
           event.target.value = "";
-          if (action) action();
+          if (action) {
+            if (!["commandPalette", "quickProperties"].includes(actionKey)) lastProductivityCommand = { kind: "action", value: action };
+            action();
+          }
         });
         const TEMPLATE_ACTIONS = {
           facilityLadder: showFacilityLadderDialog,
@@ -19821,7 +20028,11 @@
           render();
           return;
         }
-        const targetElement = event.target.closest("[data-id]");
+        let targetElement = event.target.closest("[data-id]");
+        if (activeTool === "select" && event.altKey) {
+          const cycled = cycleElementAtPoint(point);
+          if (cycled) targetElement = qs(`[data-id="${CSS.escape(cycled.id)}"]`, svg);
+        }
         if (activeTool === "wire" || activeTool === "arrow" || activeTool === "line" || activeTool === "mechanicalLink" || activeTool === "dimension") {
           const element = defaultElement(activeTool, point.x, point.y);
           element.points = [[point.x, point.y], [point.x, point.y]];
@@ -19838,6 +20049,12 @@
         }
         if (targetElement) {
           const targetId = targetElement.dataset.id;
+          const brushTarget = currentPage().elements.find(item => item.id === targetId);
+          if (attributeBrush && brushTarget) {
+            applyAttributeBrush(brushTarget);
+            event.stopPropagation();
+            return;
+          }
           if (event.shiftKey) {
             toggleSelection(targetId);
             render();
@@ -19888,6 +20105,21 @@
         return [round(start[0] + length * ux), round(start[1] + length * uy)];
       }
 
+      function showDrawingVectorDialog() {
+        const drawing = selectedElement();
+        if (!dragState || dragState.mode !== "draw" || !drawing?.points?.length) return;
+        const start = drawing.points[0], end = drawing.points[drawing.points.length - 1];
+        const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+        const angle = Math.atan2(end[1] - start[1], end[0] - start[0]) * 180 / Math.PI;
+        openDialog("長さ・角度で確定", `<div class="row"><div><label>長さ mm</label><input id="drawLength" type="number" min="0.5" step="0.5" value="${round(length)}"></div><div><label>角度 deg</label><input id="drawAngle" type="number" step="1" value="${round(angle)}"></div></div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="drawVectorApply" class="primary">確定</button></div>`);
+        qs("#drawVectorApply").onclick = () => {
+          const len = Math.max(.5, Number(qs("#drawLength").value || 0)), rad = Number(qs("#drawAngle").value || 0) * Math.PI / 180;
+          drawing.points = [start, [round(start[0] + len * Math.cos(rad)), round(start[1] + len * Math.sin(rad))]];
+          dragState = null; closeDialog(); commitHistory("長さ・角度を指定して作図しました。"); render();
+        };
+      }
+
       function onCanvasPointerMove(event) {
         if (handleTouchMove(event)) return; // ピンチ中はズーム/パンのみ
         if (!dragState) return;
@@ -19918,7 +20150,8 @@
           if (element.type === "wire") {
             // 配線: Shift=折れ向き反転、スペース=L字/コの字(Z)巡回(onKeyDown側でbendCycle更新)
             dragState.lastPoint = [point.x, point.y];
-            rebuildDrawingWire(element, dragState, event.shiftKey === true);
+            if (dragState.freeAngle) element.points = [element.points[0], [point.x, point.y]];
+            else rebuildDrawingWire(element, dragState, event.shiftKey === true);
           } else if (element.type === "line") {
             const start = element.points[0];
             const rawPoint = canvasPoint(event, { raw: true });
@@ -20492,8 +20725,18 @@
           saveProject();
           return;
         }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+          event.preventDefault();
+          showCommandPalette();
+          return;
+        }
         // Esc: メニュー → ダイアログ → (入力欄は既定動作) → ドラッグ取消 → 配置終了 → 選択解除
         if (event.key === "Escape") {
+          if (attributeBrush) {
+            attributeBrush = null;
+            setStatus("属性スポイトを終了しました。");
+            return;
+          }
           const menu = qs("#contextMenu");
           if (menu && !menu.classList.contains("hidden")) {
             hideContextMenu();
@@ -20522,6 +20765,12 @@
         }
         // 入力欄でのCtrl+Z/Y等は文字編集(ブラウザ既定)へ委ねる。図面Undoにしない。
         if (editing) return;
+        if (event.altKey && event.key === "ArrowLeft") {
+          event.preventDefault(); navigateElementHistory(-1); return;
+        }
+        if (event.altKey && event.key === "ArrowRight") {
+          event.preventDefault(); navigateElementHistory(1); return;
+        }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
           event.preventDefault();
           if (dragState) cancelActiveDrag();
@@ -20545,6 +20794,42 @@
             setStatus(["L字（縦→横）", "L字（横→縦）", "コの字（横→縦→横）", "コの字（縦→横→縦）"][dragState.bendCycle] + "で作図中（スペースで切替）");
             return;
           }
+        }
+        if (dragState && dragState.mode === "draw") {
+          const drawing = selectedElement();
+          if (drawing?.type === "wire" && ["1", "2", "3", "4"].includes(event.key)) {
+            event.preventDefault();
+            dragState.bendCycle = Number(event.key) - 1;
+            rebuildDrawingWire(drawing, dragState, false); render({ light: true }); return;
+          }
+          if (drawing?.type === "wire" && event.key.toLowerCase() === "r") {
+            event.preventDefault();
+            drawing.points.reverse();
+            dragState.lastPoint = drawing.points[drawing.points.length - 1];
+            render({ light: true }); return;
+          }
+          if (drawing?.type === "wire" && event.key.toLowerCase() === "j") {
+            event.preventDefault();
+            const end = drawing.points[drawing.points.length - 1];
+            currentPage().elements.push({ ...defaultElement("junction", end[0], end[1]), x: end[0], y: end[1] });
+            dragState = null; commitHistory("接続点付きで配線を確定しました。"); render(); return;
+          }
+          if (drawing?.type === "wire" && event.key.toLowerCase() === "a") {
+            event.preventDefault(); dragState.freeAngle = !dragState.freeAngle;
+            setStatus(dragState.freeAngle ? "任意角度配線中（Aで直交へ戻る）" : "直交配線中（Aで任意角度）"); return;
+          }
+          if (drawing && event.key.toLowerCase() === "n") {
+            event.preventDefault(); showDrawingVectorDialog(); return;
+          }
+          if (drawing?.type === "wire" && event.key === "Tab") {
+            event.preventDefault(); dragState.bendCycle = ((dragState.bendCycle || 0) + 1) % 4; rebuildDrawingWire(drawing, dragState, false); render({ light: true }); return;
+          }
+        }
+        if ((event.key === "Enter" || event.key === " ") && !dragState && activeTool === "select") {
+          event.preventDefault(); repeatLastProductivityCommand(); return;
+        }
+        if (event.key.toLowerCase() === "q" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault(); showQuickProperties(); return;
         }
         if (!event.ctrlKey && !event.metaKey && !event.altKey) {
           const toolShortcuts = { s: "select", v: "select", w: "wire", t: "text", l: "line", r: "rect", c: "circle" };
@@ -20627,6 +20912,7 @@
         validateTitleLayouts,
         validateStandardPack,
         selectElement: id => { selectSingle(id); render(); },
+        setSelectionForTest: ids => { setSelection(ids); render(); },
         commitHistory,
         restoreHistory,
         state,

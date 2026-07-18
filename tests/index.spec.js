@@ -203,6 +203,61 @@ test("ACE拡張8機能を管理・生成・同期できる", async ({ page }) =>
   expect(avoided.leader).toBe(true);
 });
 
+test("高速作画支援をキーボードと管理画面から利用できる", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [
+        { id: "a", type: "coil", x: 30, y: 40, w: 10, h: 7, tag: "CR01", label: "CR01", manufacturer: "M", catalog: "C1", layer: "symbols" },
+        { id: "b", type: "coil", x: 60, y: 70, w: 10, h: 7, tag: "CR10", label: "CR10", layer: "symbols" }
+      ]
+    }]
+  }));
+
+  await page.keyboard.press("Control+k");
+  await expect(page.locator("#commandSearch")).toBeFocused();
+  await page.locator("#commandSearch").fill("端子");
+  await expect(page.locator("#commandResults")).toContainText("端子");
+  await page.locator("#dialogClose").click();
+
+  await page.locator("#actionMenu").selectOption("favoriteManager");
+  await page.locator('[data-favorite-tool="coil"]').check();
+  await page.locator("#continuousPlacementToggle").check();
+  await page.locator("#favoriteApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.settings.favoriteTools)).toContain("coil");
+  await expect(page.locator("#paletteGrid details.palette-group").filter({ hasText: "お気に入り" })).toContainText("コイル");
+
+  await page.evaluate(() => window.__edsTest.selectElement("a"));
+  await page.keyboard.press("Control+d");
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.tag === "CR02")?.label)).toBe("CR02");
+
+  await page.evaluate(() => window.__edsTest.selectElement("a"));
+  await page.locator("#actionMenu").selectOption("attributeBrush");
+  await page.locator('[data-id="b"]').click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "b").catalog)).toBe("C1");
+  await page.keyboard.press("Escape");
+
+  await page.evaluate(() => window.__edsTest.setSelectionForTest(["a", "b"]));
+  await page.locator("#actionMenu").selectOption("smartAlign");
+  const anchors = await page.evaluate(() => {
+    const items = window.__edsTest.state.pages[0].elements.filter(item => ["a", "b"].includes(item.id));
+    return items.map(window.__edsTest.primaryConnectionPoint);
+  });
+  expect(anchors[0].y).toBe(anchors[1].y);
+
+  await page.locator("#actionMenu").selectOption("batchEdit");
+  await page.locator('[data-batch-id="a"] [data-batch="description"]').fill("一括A");
+  await page.locator("#batchApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "a").description)).toBe("一括A");
+
+  await page.evaluate(() => window.__edsTest.selectElement("a"));
+  await page.keyboard.press("q");
+  await page.locator("#quickIdentity").fill("CR20");
+  await page.locator("#quickApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "a").tag)).toBe("CR20");
+});
+
 test.afterEach(async ({ page }) => {
   const issues = runtimeIssues.get(page);
   expect(issues?.consoleErrors ?? [], "console errorが発生していないこと").toEqual([]);
