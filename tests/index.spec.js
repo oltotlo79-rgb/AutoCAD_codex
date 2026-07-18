@@ -258,6 +258,74 @@ test("高速作画支援をキーボードと管理画面から利用できる",
   expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "a").tag)).toBe("CR20");
 });
 
+test("プロジェクト保守・端子詳細・盤・ケーブル拡張を利用できる", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p1",
+    catalog: [{ family: "CR", manufacturer: "NEW-M", catalog: "P1", description: "新説明", rating: "24V" }],
+    footprintDb: [], cables: [],
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [
+        { id: "contact", type: "contactNO", x: 40, y: 40, w: 14, h: 10, tag: "CR1", label: "CR1", manufacturer: "OLD", catalog: "P1", layer: "symbols" },
+        { id: "wire", type: "wire", points: [[20, 45], [40, 45]], wireNo: "1", layer: "wires" },
+        { id: "strip", type: "terminalStrip", x: 80, y: 40, w: 10, h: 30, count: 3, levels: 2, orientation: "vertical", label: "TB1", layer: "symbols" },
+        { id: "foot", type: "rect", x: 120, y: 40, w: 20, h: 14, label: "CR1", panelRef: "CR1", layer: "layout" }
+      ]
+    }]
+  }));
+
+  await page.locator("#actionMenu").selectOption("projectUpdate");
+  await expect(page.locator("#projectUpdateApply")).toBeVisible();
+  await page.locator("#dialogClose").click();
+
+  await page.evaluate(() => window.__edsTest.selectElement("contact"));
+  await page.locator("#actionMenu").selectOption("symbolSwap");
+  await page.locator("#swapTarget").selectOption("contactNC");
+  await page.locator("#swapApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "contact").type)).toBe("contactNC");
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "wire").points.at(-1))).toEqual([40, 45]);
+
+  await page.locator("#actionMenu").selectOption("spreadsheetRoundtrip");
+  const sheet = page.locator("#spreadsheetData");
+  await sheet.fill((await sheet.inputValue()).replace("\tOLD\tP1\t", "\tOLD\tP1\t").replace("CR1\t\tOLD", "CR1\t表更新\tOLD"));
+  await page.locator("#spreadsheetPreview").click();
+  await page.locator("#spreadsheetApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "contact").description)).toBe("表更新");
+
+  await page.locator("#actionMenu").selectOption("catalogRefresh");
+  await expect(page.locator("#dialogBody")).toContainText("NEW-M");
+  await page.locator("#catalogRefreshApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "contact").manufacturer)).toBe("NEW-M");
+
+  await page.locator("#actionMenu").selectOption("terminalEditor");
+  await page.locator("#terminalDetailBtn").click();
+  await page.locator('[data-terminal-detail="1:1"] [data-td="catalog"]').fill("UK5N");
+  await page.locator('[data-terminal-detail="1:1"] [data-td="internal"]').fill("CR1-A1");
+  await page.locator("#terminalDetailApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "strip").terminalDetails[0].catalog)).toBe("UK5N");
+
+  await page.locator("#actionMenu").selectOption("footprintDb");
+  await page.locator("#footprintAdd").click();
+  const fp = page.locator("[data-footprint-row]").last();
+  await fp.locator('[data-fp="catalog"]').fill("P1");
+  await fp.locator('[data-fp="w"]').fill("33");
+  await fp.locator('[data-fp="h"]').fill("44");
+  await page.locator("#footprintApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.footprintDb[0])).toMatchObject({ catalog: "P1", w: 33, h: 44 });
+
+  await page.locator("#actionMenu").selectOption("panelAnnotation");
+  await page.locator("#panelAnnotationApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.filter(item => item.panelAnnotationFor === "foot").length)).toBeGreaterThan(1);
+
+  const beforeFan = await page.evaluate(() => window.__edsTest.state.pages[0].elements.length);
+  await page.locator("#actionMenu").selectOption("cableFan");
+  await page.locator("#fanCoreCount").fill("3");
+  await page.locator("#fanCableTag").fill("CBL9");
+  await page.locator("#fanApply").click();
+  expect(await page.evaluate(() => window.__edsTest.state.cables.filter(row => row.tag === "CBL9").length)).toBe(3);
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.length)).toBeGreaterThan(beforeFan);
+});
+
 test.afterEach(async ({ page }) => {
   const issues = runtimeIssues.get(page);
   expect(issues?.consoleErrors ?? [], "console errorが発生していないこと").toEqual([]);

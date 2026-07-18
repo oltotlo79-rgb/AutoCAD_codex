@@ -1081,6 +1081,9 @@
           <select id="actionMenu">
             <option value="">選択してください…</option>
             <optgroup label="自動処理">
+              <option value="projectUpdate">プロジェクト一括更新</option>
+              <option value="symbolSwap">シンボル一括置換</option>
+              <option value="catalogRefresh">カタログ差分更新</option>
               <option value="terminalNo">端子番号の振り直し</option>
               <option value="tagComponents">部品タグ採番</option>
               <option value="autoJunction">接続点生成</option>
@@ -1115,6 +1118,9 @@
               <option value="cableManager">ケーブル・芯線エディタ</option>
               <option value="locationView">設置場所・接続ビュー</option>
               <option value="plcModuleManager">PLCモジュールDB</option>
+              <option value="footprintDb">フットプリント検索DB</option>
+              <option value="panelAnnotation">項目番号・バルーン・銘板</option>
+              <option value="cableFan">ケーブル展開（ファンイン／アウト）</option>
               <option value="saveUserCircuit">選択範囲をユーザー回路登録</option>
               <option value="tagRules">部品タグ規則</option>
               <option value="wireTypeManager">配線種別管理</option>
@@ -1128,6 +1134,7 @@
             <optgroup label="帳票・確認">
               <option value="crossRef">クロスリファレンス</option>
               <option value="reportCsv">帳票CSV出力</option>
+              <option value="spreadsheetRoundtrip">表計算データ往復編集</option>
               <option value="reportTable">図面要素一覧</option>
               <option value="insertReport">帳票表挿入</option>
               <option value="bom">部品集計表(BOM)</option>
@@ -2377,7 +2384,7 @@
         ["settings", "project"].forEach(key => {
           if (data[key] !== undefined && !isPlainObject(data[key])) errors.push(key + ": オブジェクトが必要です");
         });
-        ["layers", "wireTypes", "customSymbols", "catalog", "standardPacks", "plcModules", "cables", "userCircuits"].forEach(key => {
+        ["layers", "wireTypes", "customSymbols", "catalog", "standardPacks", "plcModules", "cables", "userCircuits", "footprintDb"].forEach(key => {
           if (data[key] !== undefined && !Array.isArray(data[key])) errors.push(key + ": 配列が必要です");
         });
         (Array.isArray(data.layers) ? data.layers : []).forEach((item, index) => {
@@ -2424,6 +2431,7 @@
         candidate.plcModules = migrated.plcModules || [];
         candidate.cables = migrated.cables || [];
         candidate.userCircuits = migrated.userCircuits || [];
+        candidate.footprintDb = migrated.footprintDb || [];
         candidate.project = {
           ...base.project,
           ...(migrated.project || {}),
@@ -2524,6 +2532,7 @@
         if (!Array.isArray(state.plcModules)) state.plcModules = [];
         if (!Array.isArray(state.cables)) state.cables = [];
         if (!Array.isArray(state.userCircuits)) state.userCircuits = [];
+        if (!Array.isArray(state.footprintDb)) state.footprintDb = [];
         if (!state.settings.reportColumns || typeof state.settings.reportColumns !== "object") state.settings.reportColumns = {};
         return state.project;
       }
@@ -13509,7 +13518,7 @@
         if (!page || !items.length) return;
         const cols = 4, pitchX = 44, pitchY = 30, x0 = 30, y0 = 50;
         const created = items.map((row, index) => {
-          const size = FOOTPRINT_SIZES[row.type] || [18, 14];
+          const size = footprintSizeFor(row);
           return {
             id: uid("el"), type: "rect",
             x: x0 + (index % cols) * pitchX, y: y0 + Math.floor(index / cols) * pitchY,
@@ -13831,6 +13840,197 @@
         selectionCycle.index = selectionCycle.key === key ? (selectionCycle.index + 1) % hits.length : 0;
         selectionCycle.key = key;
         return hits[selectionCycle.index];
+      }
+
+      // ===== AutoCAD Electrical相当のプロジェクト保守 =====
+      function showProjectUpdateDialog() {
+        openDialog("プロジェクト一括更新", `<p class="muted">選択した処理を上から順に全ページへ実行します。</p>
+          ${[
+            ["tags", "部品タグ再採番"], ["wires", "線番更新"], ["junctions", "接続点生成"],
+            ["titles", "ページ番号・総頁数更新"], ["panel", "盤フットプリント同期"], ["audit", "最後に監査"]
+          ].map(([key, label]) => `<label><input type="checkbox" data-project-update="${key}" ${key === "audit" ? "" : "checked"} style="width:auto;min-height:auto"> ${label}</label>`).join("")}
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="projectUpdateApply" class="primary">一括実行</button></div>`);
+        qs("#projectUpdateApply").onclick = () => {
+          const enabled = new Set(qsa("[data-project-update]", qs("#dialogBody")).filter(input => input.checked).map(input => input.dataset.projectUpdate));
+          closeDialog();
+          if (enabled.has("tags")) autoTagComponents();
+          if (enabled.has("wires")) autoWireNumbers();
+          if (enabled.has("junctions")) autoJunctions();
+          if (enabled.has("titles")) { syncPageTotals(); commitHistory("表題欄の頁情報を更新しました。"); }
+          if (enabled.has("panel")) syncPanelFootprints("toPanel");
+          render();
+          if (enabled.has("audit")) showAudit();
+        };
+      }
+
+      function replaceElementType(page, element, targetType) {
+        const oldAnchors = elementConnectionAnchors(element);
+        const replacement = { ...defaultElement(targetType, Number(element.x || 0), Number(element.y || 0)) };
+        const preserved = ["id", "tag", "label", "description", "manufacturer", "catalog", "rating", "installation", "location", "item", "layer", "rotation", "locked", "labelDx", "labelDy", "labelFontSize"];
+        preserved.forEach(key => { if (element[key] !== undefined) replacement[key] = deepClone(element[key]); });
+        replacement.type = targetType;
+        const newAnchorsBefore = elementConnectionAnchors(replacement);
+        if (oldAnchors[0] && newAnchorsBefore[0]) {
+          replacement.x = round(Number(replacement.x || 0) + oldAnchors[0].x - newAnchorsBefore[0].x);
+          replacement.y = round(Number(replacement.y || 0) + oldAnchors[0].y - newAnchorsBefore[0].y);
+        }
+        const newAnchors = elementConnectionAnchors(replacement);
+        page.elements.forEach(wire => {
+          if (wire.type !== "wire" || !wire.points) return;
+          wire.points.forEach(point => {
+            const index = oldAnchors.findIndex(anchor => Math.hypot(anchor.x - point[0], anchor.y - point[1]) < .7);
+            if (index < 0 || !newAnchors.length) return;
+            const target = newAnchors[Math.min(index, newAnchors.length - 1)];
+            point[0] = round(target.x); point[1] = round(target.y);
+          });
+        });
+        Object.keys(element).forEach(key => delete element[key]);
+        Object.assign(element, replacement);
+      }
+
+      function showSymbolSwapDialog() {
+        const selected = selectedElement();
+        if (!selected || selected.points || selected.type === "text") { setStatus("置換元のシンボルを1個選択してください。"); return; }
+        const options = PALETTE.filter(item => !["basic", "annotation"].includes(item.group) && !["text", "wire", "line", "rect", "circle"].includes(item.type));
+        openDialog("シンボル一括置換", `<p>置換元: <b>${escapeHtml(paletteLabel(selected.type))}</b></p>
+          <label>置換先</label><select id="swapTarget">${options.map(item => `<option value="${escapeAttr(item.type)}">${escapeHtml(item.label)}</option>`).join("")}</select>
+          <label>対象</label><select id="swapScope"><option value="selected">選択要素のみ</option><option value="page">現在ページの同種</option><option value="project">全ページの同種</option></select>
+          <p class="muted">タグ・属性・回転・ラベル位置を維持し、接続済み配線を新しい接続点へ追従します。</p>
+          <div class="inline" style="justify-content:flex-end"><button id="swapApply" class="primary">置換</button></div>`);
+        qs("#swapApply").onclick = () => {
+          const type = qs("#swapTarget").value, scope = qs("#swapScope").value, sourceType = selected.type;
+          let count = 0;
+          state.pages.forEach(page => {
+            if (scope === "selected" && page.id !== state.activePageId) return;
+            if (scope === "page" && page.id !== state.activePageId) return;
+            page.elements.filter(item => scope === "selected" ? item.id === selected.id : item.type === sourceType).forEach(item => {
+              replaceElementType(page, item, type); count += 1;
+            });
+          });
+          closeDialog(); commitHistory(count + "個のシンボルを一括置換しました。"); render();
+        };
+      }
+
+      function spreadsheetRows() {
+        const rows = [];
+        state.pages.forEach(page => page.elements.forEach(item => {
+          if (!supportsElectricalAttributes(item) && !["wire", "terminal", "terminalStrip", "plcBlock"].includes(item.type)) return;
+          rows.push({
+            id: item.id, page: page.name, type: item.type,
+            tag: item.type === "wire" ? item.wireNo || "" : componentTag(item),
+            description: item.description || "", manufacturer: item.manufacturer || "", catalog: item.catalog || "",
+            installation: item.installation || "", location: item.location || "", terminals: item.terminalLabels || item.pinText || ""
+          });
+        }));
+        return rows;
+      }
+
+      function showSpreadsheetRoundtrip() {
+        const headers = ["id", "page", "type", "tag", "description", "manufacturer", "catalog", "installation", "location", "terminals"];
+        const text = [headers.join("\t"), ...spreadsheetRows().map(row => headers.map(key => String(row[key] || "").replace(/\t/g, " ")).join("\t"))].join("\n");
+        openDialog("表計算データ往復編集", `<p class="muted">全選択してExcel等へ貼り付け、編集後に戻してください。ID・page・typeは照合用のため変更しないでください。</p>
+          <textarea id="spreadsheetData" style="min-height:48vh;font-family:monospace;white-space:pre">${escapeHtml(text)}</textarea>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="spreadsheetExport">TSV保存</button><button id="spreadsheetPreview" class="primary">変更を確認</button></div>`);
+        qs("#spreadsheetExport").onclick = () => download("electrical-roundtrip.tsv", "\uFEFF" + qs("#spreadsheetData").value, "text/tab-separated-values;charset=utf-8");
+        qs("#spreadsheetPreview").onclick = () => {
+          const rows = parseDelimitedRows(qs("#spreadsheetData").value);
+          if (rows.length < 2) return;
+          const headers = rows[0].map(value => value.trim());
+          const changes = [];
+          rows.slice(1).forEach(values => {
+            const row = Object.fromEntries(headers.map((key, index) => [key, values[index] || ""]));
+            const item = findElementById(row.id); if (!item) return;
+            const fields = ["description", "manufacturer", "catalog", "installation", "location"];
+            fields.forEach(key => { if (String(item[key] || "") !== row[key]) changes.push({ item, key, value: row[key] }); });
+            const identity = item.type === "wire" ? item.wireNo || "" : componentTag(item);
+            if (identity !== row.tag) changes.push({ item, key: item.type === "wire" ? "wireNo" : "tag", value: row.tag });
+            if (["terminal", "terminalStrip"].includes(item.type) && String(item.terminalLabels || "") !== row.terminals) changes.push({ item, key: "terminalLabels", value: row.terminals });
+            if (item.type === "plcBlock" && String(item.pinText || "") !== row.terminals) changes.push({ item, key: "pinText", value: row.terminals });
+          });
+          openDialog("表計算データ変更プレビュー", `<p><b>${changes.length}項目</b>を更新します。</p><div style="max-height:45vh;overflow:auto">${changes.slice(0, 100).map(change => `<div>${escapeHtml(change.item.id)}: ${escapeHtml(change.key)} → ${escapeHtml(change.value)}</div>`).join("")}</div>
+            <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="spreadsheetApply" class="primary">適用</button></div>`);
+          qs("#spreadsheetApply").onclick = () => { changes.forEach(change => { change.item[change.key] = change.value; if (change.key === "tag" && !change.item.label) change.item.label = change.value; }); closeDialog(); commitHistory(changes.length + "項目を表計算データから更新しました。"); render(); };
+        };
+      }
+
+      function showCatalogRefresh() {
+        const differences = [];
+        state.pages.forEach(page => page.elements.forEach(item => {
+          if (!item.catalog) return;
+          const catalog = (state.catalog || []).find(entry => entry.catalog === item.catalog);
+          if (!catalog) return;
+          ["manufacturer", "description", "rating", "maxNO", "maxNC"].forEach(key => {
+            if (catalog[key] !== undefined && String(item[key] || "") !== String(catalog[key] || "")) differences.push({ page, item, key, value: catalog[key] });
+          });
+        }));
+        openDialog("カタログ差分更新", differences.length ? `<p>${differences.length}項目に差分があります。</p><table class="report-table"><thead><tr><th>頁</th><th>タグ</th><th>項目</th><th>新しい値</th></tr></thead><tbody>${differences.slice(0, 150).map(diff => `<tr><td>${escapeHtml(diff.page.name)}</td><td>${escapeHtml(componentTag(diff.item))}</td><td>${escapeHtml(diff.key)}</td><td>${escapeHtml(diff.value)}</td></tr>`).join("")}</tbody></table>
+          <div class="inline" style="justify-content:flex-end"><button id="catalogRefreshApply" class="primary">すべて更新</button></div>` : '<p class="muted">カタログとの差分はありません。</p>');
+        qs("#catalogRefreshApply")?.addEventListener("click", () => { differences.forEach(diff => { diff.item[diff.key] = diff.value; }); closeDialog(); commitHistory(differences.length + "件のカタログ属性を更新しました。"); render(); });
+      }
+
+      function showFootprintDb() {
+        const rowHtml = (item = {}) => `<tr data-footprint-row><td><input data-fp="manufacturer" value="${escapeAttr(item.manufacturer || "")}"></td><td><input data-fp="catalog" value="${escapeAttr(item.catalog || "")}"></td><td><input data-fp="type" value="${escapeAttr(item.type || "")}"></td><td><input data-fp="label" value="${escapeAttr(item.label || "")}"></td><td><input data-fp="w" type="number" step="0.5" value="${Number(item.w || 20)}"></td><td><input data-fp="h" type="number" step="0.5" value="${Number(item.h || 14)}"></td><td><button data-fp-delete>削除</button></td></tr>`;
+        openDialog("フットプリント検索DB", `<table class="report-table"><thead><tr><th>メーカー</th><th>品番</th><th>回路図種別</th><th>盤図形名</th><th>幅</th><th>高さ</th><th></th></tr></thead><tbody id="footprintRows">${(state.footprintDb || []).map(rowHtml).join("")}</tbody></table>
+          <div class="inline" style="justify-content:flex-end"><button id="footprintAdd">追加</button><button id="footprintApply" class="primary">適用</button></div>`);
+        const bind = () => qsa("[data-fp-delete]", qs("#dialogBody")).forEach(button => button.onclick = () => button.closest("tr").remove());
+        bind(); qs("#footprintAdd").onclick = () => { qs("#footprintRows").insertAdjacentHTML("beforeend", rowHtml()); bind(); };
+        qs("#footprintApply").onclick = () => {
+          state.footprintDb = qsa("[data-footprint-row]", qs("#dialogBody")).map(row => {
+            const v = key => qs(`[data-fp="${key}"]`, row).value;
+            return { manufacturer: v("manufacturer").trim(), catalog: v("catalog").trim(), type: v("type").trim(), label: v("label").trim(), w: Number(v("w") || 20), h: Number(v("h") || 14) };
+          }).filter(item => item.catalog || item.type);
+          closeDialog(); commitHistory("フットプリント検索DBを更新しました。");
+        };
+      }
+
+      function footprintSizeFor(row) {
+        const found = (state.footprintDb || []).find(item => (!item.manufacturer || item.manufacturer === row.manufacturer) && (!item.catalog || item.catalog === row.catalog) && (!item.type || item.type === row.type));
+        return found ? [Number(found.w || 20), Number(found.h || 14)] : (FOOTPRINT_SIZES[row.type] || [18, 14]);
+      }
+
+      function showPanelAnnotationDialog() {
+        const footprints = currentPage()?.elements.filter(item => item.type === "rect" && item.panelRef) || [];
+        if (!footprints.length) { setStatus("現在ページに盤フットプリントがありません。"); return; }
+        openDialog("項目番号・バルーン・銘板", `<div class="row"><div><label>開始番号</label><input id="panelItemStart" type="number" min="1" value="1"></div><div><label>バルーン形状</label><select id="panelBalloonShape"><option value="circle">丸</option><option value="hex">六角相当</option></select></div></div>
+          <label><input id="panelNameplates" type="checkbox" checked style="width:auto;min-height:auto"> フットプリント下へ銘板を生成</label>
+          <div class="inline" style="justify-content:flex-end"><button id="panelAnnotationApply" class="primary">${footprints.length}個へ生成</button></div>`);
+        qs("#panelAnnotationApply").onclick = () => {
+          const page = currentPage(), start = Number(qs("#panelItemStart").value || 1), nameplates = qs("#panelNameplates").checked;
+          const created = [];
+          footprints.forEach((footprint, index) => {
+            const number = start + index; footprint.item = String(number);
+            const bx = footprint.x + footprint.w + 5, by = footprint.y - 2;
+            created.push({ ...defaultElement("circle", bx - 3, by - 3), w: 6, h: 6, label: String(number), panelAnnotationFor: footprint.id, layer: "notes" });
+            created.push({ ...defaultElement("line"), points: [[footprint.x + footprint.w, footprint.y], [bx - 3, by]], panelAnnotationFor: footprint.id, layer: "notes" });
+            if (nameplates) {
+              created.push({ ...defaultElement("rect", footprint.x, footprint.y + footprint.h + 3), w: footprint.w, h: 7, label: footprint.panelRef, panelAnnotationFor: footprint.id, layer: "notes" });
+            }
+          });
+          page.elements = page.elements.filter(item => !item.panelAnnotationFor).concat(created);
+          closeDialog(); commitHistory(footprints.length + "個の項目番号・銘板を生成しました。"); render();
+        };
+      }
+
+      function showCableFanDialog() {
+        openDialog("ケーブル展開（ファンイン／アウト）", `<div class="row"><div><label>ケーブルタグ</label><input id="fanCableTag" value="CBL1"></div><div><label>芯数</label><input id="fanCoreCount" type="number" min="2" max="64" value="4"></div></div>
+          <div class="row"><div><label>左X</label><input id="fanX1" type="number" step="2.5" value="30"></div><div><label>右X</label><input id="fanX2" type="number" step="2.5" value="150"></div></div>
+          <div class="row"><div><label>開始Y</label><input id="fanY" type="number" step="2.5" value="50"></div><div><label>芯間隔</label><input id="fanPitch" type="number" step="2.5" value="7.5"></div></div>
+          <label><input id="fanShield" type="checkbox" style="width:auto;min-height:auto"> シールド・ドレン線を追加</label>
+          <div class="inline" style="justify-content:flex-end"><button id="fanApply" class="primary">生成</button></div>`);
+        qs("#fanApply").onclick = () => {
+          const page = currentPage(), tag = qs("#fanCableTag").value.trim() || "CBL1", count = Math.max(2, Number(qs("#fanCoreCount").value || 4));
+          const x1 = Number(qs("#fanX1").value), x2 = Number(qs("#fanX2").value), y = Number(qs("#fanY").value), pitch = Number(qs("#fanPitch").value || 7.5);
+          const bundleLeft = x1 + 35, bundleRight = x2 - 35, created = [], cableRows = [];
+          for (let i = 0; i < count; i++) {
+            const cy = round(y + i * pitch), core = String(i + 1);
+            created.push({ ...defaultElement("wire"), points: [[x1, cy], [bundleLeft, cy], [bundleRight, cy], [x2, cy]], wireNo: "", cableTag: tag, coreNo: core, layer: "wires" });
+            cableRows.push({ tag, core, color: "", gauge: "", status: "used", from: "", to: "", shielded: qs("#fanShield").checked });
+          }
+          created.push({ ...defaultElement("cableMarker", (bundleLeft + bundleRight) / 2 - 14, y + (count - 1) * pitch / 2 - 6), cableTag: tag, label: tag, coreNo: "1-" + count, shielded: qs("#fanShield").checked });
+          if (qs("#fanShield").checked) created.push({ ...defaultElement("wire"), points: [[bundleLeft, y - pitch], [bundleRight, y - pitch]], wireNo: "DRAIN", cableTag: tag, coreNo: "D", layer: "wires" });
+          state.cables = [...(state.cables || []).filter(row => row.tag !== tag), ...cableRows];
+          page.elements.push(...created); setSelection(created.map(item => item.id)); closeDialog(); commitHistory(tag + "を" + count + "芯で展開しました。"); render();
+        };
       }
 
       // ===== 標準パック外部化 =====
@@ -16217,15 +16417,21 @@
             </tbody>
           </table>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="terminalDetailBtn">端子単位詳細</button>
             <button type="button" id="applyTerminalEditorBtn" class="primary">適用</button>
           </div>
         `;
         openDialog("端子台エディタ", html);
         qs("#applyTerminalEditorBtn").addEventListener("click", applyTerminalEditor);
+        qs("#terminalDetailBtn").addEventListener("click", () => {
+          applyTerminalEditor(false);
+          const first = rows[0]?.element;
+          if (first) showTerminalDetailEditor(first);
+        });
       }
 
       // 端子台エディタの入力を要素へ反映。
-      function applyTerminalEditor() {
+      function applyTerminalEditor(close = true) {
         qsa("[data-terminal-row]").forEach(row => {
           const element = findElementById(row.dataset.terminalRow);
           if (!element) return;
@@ -16239,9 +16445,31 @@
             resizeTerminalElementForOrientation(element);
           }
         });
-        closeDialog();
+        if (close) closeDialog();
         commitHistory("端子台情報を更新しました。");
         render();
+      }
+
+      function showTerminalDetailEditor(element) {
+        const count = Math.max(1, Number(element.count || 1));
+        const levels = Math.max(1, Number(element.levels || 1));
+        const existing = Array.isArray(element.terminalDetails) ? element.terminalDetails : [];
+        const details = [];
+        for (let terminal = 0; terminal < count; terminal++) for (let level = 1; level <= levels; level++) {
+          details.push(existing.find(item => Number(item.terminal) === terminal + 1 && Number(item.level) === level) || { terminal: terminal + 1, level, label: terminalLabel(element, terminal + (level - 1) * count), catalog: "", internal: "", external: "", maxWires: 2, jumper: "", spare: false });
+        }
+        openDialog("端子単位詳細: " + (element.label || element.id), `<table class="report-table"><thead><tr><th>端子</th><th>段</th><th>表示</th><th>型式</th><th>盤内接続</th><th>盤外接続</th><th>最大線数</th><th>ジャンパ</th><th>予備</th></tr></thead><tbody>
+          ${details.map(item => `<tr data-terminal-detail="${item.terminal}:${item.level}"><td>${item.terminal}</td><td>${item.level}</td><td><input data-td="label" value="${escapeAttr(item.label || "")}"></td><td><input data-td="catalog" value="${escapeAttr(item.catalog || "")}"></td><td><input data-td="internal" value="${escapeAttr(item.internal || "")}"></td><td><input data-td="external" value="${escapeAttr(item.external || "")}"></td><td><input data-td="maxWires" type="number" min="1" value="${Number(item.maxWires || 2)}"></td><td><input data-td="jumper" value="${escapeAttr(item.jumper || "")}"></td><td><input data-td="spare" type="checkbox" ${item.spare ? "checked" : ""} style="width:auto;min-height:auto"></td></tr>`).join("")}
+          </tbody></table><div class="inline" style="justify-content:flex-end"><button id="terminalDetailApply" class="primary">適用</button></div>`);
+        qs("#terminalDetailApply").onclick = () => {
+          element.terminalDetails = qsa("[data-terminal-detail]", qs("#dialogBody")).map(row => {
+            const [terminal, level] = row.dataset.terminalDetail.split(":").map(Number);
+            const value = key => qs(`[data-td="${key}"]`, row);
+            return { terminal, level, label: value("label").value, catalog: value("catalog").value, internal: value("internal").value, external: value("external").value, maxWires: Number(value("maxWires").value || 2), jumper: value("jumper").value, spare: value("spare").checked };
+          });
+          element.terminalLabels = element.terminalDetails.filter(item => item.level === 1).map(item => item.label).join("\n");
+          closeDialog(); commitHistory("端子単位詳細を更新しました。"); render();
+        };
       }
 
       // 全ページから要素IDで検索し{page,element}を返す。
@@ -19662,6 +19890,9 @@
           event.target.value = "";
         });
         const MENU_ACTIONS = {
+          projectUpdate: showProjectUpdateDialog,
+          symbolSwap: showSymbolSwapDialog,
+          catalogRefresh: showCatalogRefresh,
           commandPalette: showCommandPalette,
           favoriteManager: showFavoriteManager,
           attributeBrush: startAttributeBrush,
@@ -19693,6 +19924,9 @@
           cableManager: showCableManager,
           locationView: showLocationView,
           plcModuleManager: showPlcModuleManager,
+          footprintDb: showFootprintDb,
+          panelAnnotation: showPanelAnnotationDialog,
+          cableFan: showCableFanDialog,
           saveUserCircuit: saveSelectedAsUserCircuit,
           tagRules: showComponentTagRulesDialog,
           wireTypeManager: showWireTypeManager,
@@ -19703,6 +19937,7 @@
           revisionHistory: showRevisionHistory,
           crossRef: showCrossReference,
           reportCsv: exportReportCsv,
+          spreadsheetRoundtrip: showSpreadsheetRoundtrip,
           reportTable: showReportTable,
           insertReport: showInsertReportDialog,
           bom: showBomTable,
