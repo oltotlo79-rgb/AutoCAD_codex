@@ -122,7 +122,7 @@
     .app {
       height: 100%;
       display: grid;
-      grid-template-rows: 48px 40px minmax(0, 1fr);
+      grid-template-rows: 48px 40px auto minmax(0, 1fr);
     }
 
     /* ===== 上部ツールバー・ページタブ(共通の帯スタイル) ===== */
@@ -954,6 +954,53 @@
     }
     .context-menu button:hover { background: #eef4f2; color: var(--accent); box-shadow: none; transform: none; }
     .context-menu button:disabled { opacity: .45; }
+    .panel-collapse {
+      position: fixed; z-index: 35; top: 104px; width: 28px; height: 38px;
+      padding: 0; border-radius: 0 8px 8px 0; box-shadow: var(--shadow);
+    }
+    #toggleLeftPanel { left: 0; }
+    #toggleRightPanel { right: 0; border-radius: 8px 0 0 8px; }
+    .app.left-collapsed .shell { grid-template-columns: 0 minmax(0, 1fr) 304px; }
+    .app.right-collapsed .shell { grid-template-columns: 260px minmax(0, 1fr) 0; }
+    .app.left-collapsed.right-collapsed .shell { grid-template-columns: 0 minmax(0, 1fr) 0; }
+    .app.left-collapsed .palette, .app.right-collapsed .inspector { visibility: hidden; overflow: hidden; padding: 0; }
+    .ribbon {
+      display: flex; align-items: center; gap: 4px; padding: 4px 10px;
+      background: #eef3f6; border-bottom: 1px solid var(--line); overflow-x: auto;
+    }
+    .ribbon button { min-height: 28px; padding: 4px 9px; white-space: nowrap; }
+    .ribbon button.active { color: white; background: var(--accent); }
+    .ribbon-group { display: flex; gap: 4px; padding-right: 8px; margin-right: 4px; border-right: 1px solid var(--line); }
+    .mini-toolbar {
+      position: fixed; z-index: 42; display: flex; gap: 3px; padding: 4px;
+      background: rgba(255,255,255,.97); border: 1px solid var(--line);
+      border-radius: 8px; box-shadow: var(--shadow);
+    }
+    .mini-toolbar.hidden { display: none; }
+    .mini-toolbar button { min-height: 28px; padding: 3px 8px; }
+    .bottom-hud {
+      position: fixed; z-index: 30; left: 50%; bottom: 8px; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 9px; padding: 5px 11px;
+      color: #eaf5f3; background: rgba(22,38,48,.93); border-radius: 8px;
+      box-shadow: var(--shadow); font-size: 12px; pointer-events: none;
+    }
+    .bottom-hud .warn { color: #ffd166; }
+    .draw-input {
+      position: fixed; z-index: 46; min-width: 120px; padding: 5px 8px;
+      color: #fff; background: #173440; border: 1px solid #4fd1bd; border-radius: 6px;
+      box-shadow: var(--shadow); font: 13px ui-monospace,Consolas,monospace;
+    }
+    .toast-stack { position: fixed; right: 14px; bottom: 48px; z-index: 70; display: grid; gap: 7px; }
+    .toast {
+      max-width: 360px; padding: 9px 12px; color: #fff; background: #173440;
+      border-radius: 7px; box-shadow: var(--shadow); animation: toast-in .18s ease-out;
+    }
+    .toast button { margin-left: 10px; min-height: 25px; padding: 2px 7px; }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
+    .page-navigator { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; max-height:62vh; overflow:auto; }
+    .page-nav-card { padding:8px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; }
+    .page-nav-card.active { outline:2px solid var(--accent); }
+    .page-nav-card svg { width:100%; height:105px; background:#f4f6f7; }
     .context-sep { height: 1px; background: #e6ebf1; margin: 4px 6px; }
 
     /* --- モーション低減設定の尊重(全アニメ・遷移を実質停止) --- */
@@ -1004,6 +1051,12 @@
 
     <!-- ページタブ(renderTabs()が中身を生成。ダブルクリックで改名) -->
     <nav class="tabbar" id="tabbar" aria-label="ページタブ"></nav>
+    <div class="ribbon" id="quickRibbon" role="toolbar" aria-label="クイック作図リボン">
+      <span class="ribbon-group"><button data-tool="select">選択 S</button><button data-tool="wire">配線 W</button><button data-tool="text">文字 T</button></span>
+      <span class="ribbon-group"><button id="ribbonRepeat">繰返 Enter</button><button id="ribbonRotate">回転</button><button id="ribbonDuplicate">複製</button><button id="ribbonDelete">削除</button></span>
+      <span class="ribbon-group"><button id="ribbonAudit">検査表示</button><button id="ribbonPages">ページ一覧</button><button id="ribbonCommand">検索 Ctrl+K</button></span>
+      <span class="ribbon-group"><button id="ribbonPanels">集中表示 Tab</button><button id="ribbonShortcuts">キー設定</button></span>
+    </div>
 
     <!-- 本体3カラム。左=パレット/設定/機能メニュー、中央=SVGキャンバス、右=ページ設定/選択編集 -->
     <main class="shell">
@@ -1112,6 +1165,9 @@
               <option value="attributeBrush">属性スポイト</option>
               <option value="batchEdit">選択要素の一括編集</option>
               <option value="quickProperties">クイックプロパティ</option>
+              <option value="shortcutSettings">ショートカット設定</option>
+              <option value="pageNavigator">ページナビゲータ</option>
+              <option value="toggleAuditOverlay">図面上のエラー表示切替</option>
               <option value="smartAlign">接続点スマート整列</option>
               <option value="projects">プロジェクト管理（ブラウザ内保存）</option>
               <option value="terminalEditor">端子台エディタ</option>
@@ -1291,6 +1347,12 @@
   <div id="printSheets" class="print-sheets"></div>
   <!-- 右クリックメニュー(onCanvasContextMenuが項目を差し込む) -->
   <div id="contextMenu" class="context-menu hidden" role="menu"></div>
+  <button id="toggleLeftPanel" class="panel-collapse" title="部品パレットを開閉">‹</button>
+  <button id="toggleRightPanel" class="panel-collapse" title="プロパティを開閉">›</button>
+  <div id="miniToolbar" class="mini-toolbar hidden" role="toolbar" aria-label="選択対象のクイック操作"></div>
+  <div id="bottomHud" class="bottom-hud" aria-live="polite"></div>
+  <div id="drawInput" class="draw-input hidden"></div>
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
   <!-- 共通ダイアログ(openDialog()がタイトルと本文を差し込む) -->
   <div id="dialogBackdrop" class="dialog-backdrop hidden" role="dialog" aria-modal="true">
     <div class="dialog">
@@ -2150,7 +2212,12 @@
           standard: "general",
           currentLayer: "symbols",
           outputUnderlays: false,
-          showPageName: false
+          showPageName: false,
+          auditOverlay: false,
+          leftPanelCollapsed: false,
+          rightPanelCollapsed: false,
+          shortcutMap: {},
+          followWireRoute: true
         },
         layers: [
           { id: "frame", label: "図枠", visible: true, locked: true, color: "#141a20" },
@@ -2194,6 +2261,7 @@
       let clipboardElement = null;
       let installLocationClipboard = null;
       let history = [];
+      let projectDirty = false;
       let historyReasons = []; // historyと同じ並びの{reason, at}(履歴タイムライン表示用)
       let historyImageRefs = []; // 各履歴スナップショットが参照する下絵アセットID集合
       const historyImageAssets = new Map(); // 下絵data URLは履歴ごとに複製せず1回だけ保持
@@ -2515,6 +2583,11 @@
         if (typeof state.settings.showPageName !== "boolean") state.settings.showPageName = false;
         if (typeof state.settings.continuousPlacement !== "boolean") state.settings.continuousPlacement = true;
         if (!Array.isArray(state.settings.favoriteTools)) state.settings.favoriteTools = [];
+        if (typeof state.settings.auditOverlay !== "boolean") state.settings.auditOverlay = false;
+        if (typeof state.settings.leftPanelCollapsed !== "boolean") state.settings.leftPanelCollapsed = false;
+        if (typeof state.settings.rightPanelCollapsed !== "boolean") state.settings.rightPanelCollapsed = false;
+        if (!state.settings.shortcutMap || typeof state.settings.shortcutMap !== "object") state.settings.shortcutMap = {};
+        if (typeof state.settings.followWireRoute !== "boolean") state.settings.followWireRoute = true;
         state.project = {
           title: "電気図面",
           drawingNo: "",
@@ -2719,6 +2792,7 @@
           pruneHistoryImageAssets();
         }
         historyIndex = history.length - 1;
+        projectDirty = reason !== "初期化";
         pruneHistoryImageAssets();
         try {
           persistAutomaticBackup(JSON.stringify(state));
@@ -3242,6 +3316,7 @@
         renderCanvasView(options);
         if (!options.light) syncInspector();
         updateCanvasHint();
+        updateProductivityUi();
       }
 
       // ===== ページ表示モード(タブ=1ページずつ / 並べて表示=全ページを縦に並べて直接編集) =====
@@ -3411,6 +3486,8 @@
         if (isLayerVisible("frame")) drawFrame(svg, page, size);
         visibleElements.filter(element => element.type !== "underlayImage").forEach(element => drawElement(svg, element));
         if (options.selection) {
+          if (state.settings.auditOverlay) drawAuditOverlay(svg, page);
+          drawSnapFeedback(svg);
           drawSelection(svg);
           drawMarquee(svg);
           drawAlignGuides(svg);
@@ -9873,9 +9950,23 @@
       }
 
       // パレット種別を用紙へ配置する入口。配線分割・スナップ・履歴記録まで行う。
+      const placementTrail = [];
+      function smartPlacementPoint(type, x, y) {
+        const recent = placementTrail.filter(item => item.type === type).slice(-2);
+        if (recent.length === 2) {
+          const predicted = { x: recent[1].x + recent[1].x - recent[0].x, y: recent[1].y + recent[1].y - recent[0].y };
+          if (Math.hypot(x - predicted.x, y - predicted.y) <= 8) return predicted;
+        }
+        return { x, y };
+      }
+
       function placeElement(type, x, y) {
         const page = currentPage();
         if (!page) return;
+        const smartPoint = smartPlacementPoint(type, x, y);
+        x = smartPoint.x; y = smartPoint.y;
+        placementTrail.push({ type, x, y });
+        if (placementTrail.length > 12) placementTrail.shift();
         noteRecentPaletteType(type);
         if (String(type).startsWith("custom:")) {
           placeCustomSymbol(type.slice("custom:".length), x, y);
@@ -13741,6 +13832,152 @@
         };
       }
 
+      const DEFAULT_SHORTCUTS = { select: "s", wire: "w", text: "t", line: "l", rect: "r", circle: "c", quick: "q" };
+      let drawNumericBuffer = "";
+
+      function effectiveShortcut(action) {
+        return String(state.settings.shortcutMap?.[action] || DEFAULT_SHORTCUTS[action] || "").toLowerCase();
+      }
+
+      function showToast(message, actionLabel = "", action = null) {
+        const host = qs("#toastStack");
+        if (!host) return;
+        const item = document.createElement("div");
+        item.className = "toast";
+        item.append(document.createTextNode(message));
+        if (actionLabel && action) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = actionLabel;
+          button.onclick = () => { action(); item.remove(); };
+          item.appendChild(button);
+        }
+        host.appendChild(item);
+        setTimeout(() => item.remove(), 5200);
+      }
+
+      function togglePanel(side, force) {
+        const key = side === "left" ? "leftPanelCollapsed" : "rightPanelCollapsed";
+        state.settings[key] = force === undefined ? !state.settings[key] : !!force;
+        updateProductivityUi();
+        persistAutomaticBackup(JSON.stringify(state));
+      }
+
+      function toggleFocusMode() {
+        const both = state.settings.leftPanelCollapsed && state.settings.rightPanelCollapsed;
+        state.settings.leftPanelCollapsed = !both;
+        state.settings.rightPanelCollapsed = !both;
+        updateProductivityUi();
+        setStatus(both ? "左右パネルを表示しました。" : "集中表示に切り替えました。Tabで戻せます。");
+      }
+
+      function updateProductivityUi() {
+        const app = qs(".app");
+        if (!app) return;
+        app.classList.toggle("left-collapsed", !!state.settings.leftPanelCollapsed);
+        app.classList.toggle("right-collapsed", !!state.settings.rightPanelCollapsed);
+        qs("#toggleLeftPanel").textContent = state.settings.leftPanelCollapsed ? "›" : "‹";
+        qs("#toggleRightPanel").textContent = state.settings.rightPanelCollapsed ? "‹" : "›";
+        qsa("#quickRibbon [data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === activeTool));
+        qs("#ribbonAudit")?.classList.toggle("active", !!state.settings.auditOverlay);
+        const page = currentPage();
+        const issueCount = state.settings.auditOverlay && page
+          ? auditProject().filter(issue => issue.pageId === page.id && issue.elementId).length : 0;
+        const mode = dragState?.mode === "draw" ? "作図中" : activeTool === "select" ? "選択" : toolDisplayLabel(activeTool);
+        const snapText = `GRID ${state.settings.grid || 2.5} / SNAP ${state.settings.snap ? "ON" : "OFF"} / 接続 ${state.settings.objectSnap ? "ON" : "OFF"}`;
+        qs("#bottomHud").innerHTML = `<span>${escapeHtml(mode)}</span><span>${escapeHtml(snapText)}</span>${issueCount ? `<span class="warn">指摘 ${issueCount}</span>` : ""}<span>${selectedIds.length ? "選択 " + selectedIds.length : "未選択"}</span><span class="${projectDirty ? "warn" : ""}">${projectDirty ? "未保存" : "保存済み"}</span>`;
+        renderMiniToolbar();
+      }
+
+      function renderMiniToolbar() {
+        const host = qs("#miniToolbar");
+        const element = selectedElement();
+        if (!host || !element || dragState || inlineEdit) {
+          host?.classList.add("hidden");
+          return;
+        }
+        const svg = qs("#canvas");
+        const node = svg?.querySelector(`[data-id="${CSS.escape(element.id)}"]`);
+        if (!node) { host.classList.add("hidden"); return; }
+        const box = node.getBoundingClientRect();
+        const actions = element.type === "wire"
+          ? [["線番", () => startInlineEdit(element)], ["曲げ", flipSelectedWireBend], ["分割", splitSelectedWire], ["削除", deleteSelected]]
+          : element.type === "text"
+            ? [["編集", () => startInlineEdit(element)], ["左回転", () => rotateSelected(-90)], ["複製", duplicateSelected], ["削除", deleteSelected]]
+            : [["配線", () => startWireFromSelected()], ["回転", () => rotateSelected(90)], ["複製", duplicateSelected], ["編集", showQuickProperties]];
+        host.innerHTML = "";
+        actions.forEach(([label, run]) => {
+          const button = document.createElement("button");
+          button.type = "button"; button.textContent = label; button.onclick = run; host.appendChild(button);
+        });
+        host.classList.remove("hidden");
+        host.style.left = Math.max(8, Math.min(window.innerWidth - 280, box.left)) + "px";
+        host.style.top = Math.max(84, box.top - 38) + "px";
+      }
+
+      function startWireFromSelected() {
+        const element = selectedElement();
+        const anchor = element && componentConnectionAnchors(element)[0];
+        if (!anchor) { setStatus("選択要素に配線接続点がありません。"); return; }
+        setActiveTool("wire");
+        const wire = defaultElement("wire", anchor.x, anchor.y);
+        wire.points = [[anchor.x, anchor.y], [anchor.x, anchor.y]];
+        currentPage().elements.push(wire); selectSingle(wire.id);
+        dragState = { mode: "draw", elementId: wire.id, start: { x: anchor.x, y: anchor.y }, lastPoint: [anchor.x, anchor.y] };
+        render();
+      }
+
+      function toggleAuditOverlay() {
+        state.settings.auditOverlay = !state.settings.auditOverlay;
+        commitHistory(state.settings.auditOverlay ? "図面上のエラー表示を有効にしました。" : "図面上のエラー表示を無効にしました。");
+        render();
+      }
+
+      function showShortcutSettings() {
+        const rows = [
+          ["select", "選択"], ["wire", "配線"], ["text", "文字"], ["line", "直線"],
+          ["rect", "四角形"], ["circle", "円"], ["quick", "クイックプロパティ"]
+        ];
+        openDialog("ショートカット設定", `<p class="muted">単一キーを割り当てます。重複キーは保存できません。</p>
+          <div class="form-grid">${rows.map(([key, label]) => `<div><label>${label}</label><input maxlength="1" data-shortcut="${key}" value="${escapeAttr(effectiveShortcut(key))}"></div>`).join("")}</div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="shortcutReset">初期値</button><button id="shortcutApply" class="primary">保存</button></div>`);
+        qs("#shortcutReset").onclick = () => { state.settings.shortcutMap = {}; closeDialog(); showShortcutSettings(); };
+        qs("#shortcutApply").onclick = () => {
+          const next = {};
+          qsa("[data-shortcut]", qs("#dialogBody")).forEach(input => { next[input.dataset.shortcut] = input.value.trim().toLowerCase(); });
+          const values = Object.values(next).filter(Boolean);
+          if (new Set(values).size !== values.length) { setStatus("同じキーが複数の操作に割り当てられています。"); return; }
+          state.settings.shortcutMap = next; closeDialog(); commitHistory("ショートカットを変更しました。"); render();
+        };
+      }
+
+      function showPageNavigator() {
+        openDialog("ページナビゲータ", `<p class="muted">カードをドラッグして並べ替え、クリックして移動します。</p><div id="pageNavigatorGrid" class="page-navigator"></div>`, { wide: true });
+        const grid = qs("#pageNavigatorGrid");
+        state.pages.forEach((page, index) => {
+          const card = document.createElement("div");
+          card.className = "page-nav-card" + (page.id === state.activePageId ? " active" : "");
+          card.draggable = true; card.dataset.pageId = page.id;
+          const svg = svgEl("svg", { viewBox: `0 0 ${pageSize(page).w} ${pageSize(page).h}` });
+          drawPageSvg(svg, page, { selection: false, grid: false, scaled: false, output: true });
+          card.append(svg);
+          const label = document.createElement("div"); label.textContent = `${index + 1}. ${page.name || ""}`; card.append(label);
+          card.onclick = () => { state.activePageId = page.id; setSelection([]); closeDialog(); render(); };
+          card.ondragstart = event => event.dataTransfer.setData("text/page-id", page.id);
+          card.ondragover = event => event.preventDefault();
+          card.ondrop = event => {
+            event.preventDefault();
+            const fromId = event.dataTransfer.getData("text/page-id");
+            const from = state.pages.findIndex(item => item.id === fromId);
+            const to = state.pages.findIndex(item => item.id === page.id);
+            if (from < 0 || to < 0 || from === to) return;
+            state.pages.splice(to, 0, state.pages.splice(from, 1)[0]); syncPageTotals();
+            closeDialog(); commitHistory("ページナビゲータで並べ替えました。"); render(); showPageNavigator();
+          };
+          grid.append(card);
+        });
+      }
+
       function showCommandPalette() {
         const commands = [
           ...PALETTE.map(item => ({ label: "配置: " + item.label, kind: "tool", value: item.type })),
@@ -13749,15 +13986,27 @@
           { label: "確認: 図面監査", run: showAudit }, { label: "管理: 端子台エディタ", run: showTerminalEditor },
           { label: "管理: ケーブル・芯線", run: showCableManager }, { label: "管理: 設置場所・接続", run: showLocationView },
           { label: "編集: 属性スポイト", run: startAttributeBrush }, { label: "編集: 一括編集", run: showBatchEdit },
-          { label: "編集: 接続点スマート整列", run: smartAlignConnectionPoints }, { label: "編集: クイックプロパティ", run: showQuickProperties }
+          { label: "編集: 接続点スマート整列", run: smartAlignConnectionPoints }, { label: "編集: クイックプロパティ", run: showQuickProperties },
+          { label: "表示: ページナビゲータ", run: showPageNavigator }, { label: "表示: エラー表示切替", run: toggleAuditOverlay },
+          { label: "表示: 集中表示", run: toggleFocusMode }, { label: "設定: ショートカット", run: showShortcutSettings }
         ];
         openDialog("コマンドパレット", `<input id="commandSearch" autocomplete="off" placeholder="部品・機能を検索…" style="font-size:16px"><div id="commandResults" style="margin-top:8px;max-height:55vh;overflow:auto"></div>`);
         const renderResults = () => {
           const query = qs("#commandSearch").value.trim().toLowerCase();
-          const matched = commands.filter(command => !query || command.label.toLowerCase().includes(query)).slice(0, 30);
+          const fuzzy = (text, needle) => {
+            let index = 0;
+            for (const char of text.toLowerCase()) if (char === needle[index]) index++;
+            return index === needle.length;
+          };
+          const usage = JSON.parse(localStorage.getItem("eds-command-usage") || "{}");
+          const matched = commands.filter(command => !query || command.label.toLowerCase().includes(query) || fuzzy(command.label, query))
+            .sort((a, b) => (usage[b.label] || 0) - (usage[a.label] || 0)).slice(0, 30);
           qs("#commandResults").innerHTML = matched.map((command, index) => `<button data-command-index="${commands.indexOf(command)}" class="${index === 0 ? "primary" : ""}" style="display:block;width:100%;text-align:left;margin:3px 0">${escapeHtml(command.label)}</button>`).join("");
           qsa("[data-command-index]", qs("#commandResults")).forEach(button => button.onclick = () => {
             const command = commands[Number(button.dataset.commandIndex)]; closeDialog();
+            const usage = JSON.parse(localStorage.getItem("eds-command-usage") || "{}");
+            usage[command.label] = (usage[command.label] || 0) + 1;
+            localStorage.setItem("eds-command-usage", JSON.stringify(usage));
             if (command.kind === "tool") setActiveTool(command.value); else command.run?.();
           });
         };
@@ -14763,6 +15012,7 @@
         setSelection([]);
         commitHistory(selected.length + "件の要素を削除しました。");
         render();
+        showToast(selected.length + "件を削除しました。", "元に戻す", () => restoreHistory(historyIndex - 1));
       }
 
       // 選択要素を少しずらして複製。
@@ -15455,6 +15705,8 @@
         syncPageTotals();
         const name = "electrical-drawing-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
         download(name, JSON.stringify(state, null, 2), "application/json");
+        projectDirty = false;
+        updateProductivityUi();
         setStatus("JSONを保存しました。");
       }
 
@@ -19898,6 +20150,9 @@
           attributeBrush: startAttributeBrush,
           batchEdit: showBatchEdit,
           quickProperties: showQuickProperties,
+          shortcutSettings: showShortcutSettings,
+          pageNavigator: showPageNavigator,
+          toggleAuditOverlay,
           smartAlign: smartAlignConnectionPoints,
           rungCircuit: showRungCircuitDialog,
           estopChain: showEStopChainDialog,
@@ -19996,6 +20251,17 @@
         qs("#undoBtn").addEventListener("click", () => restoreHistory(historyIndex - 1));
         qs("#redoBtn").addEventListener("click", () => restoreHistory(historyIndex + 1));
         qs("#deleteBtn").addEventListener("click", deleteSelected);
+        qs("#toggleLeftPanel").addEventListener("click", () => togglePanel("left"));
+        qs("#toggleRightPanel").addEventListener("click", () => togglePanel("right"));
+        qs("#ribbonRepeat").addEventListener("click", repeatLastProductivityCommand);
+        qs("#ribbonRotate").addEventListener("click", () => rotateSelected(90));
+        qs("#ribbonDuplicate").addEventListener("click", duplicateSelected);
+        qs("#ribbonDelete").addEventListener("click", deleteSelected);
+        qs("#ribbonAudit").addEventListener("click", toggleAuditOverlay);
+        qs("#ribbonPages").addEventListener("click", showPageNavigator);
+        qs("#ribbonCommand").addEventListener("click", showCommandPalette);
+        qs("#ribbonPanels").addEventListener("click", toggleFocusMode);
+        qs("#ribbonShortcuts").addEventListener("click", showShortcutSettings);
         qs("#addPageBtn").addEventListener("click", addPage);
         qs("#duplicatePageBtn").addEventListener("click", showDuplicatePageDialog);
         qs("#deletePageBtn").addEventListener("click", deletePage);
@@ -20282,6 +20548,20 @@
           placeElement(activeTool, point.x, point.y);
           return;
         }
+        if (activeTool === "select" && targetElement && !event.shiftKey && event.button === 0) {
+          const source = currentPage().elements.find(item => item.id === targetElement.dataset.id);
+          const anchor = source && closestAnchor(componentConnectionAnchors(source), point.x, point.y);
+          if (anchor && Math.hypot(anchor.x - point.x, anchor.y - point.y) <= 1.8) {
+            const wire = defaultElement("wire", anchor.x, anchor.y);
+            wire.points = [[anchor.x, anchor.y], [anchor.x, anchor.y]];
+            currentPage().elements.push(wire); selectSingle(wire.id); activeTool = "wire";
+            dragState = { mode: "draw", elementId: wire.id, start: { x: anchor.x, y: anchor.y }, lastPoint: [anchor.x, anchor.y] };
+            try { svg.setPointerCapture(event.pointerId); } catch (_) { /* ignore */ }
+            setStatus("接続点から配線を開始しました。数値入力、Tabで経路変更、Jで接続点付き確定。");
+            render();
+            return;
+          }
+        }
         if (targetElement) {
           const targetId = targetElement.dataset.id;
           const brushTarget = currentPage().elements.find(item => item.id === targetId);
@@ -20340,6 +20620,37 @@
         return [round(start[0] + length * ux), round(start[1] + length * uy)];
       }
 
+      function drawAuditOverlay(svg, page) {
+        const seen = new Set();
+        auditProject().filter(issue => issue.pageId === page.id && issue.elementId).forEach(issue => {
+          if (seen.has(issue.elementId)) return;
+          seen.add(issue.elementId);
+          const element = page.elements.find(item => item.id === issue.elementId);
+          const box = elementBounds(element);
+          if (!box) return;
+          const x = box.x + box.w;
+          const y = box.y;
+          const group = svgEl("g", { "data-id": element.id, cursor: "pointer" });
+          group.appendChild(svgEl("circle", { cx: x, cy: y, r: 2.2, fill: "#d92d20", stroke: "#fff", "stroke-width": .5 }));
+          group.appendChild(textEl("!", x, y + 1, { fontSize: 2.6, anchor: "middle", fill: "#fff", weight: "700" }));
+          const title = svgEl("title"); title.textContent = issue.message; group.appendChild(title);
+          svg.appendChild(group);
+        });
+      }
+
+      function drawSnapFeedback(svg) {
+        if (!dragState?.lastPoint || dragState.mode !== "draw") return;
+        const element = selectedElement();
+        if (!element?.points?.length) return;
+        const end = element.points[element.points.length - 1];
+        const start = element.points[0];
+        const length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+        let angle = Math.atan2(end[1] - start[1], end[0] - start[0]) * 180 / Math.PI;
+        if (angle < 0) angle += 360;
+        svg.appendChild(svgEl("circle", { cx: end[0], cy: end[1], r: 1.6, fill: "none", stroke: "#0f9f8f", "stroke-width": .55, "pointer-events": "none" }));
+        svg.appendChild(textEl(`${round(length)} mm / ${round(angle)}°`, end[0] + 2.2, end[1] - 2.2, { fontSize: 2.3, fill: "#075f55" }));
+      }
+
       function showDrawingVectorDialog() {
         const drawing = selectedElement();
         if (!dragState || dragState.mode !== "draw" || !drawing?.points?.length) return;
@@ -20353,6 +20664,36 @@
           drawing.points = [start, [round(start[0] + len * Math.cos(rad)), round(start[1] + len * Math.sin(rad))]];
           dragState = null; closeDialog(); commitHistory("長さ・角度を指定して作図しました。"); render();
         };
+      }
+
+      function applyDirectDrawingInput() {
+        const drawing = selectedElement();
+        if (!dragState || dragState.mode !== "draw" || !drawing?.points?.length) return;
+        const input = drawNumericBuffer.trim();
+        const start = drawing.points[0];
+        let end = null;
+        if (input.includes("@")) {
+          const [x, y] = input.split("@").map(Number);
+          if (Number.isFinite(x) && Number.isFinite(y)) end = [round(x), round(y)];
+        } else {
+          const values = input.split(",").map(Number);
+          const length = values[0];
+          const current = drawing.points[drawing.points.length - 1];
+          const fallbackAngle = Math.atan2(current[1] - start[1], current[0] - start[0]) * 180 / Math.PI;
+          const angle = Number.isFinite(values[1]) ? values[1] : fallbackAngle;
+          if (Number.isFinite(length) && length > 0) {
+            const rad = angle * Math.PI / 180;
+            end = [round(start[0] + length * Math.cos(rad)), round(start[1] + length * Math.sin(rad))];
+          }
+        }
+        drawNumericBuffer = "";
+        qs("#drawInput")?.classList.add("hidden");
+        if (!end) { setStatus("数値入力は「長さ,角度」または「X@Y」で指定してください。"); return; }
+        drawing.points = [start, end];
+        dragState = null;
+        snapPointElementConnections(drawing, currentPage());
+        commitHistory("数値を直接入力して作図しました。");
+        render();
       }
 
       function onCanvasPointerMove(event) {
@@ -20449,6 +20790,34 @@
         const a = element.points[0];
         const b = drag.lastPoint || element.points[element.points.length - 1];
         const straight = Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001;
+        if (!straight && drag.bendCycle === undefined && !shift) {
+          const midX = round((a[0] + b[0]) / 2);
+          const midY = round((a[1] + b[1]) / 2);
+          const candidates = [
+            [a, [a[0], b[1]], b],
+            [a, [b[0], a[1]], b],
+            [a, [midX, a[1]], [midX, b[1]], b],
+            [a, [a[0], midY], [b[0], midY], b]
+          ];
+          const page = currentPage();
+          const obstacles = (page?.elements || []).filter(item => item.id !== element.id && item.type !== "wire" && item.type !== "text").map(elementBounds).filter(Boolean);
+          const score = points => {
+            let total = points.length * .05;
+            for (let i = 1; i < points.length; i++) {
+              const x1 = points[i - 1][0], y1 = points[i - 1][1], x2 = points[i][0], y2 = points[i][1];
+              obstacles.forEach(box => {
+                const pad = .8;
+                if (Math.max(x1, x2) >= box.x - pad && Math.min(x1, x2) <= box.x + box.w + pad
+                  && Math.max(y1, y2) >= box.y - pad && Math.min(y1, y2) <= box.y + box.h + pad) total += 10;
+              });
+            }
+            return total;
+          };
+          element.points = candidates.sort((p, q) => score(p) - score(q))[0].map(point => [round(point[0]), round(point[1])]);
+          element.orthoFlip = element.points[1][1] === a[1];
+          drag.routeCandidates = candidates;
+          return;
+        }
         let mode = ["L", "L2", "Z", "Z2"][(drag.bendCycle || 0) % 4];
         if (shift) mode = { L: "L2", L2: "L", Z: "Z2", Z2: "Z" }[mode];
         if (straight || mode === "L" || mode === "L2") {
@@ -20538,6 +20907,25 @@
             });
             return pair ? [round(pair.newAnchor.x), round(pair.newAnchor.y)] : [round(point[0]), round(point[1])];
           });
+          if (state.settings.followWireRoute && wire.points.length >= 2) {
+            const first = wire.points[0], last = wire.points[wire.points.length - 1];
+            const oldFirst = originalWire.points[0], oldLast = originalWire.points[originalWire.points.length - 1];
+            const movedStart = Math.hypot(first[0] - oldFirst[0], first[1] - oldFirst[1]) > .01;
+            const movedEnd = Math.hypot(last[0] - oldLast[0], last[1] - oldLast[1]) > .01;
+            if (movedStart || movedEnd) {
+              if (Math.abs(first[0] - last[0]) < .01 || Math.abs(first[1] - last[1]) < .01) {
+                wire.points = [first, last];
+              } else {
+                const horizontalFirst = originalWire.points.length > 2
+                  ? Math.abs(originalWire.points[1][1] - oldFirst[1]) < .01
+                  : !!originalWire.orthoFlip;
+                wire.points = horizontalFirst
+                  ? [first, [last[0], first[1]], last]
+                  : [first, [first[0], last[1]], last];
+              }
+              wire.orthoFlip = false;
+            }
+          }
         });
       }
 
@@ -20642,6 +21030,16 @@
           : [finishedDrag.elementId].filter(Boolean);
         touchedIds.forEach(id => snapPointElementConnections(page?.elements.find(item => item.id === id), page));
         const element = selectedElement();
+        if (finishedDrag.mode === "draw" && element?.type === "wire") {
+          const end = element.points?.[element.points.length - 1];
+          if (end) {
+            const meetsWire = page.elements.some(item => item.id !== element.id && item.type === "wire"
+              && wireSegments(item).some(segment => pointOnSegment(end[0], end[1], segment)));
+            const hasDot = page.elements.some(item => item.type === "junction"
+              && Math.hypot(Number(item.x || 0) - end[0], Number(item.y || 0) - end[1]) < .6);
+            if (meetsWire && !hasDot) page.elements.push({ ...defaultElement("junction", end[0], end[1]), x: end[0], y: end[1] });
+          }
+        }
         // ゼロ長の線・配線は破棄(多角形は始点≠終点が前提のため対象外)
         if (element && element.points && element.type !== "polygon") {
           const a = element.points[0];
@@ -20652,6 +21050,8 @@
           }
         }
         dragState = null;
+        drawNumericBuffer = "";
+        qs("#drawInput")?.classList.add("hidden");
         commitHistory("作図を更新しました。");
         render();
       }
@@ -21000,6 +21400,34 @@
         }
         // 入力欄でのCtrl+Z/Y等は文字編集(ブラウザ既定)へ委ねる。図面Undoにしない。
         if (editing) return;
+        if (dragState?.mode === "draw" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          if (/^[0-9.,@-]$/.test(event.key)) {
+            event.preventDefault();
+            drawNumericBuffer += event.key;
+            const hud = qs("#drawInput");
+            hud.textContent = "長さ,角度 / X@Y: " + drawNumericBuffer;
+            hud.classList.remove("hidden");
+            hud.style.left = Math.round(window.innerWidth / 2 - 90) + "px";
+            hud.style.top = "108px";
+            return;
+          }
+          if (event.key === "Backspace" && drawNumericBuffer) {
+            event.preventDefault();
+            drawNumericBuffer = drawNumericBuffer.slice(0, -1);
+            qs("#drawInput").textContent = "長さ,角度 / X@Y: " + drawNumericBuffer;
+            return;
+          }
+          if (event.key === "Enter" && drawNumericBuffer) {
+            event.preventDefault();
+            applyDirectDrawingInput();
+            return;
+          }
+        }
+        if (event.key === "Tab" && !dragState && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          event.preventDefault();
+          toggleFocusMode();
+          return;
+        }
         if (event.altKey && event.key === "ArrowLeft") {
           event.preventDefault(); navigateElementHistory(-1); return;
         }
@@ -21063,11 +21491,14 @@
         if ((event.key === "Enter" || event.key === " ") && !dragState && activeTool === "select") {
           event.preventDefault(); repeatLastProductivityCommand(); return;
         }
-        if (event.key.toLowerCase() === "q" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (event.key.toLowerCase() === effectiveShortcut("quick") && !event.ctrlKey && !event.metaKey && !event.altKey) {
           event.preventDefault(); showQuickProperties(); return;
         }
         if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-          const toolShortcuts = { s: "select", v: "select", w: "wire", t: "text", l: "line", r: "rect", c: "circle" };
+          const toolShortcuts = Object.fromEntries([
+            ["select", "select"], ["wire", "wire"], ["text", "text"], ["line", "line"], ["rect", "rect"], ["circle", "circle"]
+          ].map(([action, tool]) => [effectiveShortcut(action), tool]));
+          toolShortcuts.v = toolShortcuts.v || "select";
           const tool = toolShortcuts[event.key.toLowerCase()];
           if (tool) {
             event.preventDefault();

@@ -1870,3 +1870,28 @@ test("インターロックは送り・受け合計10信号を越える入力を
   await expect(page.locator("#status")).toContainText("合計10本以下");
   expect(await page.evaluate(() => window.__edsTest.state.pages.length)).toBe(beforePages);
 });
+
+test("高速作画UIは集中表示・キー設定・ページナビゲータ・検査表示を利用できる", async ({ page }) => {
+  await expect(page.locator("#quickRibbon")).toBeVisible();
+  await expect(page.locator("#bottomHud")).toContainText("SNAP");
+
+  await page.locator("#ribbonPanels").click();
+  await expect(page.locator(".app")).toHaveClass(/left-collapsed/);
+  await expect(page.locator(".app")).toHaveClass(/right-collapsed/);
+  await page.keyboard.press("Tab");
+  await expect(page.locator(".app")).not.toHaveClass(/left-collapsed/);
+
+  await page.locator("#ribbonShortcuts").click();
+  await page.locator('[data-shortcut="wire"]').fill("e");
+  await page.locator("#shortcutApply").click();
+  await page.keyboard.press("e");
+  expect(await page.evaluate(() => document.querySelector('[data-tool="wire"]').classList.contains("active"))).toBe(true);
+
+  await page.locator("#ribbonPages").click();
+  await expect(page.locator("#pageNavigatorGrid .page-nav-card")).toHaveCount(1);
+  await page.locator("#dialogClose").click();
+
+  await page.locator("#ribbonAudit").click();
+  expect(await page.evaluate(() => window.__edsTest.state.settings.auditOverlay)).toBe(true);
+  await expect(page.locator("#ribbonAudit")).toHaveClass(/active/);
+});
