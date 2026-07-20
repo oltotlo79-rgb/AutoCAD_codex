@@ -7180,6 +7180,47 @@
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // NAND: AND表現の出力へ否定丸を追加。
+        gateNand: {
+          w: 10, h: 10,
+          anchors: [[0, 2.5], [0, 7.5], [10, 5]],
+          prims: [
+            { t: "line", p: [0, 2.5, 3, 2.5] },
+            { t: "line", p: [0, 7.5, 3, 7.5] },
+            { t: "rect", p: [3, 1, 4.5, 8], fill: "white" },
+            { t: "circle", p: [8, 5, .5], fill: "white" },
+            { t: "line", p: [8.5, 5, 10, 5] },
+            { t: "text", p: [5.25, 3], size: 2.2, anchor: "middle", value: "&" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // NOR: OR表現の出力へ否定丸を追加。
+        gateNor: {
+          w: 10, h: 10,
+          anchors: [[0, 2.5], [0, 7.5], [10, 5]],
+          prims: [
+            { t: "line", p: [0, 2.5, 3, 2.5] },
+            { t: "line", p: [0, 7.5, 3, 7.5] },
+            { t: "rect", p: [3, 1, 4.5, 8], fill: "white" },
+            { t: "circle", p: [8, 5, .5], fill: "white" },
+            { t: "line", p: [8.5, 5, 10, 5] },
+            { t: "text", p: [5.25, 3], size: 1.9, anchor: "middle", value: "≥1" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // XOR: IECの排他的OR表現「=1」。
+        gateXor: {
+          w: 10, h: 10,
+          anchors: [[0, 2.5], [0, 7.5], [10, 5]],
+          prims: [
+            { t: "line", p: [0, 2.5, 3, 2.5] },
+            { t: "line", p: [0, 7.5, 3, 7.5] },
+            { t: "rect", p: [3, 1, 4.5, 8], fill: "white" },
+            { t: "line", p: [7.5, 5, 10, 5] },
+            { t: "text", p: [5.25, 3], size: 1.9, anchor: "middle", value: "=1" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         // フォトカプラ: 箱内にLED(左)と受光素子(右)。左=入力2/右=出力2(±2.5mm)。
         photocoupler: {
           w: 10, h: 8,
@@ -7760,6 +7801,9 @@
           case "logicGate": {
             if (variant === "or") return "gateOr";
             if (variant === "not") return "gateNot";
+            if (variant === "nand") return "gateNand";
+            if (variant === "nor") return "gateNor";
+            if (variant === "xor") return "gateXor";
             return "gateAnd";
           }
           case "photocoupler": return "photocoupler";
@@ -8662,6 +8706,9 @@
         qs("#orthogonalizeWireBtn", panel)?.addEventListener("click", orthogonalizeSelectedWire);
         qs("#flipWireBendBtn", panel)?.addEventListener("click", flipSelectedWireBend);
         qs("#polyRegenBtn", panel)?.addEventListener("click", regenerateSelectedPolygon);
+        ["#polySides", "#polyRadius"].forEach(selector => {
+          qs(selector, panel)?.addEventListener("change", () => regenerateSelectedPolygon());
+        });
         qs("#polyAddPointBtn", panel)?.addEventListener("click", addSelectedPolygonPoint);
         qs("#polyRemovePointBtn", panel)?.addEventListener("click", removeSelectedPolygonPoint);
         qs("#polyExplodeBtn", panel)?.addEventListener("click", explodeSelectedPolygon);
@@ -8853,7 +8900,7 @@
         inductor: [["standard", "コブ3個"], ["core", "鉄心入り（上線2本）"], ["box", "箱形（IEC）"]],
         currentTransformer: [["standard", "円（CT）"], ["zct", "二重円（ZCT）"], ["coil", "貫通線＋コブ2（旧JIS）"]],
         selectorSwitch: [["standard", "2位置（設備標準）"], ["onOff", "入・切表示付き（見本形）"], ["jis", "2位置（JIS C 0617）"], ["three", "3位置"], ["key", "鍵付き"]],
-        logicGate: [["and", "AND（&）"], ["or", "OR（≥1）"], ["not", "NOT（1＋否定丸）"]],
+        logicGate: [["and", "AND（&）"], ["or", "OR（≥1）"], ["not", "NOT（1＋否定丸）"], ["nand", "NAND（&＋否定丸）"], ["nor", "NOR（≥1＋否定丸）"], ["xor", "XOR（=1）"]],
         limitSwitch: [["standard", "箱形アクチュエータ（NO）"], ["nc", "箱形・下側（NC/オーバーラン）"], ["roller", "ローラーレバー（NO）"], ["rollerNc", "ローラーレバー（NC）"]],
         transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "二巻線円形（JIS）"], ["circlesCore", "二巻線円形＋鉄心（JIS）"]],
         heater: [["standard", "箱＋斜線（設備標準）"], ["plain", "箱のみ（JIS抵抗器形）"]],
@@ -8972,7 +9019,7 @@
               <div><label>辺数（3〜12）</label><input id="polySides" type="number" min="3" max="12" step="1" value="${Math.max(3, Math.min(12, Number(element.sides || pointCount || 6)))}"></div>
               <div><label>外接半径 mm</label><input id="polyRadius" type="number" min="1" step="0.5" value="${round(Number(element.radius || 8))}"></div>
             </div>
-            <button type="button" id="polyRegenBtn" style="width:100%;margin-top:8px">正多角形として作り直す</button>
+            <p class="muted">辺数・外接半径を変更すると、中心位置を保ったまま正多角形へ即時更新します。</p>
             <div class="row" style="margin-top:8px">
               <button type="button" id="polyAddPointBtn">頂点追加</button>
               <button type="button" id="polyRemovePointBtn" ${pointCount <= 3 ? "disabled" : ""}>頂点削除</button>
