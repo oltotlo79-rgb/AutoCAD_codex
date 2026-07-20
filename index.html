@@ -2375,6 +2375,11 @@
               positiveNumber(cell.rowH, cellPath + ".rowH");
               if (cell.rows !== undefined && (!Number.isInteger(cell.rows) || cell.rows <= 0)) errors.push(cellPath + ".rows: 正の整数が必要です");
             }
+            if (cell.t === "line") {
+              ["x1", "y1", "x2", "y2"].forEach(key => {
+                if (!Number.isFinite(cell[key])) errors.push(cellPath + "." + key + ": 数値が必要です");
+              });
+            }
           });
         });
         return errors;
@@ -3836,6 +3841,7 @@
         frame.appendChild(textEl(page.title.facility || "", (137 + R) / 2, (t1 + t2) / 2 + 1, { fontSize: 2.4, anchor: "middle" }));
         frame.appendChild(svgEl("line", { x1: 110, y1: t2, x2: 110, y2: t4, class: "frame-line" }));
         frame.appendChild(svgEl("line", { x1: 177, y1: t2, x2: 177, y2: t3, class: "frame-line" }));
+        frame.appendChild(svgEl("line", { x1: 165, y1: t3, x2: 165, y2: t4, class: "frame-line" }));
         frame.appendChild(textEl("内", 107.9, t2 + 2.6, { fontSize: 1.9, anchor: "middle" }));
         frame.appendChild(textEl("容", 107.9, t2 + 5.4, { fontSize: 1.9, anchor: "middle" }));
         frame.appendChild(textEl(page.title.title || "", (110 + 177) / 2, (t2 + t3) / 2, { fontSize: 3.2, anchor: "middle" }));
@@ -3843,7 +3849,9 @@
         frame.appendChild(textEl(page.title.page || "", 184, t3 - 2.4, { fontSize: 3.5, anchor: "middle" }));
         frame.appendChild(textEl("図", 107.9, t3 + 2.2, { fontSize: 1.9, anchor: "middle" }));
         frame.appendChild(textEl("番", 107.9, t3 + 4.8, { fontSize: 1.9, anchor: "middle" }));
-        frame.appendChild(textEl(page.title.drawingNo || "−", (110 + R) / 2, (t3 + t4) / 2, { fontSize: 2.6, anchor: "middle" }));
+        frame.appendChild(textEl(page.title.drawingNo || "−", (110 + 165) / 2, (t3 + t4) / 2, { fontSize: 2.6, anchor: "middle" }));
+        frame.appendChild(textEl("日付", 166.2, t3 + 1.7, { fontSize: 1.6 }));
+        frame.appendChild(textEl(page.title.date || "", (165 + R) / 2, (t3 + t4) / 2 + 1, { fontSize: 1.8, anchor: "middle" }));
         frame.appendChild(textEl("汎用図番:", L, size.h - 20, { fontSize: 1.9 }));
         frame.appendChild(textEl("図番:", 55, size.h - 20, { fontSize: 1.9 }));
         frame.appendChild(textEl("出力日: " + (page.title.date || ""), 95, size.h - 20, { fontSize: 1.9 }));
@@ -8192,11 +8200,6 @@
                 "pointer-events": "none",
                 "data-endpoint-role": isStart ? "start" : "end"
               }, [document.createTextNode(isStart ? "始" : "終")]));
-            }
-            if (cell.t === "line") {
-              ["x1", "y1", "x2", "y2"].forEach(key => {
-                if (!Number.isFinite(cell[key])) errors.push(cellPath + "." + key + ": 数値が必要です");
-              });
             }
           });
         }
@@ -15152,8 +15155,14 @@
 
       // 接続判定用の端点は端子中心に保ち、表示線だけを丸端子の外周まで短くする。
       function visibleWirePoints(element) {
-        const points = (element.points || [[0, 0], [20, 0]]).map(point => [point[0], point[1]]);
+        let points = (element.points || [[0, 0], [20, 0]]).map(point => [point[0], point[1]]);
         if (points.length < 2) return points;
+        if (points.length === 2
+          && Math.abs(points[0][0] - points[1][0]) >= .001
+          && Math.abs(points[0][1] - points[1][1]) >= .001) {
+          const a = points[0], b = points[1];
+          points = [a, element.orthoFlip ? [b[0], a[1]] : [a[0], b[1]], b];
+        }
         const page = currentPage();
         if (!page) return points;
         const trimEnd = (index, neighborIndex) => {
@@ -15171,7 +15180,7 @@
           if (length < .01) return;
           const w = Number(terminal.w || defaultElement("terminal").w || 10);
           const h = Number(terminal.h || defaultElement("terminal").h || 6);
-          const radius = Math.min(2.45, Math.max(1.8, Math.min(w, h) * .36)) + .12;
+          const radius = Math.max(.1, Math.min(2.45, Math.max(1.8, Math.min(w, h) * .36)) - .12);
           const trim = Math.min(radius, length / 2);
           points[index] = [
             round(point[0] + (neighbor[0] - point[0]) / length * trim),
@@ -20875,6 +20884,11 @@
           if (element.type === "wire") {
             // 配線: Shift=折れ向き反転、スペース=L字/コの字(Z)巡回(onKeyDown側でbendCycle更新)
             const rawPoint = canvasPoint(event, { raw: true });
+            if (!dragState.initialAxis) {
+              const dx = rawPoint.x - element.points[0][0];
+              const dy = rawPoint.y - element.points[0][1];
+              if (Math.hypot(dx, dy) >= .8) dragState.initialAxis = Math.abs(dx) >= Math.abs(dy) ? "horizontal" : "vertical";
+            }
             const routedPoint = axisAwareDrawingPoint(element.points[0], rawPoint);
             dragState.lastPoint = [routedPoint.x, routedPoint.y];
             if (dragState.freeAngle) element.points = [element.points[0], [point.x, point.y]];
@@ -20941,6 +20955,11 @@
         const a = element.points[0];
         const b = drag.lastPoint || element.points[element.points.length - 1];
         const straight = Math.abs(a[0] - b[0]) < .001 || Math.abs(a[1] - b[1]) < .001;
+        if (!straight && drag.bendCycle === undefined && !shift && drag.initialAxis) {
+          element.points = [a, [b[0], b[1]]];
+          element.orthoFlip = drag.initialAxis === "horizontal";
+          return;
+        }
         if (!straight && drag.bendCycle === undefined && !shift) {
           const midX = round((a[0] + b[0]) / 2);
           const midY = round((a[1] + b[1]) / 2);
@@ -21195,6 +21214,7 @@
         drawNumericBuffer = "";
         qs("#drawInput")?.classList.add("hidden");
         commitHistory("作図を更新しました。");
+        if (finishedDrag.mode === "draw" && element?.type === "wire") setActiveTool("select");
         render();
       }
 
@@ -21701,6 +21721,9 @@
         snapLineEndpoint,
         axisAwareDrawingPoint,
         visibleWirePoints,
+        rebuildDrawingWire,
+        getActiveTool: () => activeTool,
+        setActiveTool,
         cableCoreRows,
         syncPanelFootprints,
         avoidWireNumberCollision,

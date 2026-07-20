@@ -2016,3 +2016,73 @@ test("詳細表題欄の日付と改訂履歴は別の欄に収まる", async ({
   const x = await page.locator("svg#canvas").getByText("2026/07/20").getAttribute("x");
   expect(Number(x)).toBeLessThan(180);
 });
+
+test("設備標準表題欄の日付は罫線内に収まり、他の図枠線も用紙内にある", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4,
+    activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "ladder",
+      title: { date: "2026/07/20", page: "1", total: "1", drawingNo: "EL-001" }, elements: []
+    }]
+  }));
+  const result = await page.evaluate(() => {
+    const svg = document.querySelector("svg#canvas");
+    const date = [...svg.querySelectorAll(".frame text")].find(node => node.textContent === "2026/07/20");
+    const box = date.getBBox();
+    const invalidLines = [...svg.querySelectorAll(".frame line,.frame rect")].filter(node =>
+      [...node.attributes].filter(attr => ["x", "y", "x1", "y1", "x2", "y2", "width", "height"].includes(attr.name))
+        .some(attr => !Number.isFinite(Number(attr.value))));
+    return { box: { x: box.x, y: box.y, w: box.width, h: box.height }, invalidCount: invalidLines.length };
+  });
+  expect(result.invalidCount).toBe(0);
+  expect(result.box.x).toBeGreaterThanOrEqual(165);
+  expect(result.box.x + result.box.w).toBeLessThanOrEqual(191);
+  expect(result.box.y).toBeGreaterThan(267);
+  expect(result.box.y + result.box.h).toBeLessThanOrEqual(273);
+});
+
+test("L字配線はドラッグ開始方向に従い、確定後は選択ツールへ戻る", async ({ page }) => {
+  const routes = await page.evaluate(() => {
+    const horizontal = { points: [[20, 30], [20, 30]] };
+    const vertical = { points: [[20, 30], [20, 30]] };
+    window.__edsTest.rebuildDrawingWire(horizontal, { lastPoint: [60, 70], initialAxis: "horizontal" }, false);
+    window.__edsTest.rebuildDrawingWire(vertical, { lastPoint: [60, 70], initialAxis: "vertical" }, false);
+    return { horizontal, vertical };
+  });
+  expect(routes.horizontal.orthoFlip).toBe(true);
+  expect(routes.vertical.orthoFlip).toBe(false);
+
+  await page.evaluate(() => {
+    window.__edsTest.installProjectData({
+      schemaVersion: 4, activePageId: "p1",
+      pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: [] }]
+    });
+    window.__edsTest.setActiveTool("wire");
+  });
+  const box = await page.locator("svg#canvas").boundingBox();
+  await page.mouse.move(box.x + 40, box.y + 40);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 100, box.y + 40, { steps: 3 });
+  await page.mouse.move(box.x + 100, box.y + 100, { steps: 3 });
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.__edsTest.getActiveTool())).toBe("select");
+});
+
+test("直線の始点と終点を数値入力で修正できる", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [{ id: "line1", type: "line", points: [[20, 30], [50, 30]], layer: "layout" }]
+    }]
+  }));
+  await page.locator('[data-id="line1"]').click({ force: true });
+  await page.locator('[data-bind="p0x"]').fill("25.25");
+  await page.locator('[data-bind="p0x"]').press("Enter");
+  await page.locator('[data-bind="p1y"]').fill("250.5");
+  await page.locator('[data-bind="p1y"]').press("Enter");
+  const points = await page.evaluate(() => window.__edsTest.state.pages[0].elements[0].points);
+  expect(points[0][0]).toBe(25.25);
+  expect(points[1][1]).toBe(46.5);
+});
