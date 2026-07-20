@@ -3489,7 +3489,11 @@
         visibleElements.filter(element => element.type === "underlayImage").forEach(element => drawElement(svg, element));
         if (options.grid !== false) drawGrid(svg, size);
         if (isLayerVisible("frame")) drawFrame(svg, page, size);
-        visibleElements.filter(element => element.type !== "underlayImage").forEach(element => drawElement(svg, element));
+        const drawingElements = visibleElements.filter(element => element.type !== "underlayImage");
+        // 導体を先に描き、白塗りの端子円・シンボルを必ず前面へ置く。
+        // 接続座標は端子中心のままなので、隙間も円内への線の露出も生じない。
+        drawingElements.filter(element => element.type === "wire").forEach(element => drawElement(svg, element));
+        drawingElements.filter(element => element.type !== "wire").forEach(element => drawElement(svg, element));
         if (options.selection) {
           if (state.settings.auditOverlay) drawAuditOverlay(svg, page);
           drawSnapFeedback(svg);
@@ -15155,41 +15159,7 @@
 
       // 接続判定用の端点は端子中心に保ち、表示線だけを丸端子の外周まで短くする。
       function visibleWirePoints(element) {
-        let points = (element.points || [[0, 0], [20, 0]]).map(point => [point[0], point[1]]);
-        if (points.length < 2) return points;
-        if (points.length === 2
-          && Math.abs(points[0][0] - points[1][0]) >= .001
-          && Math.abs(points[0][1] - points[1][1]) >= .001) {
-          const a = points[0], b = points[1];
-          points = [a, element.orthoFlip ? [b[0], a[1]] : [a[0], b[1]], b];
-        }
-        const page = currentPage();
-        if (!page) return points;
-        const trimEnd = (index, neighborIndex) => {
-          const point = points[index];
-          const terminal = page.elements.find(item => {
-            if (item.id === element.id || item.type !== "terminal" || (item.terminalShape || "circle") !== "circle") return false;
-            const w = Number(item.w || defaultElement("terminal").w || 10);
-            const h = Number(item.h || defaultElement("terminal").h || 6);
-            const center = localAnchor(item, w / 2, h / 2);
-            return Math.hypot(center.x - point[0], center.y - point[1]) < .05;
-          });
-          if (!terminal) return;
-          const neighbor = points[neighborIndex];
-          const length = Math.hypot(neighbor[0] - point[0], neighbor[1] - point[1]);
-          if (length < .01) return;
-          const w = Number(terminal.w || defaultElement("terminal").w || 10);
-          const h = Number(terminal.h || defaultElement("terminal").h || 6);
-          const radius = Math.max(.1, Math.min(2.45, Math.max(1.8, Math.min(w, h) * .36)) - .12);
-          const trim = Math.min(radius, length / 2);
-          points[index] = [
-            round(point[0] + (neighbor[0] - point[0]) / length * trim),
-            round(point[1] + (neighbor[1] - point[1]) / length * trim)
-          ];
-        };
-        trimEnd(0, 1);
-        trimEnd(points.length - 1, points.length - 2);
-        return points;
+        return (element.points || [[0, 0], [20, 0]]).map(point => [point[0], point[1]]);
       }
 
       function duplicateSelected() {
@@ -20778,6 +20748,34 @@
         return { x: snapToGrid(rawTarget.x), y: snapToGrid(rawTarget.y) };
       }
 
+      // ポインター軌跡でX/Yのどちらが先に進んだかを判定する。
+      // 終点方向ではなく、実際の「横→縦」「縦→横」の操作順を経路へ反映する。
+      function dragPreferredAxis(start, history) {
+        const points = (history || []).filter(point => Number.isFinite(point?.x) && Number.isFinite(point?.y));
+        if (!points.length) return null;
+        const end = points[points.length - 1];
+        const totalX = Math.abs(end.x - start[0]);
+        const totalY = Math.abs(end.y - start[1]);
+        if (totalX < .05 && totalY < .05) return null;
+        if (totalY < .05) return "horizontal";
+        if (totalX < .05) return "vertical";
+        const xThreshold = totalX * .5;
+        const yThreshold = totalY * .5;
+        const xIndex = points.findIndex(point => Math.abs(point.x - start[0]) >= xThreshold);
+        const yIndex = points.findIndex(point => Math.abs(point.y - start[1]) >= yThreshold);
+        if (xIndex >= 0 && yIndex >= 0 && xIndex !== yIndex) return xIndex < yIndex ? "horizontal" : "vertical";
+        const first = points.find(point => Math.hypot(point.x - start[0], point.y - start[1]) >= .05) || end;
+        return Math.abs(first.x - start[0]) >= Math.abs(first.y - start[1]) ? "horizontal" : "vertical";
+      }
+
+      // 直線の水平/垂直成分は固定軸を始点に一致させ、進行軸だけをグリッドへ吸着する。
+      function snapEditableLineEndpoint(fixed, rawTarget) {
+        const endpoint = snapLineEndpoint(fixed, rawTarget);
+        if (Math.abs(endpoint[1] - fixed[1]) < .001) return [snap(endpoint[0]), fixed[1]];
+        if (Math.abs(endpoint[0] - fixed[0]) < .001) return [fixed[0], snap(endpoint[1])];
+        return endpoint;
+      }
+
       function drawAuditOverlay(svg, page) {
         const seen = new Set();
         auditProject().filter(issue => issue.pageId === page.id && issue.elementId).forEach(issue => {
@@ -20874,7 +20872,14 @@
           return;
         }
         if (dragState.mode === "point") {
-          applyPointDrag(point);
+          if (activeDragElement?.type === "line") {
+            const rawPoint = canvasPoint(event, { raw: true });
+            const index = dragState.pointIndex;
+            const otherIndex = index === 0 ? activeDragElement.points.length - 1 : 0;
+            activeDragElement.points[index] = snapEditableLineEndpoint(activeDragElement.points[otherIndex], rawPoint);
+          } else {
+            applyPointDrag(point);
+          }
           render({ light: true });
           return;
         }
@@ -20884,11 +20889,8 @@
           if (element.type === "wire") {
             // 配線: Shift=折れ向き反転、スペース=L字/コの字(Z)巡回(onKeyDown側でbendCycle更新)
             const rawPoint = canvasPoint(event, { raw: true });
-            if (!dragState.initialAxis) {
-              const dx = rawPoint.x - element.points[0][0];
-              const dy = rawPoint.y - element.points[0][1];
-              if (Math.hypot(dx, dy) >= .8) dragState.initialAxis = Math.abs(dx) >= Math.abs(dy) ? "horizontal" : "vertical";
-            }
+            dragState.rawHistory = [...(dragState.rawHistory || []), rawPoint].slice(-80);
+            dragState.initialAxis = dragPreferredAxis(element.points[0], dragState.rawHistory);
             const routedPoint = axisAwareDrawingPoint(element.points[0], rawPoint);
             dragState.lastPoint = [routedPoint.x, routedPoint.y];
             if (dragState.freeAngle) element.points = [element.points[0], [point.x, point.y]];
@@ -20896,7 +20898,7 @@
           } else if (element.type === "line") {
             const start = element.points[0];
             const rawPoint = canvasPoint(event, { raw: true });
-            element.points[element.points.length - 1] = snapLineEndpoint(start, rawPoint);
+            element.points[element.points.length - 1] = snapEditableLineEndpoint(start, rawPoint);
           } else {
             element.points[element.points.length - 1] = [point.x, point.y];
           }
@@ -21720,6 +21722,8 @@
         primaryConnectionPoint,
         snapLineEndpoint,
         axisAwareDrawingPoint,
+        dragPreferredAxis,
+        snapEditableLineEndpoint,
         visibleWirePoints,
         rebuildDrawingWire,
         getActiveTool: () => activeTool,
@@ -21729,6 +21733,8 @@
         avoidWireNumberCollision,
         saveSelectedAsUserCircuit,
         defaultElement,
+        createPage,
+        formatLocalDate,
         SYMBOL_GEO,
         geoPrims,
         terminalStripNodeLocal,
