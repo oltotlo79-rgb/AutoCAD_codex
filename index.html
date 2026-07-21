@@ -1523,6 +1523,10 @@
         { type: "beacon", label: "回転灯", icon: "lamp" },
         { type: "solenoidValve", label: "ソレノイド弁", icon: "solenoidValve" },
         { type: "sensor", label: "センサ", icon: "sensor" },
+        { type: "photoelectricSwitch", label: "光電スイッチ", icon: "sensor" },
+        { type: "matSwitch", label: "マットスイッチ", icon: "limitSwitch" },
+        { type: "reedSwitch", label: "リードスイッチ", icon: "limitSwitch" },
+        { type: "lightCurtain", label: "ライトカーテン（光電管）", icon: "sensor" },
         { type: "powerSupply", label: "電源", icon: "powerSupply" },
         { type: "transformer", label: "トランス", icon: "transformer" },
         { type: "ground", label: "接地", icon: "ground" },
@@ -1578,6 +1582,10 @@
         buzzer: "BZ",
         solenoidValve: "SOL",
         sensor: "SEN",
+        photoelectricSwitch: "PHS",
+        matSwitch: "MAT",
+        reedSwitch: "RS",
+        lightCurtain: "LC",
         powerSupply: "PS",
         transformer: "T",
         meter: "",
@@ -1638,7 +1646,7 @@
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
         arc: "basic", ellipse: "basic", ellipseArc: "basic", polygon: "basic",
-        contactNO: "contact", contactNC: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact", flowSwitch: "contact", footSwitch: "contact",
+        contactNO: "contact", contactNC: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact", flowSwitch: "contact", footSwitch: "contact", photoelectricSwitch: "contact", matSwitch: "contact", reedSwitch: "contact", lightCurtain: "contact",
         coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil", bell: "coil", beacon: "coil",
         disconnector: "power", outlet: "power",
         powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power", inductor: "power", heater: "power", battery: "power", rectifierBox: "power", arrester: "power", currentTransformer: "power",
@@ -7651,6 +7659,150 @@
             { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        sensorUltrasonic: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 2, 17, 10], fill: "white" },
+            { t: "arc", p: [10, 7, 2, 270, 450] }, { t: "arc", p: [13, 7, 3, 270, 450] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        sensorLaser: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 2, 17, 10], fill: "white" },
+            { t: "circle", p: [10, 7, 2.2], fill: "white" }, { t: "line", p: [12.2, 7, 19, 7] }, { t: "pline", pts: [[17.6, 5.8], [19, 7], [17.6, 8.2]] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        sensorHall: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 2, 17, 10], fill: "white" },
+            { t: "rect", p: [8, 4, 9, 6] }, { t: "text", p: [12.5, 8.2], size: 3, anchor: "middle", value: "H" }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        photoSwitchTransmitter: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 2, 17, 10], fill: "white" }, { t: "circle", p: [9, 7, 2.3] },
+            { t: "line", p: [12, 5, 18, 3.5] }, { t: "pline", pts: [[16.7, 3], [18, 3.5], [17.1, 4.6]] }, { t: "line", p: [12, 8, 18, 6.5] }, { t: "pline", pts: [[16.7, 6], [18, 6.5], [17.1, 7.6]] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        photoSwitchReceiver: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 2, 17, 10], fill: "white" }, { t: "arc", p: [15, 7, 3, 90, 270] },
+            { t: "line", p: [7, 3.5, 12, 5] }, { t: "pline", pts: [[10.8, 3.9], [12, 5], [10.5, 5.2]] }, { t: "line", p: [7, 6.5, 12, 8] }, { t: "pline", pts: [[10.8, 6.9], [12, 8], [10.5, 8.2]] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        photoSwitchThroughBeam: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 3, 7] }, { t: "line", p: [22, 7, 25, 7] }, { t: "rect", p: [3, 2, 5, 10], fill: "white" }, { t: "rect", p: [17, 2, 5, 10], fill: "white" },
+            { t: "line", p: [8, 5, 17, 5], dash: "1 1" }, { t: "line", p: [8, 7, 17, 7], dash: "1 1" }, { t: "line", p: [8, 9, 17, 9], dash: "1 1" }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        photoSwitchRetro: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 3, 7] }, { t: "line", p: [22, 7, 25, 7] }, { t: "rect", p: [3, 2, 7, 10], fill: "white" }, { t: "rect", p: [19, 3, 3, 8], fill: "white" },
+            { t: "line", p: [10, 5, 19, 5], dash: "1 1" }, { t: "line", p: [19, 8.5, 10, 8.5], dash: "1 1" }, { t: "line", p: [19.5, 4, 21.5, 6] }, { t: "line", p: [19.5, 7, 21.5, 9] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        photoSwitchDiffuse: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 3, 7] }, { t: "line", p: [22, 7, 25, 7] }, { t: "rect", p: [3, 2, 8, 10], fill: "white" }, { t: "circle", p: [19, 7, 2.5], fill: "white" },
+            { t: "line", p: [11, 5, 16.5, 6.2], dash: "1 1" }, { t: "line", p: [16.5, 7.8, 11, 9], dash: "1 1" }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        photoSwitchFiber: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 3, 7] }, { t: "line", p: [22, 7, 25, 7] }, { t: "rect", p: [3, 2, 8, 10], fill: "white" }, { t: "pline", pts: [[11, 5], [15, 5], [18, 3]] },
+            { t: "pline", pts: [[11, 9], [15, 9], [18, 11]] }, { t: "circle", p: [19, 3, 1] }, { t: "circle", p: [19, 11, 1] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        photoSwitchFork: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "pline", pts: [[6, 2], [6, 12], [19, 12], [19, 2], [15, 2], [15, 8], [10, 8], [10, 2], [6, 2]] },
+            { t: "line", p: [10, 5, 15, 5], dash: "1 1" }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        matSwitchStandard: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 5, 17, 5], fill: "white" }, { t: "line", p: [7, 3, 18, 3] },
+            { t: "line", p: [12.5, 0.5, 12.5, 3] }, { t: "pline", pts: [[11.3, 1.8], [12.5, 3], [13.7, 1.8]] }, { t: "text", p: [12.5, 13], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        matSwitchNO: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 7, 7] }, { t: "line", p: [18, 7, 25, 7] }, { t: "circle", p: [8, 7, .7], fill: "white" }, { t: "circle", p: [17, 7, .7], fill: "white" },
+            { t: "line", p: [8.7, 6.7, 16.3, 4.5] }, { t: "rect", p: [6, 10, 13, 2], fill: "white" }, { t: "text", p: [12.5, 14], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        matSwitchNC: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 7, 7] }, { t: "line", p: [18, 7, 25, 7] }, { t: "circle", p: [8, 7, .7], fill: "white" }, { t: "circle", p: [17, 7, .7], fill: "white" },
+            { t: "line", p: [8, 7.7, 17, 7.7] }, { t: "rect", p: [6, 10, 13, 2], fill: "white" }, { t: "text", p: [12.5, 14], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        matSwitchSafety: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 2, 17, 10], fill: "white" }, { t: "line", p: [7, 5, 18, 5] },
+            { t: "line", p: [7, 9, 18, 9] }, { t: "line", p: [9, 3.5, 9, 10.5] }, { t: "line", p: [16, 3.5, 16, 10.5] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        reedSwitchNO: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 5, 7] }, { t: "line", p: [20, 7, 25, 7] }, { t: "rect", p: [5, 3, 15, 8], rx: 4, fill: "white" }, { t: "line", p: [7, 7, 12, 7] },
+            { t: "line", p: [12, 7, 18, 5] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        reedSwitchNC: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 5, 7] }, { t: "line", p: [20, 7, 25, 7] }, { t: "rect", p: [5, 3, 15, 8], rx: 4, fill: "white" }, { t: "line", p: [7, 7, 18, 7] },
+            { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        reedSwitchChangeover: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 5, 7] }, { t: "line", p: [20, 7, 25, 7] }, { t: "rect", p: [5, 2, 15, 10], rx: 4, fill: "white" }, { t: "line", p: [7, 7, 12, 7] },
+            { t: "line", p: [12, 7, 18, 4.5] }, { t: "line", p: [17, 9.5, 19, 9.5] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        reedSwitchMagnet: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 4, 12, 6], rx: 3, fill: "white" }, { t: "line", p: [6, 7, 14, 7] },
+            { t: "rect", p: [18, 3, 3, 8], fill: "white" }, { t: "text", p: [19.5, 8], size: 2, anchor: "middle", value: "M" }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        reedSwitchCylinder: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 2, 17, 10], rx: 5, fill: "white" }, { t: "line", p: [7, 7, 11, 7] },
+            { t: "line", p: [11, 7, 17, 5] }, { t: "line", p: [18, 3.5, 18, 10.5], dash: "1 1" }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        lightCurtainPair: {
+          w: 25, h: 22, anchors: [[0, 11], [25, 11]], prims: [
+            { t: "line", p: [0, 11, 3, 11] }, { t: "line", p: [22, 11, 25, 11] }, { t: "rect", p: [3, 2, 4, 18], fill: "white" }, { t: "rect", p: [18, 2, 4, 18], fill: "white" },
+            { t: "line", p: [7, 5, 18, 5], dash: "1 1" }, { t: "line", p: [7, 8, 18, 8], dash: "1 1" }, { t: "line", p: [7, 11, 18, 11], dash: "1 1" }, { t: "line", p: [7, 14, 18, 14], dash: "1 1" }, { t: "line", p: [7, 17, 18, 17], dash: "1 1" }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        lightCurtainEmitter: {
+          w: 25, h: 22, anchors: [[0, 11], [25, 11]], prims: [
+            { t: "line", p: [0, 11, 4, 11] }, { t: "line", p: [21, 11, 25, 11] }, { t: "rect", p: [5, 2, 5, 18], fill: "white" },
+            { t: "line", p: [10, 6, 18, 6] }, { t: "pline", pts: [[16.5, 4.8], [18, 6], [16.5, 7.2]] }, { t: "line", p: [10, 11, 18, 11] }, { t: "pline", pts: [[16.5, 9.8], [18, 11], [16.5, 12.2]] }, { t: "line", p: [10, 16, 18, 16] }, { t: "pline", pts: [[16.5, 14.8], [18, 16], [16.5, 17.2]] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        lightCurtainReceiver: {
+          w: 25, h: 22, anchors: [[0, 11], [25, 11]], prims: [
+            { t: "line", p: [0, 11, 4, 11] }, { t: "line", p: [21, 11, 25, 11] }, { t: "rect", p: [15, 2, 5, 18], fill: "white" },
+            { t: "line", p: [7, 6, 15, 6] }, { t: "pline", pts: [[13.5, 4.8], [15, 6], [13.5, 7.2]] }, { t: "line", p: [7, 11, 15, 11] }, { t: "pline", pts: [[13.5, 9.8], [15, 11], [13.5, 12.2]] }, { t: "line", p: [7, 16, 15, 16] }, { t: "pline", pts: [[13.5, 14.8], [15, 16], [13.5, 17.2]] }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        lightCurtainSafety: {
+          w: 25, h: 22, anchors: [[0, 11], [25, 11]], prims: [
+            { t: "line", p: [0, 11, 3, 11] }, { t: "line", p: [22, 11, 25, 11] }, { t: "rect", p: [3, 2, 5, 18], fill: "white" }, { t: "rect", p: [17, 2, 5, 18], fill: "white" },
+            { t: "line", p: [8, 5, 17, 5], dash: "1 1" }, { t: "line", p: [8, 8, 17, 8], dash: "1 1" }, { t: "line", p: [8, 14, 17, 14], dash: "1 1" }, { t: "line", p: [8, 17, 17, 17], dash: "1 1" }, { t: "text", p: [12.5, 12], size: 2, anchor: "middle", value: "OSSD" }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        lightCurtainTube: {
+          w: 25, h: 22, anchors: [[0, 11], [25, 11]], prims: [
+            { t: "line", p: [0, 11, 3, 11] }, { t: "line", p: [22, 11, 25, 11] }, { t: "rect", p: [4, 2, 3, 18], rx: 1.5, fill: "white" }, { t: "rect", p: [18, 2, 3, 18], rx: 1.5, fill: "white" },
+            { t: "line", p: [7, 4, 18, 4], dash: "1 1" }, { t: "line", p: [7, 7.5, 18, 7.5], dash: "1 1" }, { t: "line", p: [7, 11, 18, 11], dash: "1 1" }, { t: "line", p: [7, 14.5, 18, 14.5], dash: "1 1" }, { t: "line", p: [7, 18, 18, 18], dash: "1 1" }, { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         // 両ソレノイド電磁弁。中央弁箱と左右コイルを分離して線の重なりを防ぐ。
         solenoidValveDouble: {
           w: 25, h: 16,
@@ -7864,8 +8016,15 @@
             if (variant === "photo") return "sensorPhoto";
             if (variant === "capacitive") return "sensorCapacitive";
             if (variant === "magnetic") return "sensorMagnetic";
+            if (variant === "ultrasonic") return "sensorUltrasonic";
+            if (variant === "laser") return "sensorLaser";
+            if (variant === "hall") return "sensorHall";
             return null;
           }
+          case "photoelectricSwitch": return ({ transmitter: "photoSwitchTransmitter", receiver: "photoSwitchReceiver", throughBeam: "photoSwitchThroughBeam", retro: "photoSwitchRetro", diffuse: "photoSwitchDiffuse", fiber: "photoSwitchFiber", fork: "photoSwitchFork" })[variant] || "photoSwitchThroughBeam";
+          case "matSwitch": return ({ standard: "matSwitchStandard", no: "matSwitchNO", nc: "matSwitchNC", safety: "matSwitchSafety" })[variant] || "matSwitchStandard";
+          case "reedSwitch": return ({ no: "reedSwitchNO", nc: "reedSwitchNC", changeover: "reedSwitchChangeover", magnet: "reedSwitchMagnet", cylinder: "reedSwitchCylinder" })[variant] || "reedSwitchNO";
+          case "lightCurtain": return ({ pair: "lightCurtainPair", emitter: "lightCurtainEmitter", receiver: "lightCurtainReceiver", safety: "lightCurtainSafety", tube: "lightCurtainTube" })[variant] || "lightCurtainPair";
           case "solenoidValve": return variant === "double" ? "solenoidValveDouble" : null;
           case "powerSupply": {
             if (variant === "acdc") return "powerSupplyAcDc";
@@ -8994,7 +9153,11 @@
         flowSwitch: [["standard", "a接点＋流路パドル"], ["nc", "b接点＋流路パドル"]],
         footSwitch: [["standard", "a接点＋踏板"], ["nc", "b接点＋踏板"]],
         battery: [["standard", "2セル（長短2組）"], ["single", "単セル（長短1組）"]],
-        sensor: [["standard", "汎用センサ"], ["inductive", "誘導形近接センサ"], ["photo", "光電センサ"], ["capacitive", "静電容量形近接センサ"], ["magnetic", "磁気・リードセンサ"]],
+        sensor: [["standard", "汎用センサ"], ["inductive", "誘導形近接センサ"], ["photo", "光電センサ"], ["capacitive", "静電容量形近接センサ"], ["magnetic", "磁気・リードセンサ"], ["ultrasonic", "超音波センサ"], ["laser", "レーザセンサ"], ["hall", "ホールセンサ"]],
+        photoelectricSwitch: [["throughBeam", "透過形（投光・受光対向）"], ["transmitter", "投光器単体"], ["receiver", "受光器単体"], ["retro", "回帰反射形"], ["diffuse", "拡散反射形"], ["fiber", "ファイバ式"], ["fork", "溝形・フォーク式"]],
+        matSwitch: [["standard", "感圧マット一般形"], ["no", "a接点付感圧マット"], ["nc", "b接点付感圧マット"], ["safety", "安全マット2チャンネル"]],
+        reedSwitch: [["no", "リードa接点（NO）"], ["nc", "リードb接点（NC）"], ["changeover", "リード切替接点"], ["magnet", "磁石併記形"], ["cylinder", "シリンダ取付形"]],
+        lightCurtain: [["pair", "投光・受光一体表現"], ["emitter", "投光器単体"], ["receiver", "受光器単体"], ["safety", "安全ライトカーテン（OSSD）"], ["tube", "光電管・多光軸形"]],
         solenoidValve: [["standard", "単ソレノイド弁"], ["double", "両ソレノイド方向切替弁"]],
         powerSupply: [["standard", "直流電源（＋／－）"], ["acdc", "AC/DC変換器"], ["dcdc", "DC/DC変換器"]]
       };
@@ -9743,6 +9906,10 @@
           buzzer: { ...base, w: 15, h: 9, label: "BZ", buzzerVariant: "horn" },
           solenoidValve: { ...base, w: 25, h: 16, label: "SOL" },
           sensor: { ...base, w: 25, h: 14, label: "SEN" },
+          photoelectricSwitch: { ...base, w: 25, h: 14, label: "", symbolVariant: "throughBeam" },
+          matSwitch: { ...base, w: 25, h: 14, label: "", symbolVariant: "standard" },
+          reedSwitch: { ...base, w: 25, h: 14, label: "", symbolVariant: "no" },
+          lightCurtain: { ...base, w: 25, h: 22, label: "", symbolVariant: "pair" },
           powerSupply: { ...base, w: 35, h: 25, label: "PS" },
           transformer: { ...base, w: 15, h: 17, label: "Tr1" },
           meter: { ...base, w: 10, h: 4.4, label: "V" },
@@ -10132,6 +10299,10 @@
           "beacon",
           "logicGate",
           "photocoupler",
+          "photoelectricSwitch",
+          "matSwitch",
+          "reedSwitch",
+          "lightCurtain",
           "positionMark",
           "polarityMark",
           "pushButton",
@@ -10177,6 +10348,10 @@
           "thermoSwitch",
           "flowSwitch",
           "footSwitch",
+          "photoelectricSwitch",
+          "matSwitch",
+          "reedSwitch",
+          "lightCurtain",
           "terminal",
           "pushButton",
           "selectorSwitch",
@@ -10208,6 +10383,8 @@
       // 配置時の新規要素を生成(中心合わせ・向き自動判定込み)。
       function defaultElementAtPlacement(type, x, y) {
         const element = defaultElement(type, x, y);
+        // パレットから新規配置するシンボルは識別文字を強制せず、必要な場合だけ利用者が入力する。
+        if (supportsElectricalAttributes(element)) element.label = "";
         // 別名種別(非常停止ボタン等)は生成後のelement.typeで配置方法を判定する
         const kind = element.type;
         autoOrientElementForPlacement(element, x, y);
