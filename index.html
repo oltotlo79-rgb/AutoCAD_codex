@@ -392,11 +392,11 @@
     .frame-line { stroke: #141a20; stroke-width: .25; fill: none; vector-effect: non-scaling-stroke; }
     .frame-thick { stroke: #141a20; stroke-width: .45; fill: none; vector-effect: non-scaling-stroke; }
     .frame-light { stroke: #5e6872; stroke-width: .18; fill: none; vector-effect: non-scaling-stroke; }
-    .wire-line { stroke: #111820; stroke-width: .38; fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; }
+    .wire-line { stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .38); fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; }
     .dash-line { stroke-dasharray: 3 2; }
-    .symbol-fill { fill: #fff; stroke: #111820; stroke-width: .32; vector-effect: non-scaling-stroke; }
-    .symbol-line { stroke: #111820; stroke-width: .32; fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; stroke-linejoin: round; }
-    .terminal-dot { fill: #fff; stroke: #111820; stroke-width: .32; vector-effect: non-scaling-stroke; }
+    .symbol-fill { fill: #fff; stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); vector-effect: non-scaling-stroke; }
+    .symbol-line { stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; stroke-linejoin: round; }
+    .terminal-dot { fill: #fff; stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); vector-effect: non-scaling-stroke; }
 
     .element:hover .symbol-line,
     .element:hover .wire-line,
@@ -3992,6 +3992,10 @@
           g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")");
         }
         const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
+        g.style.setProperty("--element-stroke", stroke);
+        if (["wire", "line", "mechanicalLink"].includes(element.type)) {
+          g.style.setProperty("--element-width", String(element.strokeWidth ?? wireStyle(element).width ?? .32));
+        }
         // クリック当たり判定を広げる不可視ヒット領域。細線シンボルでも掴みやすくする。
         // 枠系(設備枠/矩形等)は内部の部品を選べるように縁のみ、他は外接矩形全体を対象にする。
         if (element.type !== "underlayImage") {
@@ -4578,8 +4582,8 @@
       function wireStyle(element) {
         const type = (state.wireTypes || []).find(item => item.id === element.wireType) || (state.wireTypes || [])[0];
         return {
-          color: type?.color || element.stroke || state.settings.stroke,
-          width: type?.width || .38,
+          color: element.stroke || type?.color || state.settings.stroke,
+          width: Number(element.strokeWidth ?? type?.width ?? .38),
           dash: type?.dash || "",
           label: type?.label || "",
           noNumber: Boolean(type?.noNumber)
@@ -5257,13 +5261,22 @@
         const leftLabels = String(element.pinText || "").split(/\r?\n/);
         const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
         const terminalMode = element.deviceTerminalMode || "auto";
-        const showTerminal = hasText => terminalMode === "always" || (terminalMode === "auto" && hasText);
+        const visibility = element.deviceTerminalVisibility || {};
+        const showTerminal = (key, hasText) => typeof visibility[key] === "boolean"
+          ? visibility[key]
+          : terminalMode === "always" || (terminalMode === "auto" && hasText);
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
         if (element.label) multilineText(g, element.label, w / 2, h / 2 - 1.2, 3.1, { fontSize: 2.1, anchor: "middle" });
         for (let i = 0; i < pins; i++) {
           const y = deviceBoxPinY(element, i);
-          if (showTerminal(!!leftLabels[i])) g.appendChild(svgEl("circle", { cx: 0, cy: y, r: 1, fill: "#fff", stroke, class: "symbol-line", "data-device-terminal": "left-" + i }));
-          if (showTerminal(!!rightLabels[i])) g.appendChild(svgEl("circle", { cx: w, cy: y, r: 1, fill: "#fff", stroke, class: "symbol-line", "data-device-terminal": "right-" + i }));
+          if (showTerminal("left-" + i, !!leftLabels[i])) {
+            drawTerminalNode(g, 0, y, .55, "circle", stroke);
+            g.lastChild.setAttribute("data-device-terminal", "left-" + i);
+          }
+          if (showTerminal("right-" + i, !!rightLabels[i])) {
+            drawTerminalNode(g, w, y, .55, "circle", stroke);
+            g.lastChild.setAttribute("data-device-terminal", "right-" + i);
+          }
           if (leftLabels[i]) {
             g.appendChild(textEl(leftLabels[i], 1.5, y, { fontSize: 2.2 }));
           }
@@ -8719,7 +8732,7 @@
           ${specificFields(element)}
           ${electricalAttributeFields(element)}
           ${crossRefJumpHtml(element)}
-          <details class="attr-panel">
+          <details class="attr-panel" open>
             <summary>スタイル・メモ（レイヤ／線色／属性メモ）</summary>
             <label>所属レイヤ</label>
             <select data-bind="layer">${layerOptions(element.layer || inferredLayerFor(element.type))}</select>
@@ -9389,6 +9402,11 @@
         }
         if (element.type === "deviceBox") {
           const terminalMode = element.deviceTerminalMode || "auto";
+          const visibility = element.deviceTerminalVisibility || {};
+          const leftLabels = String(element.pinText || "").split(/\r?\n/);
+          const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
+          const pins = Math.max(0, Number(element.pins || 4));
+          const terminalChecked = (key, hasText) => typeof visibility[key] === "boolean" ? visibility[key] : terminalMode === "always" || (terminalMode === "auto" && hasText);
           return `
             <label>左右ピン数</label>
             <input data-bind="pins" data-kind="number" type="number" min="0" step="1" value="${Number(element.pins || 4)}">
@@ -9399,6 +9417,12 @@
             <label>端子記号</label>
             <div class="inline" role="radiogroup" aria-label="機器箱の端子記号">
               ${[["auto", "文字に連動"], ["always", "常に表示"], ["hidden", "非表示"]].map(([value, label]) => `<label><input data-bind="deviceTerminalMode" name="deviceTerminalMode" type="radio" value="${value}" ${terminalMode === value ? "checked" : ""} style="width:auto;min-height:auto"> ${label}</label>`).join("")}
+            </div>
+            <label>端子ごとの表示</label>
+            <div class="form-grid">
+              ${Array.from({ length: pins }, (_, index) => `
+                <label><input data-bind="deviceTerminalVisibility.left-${index}" type="checkbox" ${terminalChecked("left-" + index, !!leftLabels[index]) ? "checked" : ""} style="width:auto;min-height:auto"> 左${index + 1}</label>
+                <label><input data-bind="deviceTerminalVisibility.right-${index}" type="checkbox" ${terminalChecked("right-" + index, !!rightLabels[index]) ? "checked" : ""} style="width:auto;min-height:auto"> 右${index + 1}</label>`).join("")}
             </div>
           `;
         }
@@ -9445,7 +9469,6 @@
               <option value="1.4 1.2">細点線</option>
             </select>
             <div class="row">
-              <div><label>線幅</label><input data-bind="strokeWidth" data-kind="number" type="number" min="0.1" step="0.1" value="${round(element.strokeWidth || .32)}"></div>
               <div><label>破線</label><input data-bind="dash" type="text" value="${escapeAttr(element.dash || "")}" placeholder="3 2"></div>
             </div>
           `;
@@ -9535,6 +9558,13 @@
         if (!element) return;
         const key = input.dataset.bind;
         let value = input.type === "checkbox" ? input.checked : (input.dataset.kind === "number" ? Number(input.value) : input.value);
+        if (key.startsWith("deviceTerminalVisibility.")) {
+          const terminalKey = key.slice("deviceTerminalVisibility.".length);
+          element.deviceTerminalVisibility = { ...(element.deviceTerminalVisibility || {}), [terminalKey]: Boolean(value) };
+          if (save) commitHistory("機器箱の端子表示を変更しました。");
+          render();
+          return;
+        }
         if (input.dataset.coordinateY === "true") value = pageSize(currentPage()).h - value;
         const pointMatch = key.match(/^p(\d+)(x|y)$/);
         // 形状・向き・デザイン等の切替で要素寸法が変わる可能性のあるキー。
@@ -9566,6 +9596,7 @@
           element.points[Number(pointMatch[1])][pointMatch[2] === "x" ? 0 : 1] = value;
         } else {
           element[key] = value;
+          if (key === "deviceTerminalMode") element.deviceTerminalVisibility = {};
           if (key === "tag" && supportsElectricalAttributes(element) && !element.label) element.label = value;
           if (key === "tag" && value) {
             const dup = state.pages.some(page => page.elements.some(item =>
@@ -9813,11 +9844,14 @@
         const legacyMode = element.endpointArrowMode || "none";
         const startStyle = element.startArrowStyle || (legacyMode === "reverse" || legacyMode === "both" ? "reverse" : "none");
         const endStyle = element.endArrowStyle || (legacyMode === "forward" || legacyMode === "both" ? "forward" : "none");
+        const strokeWidth = Number(element.strokeWidth ?? (element.type === "wire" ? wireStyle(element).width : .32));
         const arrowRadios = (bind, selected) => [["none", "なし"], ["forward", "送り先"], ["reverse", "受け取り側"]]
           .map(([value, label]) => `<label><input data-bind="${bind}" name="${bind}" type="radio" value="${value}" ${selected === value ? "checked" : ""} style="width:auto;min-height:auto"> ${label}</label>`).join("");
         return `
           <details class="attr-panel" open>
             <summary>端点表示</summary>
+            <label>線幅 mm</label>
+            <input data-bind="strokeWidth" data-kind="number" type="number" min="0.1" step="0.1" value="${round(strokeWidth)}">
             <label><input data-bind="showStartConnection" type="checkbox" ${element.showStartConnection ? "checked" : ""} style="width:auto;min-height:auto"> 始点に接続点を表示</label>
             <label><input data-bind="showEndConnection" type="checkbox" ${element.showEndConnection ? "checked" : ""} style="width:auto;min-height:auto"> 終点に接続点を表示</label>
             <label>始端の矢印</label>
@@ -19759,11 +19793,12 @@
             const leftLabels = String(element.pinText || "").split(/\r?\n/);
             const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
             const terminalMode = element.deviceTerminalMode || "auto";
-            const showTerminal = hasText => terminalMode === "always" || (terminalMode === "auto" && hasText);
+            const visibility = element.deviceTerminalVisibility || {};
+            const showTerminal = (key, hasText) => typeof visibility[key] === "boolean" ? visibility[key] : terminalMode === "always" || (terminalMode === "auto" && hasText);
             for (let i = 0; i < pins; i++) {
               const y = box.h * (i + 1) / (pins + 1);
-              if (showTerminal(!!leftLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, 0, y, 1);
-              if (showTerminal(!!rightLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, box.w, y, 1);
+              if (showTerminal("left-" + i, !!leftLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, 0, y, .55);
+              if (showTerminal("right-" + i, !!rightLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, box.w, y, .55);
               if (leftLabels[i]?.trim()) dxfTextLocal(out, page, "TEXT", element, 1.5, y + .55, 2.2, leftLabels[i].trim());
               if (rightLabels[i]?.trim()) {
                 const text = rightLabels[i].trim();
