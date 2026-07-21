@@ -3029,6 +3029,7 @@
           "font-size": attrs.fontSize || 3,
           "text-anchor": attrs.anchor || "start",
           "dominant-baseline": attrs.baseline || "middle",
+          "font-weight": attrs.weight || null,
           transform: attrs.transform || null
         }, [document.createTextNode(text || "")]);
       }
@@ -3043,6 +3044,7 @@
           "font-size": attrs.fontSize || 3,
           "text-anchor": attrs.anchor || "start",
           "dominant-baseline": "middle",
+          "font-weight": attrs.weight || null,
           transform: attrs.transform || null
         });
         lines.forEach((line, index) => {
@@ -4082,7 +4084,19 @@
         if (element.type === "junction") drawJunction(g, element, stroke);
         applyLabelPresentation(g, element);
         drawVisibleAttributes(g, element);
+        applyContentTextPresentation(g, element);
         svg.appendChild(g);
+      }
+
+      function applyContentTextPresentation(g, element) {
+        const size = element.type === "text" ? Number(element.fontSize || 0)
+          : element.type === "wire" ? Number(element.wireNoFontSize || 0)
+            : Number(element.contentFontSize || 0);
+        const bold = element.type === "text" ? element.fontBold : element.type === "wire" ? element.wireNoBold : element.contentFontBold;
+        g.querySelectorAll("text").forEach(node => {
+          if (size > 0) node.setAttribute("font-size", String(size));
+          if (bold !== undefined) node.setAttribute("font-weight", bold ? "700" : "400");
+        });
       }
 
       // 配線ツール中、部品が持つ全接続点を個別に選べるクリックマーカーとして表示する。
@@ -5242,10 +5256,14 @@
         const pins = Math.max(0, Number(element.pins || 4));
         const leftLabels = String(element.pinText || "").split(/\r?\n/);
         const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
+        const terminalMode = element.deviceTerminalMode || "auto";
+        const showTerminal = hasText => terminalMode === "always" || (terminalMode === "auto" && hasText);
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
         if (element.label) multilineText(g, element.label, w / 2, h / 2 - 1.2, 3.1, { fontSize: 2.1, anchor: "middle" });
         for (let i = 0; i < pins; i++) {
           const y = deviceBoxPinY(element, i);
+          if (showTerminal(!!leftLabels[i])) g.appendChild(svgEl("circle", { cx: 0, cy: y, r: 1, fill: "#fff", stroke, class: "symbol-line", "data-device-terminal": "left-" + i }));
+          if (showTerminal(!!rightLabels[i])) g.appendChild(svgEl("circle", { cx: w, cy: y, r: 1, fill: "#fff", stroke, class: "symbol-line", "data-device-terminal": "right-" + i }));
           if (leftLabels[i]) {
             g.appendChild(textEl(leftLabels[i], 1.5, y, { fontSize: 2.2 }));
           }
@@ -8697,6 +8715,7 @@
           ${isWireLike ? wireFields(element) : normalFields(element)}
           ${endpointPresentationFields(element)}
           ${labelFields(element)}
+          ${contentTextStyleFields(element)}
           ${specificFields(element)}
           ${electricalAttributeFields(element)}
           ${crossRefJumpHtml(element)}
@@ -9369,6 +9388,7 @@
           `;
         }
         if (element.type === "deviceBox") {
+          const terminalMode = element.deviceTerminalMode || "auto";
           return `
             <label>左右ピン数</label>
             <input data-bind="pins" data-kind="number" type="number" min="0" step="1" value="${Number(element.pins || 4)}">
@@ -9376,6 +9396,10 @@
             <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
             <label>右端子文字（1行1点）</label>
             <textarea data-bind="rightPinText">${escapeHtml(element.rightPinText || "")}</textarea>
+            <label>端子記号</label>
+            <div class="inline" role="radiogroup" aria-label="機器箱の端子記号">
+              ${[["auto", "文字に連動"], ["always", "常に表示"], ["hidden", "非表示"]].map(([value, label]) => `<label><input data-bind="deviceTerminalMode" name="deviceTerminalMode" type="radio" value="${value}" ${terminalMode === value ? "checked" : ""} style="width:auto;min-height:auto"> ${label}</label>`).join("")}
+            </div>
           `;
         }
         if (["rect", "circle"].includes(element.type)) {
@@ -9801,6 +9825,25 @@
             <label>終端の矢印</label>
             <div class="inline" role="radiogroup" aria-label="終端の矢印">${arrowRadios("endArrowStyle", endStyle)}</div>
           </details>`;
+      }
+
+      function contentTextStyleFields(element) {
+        if (element.type === "underlayImage" || element.type === "junction") return "";
+        if (element.type === "text") return `<details class="attr-panel" open>
+          <summary>文字スタイル</summary>
+          <label><input data-bind="fontBold" type="checkbox" ${element.fontBold ? "checked" : ""} style="width:auto;min-height:auto"> 太字</label>
+        </details>`;
+        const sizeBind = element.type === "text" ? "fontSize" : element.type === "wire" ? "wireNoFontSize" : "contentFontSize";
+        const boldBind = element.type === "text" ? "fontBold" : element.type === "wire" ? "wireNoBold" : "contentFontBold";
+        const size = element.type === "text" ? Number(element.fontSize || 3.5)
+          : element.type === "wire" ? Number(element.wireNoFontSize || 2.3)
+            : Number(element.contentFontSize || element.labelFontSize || 2.2);
+        return `<details class="attr-panel" open>
+          <summary>文字スタイル</summary>
+          <label>文字サイズ mm</label>
+          <input data-bind="${sizeBind}" data-kind="number" type="number" min="0.5" step="0.2" value="${round(size)}">
+          <label><input data-bind="${boldBind}" type="checkbox" ${element[boldBind] ? "checked" : ""} style="width:auto;min-height:auto"> 太字</label>
+        </details>`;
       }
 
       // スナップON/OFFに関係なく、現在設定のグリッドへ数値を丸める内部ヘルパ。
@@ -19715,8 +19758,12 @@
             const pins = Math.max(0, Number(element.pins || 4));
             const leftLabels = String(element.pinText || "").split(/\r?\n/);
             const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
+            const terminalMode = element.deviceTerminalMode || "auto";
+            const showTerminal = hasText => terminalMode === "always" || (terminalMode === "auto" && hasText);
             for (let i = 0; i < pins; i++) {
               const y = box.h * (i + 1) / (pins + 1);
+              if (showTerminal(!!leftLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, 0, y, 1);
+              if (showTerminal(!!rightLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, box.w, y, 1);
               if (leftLabels[i]?.trim()) dxfTextLocal(out, page, "TEXT", element, 1.5, y + .55, 2.2, leftLabels[i].trim());
               if (rightLabels[i]?.trim()) {
                 const text = rightLabels[i].trim();

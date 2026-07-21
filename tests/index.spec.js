@@ -2301,3 +2301,42 @@ test("直線・連動破線・配線で接続点と両向きの矢印を選択�
   const labelYAfter = Number(await page.locator('[data-id="wire1"] text').first().getAttribute("y"));
   expect(labelYAfter).toBeLessThan(labelYBefore);
 });
+
+test("機器箱の端子記号を端子文字と連動でき、全要素の文字サイズと太字を変更できる", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p1",
+    pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: [
+      { id: "box", type: "deviceBox", x: 30, y: 40, w: 30, h: 25, pins: 4, label: "DEV", pinText: "1\n2\n3\n4", rightPinText: "", layer: "symbols" },
+      { id: "wire", type: "wire", points: [[30, 90], [70, 90]], wireNo: "W10", layer: "wires" },
+      { id: "text", type: "text", x: 30, y: 110, w: 30, h: 8, text: "NOTE", fontSize: 3.5, layer: "notes" }
+    ] }]
+  }));
+  await expect(page.locator('[data-id="box"] [data-device-terminal]')).toHaveCount(4);
+  await page.evaluate(() => window.__edsTest.selectElement("box"));
+  await page.locator('[data-bind="pinText"]').fill("1\n2\n\n4");
+  await expect(page.locator('[data-id="box"] [data-device-terminal]')).toHaveCount(3);
+  await page.locator('[data-bind="deviceTerminalMode"][value="always"]').check();
+  await expect(page.locator('[data-id="box"] [data-device-terminal]')).toHaveCount(8);
+  await page.locator('[data-bind="deviceTerminalMode"][value="hidden"]').check();
+  await expect(page.locator('[data-id="box"] [data-device-terminal]')).toHaveCount(0);
+  await page.locator('[data-bind="deviceTerminalMode"][value="auto"]').check();
+  await page.locator('[data-bind="contentFontSize"]').fill("3.4");
+  await page.locator('[data-bind="contentFontSize"]').press("Enter");
+  await page.locator('[data-bind="contentFontBold"]').check();
+  await expect(page.locator('[data-id="box"] text').first()).toHaveAttribute("font-size", "3.4");
+  await expect(page.locator('[data-id="box"] text').first()).toHaveAttribute("font-weight", "700");
+
+  await page.evaluate(() => window.__edsTest.selectElement("wire"));
+  await page.locator('[data-bind="wireNoFontSize"]').fill("4.2");
+  await page.locator('[data-bind="wireNoFontSize"]').press("Enter");
+  await page.locator('[data-bind="wireNoBold"]').check();
+  await expect(page.locator('[data-id="wire"] text').first()).toHaveAttribute("font-size", "4.2");
+  await expect(page.locator('[data-id="wire"] text').first()).toHaveAttribute("font-weight", "700");
+
+  await page.evaluate(() => window.__edsTest.selectElement("text"));
+  await page.locator('[data-bind="fontSize"]').fill("5");
+  await page.locator('[data-bind="fontSize"]').press("Enter");
+  await page.locator('[data-bind="fontBold"]').check();
+  await expect(page.locator('[data-id="text"] text')).toHaveAttribute("font-size", "5");
+  await expect(page.locator('[data-id="text"] text')).toHaveAttribute("font-weight", "700");
+});
