@@ -3324,7 +3324,6 @@
       // パレット/タブ/右パネルの再構築を省いて描画コストを下げる。
       // 印刷用シートはここでは作らない(印刷直前にrenderPrintSheets()が生成する)。
       function render(options = {}) {
-        wireLabelAvoidCache.clear();
         crossRefCache = null;
         if (!options.light) {
           renderPalette();
@@ -4295,13 +4294,14 @@
         drawEndpointPresentation(g, element, style.color);
         wireGapMarkers(element).forEach(gap => drawWireGap(g, gap));
         if (element.wireNo && !element.hideWireNo) {
-          const originalPos = wireNoAnchorPoint(element);
-          const pos = avoidWireNumberCollision(element, originalPos);
-          if (pos.leader) {
+          const pos = wireNoAnchorPoint(element);
+          if (element.wireNoLeader) {
+            const origin = wireNoLeaderPoint(element);
             g.appendChild(svgEl("line", {
-              x1: originalPos.x, y1: originalPos.y + 1,
+              x1: origin.x, y1: origin.y,
               x2: pos.x, y2: pos.y + 1,
-              class: "symbol-line", stroke: style.color, "stroke-width": .22
+              class: "symbol-line", stroke: style.color, "stroke-width": .22,
+              "data-wire-no-leader": "true"
             }));
           }
           g.appendChild(textEl(element.wireNo, pos.x, pos.y, { fontSize: 2.3, anchor: pos.anchor }));
@@ -5203,36 +5203,8 @@
         return round(Math.round(Number(value || 0) / 2.5) * 2.5);
       }
 
-      const wireLabelAvoidCache = new Map();
       function avoidWireNumberCollision(element, position) {
-        if (state.settings.autoWireLabelAvoid === false || element.wireNoManualPosition) return position;
-        const cacheKey = element.id + ":" + round(position.x) + ":" + round(position.y);
-        if (wireLabelAvoidCache.has(cacheKey)) return wireLabelAvoidCache.get(cacheKey);
-        const page = currentPage();
-        if (!page) return position;
-        const width = Math.max(4, String(element.wireNo || "").length * 1.45);
-        const elementIndex = page.elements.findIndex(item => item.id === element.id);
-        const collides = y => page.elements.some((item, itemIndex) => {
-          if (item.type === "wire" && item.id !== element.id && itemIndex < elementIndex && item.wireNo && !item.hideWireNo) {
-            const other = avoidWireNumberCollision(item, wireNoAnchorPoint(item));
-            const otherWidth = Math.max(4, String(item.wireNo).length * 1.45);
-            return position.x + width > other.x - 1 && position.x < other.x + otherWidth + 1
-              && y + 1.7 > other.y - 1.7 && y - 1.7 < other.y + 1.7;
-          }
-          if (item.id === element.id || item.type === "wire" || item.type === "junction") return false;
-          const box = elementBounds(item);
-          if (!box) return false;
-          return position.x + width > box.x - 5 && position.x < box.x + box.w + 5
-            && y + 1.5 > box.y - 5 && y - 1.5 < box.y + box.h + 5;
-        });
-        for (const offset of [0, -4, 4, -8, 8, -12, 12, -16, 16, -20, 20]) {
-          if (!collides(position.y + offset)) {
-            const resolved = { ...position, y: position.y + offset, leader: offset !== 0 };
-            wireLabelAvoidCache.set(cacheKey, resolved);
-            return resolved;
-          }
-        }
-        wireLabelAvoidCache.set(cacheKey, position);
+        // 周辺要素と重なっても指定位置を維持し、暗黙の引き出し線は生成しない。
         return position;
       }
 
@@ -8184,6 +8156,15 @@
         };
       }
 
+      // 引き出し線の配線側始点。文字位置調整前の配線上の基準点を返す。
+      function wireNoLeaderPoint(element) {
+        const points = element.points || [[0, 0], [20, 0]];
+        const align = element.wireNoAlign || "mid";
+        if (align === "mid") return wireLabelPoint(points, element.orthoFlip);
+        const point = align === "end" ? points[points.length - 1] : points[0];
+        return { x: point[0], y: point[1] };
+      }
+
       // ===== 表の斜線セル =====
       function tableDiagonalCells(element) {
         return String(element.cellDiagonals || "")
@@ -8930,6 +8911,7 @@
             <input data-bind="wireNo" type="text" value="${escapeAttr(element.wireNo || "")}">
             <label><input data-bind="fixedWireNo" type="checkbox" ${element.fixedWireNo ? "checked" : ""} style="width:auto;min-height:auto"> 線番固定</label>
             <label><input data-bind="hideWireNo" type="checkbox" ${element.hideWireNo ? "checked" : ""} style="width:auto;min-height:auto"> 線番非表示</label>
+            <label><input data-bind="wireNoLeader" type="checkbox" ${element.wireNoLeader ? "checked" : ""} style="width:auto;min-height:auto"> 引き出し線を使用</label>
             <label>線番位置</label>
             <select data-bind="wireNoAlign">
               <option value="mid"${align === "mid" ? " selected" : ""}>中央</option>
@@ -9794,7 +9776,7 @@
           junction: { ...base, w: 2, h: 2, r: 0.5, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", arrowStyle: "open", arrowAtStart: false, stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
           dimension: { id: uid("el"), type: "dimension", points: [[x, y], [x + 30, y]], label: "", dimOffset: 6, stroke: state.settings.stroke, layer: "notes" },
-          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireNoAlign: "mid", fixedWireNo: false, hideWireNo: false, gapAtMid: false, fromOverride: "", toOverride: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
+          wire: { id: uid("el"), type: "wire", points: [[x, y], [x + 30, y]], wireNo: "", wireNoAlign: "mid", fixedWireNo: false, hideWireNo: false, wireNoLeader: false, gapAtMid: false, fromOverride: "", toOverride: "", wireType: state.settings.currentWireType, stroke: state.settings.stroke, layer: "wires" }
         };
         return deepClone(defaults[type] || defaults.deviceBox);
       }
@@ -19366,6 +19348,10 @@
           dxfWireSegments(element).forEach(segment => dxfLine(out, page, layer, segment[0], segment[1], segment[2], segment[3], wireLtype));
           if (element.wireNo) {
             const pos = wireNoAnchorPoint(element);
+            if (element.wireNoLeader) {
+              const origin = wireNoLeaderPoint(element);
+              dxfLine(out, page, "WIRENO", origin.x, origin.y, pos.x, pos.y + 1);
+            }
             const dx = pos.anchor === "end" ? String(element.wireNo).length * 2.4 * .6 : 0;
             dxfText(out, page, "WIRENO", pos.x - dx, pos.y + .8, 2.4, element.wireNo);
           }
