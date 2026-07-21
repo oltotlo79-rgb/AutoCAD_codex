@@ -1105,6 +1105,11 @@
               </select>
             </div>
           </div>
+          <label for="gridVisibility">グリッド表示</label>
+          <select id="gridVisibility" title="作図補助グリッドだけを隠します。スナップのON/OFFには影響しません。">
+            <option value="on">表示</option>
+            <option value="off">非表示</option>
+          </select>
           <label for="objectSnapToggle">端点スナップ</label>
           <select id="objectSnapToggle">
             <option value="on">ON</option>
@@ -2219,6 +2224,7 @@
         settings: {
           zoom: 3.2,
           grid: 2.5,
+          showGrid: true,
           snap: true,
           objectSnap: true,
           stroke: "#111820",
@@ -3515,7 +3521,7 @@
         const visibleElements = page.elements.filter(element => isElementVisible(element) && (includeUnderlays || element.type !== "underlayImage"));
         svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "#fff" }));
         visibleElements.filter(element => element.type === "underlayImage").forEach(element => drawElement(svg, element));
-        if (options.grid !== false) drawGrid(svg, size);
+        if (options.grid !== false && state.settings.showGrid !== false) drawGrid(svg, size);
         if (isLayerVisible("frame")) drawFrame(svg, page, size);
         const drawingElements = visibleElements.filter(element => element.type !== "underlayImage");
         // 導体を先に描き、白塗りの端子円・シンボルを必ず前面へ置く。
@@ -3618,8 +3624,8 @@
         }));
         defs.appendChild(major);
         svg.appendChild(defs);
-        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#" + gridPatternId + ")", opacity: .62 }));
-        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#" + majorGridPatternId + ")", opacity: .48 }));
+        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#" + gridPatternId + ")", opacity: .62, "data-grid-layer": "minor" }));
+        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: size.w, height: size.h, fill: "url(#" + majorGridPatternId + ")", opacity: .48, "data-grid-layer": "major" }));
       }
 
       // 図枠の振り分け: frameVariantに応じて各図枠描画関数を呼ぶ。
@@ -8622,6 +8628,7 @@
         setValue("pageSideNote", page.title.sideNote || "");
         setValue("zoomRange", state.settings.zoom);
         setValue("gridSize", state.settings.grid);
+        setValue("gridVisibility", state.settings.showGrid === false ? "off" : "on");
         setValue("snapToggle", state.settings.snap ? "on" : "off");
         setValue("pageViewMode", state.settings.multiPageView ? (state.settings.multiPageDirection === "column" ? "column" : "row") : "tab");
         setValue("objectSnapToggle", state.settings.objectSnap ? "on" : "off");
@@ -14389,7 +14396,7 @@
         const issueCount = state.settings.auditOverlay && page
           ? auditProject().filter(issue => issue.pageId === page.id && issue.elementId).length : 0;
         const mode = dragState?.mode === "draw" ? "作図中" : activeTool === "select" ? "選択" : toolDisplayLabel(activeTool);
-        const snapText = `GRID ${state.settings.grid || 2.5} / SNAP ${state.settings.snap ? "ON" : "OFF"} / 接続 ${state.settings.objectSnap ? "ON" : "OFF"}`;
+        const snapText = `GRID ${state.settings.grid || 2.5} ${state.settings.showGrid === false ? "HIDE" : "SHOW"} / SNAP ${state.settings.snap ? "ON" : "OFF"} / 接続 ${state.settings.objectSnap ? "ON" : "OFF"}`;
         qs("#bottomHud").innerHTML = `<span>${escapeHtml(mode)}</span><span>${escapeHtml(snapText)}</span>${issueCount ? `<span class="warn">指摘 ${issueCount}</span>` : ""}<span>${selectedIds.length ? "選択 " + selectedIds.length : "未選択"}</span><span class="${projectDirty ? "warn" : ""}">${projectDirty ? "未保存" : "保存済み"}</span>`;
         renderMiniToolbar();
       }
@@ -20829,6 +20836,11 @@
         qs("#gridSize").addEventListener("change", event => {
           state.settings.grid = Number(event.target.value || 2.5);
           commitHistory("グリッドを変更しました。");
+          render();
+        });
+        qs("#gridVisibility").addEventListener("change", event => {
+          state.settings.showGrid = event.target.value !== "off";
+          commitHistory(state.settings.showGrid ? "グリッドを表示しました。" : "グリッドを非表示にしました。");
           render();
         });
         qs("#snapToggle").addEventListener("change", event => {
