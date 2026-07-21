@@ -4130,13 +4130,15 @@
         }
         if (element.showStartConnection) g.appendChild(svgEl("circle", { cx: start[0], cy: start[1], r: .75, fill: stroke, stroke: "none", "data-endpoint-connection": "start" }));
         if (element.showEndConnection) g.appendChild(svgEl("circle", { cx: end[0], cy: end[1], r: .75, fill: stroke, stroke: "none", "data-endpoint-connection": "end" }));
-        const mode = element.endpointArrowMode || "none";
-        if (mode === "reverse" || mode === "both") {
-          appendArrowHead(g, start, Math.atan2(start[1] - startNext[1], start[0] - startNext[0]), "fork", stroke, { "data-endpoint-arrow": "start" });
-        }
-        if (mode === "forward" || mode === "both") {
-          appendArrowHead(g, end, Math.atan2(end[1] - endPrev[1], end[0] - endPrev[0]), "open", stroke, { "data-endpoint-arrow": "end" });
-        }
+        const legacyMode = element.endpointArrowMode || "none";
+        const startStyle = element.startArrowStyle || (legacyMode === "reverse" || legacyMode === "both" ? "reverse" : "none");
+        const endStyle = element.endArrowStyle || (legacyMode === "forward" || legacyMode === "both" ? "forward" : "none");
+        const drawAt = (tip, neighbor, side, selectedStyle) => {
+          if (selectedStyle === "none") return;
+          appendArrowHead(g, tip, Math.atan2(tip[1] - neighbor[1], tip[0] - neighbor[0]), selectedStyle === "reverse" ? "fork" : "open", stroke, { "data-endpoint-arrow": side });
+        };
+        drawAt(start, startNext, "start", startStyle);
+        drawAt(end, endPrev, "end", endStyle);
       }
 
       // シンボル固有の既定ラベル位置を基準に、利用者指定の移動量と文字サイズを適用する。
@@ -8146,7 +8148,7 @@
         const points = element.points || [[0, 0], [20, 0]];
         const align = element.wireNoAlign || "mid";
         const dx = Number(element.wireNoDx || 0);
-        const dy = Number(element.wireNoDy || 0);
+        const dy = -Number(element.wireNoDy || 0);
         if (align === "mid") {
           const mid = wireLabelPoint(points, element.orthoFlip);
           return { x: mid.x + 1.6 + dx, y: mid.y - 1.8 + dy, anchor: "start" };
@@ -9784,16 +9786,20 @@
 
       function endpointPresentationFields(element) {
         if (!["wire", "line", "mechanicalLink"].includes(element.type)) return "";
-        const mode = element.endpointArrowMode || "none";
+        const legacyMode = element.endpointArrowMode || "none";
+        const startStyle = element.startArrowStyle || (legacyMode === "reverse" || legacyMode === "both" ? "reverse" : "none");
+        const endStyle = element.endArrowStyle || (legacyMode === "forward" || legacyMode === "both" ? "forward" : "none");
+        const arrowRadios = (bind, selected) => [["none", "なし"], ["forward", "送り先"], ["reverse", "受け取り側"]]
+          .map(([value, label]) => `<label><input data-bind="${bind}" name="${bind}" type="radio" value="${value}" ${selected === value ? "checked" : ""} style="width:auto;min-height:auto"> ${label}</label>`).join("");
         return `
           <details class="attr-panel" open>
             <summary>端点表示</summary>
             <label><input data-bind="showStartConnection" type="checkbox" ${element.showStartConnection ? "checked" : ""} style="width:auto;min-height:auto"> 始点に接続点を表示</label>
             <label><input data-bind="showEndConnection" type="checkbox" ${element.showEndConnection ? "checked" : ""} style="width:auto;min-height:auto"> 終点に接続点を表示</label>
-            <label>矢印</label>
-            <div class="inline" role="radiogroup" aria-label="端点矢印">
-              ${[["none", "なし"], ["forward", "送り先"], ["reverse", "受け取り側"], ["both", "両方"]].map(([value, label]) => `<label><input data-bind="endpointArrowMode" name="endpointArrowMode" type="radio" value="${value}" ${mode === value ? "checked" : ""} style="width:auto;min-height:auto"> ${label}</label>`).join("")}
-            </div>
+            <label>始端の矢印</label>
+            <div class="inline" role="radiogroup" aria-label="始端の矢印">${arrowRadios("startArrowStyle", startStyle)}</div>
+            <label>終端の矢印</label>
+            <div class="inline" role="radiogroup" aria-label="終端の矢印">${arrowRadios("endArrowStyle", endStyle)}</div>
           </details>`;
       }
 
@@ -14175,14 +14181,14 @@
 
       function startWireFromSelected() {
         const element = selectedElement();
-        const anchor = element && componentConnectionAnchors(element)[0];
-        if (!anchor) { setStatus("選択要素に配線接続点がありません。"); return; }
+        const anchors = element && (element.type === "terminalStrip" || element.type === "connector"
+          ? Array.from({ length: terminalStripGeometry(element).nodes }, (_, index) => terminalStripNodeGlobal(element, index))
+          : componentConnectionAnchors(element));
+        if (!anchors?.length) { setStatus("選択要素に配線接続点がありません。"); return; }
         setActiveTool("wire");
-        const wire = defaultElement("wire", anchor.x, anchor.y);
-        wire.points = [[anchor.x, anchor.y], [anchor.x, anchor.y]];
-        currentPage().elements.push(wire); selectSingle(wire.id);
-        dragState = { mode: "draw", elementId: wire.id, start: { x: anchor.x, y: anchor.y }, lastPoint: [anchor.x, anchor.y] };
-        render();
+        setStatus(anchors.length > 1
+          ? "選択中シンボルの配線を伸ばす接続点を選択してください。"
+          : "強調表示された配線接続点を選択してください。");
       }
 
       function toggleAuditOverlay() {
