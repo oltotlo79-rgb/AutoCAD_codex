@@ -2174,3 +2174,76 @@ test("論理ゲートにNAND・NOR・XORの異表現を追加する", async ({ p
     { symbolVariant: "xor", anchors: 3, circles: 0, marker: "=1" }
   ]);
 });
+
+test("基本表題欄の日付は独立した罫線セル内に収まる", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "compact",
+      title: { date: "2026/07/21", page: "1", total: "1" }, elements: []
+    }]
+  }));
+  const result = await page.evaluate(() => {
+    const svg = document.querySelector("svg#canvas");
+    const date = [...svg.querySelectorAll(".frame text")].find(node => node.textContent === "2026/07/21");
+    const box = date.getBBox();
+    const lines = [...svg.querySelectorAll(".frame line")].map(line => ({
+      x1: Number(line.getAttribute("x1")), y1: Number(line.getAttribute("y1")),
+      x2: Number(line.getAttribute("x2")), y2: Number(line.getAttribute("y2"))
+    }));
+    return { box: { x: box.x, y: box.y, right: box.x + box.width, bottom: box.y + box.height }, lines };
+  });
+  expect(result.box.x).toBeGreaterThanOrEqual(172);
+  expect(result.box.right).toBeLessThanOrEqual(202);
+  expect(result.box.y).toBeGreaterThanOrEqual(273);
+  expect(result.box.bottom).toBeLessThanOrEqual(281);
+  expect(result.lines).toContainEqual({ x1: 172, y1: 273, x2: 172, y2: 281 });
+});
+
+test("矢印と連動破線の端点移動は固定軸の端数座標を維持する", async ({ page }) => {
+  for (const type of ["arrow"]) {
+    await page.evaluate(type => window.__edsTest.installProjectData({
+      schemaVersion: 4, activePageId: "p1", settings: { grid: .5, snap: true },
+      pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+        elements: [{ id: "target", type, points: [[20.31, 120.42], [50.31, 120.42]], layer: "layout" }] }]
+    }), type);
+    await page.evaluate(() => window.__edsTest.selectElement("target"));
+    const handle = page.locator('[data-point-index="1"]');
+    const box = await handle.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 1, { steps: 4 });
+    await page.mouse.up();
+    const points = await page.evaluate(() => window.__edsTest.state.pages[0].elements[0].points);
+    expect(points[1][1], type).toBe(120.42);
+    expect(points[1][0], type).toBeGreaterThan(50.31);
+  }
+  const constrained = await page.evaluate(() => ({
+    mechanicalHorizontal: window.__edsTest.snapEditableLineEndpoint([20.31, 120.42], { x: 80.2, y: 120.6 }),
+    mechanicalVertical: window.__edsTest.snapEditableLineEndpoint([80.31, 20.42], { x: 80.5, y: 120.2 })
+  }));
+  expect(constrained.mechanicalHorizontal).toEqual([80, 120.42]);
+  expect(constrained.mechanicalVertical).toEqual([80.31, 120]);
+});
+
+test("配線ツールで複数接続点から任意の始点を選択できる", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__edsTest.installProjectData({
+      schemaVersion: 4, activePageId: "p1",
+      pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+        elements: [{ id: "box1", type: "deviceBox", x: 30, y: 40, w: 30, h: 25, pins: 4, layer: "symbols" }] }]
+    });
+    window.__edsTest.setActiveTool("wire");
+  });
+  const choices = page.locator(".connection-choice");
+  await expect(choices).toHaveCount(8);
+  const choice = choices.nth(7);
+  const expected = await choice.evaluate(node => [Number(node.dataset.connectionX), Number(node.dataset.connectionY)]);
+  const box = await choice.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 3 });
+  await page.mouse.up();
+  const start = await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.type === "wire").points[0]);
+  expect(start).toEqual(expected);
+});

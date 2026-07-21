@@ -435,6 +435,15 @@
       cursor: crosshair;
     }
 
+    .connection-choice {
+      fill: #fff;
+      fill-opacity: .9;
+      stroke: #0f9f8f;
+      stroke-width: .55;
+      vector-effect: non-scaling-stroke;
+      cursor: crosshair;
+    }
+
     .row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -3495,6 +3504,7 @@
         drawingElements.filter(element => element.type === "wire").forEach(element => drawElement(svg, element));
         drawingElements.filter(element => element.type !== "wire").forEach(element => drawElement(svg, element));
         if (options.selection) {
+          if (activeTool === "wire" && !dragState) drawConnectionChoices(svg, page);
           if (state.settings.auditOverlay) drawAuditOverlay(svg, page);
           drawSnapFeedback(svg);
           drawSelection(svg);
@@ -3636,8 +3646,10 @@
         compact: {
           w: 94, h: 32, maxWidthInset: 18,
           rows: [8, 8, 8, 8],
-          cols: [18, 46, 18, "rest"],
           cells: [
+            { t: "line", x1: 18, y1: 0, x2: 18, y2: 32 },
+            { t: "line", x1: 50, y1: 16, x2: 50, y2: 24 },
+            { t: "line", x1: 64, y1: 16, x2: 64, y2: 24 },
             { t: "label", text: "図名", dx: 2, dy: 4 },
             { t: "field", field: "title", dx: 20, dy: 4, size: 2.7 },
             { t: "label", text: "図番", dx: 2, dy: 12 },
@@ -3645,7 +3657,7 @@
             { t: "label", text: "作成", dx: 2, dy: 20 },
             { t: "field", field: "designer", dx: 20, dy: 20 },
             { t: "label", text: "日付", dx: 52, dy: 20 },
-            { t: "field", field: "date", dx: 70, dy: 20 },
+            { t: "field", field: "date", dx: 66, dy: 20, size: 2.2 },
             { t: "label", text: "SHEET", dx: 2, dy: 28 },
             { t: "field", field: "sheet", dx: 20, dy: 28 }
           ]
@@ -4069,6 +4081,27 @@
         applyLabelPresentation(g, element);
         drawVisibleAttributes(g, element);
         svg.appendChild(g);
+      }
+
+      // 配線ツール中、部品が持つ全接続点を個別に選べるクリックマーカーとして表示する。
+      function drawConnectionChoices(svg, page) {
+        const seen = new Set();
+        (page?.elements || []).forEach(element => {
+          if (!isElementVisible(element) || element.type === "wire" || element.points) return;
+          const anchors = element.type === "terminalStrip" || element.type === "connector"
+            ? Array.from({ length: terminalStripGeometry(element).nodes }, (_, index) => terminalStripNodeGlobal(element, index))
+            : componentConnectionAnchors(element);
+          anchors.forEach(anchor => {
+            const key = round(anchor.x) + "," + round(anchor.y);
+            if (seen.has(key)) return;
+            seen.add(key);
+            svg.appendChild(svgEl("circle", {
+              cx: anchor.x, cy: anchor.y, r: 1.35, class: "connection-choice",
+              "data-connection-x": anchor.x, "data-connection-y": anchor.y,
+              "data-connection-element": element.id
+            }));
+          });
+        });
       }
 
       // シンボル固有の既定ラベル位置を基準に、利用者指定の移動量と文字サイズを適用する。
@@ -8624,7 +8657,7 @@
           return;
         }
         const typeName = paletteLabel(element.type);
-        const isWireLike = element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "dimension";
+        const isWireLike = element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "mechanicalLink" || element.type === "dimension";
         panel.innerHTML = `
           <div class="panel-title">選択中: ${typeName}</div>
           ${isWireLike ? wireFields(element) : normalFields(element)}
@@ -10366,6 +10399,7 @@
         renderPalette();
         setStatus(tool === "select" ? "選択ツールです。" : toolDisplayLabel(tool) + "を配置できます。");
         updateCanvasHint();
+        render();
       }
 
       // 進行中ドラッグの取消(Esc)。作図中=作成途中の要素を破棄、移動中=開始時位置へ復元、
@@ -20661,7 +20695,10 @@
         if (handleTouchDown(event)) return; // 2本指=ピンチ開始(通常操作へ流さない)
         activatePageFromEvent(event); // 並べて表示: クリックしたページを編集対象へ
         const svg = qs("#canvas");
-        const point = canvasPoint(event, { connectionOnly: activeTool === "wire", raw: activeTool === "select" });
+        const connectionChoice = event.target.closest("[data-connection-x][data-connection-y]");
+        const point = connectionChoice
+          ? { x: Number(connectionChoice.dataset.connectionX), y: Number(connectionChoice.dataset.connectionY) }
+          : canvasPoint(event, { connectionOnly: activeTool === "wire", raw: activeTool === "select" });
         const pointHandle = event.target.closest("[data-point-index]");
         if (pointHandle) {
           const element = selectedElement();
@@ -20919,7 +20956,7 @@
           return;
         }
         if (dragState.mode === "point") {
-          if (activeDragElement?.type === "line") {
+          if (["line", "arrow", "mechanicalLink"].includes(activeDragElement?.type)) {
             const rawPoint = canvasPoint(event, { raw: true });
             const index = dragState.pointIndex;
             const otherIndex = index === 0 ? activeDragElement.points.length - 1 : 0;
@@ -20942,7 +20979,7 @@
             dragState.lastPoint = [routedPoint.x, routedPoint.y];
             if (dragState.freeAngle) element.points = [element.points[0], [point.x, point.y]];
             else rebuildDrawingWire(element, dragState, event.shiftKey === true);
-          } else if (element.type === "line") {
+          } else if (["line", "arrow", "mechanicalLink"].includes(element.type)) {
             const start = element.points[0];
             const rawPoint = canvasPoint(event, { raw: true });
             element.points[element.points.length - 1] = snapEditableLineEndpoint(start, rawPoint);
