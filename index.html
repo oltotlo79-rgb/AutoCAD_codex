@@ -2277,6 +2277,15 @@
       const historyImageAssets = new Map(); // 下絵data URLは履歴ごとに複製せず1回だけ保持
       const historyImageRefByData = new Map(); // 同一画像を複数要素で使う場合も同じアセットを共有
       let historyIndex = -1;
+
+      // 未保存変更がある状態で再読み込み・タブ終了・ページ移動を行う場合だけ、
+      // ブラウザ標準の離脱確認を表示する。キャンセル時は現在の図面をそのまま保持する。
+      function confirmBeforeUnload(event) {
+        if (!projectDirty) return;
+        event.preventDefault();
+        event.returnValue = "";
+        return "";
+      }
       let pageCounter = 1;
       let printMode = "single";
 
@@ -21924,6 +21933,7 @@
       }
 
       attachEvents();
+      window.addEventListener("beforeunload", confirmBeforeUnload);
       initProject();
 
       // 自動テスト用の内部フック(通常操作では使用しない)。接続点・移行・履歴の回帰検証に使う。
@@ -21964,6 +21974,7 @@
         selectElement: id => { selectSingle(id); render(); },
         setSelectionForTest: ids => { setSelection(ids); render(); },
         commitHistory,
+        isProjectDirty: () => projectDirty,
         restoreHistory,
         state,
         historyDiagnostics: () => ({
