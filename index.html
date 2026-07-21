@@ -2259,6 +2259,7 @@
       let selectedId = null;
       let selectedIds = [];
       let activeTool = "select";
+      let wireConnectionSourceId = null;
       let lastProductivityCommand = null;
       let attributeBrush = null;
       let selectionCycle = { key: "", index: 0 };
@@ -4086,7 +4087,10 @@
       // 配線ツール中、部品が持つ全接続点を個別に選べるクリックマーカーとして表示する。
       function drawConnectionChoices(svg, page) {
         const seen = new Set();
-        (page?.elements || []).forEach(element => {
+        const candidates = wireConnectionSourceId
+          ? (page?.elements || []).filter(element => element.id === wireConnectionSourceId)
+          : (page?.elements || []);
+        candidates.forEach(element => {
           if (!isElementVisible(element) || element.type === "wire" || element.points) return;
           const anchors = element.type === "terminalStrip" || element.type === "connector"
             ? Array.from({ length: terminalStripGeometry(element).nodes }, (_, index) => terminalStripNodeGlobal(element, index))
@@ -4102,6 +4106,39 @@
             }));
           });
         });
+      }
+
+      function drawEndpointPresentation(g, element, stroke) {
+        if (!["wire", "line", "mechanicalLink"].includes(element.type)) return;
+        let start, startNext, endPrev, end;
+        if (element.type === "wire") {
+          const segments = wireSegments(element);
+          if (!segments.length) return;
+          const first = segments[0], last = segments[segments.length - 1];
+          start = [first[0], first[1]];
+          startNext = [first[2], first[3]];
+          endPrev = [last[0], last[1]];
+          end = [last[2], last[3]];
+        } else {
+          const points = element.points || [];
+          if (points.length < 2) return;
+          start = points[0];
+          startNext = points[1];
+          endPrev = points[points.length - 2];
+          end = points[points.length - 1];
+        }
+        if (element.showStartConnection) g.appendChild(svgEl("circle", { cx: start[0], cy: start[1], r: .75, fill: stroke, stroke: "none", "data-endpoint-connection": "start" }));
+        if (element.showEndConnection) g.appendChild(svgEl("circle", { cx: end[0], cy: end[1], r: .75, fill: stroke, stroke: "none", "data-endpoint-connection": "end" }));
+        const head = (tip, from, side) => {
+          const angle = Math.atan2(tip[1] - from[1], tip[0] - from[0]);
+          const length = 3.2, spread = Math.PI / 7;
+          const p1 = [round(tip[0] - length * Math.cos(angle - spread)), round(tip[1] - length * Math.sin(angle - spread))];
+          const p2 = [round(tip[0] - length * Math.cos(angle + spread)), round(tip[1] - length * Math.sin(angle + spread))];
+          g.appendChild(svgEl("path", { d: `M ${p1[0]} ${p1[1]} L ${tip[0]} ${tip[1]} L ${p2[0]} ${p2[1]}`, fill: "none", stroke, "stroke-width": element.strokeWidth || .32, "data-endpoint-arrow": side }));
+        };
+        const mode = element.endpointArrowMode || "none";
+        if (mode === "reverse" || mode === "both") head(start, startNext, "start");
+        if (mode === "forward" || mode === "both") head(end, endPrev, "end");
       }
 
       // シンボル固有の既定ラベル位置を基準に、利用者指定の移動量と文字サイズを適用する。
@@ -4237,6 +4274,7 @@
           "stroke-width": style.width,
           "stroke-dasharray": style.dash || null
         }));
+        drawEndpointPresentation(g, element, style.color);
         wireGapMarkers(element).forEach(gap => drawWireGap(g, gap));
         if (element.wireNo && !element.hideWireNo) {
           const originalPos = wireNoAnchorPoint(element);
@@ -4398,12 +4436,7 @@
           "stroke-dasharray": element.dash || null
         }));
         }
-        if (element.showStartConnection) {
-          g.appendChild(svgEl("circle", { cx: a[0], cy: a[1], r: 0.75, fill: stroke, stroke: "none" }));
-        }
-        if (element.showEndConnection) {
-          g.appendChild(svgEl("circle", { cx: b[0], cy: b[1], r: 0.75, fill: stroke, stroke: "none" }));
-        }
+        drawEndpointPresentation(g, element, stroke);
         if (element.label) {
           const mid = pathMid(a, b);
           g.appendChild(textEl(element.label, mid.x + Number(element.labelDx || 0), mid.y - 3 - Number(element.labelDy || 0), { fontSize: Number(element.labelFontSize || 2.4), anchor: "middle" }));
@@ -8661,6 +8694,7 @@
         panel.innerHTML = `
           <div class="panel-title">選択中: ${typeName}</div>
           ${isWireLike ? wireFields(element) : normalFields(element)}
+          ${endpointPresentationFields(element)}
           ${labelFields(element)}
           ${specificFields(element)}
           ${electricalAttributeFields(element)}
@@ -8897,8 +8931,6 @@
             </div>
             <label>ラベル文字サイズ mm</label>
             <input data-bind="labelFontSize" data-kind="number" type="number" min="0.5" step="0.2" value="${round(element.labelFontSize || 2.4)}">
-            <label><input data-bind="showStartConnection" type="checkbox" ${element.showStartConnection ? "checked" : ""} style="width:auto;min-height:auto"> 始点に接続点を表示</label>
-            <label><input data-bind="showEndConnection" type="checkbox" ${element.showEndConnection ? "checked" : ""} style="width:auto;min-height:auto"> 終点に接続点を表示</label>
           `;
         }
         return `
@@ -9751,6 +9783,21 @@
         return snapToGrid(value);
       }
 
+      function endpointPresentationFields(element) {
+        if (!["wire", "line", "mechanicalLink"].includes(element.type)) return "";
+        const mode = element.endpointArrowMode || "none";
+        return `
+          <details class="attr-panel" open>
+            <summary>端点表示</summary>
+            <label><input data-bind="showStartConnection" type="checkbox" ${element.showStartConnection ? "checked" : ""} style="width:auto;min-height:auto"> 始点に接続点を表示</label>
+            <label><input data-bind="showEndConnection" type="checkbox" ${element.showEndConnection ? "checked" : ""} style="width:auto;min-height:auto"> 終点に接続点を表示</label>
+            <label>矢印</label>
+            <div class="inline" role="radiogroup" aria-label="端点矢印">
+              ${[["none", "なし"], ["forward", "送り先"], ["reverse", "受け取り側"], ["both", "両方"]].map(([value, label]) => `<label><input data-bind="endpointArrowMode" name="endpointArrowMode" type="radio" value="${value}" ${mode === value ? "checked" : ""} style="width:auto;min-height:auto"> ${label}</label>`).join("")}
+            </div>
+          </details>`;
+      }
+
       // スナップON/OFFに関係なく、現在設定のグリッドへ数値を丸める内部ヘルパ。
       function snapToGrid(value) {
         const grid = Number(state.settings.grid || 2.5);
@@ -10392,12 +10439,18 @@
 
       // アクティブツール切替(select/wire/種別名/custom:id)。パレットの強調表示も更新。
       function setActiveTool(tool) {
+        const selected = selectedElement();
+        wireConnectionSourceId = tool === "wire" && selected && !selected.points && selected.type !== "wire"
+          ? selected.id
+          : null;
         activeTool = tool;
         if (tool !== "select") lastProductivityCommand = { kind: "tool", value: tool };
         qsa("[data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === tool));
         qs("#selectOnlyBtn")?.classList.toggle("active", tool === "select");
         renderPalette();
-        setStatus(tool === "select" ? "選択ツールです。" : toolDisplayLabel(tool) + "を配置できます。");
+        setStatus(wireConnectionSourceId
+          ? "選択中シンボルの配線接続点を選択してください。"
+          : (tool === "select" ? "選択ツールです。" : toolDisplayLabel(tool) + "を配置できます。"));
         updateCanvasHint();
         render();
       }
@@ -20699,6 +20752,10 @@
         const point = connectionChoice
           ? { x: Number(connectionChoice.dataset.connectionX), y: Number(connectionChoice.dataset.connectionY) }
           : canvasPoint(event, { connectionOnly: activeTool === "wire", raw: activeTool === "select" });
+        if (activeTool === "wire" && wireConnectionSourceId && !connectionChoice) {
+          setStatus("選択中シンボルの強調表示された配線接続点を選択してください。");
+          return;
+        }
         const pointHandle = event.target.closest("[data-point-index]");
         if (pointHandle) {
           const element = selectedElement();
@@ -20749,6 +20806,7 @@
           if (cycled) targetElement = qs(`[data-id="${CSS.escape(cycled.id)}"]`, svg);
         }
         if (activeTool === "wire" || activeTool === "arrow" || activeTool === "line" || activeTool === "mechanicalLink" || activeTool === "dimension") {
+          if (activeTool === "wire" && connectionChoice) wireConnectionSourceId = null;
           const element = defaultElement(activeTool, point.x, point.y);
           element.points = [[point.x, point.y], [point.x, point.y]];
           currentPage().elements.push(element);

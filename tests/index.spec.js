@@ -2231,12 +2231,19 @@ test("配線ツールで複数接続点から任意の始点を選択できる",
     window.__edsTest.installProjectData({
       schemaVersion: 4, activePageId: "p1",
       pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
-        elements: [{ id: "box1", type: "deviceBox", x: 30, y: 40, w: 30, h: 25, pins: 4, layer: "symbols" }] }]
+        elements: [
+          { id: "box1", type: "deviceBox", x: 30, y: 40, w: 30, h: 25, pins: 4, layer: "symbols" },
+          { id: "box2", type: "deviceBox", x: 100, y: 40, w: 30, h: 25, pins: 4, layer: "symbols" }
+        ] }]
     });
+    window.__edsTest.selectElement("box1");
     window.__edsTest.setActiveTool("wire");
   });
   const choices = page.locator(".connection-choice");
   await expect(choices).toHaveCount(8);
+  await expect(choices.first()).toHaveAttribute("data-connection-element", "box1");
+  await page.locator('[data-id="box1"] rect').first().click({ force: true });
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.filter(item => item.type === "wire").length)).toBe(0);
   const choice = choices.nth(7);
   const expected = await choice.evaluate(node => [Number(node.dataset.connectionX), Number(node.dataset.connectionY)]);
   const box = await choice.boundingBox();
@@ -2246,4 +2253,28 @@ test("配線ツールで複数接続点から任意の始点を選択できる",
   await page.mouse.up();
   const start = await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.type === "wire").points[0]);
   expect(start).toEqual(expected);
+});
+
+test("直線・連動破線・配線で接続点と両向きの矢印を選択できる", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p1",
+    pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: [
+      { id: "line1", type: "line", points: [[20, 30], [50, 30]], layer: "layout", showStartConnection: true, showEndConnection: true, endpointArrowMode: "both" },
+      { id: "link1", type: "mechanicalLink", points: [[20, 50], [50, 50]], layer: "layout", showStartConnection: true, endpointArrowMode: "reverse" },
+      { id: "wire1", type: "wire", points: [[20, 70], [50, 90]], orthoFlip: false, layer: "wires", showEndConnection: true, endpointArrowMode: "forward" }
+    ] }]
+  }));
+  await expect(page.locator('[data-id="line1"] [data-endpoint-connection]')).toHaveCount(2);
+  await expect(page.locator('[data-id="line1"] [data-endpoint-arrow]')).toHaveCount(2);
+  await expect(page.locator('[data-id="link1"] [data-endpoint-connection="start"]')).toHaveCount(1);
+  await expect(page.locator('[data-id="link1"] [data-endpoint-arrow="start"]')).toHaveCount(1);
+  await expect(page.locator('[data-id="wire1"] [data-endpoint-connection="end"]')).toHaveCount(1);
+  await expect(page.locator('[data-id="wire1"] [data-endpoint-arrow="end"]')).toHaveCount(1);
+
+  await page.evaluate(() => window.__edsTest.selectElement("wire1"));
+  await expect(page.locator('[data-bind="showStartConnection"]')).toBeVisible();
+  await page.locator('[data-bind="showStartConnection"]').check();
+  await page.locator('[data-bind="endpointArrowMode"][value="both"]').check();
+  await expect(page.locator('[data-id="wire1"] [data-endpoint-connection]')).toHaveCount(2);
+  await expect(page.locator('[data-id="wire1"] [data-endpoint-arrow]')).toHaveCount(2);
 });
