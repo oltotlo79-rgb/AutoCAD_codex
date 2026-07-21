@@ -3505,10 +3505,11 @@
         drawingElements.filter(element => element.type === "wire").forEach(element => drawElement(svg, element));
         drawingElements.filter(element => element.type !== "wire").forEach(element => drawElement(svg, element));
         if (options.selection) {
-          if (activeTool === "wire" && !dragState) drawConnectionChoices(svg, page);
           if (state.settings.auditOverlay) drawAuditOverlay(svg, page);
           drawSnapFeedback(svg);
           drawSelection(svg);
+          // 選択枠より前面に置き、選択中シンボルの各接続点を確実にクリックできるようにする。
+          if (activeTool === "wire" && !dragState) drawConnectionChoices(svg, page);
           drawMarquee(svg);
           drawAlignGuides(svg);
         }
@@ -4129,16 +4130,13 @@
         }
         if (element.showStartConnection) g.appendChild(svgEl("circle", { cx: start[0], cy: start[1], r: .75, fill: stroke, stroke: "none", "data-endpoint-connection": "start" }));
         if (element.showEndConnection) g.appendChild(svgEl("circle", { cx: end[0], cy: end[1], r: .75, fill: stroke, stroke: "none", "data-endpoint-connection": "end" }));
-        const head = (tip, from, side) => {
-          const angle = Math.atan2(tip[1] - from[1], tip[0] - from[0]);
-          const length = 3.2, spread = Math.PI / 7;
-          const p1 = [round(tip[0] - length * Math.cos(angle - spread)), round(tip[1] - length * Math.sin(angle - spread))];
-          const p2 = [round(tip[0] - length * Math.cos(angle + spread)), round(tip[1] - length * Math.sin(angle + spread))];
-          g.appendChild(svgEl("path", { d: `M ${p1[0]} ${p1[1]} L ${tip[0]} ${tip[1]} L ${p2[0]} ${p2[1]}`, fill: "none", stroke, "stroke-width": element.strokeWidth || .32, "data-endpoint-arrow": side }));
-        };
         const mode = element.endpointArrowMode || "none";
-        if (mode === "reverse" || mode === "both") head(start, startNext, "start");
-        if (mode === "forward" || mode === "both") head(end, endPrev, "end");
+        if (mode === "reverse" || mode === "both") {
+          appendArrowHead(g, start, Math.atan2(start[1] - startNext[1], start[0] - startNext[0]), "fork", stroke, { "data-endpoint-arrow": "start" });
+        }
+        if (mode === "forward" || mode === "both") {
+          appendArrowHead(g, end, Math.atan2(end[1] - endPrev[1], end[0] - endPrev[0]), "open", stroke, { "data-endpoint-arrow": "end" });
+        }
       }
 
       // シンボル固有の既定ラベル位置を基準に、利用者指定の移動量と文字サイズを適用する。
@@ -5416,6 +5414,18 @@
         return { open: [3, .35], solid: [3.4, .26], fork: [3.2, .44], chevron: [2.2, .49] }[style] || [3, .35];
       }
 
+      function appendArrowHead(g, tip, dirAngle, style, stroke, attributes = {}) {
+        const [len, half] = arrowHeadSpec(style);
+        const sgn = style === "fork" ? 1 : -1;
+        const q1 = [tip[0] + sgn * len * Math.cos(dirAngle - half), tip[1] + sgn * len * Math.sin(dirAngle - half)];
+        const q2 = [tip[0] + sgn * len * Math.cos(dirAngle + half), tip[1] + sgn * len * Math.sin(dirAngle + half)];
+        if (style === "solid") {
+          g.appendChild(svgEl("path", { d: "M " + q1[0] + " " + q1[1] + " L " + tip[0] + " " + tip[1] + " L " + q2[0] + " " + q2[1] + " Z", fill: stroke, stroke: "none", "data-arrow-head": style, ...attributes }));
+        } else {
+          g.appendChild(svgEl("path", { d: "M " + q1[0] + " " + q1[1] + " L " + tip[0] + " " + tip[1] + " L " + q2[0] + " " + q2[1], class: "symbol-line", stroke, fill: "none", "data-arrow-head": style, ...attributes }));
+        }
+      }
+
       // 信号矢印の描画(始点側矢頭・ラベル・相手頁注記arrowCounterpartNote対応)。
       function drawArrow(g, element, stroke) {
         const points = element.points || [[element.x || 0, element.y || 0], [(element.x || 0) + 30, element.y || 0]];
@@ -5426,19 +5436,8 @@
           g.appendChild(svgEl("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: "symbol-line", stroke }));
         }
         const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
-        const head = (tip, dirAngle) => {
-          const [len, half] = arrowHeadSpec(style);
-          const sgn = style === "fork" ? 1 : -1;
-          const q1 = [tip[0] + sgn * len * Math.cos(dirAngle - half), tip[1] + sgn * len * Math.sin(dirAngle - half)];
-          const q2 = [tip[0] + sgn * len * Math.cos(dirAngle + half), tip[1] + sgn * len * Math.sin(dirAngle + half)];
-          if (style === "solid") {
-            g.appendChild(svgEl("path", { d: "M " + q1[0] + " " + q1[1] + " L " + tip[0] + " " + tip[1] + " L " + q2[0] + " " + q2[1] + " Z", fill: stroke, stroke: "none" }));
-          } else {
-            g.appendChild(svgEl("path", { d: "M " + q1[0] + " " + q1[1] + " L " + tip[0] + " " + tip[1] + " L " + q2[0] + " " + q2[1], class: "symbol-line", stroke, fill: "none" }));
-          }
-        };
-        head(b, angle);
-        if (element.arrowAtStart) head(a, angle + Math.PI);
+        appendArrowHead(g, b, angle, style, stroke);
+        if (element.arrowAtStart) appendArrowHead(g, a, angle + Math.PI, style, stroke);
         if (element.label) {
           const mid = pathMid(a, b);
           g.appendChild(textEl(element.label, mid.x, mid.y - 3, { fontSize: 2.4, anchor: "middle" }));
