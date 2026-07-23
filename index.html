@@ -10678,6 +10678,9 @@
           if (element.type === "terminalStrip" || element.type === "connector") {
             const geo = terminalStripGeometry(element);
             for (let i = 0; i < (geo.nodes || geo.count); i++) {
+              const hasMark = element.type === "terminalStrip"
+                && (stripTerminalMarkVisible(element, "left", i) || stripTerminalMarkVisible(element, "right", i));
+              if (hasMark) continue;
               anchors.push({ ...terminalStripNodeGlobal(element, i), elementId: element.id, kind: "terminal" });
             }
             stripTerminalMarkLocalAnchors(element).forEach(([x, y]) => {
@@ -10739,6 +10742,11 @@
         if (element.type === "terminalStrip" || element.type === "connector") {
           const geo = terminalStripGeometry(element);
           for (let i = 0; i < geo.nodes; i++) {
+            // 端子記号が表示されている行は端子(辺上の小円)だけが接続点。
+            // 中央ノードへの接続は端子記号なしの行のみ(既存図面・端子接続図の互換)。
+            const hasMark = element.type === "terminalStrip"
+              && (stripTerminalMarkVisible(element, "left", i) || stripTerminalMarkVisible(element, "right", i));
+            if (hasMark) continue;
             const node = terminalStripNodeLocal(element, i);
             add(node.x, node.y);
           }
@@ -10828,7 +10836,11 @@
         if (element.type === "plcBlock") {
           if ((element.plcStyle || "grid") === "unit") {
             const geo = plcUnitGeometry(element);
-            for (let i = 0; i < geo.rows; i++) add(geo.cx, geo.pitch * i + geo.pitch / 2);
+            for (let i = 0; i < geo.rows; i++) {
+              // 端子記号のある行は端子のみが接続点(中央アドレス円へは配線しない)。
+              if (stripTerminalMarkVisible(element, "left", i) || stripTerminalMarkVisible(element, "right", i)) continue;
+              add(geo.cx, geo.pitch * i + geo.pitch / 2);
+            }
             stripTerminalMarkLocalAnchors(element).forEach(([x, y]) => add(x, y));
             return anchors;
           }
@@ -12457,11 +12469,11 @@
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
         page.elements.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
-        const unitX = 47.5; // ユニット中央(47.5+5=52.5)=端子中心=グリッド点
+        const unitX = 47.5;
         addresses.forEach((address, i) => {
           const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * i);
-          // 端子中心52.5=グリッド点。配線はユニット列の端子円中心まで届かせる。
-          page.elements.push({ ...defaultElement("wire", 52.5, y), points: [[52.5, y], [135, y]], wireNo: "", wireNoAlign: "start" });
+          // 配線はユニット列右辺(57.5=グリッド点)の端子記号まで。中央アドレス円へは入れない。
+          page.elements.push({ ...defaultElement("wire", 57.5, y), points: [[57.5, y], [135, y]], wireNo: "", wireNoAlign: "start" });
           page.elements.push({ ...defaultElement("coil", 135, round(y - 2.2)), label: "", tag: "" });
           page.elements.push({ ...defaultElement("wire", 145, y), points: [[145, y], [147.5, y]] });
         });
@@ -12535,12 +12547,12 @@
             page.elements.push(defaultElement("junction", feederX, y));
             page.elements.push({ ...defaultElement("contactNO", 52.5, y - 2.2), label: "" });
             page.elements.push({ ...defaultElement("wire", feederX, y), points: [[feederX, y], [52.5, y]] });
-            page.elements.push({ ...defaultElement("wire", 62.5, y), points: [[62.5, y], [130, y]], wireNo: "", wireNoAlign: "end" });
+            page.elements.push({ ...defaultElement("wire", 62.5, y), points: [[62.5, y], [125, y]], wireNo: "", wireNoAlign: "end" });
           } else {
             page.elements.push(defaultElement("junction", 32.5, y));
-            page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [130, y]], wireNo: "", wireNoAlign: "end" });
+            page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [125, y]], wireNo: "", wireNoAlign: "end" });
           }
-          // 端子中心130=ユニット中央=グリッド点。配線端は描画円中心と一致する。
+          // 配線はユニット列左辺(125=グリッド点)の端子記号まで。中央アドレス円へは入れない。
         });
         // 白抜き端子円を最後に描き、配線がアドレス文字を横切らないようにする。
         page.elements.push(unit);
@@ -22163,7 +22175,13 @@
         if (element.points) return [];
         if (element.type === "terminalStrip" || element.type === "connector") {
           const geo = terminalStripGeometry(element);
-          const anchors = Array.from({ length: geo.nodes || geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
+          const anchors = [];
+          for (let i = 0; i < (geo.nodes || geo.count); i++) {
+            const hasMark = element.type === "terminalStrip"
+              && (stripTerminalMarkVisible(element, "left", i) || stripTerminalMarkVisible(element, "right", i));
+            if (hasMark) continue;
+            anchors.push(terminalStripNodeGlobal(element, i));
+          }
           stripTerminalMarkLocalAnchors(element).forEach(([x, y]) => anchors.push(localAnchor(element, x, y)));
           return anchors;
         }
