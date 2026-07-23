@@ -1243,6 +1243,7 @@
         <label for="pageName">ページ名</label>
         <input id="pageName" type="text">
         <label><input id="showPageNameToggle" type="checkbox" style="width:auto;min-height:auto"> 図面上部にページ名を表示</label>
+        <label title="ONの間にパレットから配置するシンボルを1.5倍で置きます。既存の要素は変わりません。"><input id="symbolScaleToggle" type="checkbox" style="width:auto;min-height:auto"> シンボル拡大（新規配置を1.5倍）</label>
         <div class="row">
           <div>
             <label for="paperSize">用紙</label>
@@ -4011,7 +4012,8 @@
           "pointer-events": element.type === "underlayImage" && element.locked ? "none" : null
         });
         if (element.type !== "wire" && element.type !== "arrow" && element.type !== "dimension") {
-          g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")");
+          const scale = element.points ? 1 : elementScale(element);
+          g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")" + (scale !== 1 ? " scale(" + scale + ")" : ""));
         }
         const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
         g.style.setProperty("--element-stroke", stroke);
@@ -4023,11 +4025,13 @@
         if (element.type !== "underlayImage") {
           if (element.points && element.points.length > 1) {
             g.appendChild(svgEl("path", {
-              // 多角形は閉パスでヒット(縁のみ。内側クリックで下の要素を選べる)
-              d: element.type === "polygon" ? polygonPath(element.points) : wirePath(element.points, element.orthoFlip),
+              d: elementHitPath(element),
               fill: "none", stroke: "#000", "stroke-opacity": 0,
-              "stroke-width": 2.4, "pointer-events": "stroke"
+              "stroke-width": 3, "pointer-events": "stroke"
             }));
+          } else if (element.type === "junction") {
+            // 接続点は原点中心の小円。既定の外接矩形ヒットだと中心からズレるため専用にする。
+            g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: 2, fill: "#000", "fill-opacity": 0, "pointer-events": "all" }));
           } else if (!element.points) {
             const hitW = Number(element.w || defaultElement(element.type).w || 4);
             const hitH = Number(element.h || defaultElement(element.type).h || 4);
@@ -4635,6 +4639,34 @@
         return points.map((point, index) => (index ? "L " : "M ") + point[0] + " " + point[1]).join(" ");
       }
 
+      // クリック当たり判定用のパス。実描画と同じ経路に沿わせる。
+      // wirePathを全種別へ流用すると、斜め直線がL字経路で判定されて実線上をクリックできない。
+      // 配線=直交L字 / 多角形=閉パス縁 / 直線・矢印・機械連動線=点列そのまま / 寸法=測定線+引出線+寸法線。
+      function elementHitPath(element) {
+        const points = element.points || [[0, 0], [20, 0]];
+        if (element.type === "polygon") return polygonPath(points);
+        if (element.type === "wire") return wirePath(points, element.orthoFlip);
+        const straight = points.map((point, index) => (index ? "L " : "M ") + point[0] + " " + point[1]).join(" ");
+        if (element.type === "dimension") {
+          const a = points[0];
+          const b = points[points.length - 1];
+          const off = Math.abs(Number(element.dimOffset ?? 6)) || 6;
+          if (Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1])) {
+            const y = Math.min(a[1], b[1]) - off;
+            return straight
+              + " M " + a[0] + " " + a[1] + " L " + a[0] + " " + y
+              + " M " + b[0] + " " + b[1] + " L " + b[0] + " " + y
+              + " M " + Math.min(a[0], b[0]) + " " + y + " L " + Math.max(a[0], b[0]) + " " + y;
+          }
+          const x = Math.min(a[0], b[0]) - off;
+          return straight
+            + " M " + a[0] + " " + a[1] + " L " + x + " " + a[1]
+            + " M " + b[0] + " " + b[1] + " L " + x + " " + b[1]
+            + " M " + x + " " + Math.min(a[1], b[1]) + " L " + x + " " + Math.max(a[1], b[1]);
+        }
+        return straight;
+      }
+
       // 線番ラベルの既定位置(最長セグメント中央)を返す。
       function wireLabelPoint(points, flip) {
         const segment = wireMidSegment(points, flip);
@@ -5239,8 +5271,15 @@
 
       function terminalBoxPinY(element, index) {
         const h = Number(element.h || 18);
-        const rows = Math.max(2, Number(element.rows || 3));
-        return cleanConnectionOffset(h * (index + .5) / rows);
+        const rows = Math.max(1, Number(element.rows || 3));
+        // 箱の区画中央へ正確に置く。2.5mm丸めすると拡大縮小後に区画線と引き出し線がズレるため丸めない。
+        return round(h * (index + .5) / rows);
+      }
+
+      // 端子箱の箱ごとの引き出し線(左右)の表示判定。既定は表示。
+      function terminalBoxStubVisible(element, side, index) {
+        const value = element.terminalBoxStubs?.[side + "-" + index];
+        return typeof value === "boolean" ? value : true;
       }
 
       function plcGridPinY(element, index) {
@@ -5358,19 +5397,19 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
-      // 端子箱(箱+端子行)の描画。
+      // 端子箱(箱+端子行)の描画。引き出し線は箱ごと・左右ごとに表示切替できる。
       function drawTerminalBox(g, element, stroke) {
         const w = Number(element.w || 22);
         const h = Number(element.h || 18);
-        const rows = Math.max(2, Number(element.rows || 3));
+        const rows = Math.max(1, Number(element.rows || 3));
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
         for (let i = 1; i < rows; i++) {
           g.appendChild(svgEl("line", { x1: 0, y1: h * i / rows, x2: w, y2: h * i / rows, class: "symbol-line", stroke }));
         }
         for (let i = 0; i < rows; i++) {
           const y = terminalBoxPinY(element, i);
-          g.appendChild(svgEl("line", { x1: -6, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
-          g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 6, y2: y, class: "symbol-line", stroke }));
+          if (terminalBoxStubVisible(element, "left", i)) g.appendChild(svgEl("line", { x1: -6, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
+          if (terminalBoxStubVisible(element, "right", i)) g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 6, y2: y, class: "symbol-line", stroke }));
         }
         if (element.label) g.appendChild(textEl(element.label, w / 2, h + 4, { fontSize: 2.2, anchor: "middle" }));
       }
@@ -8455,7 +8494,7 @@
         const rot = Number(element.rotation || 0);
         const s = ((-(a1 + rot)) % 360 + 360) % 360;
         const e = ((-(a0 + rot)) % 360 + 360) % 360;
-        out.push("0", "ARC", "8", layer, "10", round(c[0]), "20", round(cadY(page, c[1])), "40", round(r), "50", round(s), "51", round(e));
+        out.push("0", "ARC", "8", layer, "10", round(c[0]), "20", round(cadY(page, c[1])), "40", round(r * elementScale(element)), "50", round(s), "51", round(e));
       }
 
       // 2次ベジェを8分割の折れ線でDXF近似出力。
@@ -8751,11 +8790,12 @@
           return { x: minX, y: minY, w: Math.max(1, Math.max(...xs) - minX), h: Math.max(1, Math.max(...ys) - minY) };
         }
         if (element.type === "junction") {
-          const r = Number(element.r || 1.45);
+          const r = Number(element.r || 1.45) * elementScale(element);
           return { x: element.x - r, y: element.y - r, w: r * 2, h: r * 2 };
         }
-        const w = Number(element.w || defaultElement(element.type).w || 20);
-        const h = Number(element.h || defaultElement(element.type).h || 10);
+        const s = elementScale(element);
+        const w = Number(element.w || defaultElement(element.type).w || 20) * s;
+        const h = Number(element.h || defaultElement(element.type).h || 10) * s;
         return { x: Number(element.x || 0), y: Number(element.y || 0), w, h };
       }
 
@@ -8798,6 +8838,7 @@
         setValue("drawingStandard", state.settings.standard || "general");
         setValue("pageName", page.name);
         qs("#showPageNameToggle").checked = state.settings.showPageName === true;
+        qs("#symbolScaleToggle").checked = page.symbolScale === true;
         setValue("pageOrder", state.pages.findIndex(item => item.id === page.id) + 1);
         setValue("paperSize", page.size);
         setValue("paperOrientation", page.orientation);
@@ -9105,10 +9146,13 @@
           </div>
           <button type="button" data-nudge="0,1" style="width:100%;margin-top:8px">↓ 1mm移動</button>
         `;
+        // 入力欄はパネル描画時点の要素IDへ束縛する。changeはblur時=選択切替後にも発火するため、
+        // selectedElement()を使うと直後に選択した別要素へ値が書き込まれてしまう(意図しない上書き)。
+        const boundElementId = selectedElement()?.id || null;
         qsa("[data-bind]", panel).forEach(input => {
-          input.addEventListener("change", () => updateSelectedFromInput(input));
+          input.addEventListener("change", () => updateSelectedFromInput(input, true, boundElementId));
           input.addEventListener("input", () => {
-            if (input.tagName === "TEXTAREA" || input.type === "text" || input.dataset.live === "true") updateSelectedFromInput(input, false);
+            if (input.tagName === "TEXTAREA" || input.type === "text" || input.dataset.live === "true") updateSelectedFromInput(input, false, boundElementId);
           });
         });
         qsa(".swatch", panel).forEach(button => {
@@ -9744,6 +9788,20 @@
             <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
           `;
         }
+        if (element.type === "terminalBox") {
+          const rows = Math.max(1, Number(element.rows || 3));
+          return `
+            <label>箱の数</label>
+            <input data-bind="rows" data-kind="number" type="number" min="1" step="1" value="${rows}">
+            <label>箱ごとの引き出し線（チェック=線を出す）</label>
+            <div class="form-grid">
+              ${Array.from({ length: rows }, (_, index) => `
+                <label><input data-bind="terminalBoxStubs.left-${index}" type="checkbox" ${terminalBoxStubVisible(element, "left", index) ? "checked" : ""} style="width:auto;min-height:auto"> 左${index + 1}</label>
+                <label><input data-bind="terminalBoxStubs.right-${index}" type="checkbox" ${terminalBoxStubVisible(element, "right", index) ? "checked" : ""} style="width:auto;min-height:auto"> 右${index + 1}</label>`).join("")}
+            </div>
+            <p class="muted">引き出し線がある箱は線の先端、ない箱は箱の横辺中央が配線接続点になります。</p>
+          `;
+        }
         if (element.type === "deviceBox") {
           const terminalMode = element.deviceTerminalMode || "auto";
           const visibility = element.deviceTerminalVisibility || {};
@@ -9897,8 +9955,11 @@
       }
 
       // 右パネル入力→選択要素への反映(data-bindのキーで分岐)。save=trueで履歴記録。
-      function updateSelectedFromInput(input, save = true) {
-        const element = selectedElement();
+      function updateSelectedFromInput(input, save = true, boundId = null) {
+        // boundId指定時はパネル描画時点の要素だけを更新対象にする(選択切替後のblur changeでも安全)。
+        const element = boundId
+          ? (currentPage()?.elements || []).find(item => item.id === boundId)
+          : selectedElement();
         if (!element) return;
         const key = input.dataset.bind;
         let value = input.type === "checkbox" ? input.checked : (input.dataset.kind === "number" ? Number(input.value) : input.value);
@@ -9906,6 +9967,13 @@
           const terminalKey = key.slice("deviceTerminalVisibility.".length);
           element.deviceTerminalVisibility = { ...(element.deviceTerminalVisibility || {}), [terminalKey]: Boolean(value) };
           if (save) commitHistory("機器箱の端子表示を変更しました。");
+          render();
+          return;
+        }
+        if (key.startsWith("terminalBoxStubs.")) {
+          const stubKey = key.slice("terminalBoxStubs.".length);
+          element.terminalBoxStubs = { ...(element.terminalBoxStubs || {}), [stubKey]: Boolean(value) };
+          if (save) commitHistory("端子箱の引き出し線を変更しました。");
           render();
           return;
         }
@@ -10403,10 +10471,14 @@
           return anchors;
         }
         if (element.type === "terminalBox") {
-          const rows = Math.max(2, Number(element.rows || 3));
+          const rows = Math.max(1, Number(element.rows || 3));
           for (let i = 0; i < rows; i++) {
             const y = terminalBoxPinY(element, i);
+            // 引き出し線がある箱は線の先端が主接続点。箱の辺中央も残す(引き出し線自体が導体であり、
+            // 辺へ直接つないだ既存図面の配線を未接続扱いにしないため)。線がない箱は辺中央のみ。
+            if (terminalBoxStubVisible(element, "left", i)) add(-6, y);
             add(0, y);
+            if (terminalBoxStubVisible(element, "right", i)) add(w + 6, y);
             add(w, y);
           }
           return anchors;
@@ -10461,11 +10533,21 @@
       }
 
       // 要素ローカル座標の接続点→絶対座標(回転考慮)。
+      // 要素の表示倍率(ページ「シンボル拡大」で配置した部品は1.5)。
+      // SVG描画(transform)・接続点(localAnchor)・DXF(localPoint系)で必ず同じ値を使う。
+      function elementScale(element) {
+        const s = Number(element.scale || 1);
+        return Number.isFinite(s) && s > 0 ? s : 1;
+      }
+
       function localAnchor(element, x, y) {
         const angle = Number(element.rotation || 0) * Math.PI / 180;
+        const s = elementScale(element);
+        const sx = x * s;
+        const sy = y * s;
         return {
-          x: Number(element.x || 0) + x * Math.cos(angle) - y * Math.sin(angle),
-          y: Number(element.y || 0) + x * Math.sin(angle) + y * Math.cos(angle)
+          x: Number(element.x || 0) + sx * Math.cos(angle) - sy * Math.sin(angle),
+          y: Number(element.y || 0) + sx * Math.sin(angle) + sy * Math.cos(angle)
         };
       }
 
@@ -10581,6 +10663,9 @@
         const element = defaultElement(type, x, y);
         // パレットから新規配置するシンボルは識別文字を強制せず、必要な場合だけ利用者が入力する。
         if (supportsElectricalAttributes(element)) element.label = "";
+        // ページ設定「シンボル拡大」ON時は、新規配置分のみ1.5倍で置く(既存要素は変えない)。
+        // 以降のピン合わせ・接続点・DXFはelementScale経由で倍率込みの座標を使う。
+        if (currentPage()?.symbolScale && !element.points && element.type !== "junction") element.scale = 1.5;
         // 別名種別(非常停止ボタン等)は生成後のelement.typeで配置方法を判定する
         const kind = element.type;
         autoOrientElementForPlacement(element, x, y);
@@ -14612,8 +14697,11 @@
           button.type = "button"; button.textContent = label; button.onclick = run; host.appendChild(button);
         });
         host.classList.remove("hidden");
+        // 選択ハンドルや接続点の操作を邪魔しないよう、要素からしっかり離す。
+        // 上に収まらないときは要素の下側へ出す。
         host.style.left = Math.max(8, Math.min(window.innerWidth - 280, box.left)) + "px";
-        host.style.top = Math.max(84, box.top - 38) + "px";
+        const above = box.top - 64;
+        host.style.top = (above >= 84 ? above : Math.min(window.innerHeight - 48, box.bottom + 28)) + "px";
       }
 
       function startWireFromSelected() {
@@ -17996,6 +18084,8 @@
               <li><b>検索して配置</b>: 部品検索に入力→<b>Enter</b>で先頭候補が配置モードに</li>
               <li><b>最近使用</b>: パレット先頭に直近6件が自動で並ぶ</li>
               <li>配置時は<b>接続ピンがグリッド・行に自動で一致</b>。配線上に置くと線が自動分割されて割り込む</li>
+              <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大</b>をONにすると、以後パレットから配置する部品が<b>1.5倍</b>で置かれます（既存の部品は変わりません。接続ピン・DXF出力も倍率に追従）</li>
+              <li><b>端子箱</b>: 右パネルで<b>箱の数</b>と<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
               <li>間違えたら <b>Ctrl+Z</b>。位置の微調整は<b>矢印キー</b>（1mm、Shiftで5mm）</li>
             </ul>`)}
@@ -18018,6 +18108,8 @@
               <li><b>同種をページ内全選択</b>（右パネル/右クリック）→ 一括デザイン変更・一括線色・一括ロックと組み合わせて様式替えが数クリック</li>
               <li><b>Shift+クリック</b>や範囲ドラッグで複数選択 → 整列（左/中/右/上/下）・均等配置・剛体回転</li>
               <li>点ハンドル（配線・直線・多角形の頂点）はドラッグで移動し、端子・端点へ<b>吸着</b></li>
+              <li><b>ミニツールバー</b>: 部品を選択すると要素から少し離れた位置に「<b>配線/回転/複製/編集</b>」ボタンが浮かびます（配線=接続点から配線を開始、編集=クイックプロパティ）。要素の操作を邪魔しないよう上または下へ表示されます</li>
+              <li>右パネルの入力欄は<b>編集していた要素に確定</b>します。Enterを押さずに別の部品をクリックしても、クリックした部品へ書き込まれることはありません</li>
             </ul>`)}
 
           ${section("ページ操作（タブ／並べて表示）", `
@@ -18128,6 +18220,7 @@
           ${section("困ったとき（よくある解決）", `
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
               <li><b>図形が動かない</b> → ロック中。選択して「ロック解除」（下絵は「下絵を選択」→解除）</li>
+              <li><b>斜めの直線・寸法線が選択しづらい</b> → 描画線のすぐ上をクリック（当たり判定は実際の線に沿って広めに取ってあります）。Alt+クリックで重なった要素を順に選択</li>
               <li><b>配線がつながらない</b> → 端点ハンドルをピン近くへドラッグすると吸着。監査の「未接続端点」でも発見可</li>
               <li><b>数操作前に戻りたい</b> → 機能メニュー「履歴タイムライン」から任意の時点へ</li>
               <li><b>保存し忘れて閉じた</b> → 上部「復元」でブラウザ内バックアップ（最新+世代1〜3）から復帰</li>
@@ -20478,17 +20571,17 @@
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
 
-      // 端子箱のDXF出力。
+      // 端子箱のDXF出力。引き出し線の表示・長さはSVG描画(drawTerminalBox)と同一。
       function dxfTerminalBoxLocal(out, page, element) {
         const w = Number(element.w || 22);
         const h = Number(element.h || 18);
-        const rows = Math.max(2, Number(element.rows || 3));
+        const rows = Math.max(1, Number(element.rows || 3));
         dxfRectLocal(out, page, "SYMBOL", element, 0, 0, w, h);
         for (let i = 1; i < rows; i++) dxfLineLocal(out, page, "SYMBOL", element, 0, h * i / rows, w, h * i / rows);
         for (let i = 0; i < rows; i++) {
-          const y = h * (i + .5) / rows;
-          dxfLineLocal(out, page, "SYMBOL", element, -5, y, 0, y);
-          dxfLineLocal(out, page, "SYMBOL", element, w, y, w + 5, y);
+          const y = terminalBoxPinY(element, i);
+          if (terminalBoxStubVisible(element, "left", i)) dxfLineLocal(out, page, "SYMBOL", element, -6, y, 0, y);
+          if (terminalBoxStubVisible(element, "right", i)) dxfLineLocal(out, page, "SYMBOL", element, w, y, w + 6, y);
         }
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
@@ -20698,9 +20791,12 @@
         const angle = Number(element.rotation || 0) * Math.PI / 180;
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
+        const s = elementScale(element);
+        const sx = x * s;
+        const sy = y * s;
         return [
-          Number(element.x || 0) + x * cos - y * sin,
-          Number(element.y || 0) + x * sin + y * cos
+          Number(element.x || 0) + sx * cos - sy * sin,
+          Number(element.y || 0) + sx * sin + sy * cos
         ];
       }
 
@@ -20714,13 +20810,13 @@
       // 要素ローカル座標指定のTEXT出力。
       function dxfTextLocal(out, page, layer, element, x, y, size, text) {
         const p = localPoint(element, x, y);
-        dxfText(out, page, layer, p[0], p[1], size, text);
+        dxfText(out, page, layer, p[0], p[1], size * elementScale(element), text);
       }
 
       // 要素ローカル座標指定のCIRCLE出力。
       function dxfCircleLocal(out, page, layer, element, x, y, r) {
         const p = localPoint(element, x, y);
-        dxfCircle(out, page, layer, p[0], p[1], r);
+        dxfCircle(out, page, layer, p[0], p[1], r * elementScale(element));
       }
 
       // 要素ローカル座標指定の矩形出力(線種指定可)。
@@ -20998,6 +21094,13 @@
         qs("#showPageNameToggle").addEventListener("change", event => {
           state.settings.showPageName = event.target.checked;
           commitHistory("ページ名の図面表示設定を変更しました。");
+          render();
+        });
+        qs("#symbolScaleToggle").addEventListener("change", event => {
+          const page = currentPage();
+          if (!page) return;
+          page.symbolScale = event.target.checked;
+          commitHistory(page.symbolScale ? "シンボル拡大を有効にしました(新規配置が1.5倍になります)。" : "シンボル拡大を無効にしました。");
           render();
         });
         qsa("[data-tool]").forEach(button => {
@@ -21869,10 +21972,12 @@
           y = Math.min(point.y, bottom - minSize);
           h = bottom - y;
         }
+        // elementBoundsは表示倍率込みの寸法を返すため、w/hへ戻すときは倍率で割る。
+        const scale = elementScale(element);
         element.x = round(x);
         element.y = round(y);
-        element.w = round(w);
-        element.h = round(h);
+        element.w = round(w / scale);
+        element.h = round(h / scale);
       }
 
       // 折れ点ハンドルのドラッグ反映。
