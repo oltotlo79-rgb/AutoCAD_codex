@@ -1121,7 +1121,8 @@ test("全テンプレートの接続点・配線・主要枠は2.5mmグリッド
       for (const element of current.elements) {
         counts[element.type] = (counts[element.type] || 0) + 1;
         // mechanicalLinkは操作軸の描画であり、電気接続ピンではない。CP弧頂点の実測位置を優先する。
-        const points = element.type === "mechanicalLink" ? [] : element.type === "junction"
+        // rectの接続点(頂点+辺中央)は図形吸着用のため格子検査から除外(角は下の専用チェックが担う)。
+        const points = element.type === "mechanicalLink" || element.type === "rect" ? [] : element.type === "junction"
           ? [{ x: Number(element.x), y: Number(element.y) }]
           : Array.isArray(element.points)
           ? element.points.map(point => ({ x: Number(point[0]), y: Number(point[1]) }))
@@ -2702,6 +2703,57 @@ test("文字サイズ系の入力は0.1刻みで統一されている", async ({
   });
   expect(steps.length).toBeGreaterThan(0);
   expect(steps.every(step => step === "0.1")).toBe(true);
+});
+
+test("端子箱の箱内文字と、矩形・多角形の頂点/辺中央の接続点", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const tb = {
+      ...window.__edsTest.defaultElement("terminalBox", 40, 40),
+      id: "tb", rows: 3, h: 15, boxLabels: "R\nS\nT", boxLabelFontSize: 2.4
+    };
+    const rect = { ...window.__edsTest.defaultElement("rect", 100, 20), id: "r1", w: 20, h: 12 };
+    const poly = { ...window.__edsTest.defaultElement("polygon", 0, 0), id: "pg" };
+    poly.points = [[10, 100], [30, 100], [20, 116]];
+    window.__edsTest.installProjectData({
+      schemaVersion: 4,
+      activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [tb, rect, poly] }]
+    });
+    const byId = id => window.__edsTest.state.pages[0].elements.find(item => item.id === id);
+    const texts = Array.from(document.querySelectorAll('g[data-id="tb"] text')).map(node => node.textContent);
+    const rectAnchors = window.__edsTest.elementConnectionAnchors(byId("r1")).map(anchor => [anchor.x, anchor.y]);
+    const collected = window.__edsTest.collectConnectionAnchors(window.__edsTest.state.pages[0])
+      .filter(anchor => anchor.elementId === "pg").map(anchor => [anchor.x, anchor.y]);
+    return { texts, rectAnchors, collected };
+  });
+  expect(result.texts).toEqual(expect.arrayContaining(["R", "S", "T"]));
+  expect(result.rectAnchors).toHaveLength(8);
+  expect(result.rectAnchors).toEqual(expect.arrayContaining([
+    [100, 20], [120, 32], [110, 20], [120, 26], [110, 32], [100, 26]
+  ]));
+  expect(result.collected).toEqual(expect.arrayContaining([
+    [10, 100], [30, 100], [20, 116],
+    [20, 100], [25, 108], [15, 108]
+  ]));
+});
+
+test("直線を選択クリックしただけでは接続点へ吸着しない", async ({ page }) => {
+  await page.evaluate(() => {
+    const line = { ...window.__edsTest.defaultElement("line", 0, 0), id: "diag" };
+    line.points = [[40.3, 30.7], [70.3, 50.7]];
+    const coil = { ...window.__edsTest.defaultElement("coil", 71, 48.5), id: "cl", label: "CR1", tag: "CR1" };
+    window.__edsTest.installProjectData({
+      schemaVersion: 4,
+      activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: [line, coil] }]
+    });
+  });
+  await page.locator('g[data-id="diag"] path').click({ force: true });
+  const after = await page.evaluate(() => ({
+    points: window.__edsTest.state.pages[0].elements.find(item => item.id === "diag").points,
+    selected: window.__edsTest.state.pages[0].elements.some(item => item.id === "diag")
+  }));
+  expect(after.points).toEqual([[40.3, 30.7], [70.3, 50.7]]);
 });
 
 test("グリッド表示をスナップとは独立して切り替えて保存できる", async ({ page }) => {

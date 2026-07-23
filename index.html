@@ -5406,10 +5406,13 @@
         for (let i = 1; i < rows; i++) {
           g.appendChild(svgEl("line", { x1: 0, y1: h * i / rows, x2: w, y2: h * i / rows, class: "symbol-line", stroke }));
         }
+        const boxLabels = String(element.boxLabels || "").split(/\r?\n/);
+        const boxLabelSize = Math.max(1, Number(element.boxLabelFontSize || 2.2));
         for (let i = 0; i < rows; i++) {
           const y = terminalBoxPinY(element, i);
           if (terminalBoxStubVisible(element, "left", i)) g.appendChild(svgEl("line", { x1: -6, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
           if (terminalBoxStubVisible(element, "right", i)) g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 6, y2: y, class: "symbol-line", stroke }));
+          if (boxLabels[i]) g.appendChild(textEl(boxLabels[i], w / 2, y, { fontSize: boxLabelSize, anchor: "middle" }));
         }
         if (element.label) g.appendChild(textEl(element.label, w / 2, h + 4, { fontSize: 2.2, anchor: "middle" }));
       }
@@ -9793,6 +9796,10 @@
           return `
             <label>箱の数</label>
             <input data-bind="rows" data-kind="number" type="number" min="1" step="1" value="${rows}">
+            <label>箱内文字（1行=1箱）</label>
+            <textarea data-bind="boxLabels">${escapeHtml(element.boxLabels || "")}</textarea>
+            <label>箱内文字サイズ mm</label>
+            <input data-bind="boxLabelFontSize" data-kind="number" type="number" min="1" step="0.1" value="${round(element.boxLabelFontSize || 2.2)}">
             <label>箱ごとの引き出し線（チェック=線を出す）</label>
             <div class="form-grid">
               ${Array.from({ length: rows }, (_, index) => `
@@ -10360,6 +10367,13 @@
           if (element.type === "wire" || element.type === "line" || element.type === "mechanicalLink" || element.type === "arrow" || element.type === "polygon") {
             // 多角形は各頂点が吸着先になる(配線・直線の端点も同様)
             (element.points || []).forEach(point => anchors.push({ x: point[0], y: point[1], elementId: element.id, kind: "point" }));
+            if (element.type === "polygon" && (element.points || []).length >= 2) {
+              // 多角形は各辺の中央(閉じる辺を含む)も吸着先にする
+              element.points.forEach((point, index) => {
+                const next = element.points[(index + 1) % element.points.length];
+                anchors.push({ x: round((point[0] + next[0]) / 2), y: round((point[1] + next[1]) / 2), elementId: element.id, kind: "point" });
+              });
+            }
             return;
           }
           if (element.type === "arc") {
@@ -10468,6 +10482,13 @@
         if (["coil", "fuse", "breaker", "lamp", "buzzer", "meter", "inductor", "heater", "bell", "battery", "rectifierBox", "currentTransformer", "arrester", "disconnector", "beacon", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
           add(0, h / 2);
           add(w, h / 2);
+          return anchors;
+        }
+        if (element.type === "rect") {
+          // 各頂点+各辺中央を配線接続点にする(枠・箱の絵へ直接配線を落とせるように)。
+          add(0, 0); add(w / 2, 0); add(w, 0);
+          add(w, h / 2); add(w, h);
+          add(w / 2, h); add(0, h); add(0, h / 2);
           return anchors;
         }
         if (element.type === "terminalBox") {
@@ -18085,7 +18106,7 @@
               <li><b>最近使用</b>: パレット先頭に直近6件が自動で並ぶ</li>
               <li>配置時は<b>接続ピンがグリッド・行に自動で一致</b>。配線上に置くと線が自動分割されて割り込む</li>
               <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大</b>をONにすると、以後パレットから配置する部品が<b>1.5倍</b>で置かれます（既存の部品は変わりません。接続ピン・DXF出力も倍率に追従）</li>
-              <li><b>端子箱</b>: 右パネルで<b>箱の数</b>と<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
+              <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
               <li>間違えたら <b>Ctrl+Z</b>。位置の微調整は<b>矢印キー</b>（1mm、Shiftで5mm）</li>
             </ul>`)}
@@ -18097,6 +18118,7 @@
               <li>部品を動かすと<b>接続済み配線の端点が追従</b>。移動中はピン一致で<b>マゼンタの整列ガイド</b>が出ます</li>
               <li>T分岐の黒丸は機能メニュー「<b>接続点生成</b>」で一括追加</li>
               <li>交差を飛び越す表現は選択して「<b>配線ギャップ</b>」（交差一括追加も可）</li>
+              <li><b>矩形・多角形の頂点と各辺中央</b>へも配線が吸着します（囲み枠・機器外形への引き込み線に）</li>
               <li>編集: 中間点追加/削除・直交整形・折れ向き反転・<b>分割/結合/終点延長/トリム</b>（選択パネルのボタン）</li>
               <li><b>線番</b>は「線番採番」で自動付与。書式に<b>%R（行番号）</b>を使うと「105=1頁05行」の行ベース採番</li>
             </ul>`)}
@@ -20578,10 +20600,13 @@
         const rows = Math.max(1, Number(element.rows || 3));
         dxfRectLocal(out, page, "SYMBOL", element, 0, 0, w, h);
         for (let i = 1; i < rows; i++) dxfLineLocal(out, page, "SYMBOL", element, 0, h * i / rows, w, h * i / rows);
+        const boxLabels = String(element.boxLabels || "").split(/\r?\n/);
+        const boxLabelSize = Math.max(1, Number(element.boxLabelFontSize || 2.2));
         for (let i = 0; i < rows; i++) {
           const y = terminalBoxPinY(element, i);
           if (terminalBoxStubVisible(element, "left", i)) dxfLineLocal(out, page, "SYMBOL", element, -6, y, 0, y);
           if (terminalBoxStubVisible(element, "right", i)) dxfLineLocal(out, page, "SYMBOL", element, w, y, w + 6, y);
+          if (boxLabels[i]) dxfTextLocal(out, page, "TEXT", element, w / 2 - boxLabels[i].length * boxLabelSize * .3, y + boxLabelSize * .35, boxLabelSize, boxLabels[i]);
         }
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
       }
@@ -21573,6 +21598,7 @@
           return;
         }
         if (dragState.mode === "point") {
+          dragState.didMove = true;
           if (["line", "arrow", "mechanicalLink"].includes(activeDragElement?.type)) {
             const rawPoint = canvasPoint(event, { raw: true });
             const index = dragState.pointIndex;
@@ -21634,6 +21660,9 @@
           const snapDelta = movementSnapDelta(dragState.originals || [], dx, dy);
           dx += snapDelta.dx;
           dy += snapDelta.dy;
+          // 実際に動いたときだけ「移動した」扱いにする。単なる選択クリック(移動量0)では
+          // pointerup時の接続点吸着を行わない(正確に合わせた直線・矢印がクリックでズレるのを防ぐ)。
+          if (dx || dy) dragState.didMove = true;
           (dragState.originals || []).forEach(original => {
             const target = page.elements.find(item => item.id === original.id);
             if (!target) return;
@@ -21804,7 +21833,18 @@
 
       // 移動追従で使う要素の接続点一覧(配線を除く)。
       function componentConnectionAnchors(element) {
-        if (!element || element.points) return [];
+        if (!element) return [];
+        if (element.type === "polygon" && (element.points || []).length >= 2) {
+          // 多角形は頂点+各辺中央から配線を開始できる。
+          const points = element.points;
+          const anchors = points.map(point => ({ x: point[0], y: point[1] }));
+          points.forEach((point, index) => {
+            const next = points[(index + 1) % points.length];
+            anchors.push({ x: round((point[0] + next[0]) / 2), y: round((point[1] + next[1]) / 2) });
+          });
+          return anchors;
+        }
+        if (element.points) return [];
         if (element.type === "terminalStrip" || element.type === "connector") {
           const geo = terminalStripGeometry(element);
           return Array.from({ length: geo.nodes || geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
@@ -21901,7 +21941,10 @@
         const touchedIds = finishedDrag.mode === "move"
           ? (finishedDrag.originals || []).map(original => original.id)
           : [finishedDrag.elementId].filter(Boolean);
-        touchedIds.forEach(id => snapPointElementConnections(page?.elements.find(item => item.id === id), page));
+        // 端点吸着は「実際に動かした」ときだけ。選択クリックだけでは要素を動かさない。
+        if (finishedDrag.didMove || finishedDrag.mode === "draw") {
+          touchedIds.forEach(id => snapPointElementConnections(page?.elements.find(item => item.id === id), page));
+        }
         const element = selectedElement();
         // 配線を重ねただけでは黒丸を生成しない。分岐点は接続点ツールまたは自動処理で明示する。
         // ゼロ長の線・配線は破棄(多角形は始点≠終点が前提のため対象外)
@@ -22439,6 +22482,7 @@
         defaultElement,
         createPage,
         formatLocalDate,
+        collectConnectionAnchors,
         SYMBOL_GEO,
         geoPrims,
         terminalStripNodeLocal,
