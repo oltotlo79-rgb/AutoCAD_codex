@@ -4829,43 +4829,30 @@
 
       // 端子台/PLCユニット列に付ける端子記号の表示判定。
       // 既定は要素のterminalMarkLeft/terminalMarkRight、stripTerminalMarksのleft-n/right-nで個別上書き。
-      // 記号は機器箱・単体端子と同じ白抜き小円(r0.55)を本体の辺上へ載せ、盤外側へ短い破線を出す。
+      // 記号は機器箱の端子円と同一仕様: 白抜き小円(r0.55)を本体の辺上へ載せるだけで、余計な線は出さない。
       const STRIP_TERMINAL_MARK_R = 0.55;
-      // スタブ長は2.5mmの倍数にする。先端は配線接続点になるため、本体辺がグリッド上にあれば
-      // 先端もグリッドに載る(テンプレートの2.5mm方眼検査対象)。
-      const STRIP_TERMINAL_STUB = 5;
-      const STRIP_TERMINAL_DASH = "3 2";
       function stripTerminalMarkVisible(element, side, index) {
         const override = element.stripTerminalMarks?.[side + "-" + index];
         if (typeof override === "boolean") return override;
         return side === "left" ? element.terminalMarkLeft === true : element.terminalMarkRight === true;
       }
 
-      // 端子記号1個の描画。破線スタブ→白抜き小円の順に描き、円内の線を隠す(機器箱の端子円と同じ見せ方)。
-      // (cx,cy)=本体辺上の端子中心、(outX,outY)=盤外方向の単位ベクトル。
-      function drawStripTerminalMark(g, cx, cy, outX, outY, stroke) {
-        g.appendChild(svgEl("line", {
-          x1: cx, y1: cy,
-          x2: cx + outX * STRIP_TERMINAL_STUB, y2: cy + outY * STRIP_TERMINAL_STUB,
-          class: "symbol-line", stroke, "stroke-dasharray": STRIP_TERMINAL_DASH
-        }));
+      // 端子記号1個の描画。機器箱の端子円と同じ白抜き小円を辺上へ描き、円内の線を白抜きで隠す。
+      function drawStripTerminalMark(g, cx, cy, stroke) {
         g.appendChild(svgEl("circle", { cx, cy, r: STRIP_TERMINAL_MARK_R, class: "terminal-dot", stroke }));
       }
 
-      // 表示中の端子記号の配線接続点(ローカル座標)。小円中心(辺上)と破線スタブ先端の両方を返し、
-      // どちらへも配線を吸着・開始できるようにする(描画のdrawTerminalStrip/drawPlcUnitColumnと同じ配置規則)。
+      // 表示中の端子記号の配線接続点(ローカル座標)。機器箱と同じく端子(小円中心)のみが接続点。
       function stripTerminalMarkLocalAnchors(element) {
         const points = [];
-        const pushMark = (cx, cy, outX, outY) => {
-          points.push([cx, cy], [round(cx + outX * STRIP_TERMINAL_STUB), round(cy + outY * STRIP_TERMINAL_STUB)]);
-        };
+        const pushMark = (cx, cy) => { points.push([cx, cy]); };
         if (element.type === "terminalStrip") {
           const geo = terminalStripGeometry(element);
           if (geo.unit) {
             for (let i = 0; i < geo.nodes; i++) {
               const node = terminalStripNodeLocal(element, i);
-              if (stripTerminalMarkVisible(element, "left", i)) pushMark(0, node.y, -1, 0);
-              if (stripTerminalMarkVisible(element, "right", i)) pushMark(geo.w, node.y, 1, 0);
+              if (stripTerminalMarkVisible(element, "left", i)) pushMark(0, node.y);
+              if (stripTerminalMarkVisible(element, "right", i)) pushMark(geo.w, node.y);
             }
             return points;
           }
@@ -4873,15 +4860,15 @@
             const bodyW = Math.max(geo.w, 8);
             for (let i = 0; i < geo.count; i++) {
               const node = terminalStripNodeLocal(element, i);
-              if (stripTerminalMarkVisible(element, "left", i)) pushMark((geo.w - bodyW) / 2, node.y, -1, 0);
-              if (stripTerminalMarkVisible(element, "right", i)) pushMark((geo.w - bodyW) / 2 + bodyW, node.y, 1, 0);
+              if (stripTerminalMarkVisible(element, "left", i)) pushMark((geo.w - bodyW) / 2, node.y);
+              if (stripTerminalMarkVisible(element, "right", i)) pushMark((geo.w - bodyW) / 2 + bodyW, node.y);
             }
             return points;
           }
           for (let i = 0; i < geo.count; i++) {
             const node = terminalStripNodeLocal(element, i);
-            if (stripTerminalMarkVisible(element, "left", i)) pushMark(node.x, 0, 0, -1);
-            if (stripTerminalMarkVisible(element, "right", i)) pushMark(node.x, geo.h, 0, 1);
+            if (stripTerminalMarkVisible(element, "left", i)) pushMark(node.x, 0);
+            if (stripTerminalMarkVisible(element, "right", i)) pushMark(node.x, geo.h);
           }
           return points;
         }
@@ -4889,8 +4876,8 @@
           const geo = plcUnitGeometry(element);
           for (let i = 0; i < geo.rows; i++) {
             const cy = geo.pitch * i + geo.pitch / 2;
-            if (stripTerminalMarkVisible(element, "left", i)) pushMark(0, cy, -1, 0);
-            if (stripTerminalMarkVisible(element, "right", i)) pushMark(geo.w, cy, 1, 0);
+            if (stripTerminalMarkVisible(element, "left", i)) pushMark(0, cy);
+            if (stripTerminalMarkVisible(element, "right", i)) pushMark(geo.w, cy);
           }
           return points;
         }
@@ -4913,8 +4900,8 @@
             const r = Math.min(3.2, geo.pitch * .35);
             g.appendChild(svgEl("circle", { cx: node.x, cy: node.y, r, class: "terminal-dot", stroke }));
             g.appendChild(textEl(terminalLabel(element, i), node.x, node.y, { fontSize: 2, anchor: "middle" }));
-            if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, 0, node.y, -1, 0, stroke);
-            if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, geo.w, node.y, 1, 0, stroke);
+            if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, 0, node.y, stroke);
+            if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, geo.w, node.y, stroke);
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
           const unitJumperStart = Number(element.start || 1);
@@ -4945,8 +4932,8 @@
             const node = terminalStripNodeLocal(element, i);
             drawTerminalNode(g, node.x, node.y, Math.min(2.8, geo.pitch * .32), geo.shape, stroke);
             g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 1.9, anchor: "middle" }));
-            if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, (geo.w - bodyW) / 2, node.y, -1, 0, stroke);
-            if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, (geo.w - bodyW) / 2 + bodyW, node.y, 1, 0, stroke);
+            if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, (geo.w - bodyW) / 2, node.y, stroke);
+            if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, (geo.w - bodyW) / 2 + bodyW, node.y, stroke);
           }
           if (element.label) g.appendChild(textEl(element.label, geo.w + 3, 0, { fontSize: 2.5 }));
         } else {
@@ -4970,8 +4957,8 @@
             drawTerminalNode(g, node.x, node.y, Math.min(2.8, geo.pitch * .32), geo.shape, stroke);
             g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 1.9, anchor: "middle" }));
             // 横向きは「左」=上側、「右」=下側として扱う。
-            if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, node.x, 0, 0, -1, stroke);
-            if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, node.x, geo.h, 0, 1, stroke);
+            if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, node.x, 0, stroke);
+            if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, node.x, geo.h, stroke);
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -3.2, { fontSize: 2.5 }));
         }
@@ -8931,8 +8918,8 @@
           const cy = pitch * i + pitch / 2;
           g.appendChild(svgEl("circle", { cx, cy, r: 3.2, class: "terminal-dot", stroke }));
           if (labels[i]) g.appendChild(textEl(labels[i], cx, cy, { fontSize: 2, anchor: "middle" }));
-          if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, 0, cy, -1, 0, stroke);
-          if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, w, cy, 1, 0, stroke);
+          if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, 0, cy, stroke);
+          if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, w, cy, stroke);
         }
         if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
       }
@@ -18419,7 +18406,7 @@
               <li>配置時は<b>接続ピンがグリッド・行に自動で一致</b>。配線上に置くと線が自動分割されて割り込む</li>
               <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大</b>をONにすると、以後パレットから配置する部品が<b>1.5倍</b>で置かれます（既存の部品は変わりません。接続ピン・DXF出力も倍率に追従）</li>
               <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
-              <li><b>端子台・PLCユニット列の端子記号</b>: 本体の辺上に<b>単体端子・機器箱と同じ白抜き小円</b>を載せ、盤外側へ<b>短い破線</b>を出します。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
+              <li><b>端子台・PLCユニット列の端子記号</b>: 本体の辺上に<b>機器箱と同じ白抜き小円の端子</b>を表示し、その<b>端子だけが配線接続点</b>になります。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
               <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
               <li>間違えたら <b>Ctrl+Z</b>。位置の微調整は<b>矢印キー</b>（1mm、Shiftで5mm）</li>
@@ -20365,8 +20352,8 @@
               dxfCircleLocal(out, page, "SYMBOL", element, node.x, node.y, r);
               const label = terminalLabel(element, i);
               dxfTextLocal(out, page, "TEXT", element, node.x - label.length * .6, node.y + .7, 2, label);
-              if (stripTerminalMarkVisible(element, "left", i)) dxfStripTerminalMark(out, page, element, 0, node.y, -1, 0);
-              if (stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, w, node.y, 1, 0);
+              if (stripTerminalMarkVisible(element, "left", i)) dxfStripTerminalMark(out, page, element, 0, node.y);
+              if (stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, w, node.y);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
             const unitJumperStart = Number(element.start || 1);
@@ -20389,8 +20376,8 @@
               dxfTerminalNodeLocal(out, page, "SYMBOL", element, w / 2, cy, Math.min(2.8, pitch * .32), shape);
               dxfTextLocal(out, page, "TEXT", element, w / 2 - 1.1, cy + .65, 1.7, (element.prefix || "") + String(Number(element.start || 1) + i));
               const bodyW = Math.max(w, 8);
-              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "left", i)) dxfStripTerminalMark(out, page, element, (w - bodyW) / 2, cy, -1, 0);
-              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, (w - bodyW) / 2 + bodyW, cy, 1, 0);
+              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "left", i)) dxfStripTerminalMark(out, page, element, (w - bodyW) / 2, cy);
+              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, (w - bodyW) / 2 + bodyW, cy);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, w + 3, 0, 2.5, element.label);
           } else {
@@ -20400,8 +20387,8 @@
               const cx = pitch * i + pitch / 2;
               dxfTerminalNodeLocal(out, page, "SYMBOL", element, cx, h / 2, Math.min(2.8, pitch * .32), shape);
               dxfTextLocal(out, page, "TEXT", element, cx - 1.1, h / 2 + .65, 1.7, (element.prefix || "") + String(Number(element.start || 1) + i));
-              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "left", i)) dxfStripTerminalMark(out, page, element, cx, 0, 0, -1);
-              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, cx, h, 0, 1);
+              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "left", i)) dxfStripTerminalMark(out, page, element, cx, 0);
+              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, cx, h);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -3, 2.5, element.label);
           }
@@ -20580,8 +20567,8 @@
               const cy = pitch * i + pitch / 2;
               dxfCircleLocal(out, page, "SYMBOL", element, cx, cy, 3.2);
               if (labels[i]) dxfTextLocal(out, page, "TEXT", element, cx - labels[i].length * .6, cy + .7, 2, labels[i]);
-              if (stripTerminalMarkVisible(element, "left", i)) dxfStripTerminalMark(out, page, element, 0, cy, -1, 0);
-              if (stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, uw, cy, 1, 0);
+              if (stripTerminalMarkVisible(element, "left", i)) dxfStripTerminalMark(out, page, element, 0, cy);
+              if (stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, uw, cy);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
             dxfVisibleAttributes(out, page, element);
@@ -21176,9 +21163,8 @@
         dxfLineLocal(out, page, layer, element, x, y + h, x, y, ltype);
       }
 
-      // 端子台/PLCユニット列の端子記号のDXF出力(SVGと同じ破線スタブ+小円)。
-      function dxfStripTerminalMark(out, page, element, cx, cy, outX, outY) {
-        dxfLineLocal(out, page, "SYMBOL", element, cx, cy, cx + outX * STRIP_TERMINAL_STUB, cy + outY * STRIP_TERMINAL_STUB, dashLtypeName(STRIP_TERMINAL_DASH));
+      // 端子台/PLCユニット列の端子記号のDXF出力(SVGと同じ白抜き小円のみ)。
+      function dxfStripTerminalMark(out, page, element, cx, cy) {
         dxfCircleLocal(out, page, "SYMBOL", element, cx, cy, STRIP_TERMINAL_MARK_R);
       }
 
