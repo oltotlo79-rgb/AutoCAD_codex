@@ -4185,6 +4185,8 @@
             : Number(element.contentFontSize || 0);
         const bold = element.type === "text" ? element.fontBold : element.type === "wire" ? element.wireNoBold : element.contentFontBold;
         g.querySelectorAll("text").forEach(node => {
+          // 専用サイズを持つ文字(機器箱の端子文字など)は一括サイズの対象外。
+          if (node.getAttribute("data-content-exempt") === "true") return;
           if (size > 0) node.setAttribute("font-size", String(size));
           if (bold !== undefined) node.setAttribute("font-weight", bold ? "700" : "400");
         });
@@ -4826,6 +4828,22 @@
         g.appendChild(textEl(label, cx, cy + .12, { fontSize: 1.8, anchor: "middle" }));
       }
 
+      // 端子台/PLCユニット列の脇に付ける端子記号(単体端子と同じ小円・半径2.16)の表示判定。
+      // 既定は要素のterminalMarkLeft/terminalMarkRight、stripTerminalMarksのleft-n/right-nで個別上書き。
+      const STRIP_TERMINAL_MARK_R = 2.16;
+      const STRIP_TERMINAL_MARK_GAP = 4;
+      function stripTerminalMarkVisible(element, side, index) {
+        const override = element.stripTerminalMarks?.[side + "-" + index];
+        if (typeof override === "boolean") return override;
+        return side === "left" ? element.terminalMarkLeft === true : element.terminalMarkRight === true;
+      }
+
+      // 端子記号1個の描画(単体端子と同じ白抜き小円)。
+      function drawStripTerminalMark(g, cx, cy, stroke) {
+        const node = svgEl("circle", { cx, cy, r: STRIP_TERMINAL_MARK_R, class: "terminal-dot", stroke });
+        g.appendChild(node);
+      }
+
       // 端子台の描画(ユニット列=波形破断線+端子円/旧ピル形、2段対応、ジャンパ弧つき)。
       function drawTerminalStrip(g, element, stroke) {
         const geo = terminalStripGeometry(element);
@@ -4842,6 +4860,8 @@
             const r = Math.min(3.2, geo.pitch * .35);
             g.appendChild(svgEl("circle", { cx: node.x, cy: node.y, r, class: "terminal-dot", stroke }));
             g.appendChild(textEl(terminalLabel(element, i), node.x, node.y, { fontSize: 2, anchor: "middle" }));
+            if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, -STRIP_TERMINAL_MARK_GAP, node.y, stroke);
+            if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, geo.w + STRIP_TERMINAL_MARK_GAP, node.y, stroke);
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
           const unitJumperStart = Number(element.start || 1);
@@ -4872,6 +4892,8 @@
             const node = terminalStripNodeLocal(element, i);
             drawTerminalNode(g, node.x, node.y, Math.min(2.8, geo.pitch * .32), geo.shape, stroke);
             g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 1.9, anchor: "middle" }));
+            if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, -STRIP_TERMINAL_MARK_GAP, node.y, stroke);
+            if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, geo.w + STRIP_TERMINAL_MARK_GAP, node.y, stroke);
           }
           if (element.label) g.appendChild(textEl(element.label, geo.w + 3, 0, { fontSize: 2.5 }));
         } else {
@@ -4894,6 +4916,9 @@
             const node = terminalStripNodeLocal(element, i);
             drawTerminalNode(g, node.x, node.y, Math.min(2.8, geo.pitch * .32), geo.shape, stroke);
             g.appendChild(textEl(terminalLabel(element, i), node.x, node.y + .1, { fontSize: 1.9, anchor: "middle" }));
+            // 横向きは「左」=上側、「右」=下側として扱う。
+            if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, node.x, -STRIP_TERMINAL_MARK_GAP, stroke);
+            if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, node.x, geo.h + STRIP_TERMINAL_MARK_GAP, stroke);
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -3.2, { fontSize: 2.5 }));
         }
@@ -5357,6 +5382,7 @@
         const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
         const terminalMode = element.deviceTerminalMode || "auto";
         const visibility = element.deviceTerminalVisibility || {};
+        const pinFontSize = Math.max(1, Number(element.pinFontSize || 2.2));
         const showTerminal = (key, hasText) => typeof visibility[key] === "boolean"
           ? visibility[key]
           : terminalMode === "always" || (terminalMode === "auto" && hasText);
@@ -5373,10 +5399,15 @@
             g.lastChild.setAttribute("data-device-terminal", "right-" + i);
           }
           if (leftLabels[i]) {
-            g.appendChild(textEl(leftLabels[i], 1.5, y, { fontSize: 2.2 }));
+            const node = textEl(leftLabels[i], 1.5, y, { fontSize: pinFontSize });
+            // 端子文字は「文字スタイル」の一括サイズから独立させ、専用の端子文字サイズで描く。
+            node.setAttribute("data-content-exempt", "true");
+            g.appendChild(node);
           }
           if (rightLabels[i]) {
-            g.appendChild(textEl(rightLabels[i], w - 1.5, y, { fontSize: 2.2, anchor: "end" }));
+            const node = textEl(rightLabels[i], w - 1.5, y, { fontSize: pinFontSize, anchor: "end" });
+            node.setAttribute("data-content-exempt", "true");
+            g.appendChild(node);
           }
         }
       }
@@ -7318,6 +7349,41 @@
             { t: "text", p: [8.2, 3], size: 1.8, anchor: "start", field: "label" }
           ]
         },
+        // プラグ単体(雄側・JIS C 0617系): リード+縦バー(ソケット対の雄半分)。
+        outletPlug: {
+          w: 10, h: 6,
+          anchors: [[0, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 5.2, 3] },
+            { t: "line", p: [5.2, 1.6, 5.2, 4.4] },
+            { t: "text", p: [7.4, 3], size: 1.8, anchor: "start", field: "label" }
+          ]
+        },
+        // プラグ(2本刃の絵記号): リード+胴バー+平行刃2本。
+        outletPlugPin: {
+          w: 10, h: 6,
+          anchors: [[0, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 4.6, 3] },
+            { t: "line", p: [4.6, 1.8, 4.6, 4.2] },
+            { t: "line", p: [4.6, 2.2, 7.2, 2.2] },
+            { t: "line", p: [4.6, 3.8, 7.2, 3.8] },
+            { t: "text", p: [8.0, 3], size: 1.8, anchor: "start", field: "label" }
+          ]
+        },
+        // プラグ(2本刃+接地ピン): 刃2本の中間に短い接地ピンを持つ接地2P形。
+        outletPlugPin3: {
+          w: 10, h: 6,
+          anchors: [[0, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 4.6, 3] },
+            { t: "line", p: [4.6, 1.8, 4.6, 4.2] },
+            { t: "line", p: [4.6, 2.2, 7.2, 2.2] },
+            { t: "line", p: [4.6, 3.8, 7.2, 3.8] },
+            { t: "line", p: [4.6, 3, 6.2, 3] },
+            { t: "text", p: [8.0, 3], size: 1.8, anchor: "start", field: "label" }
+          ]
+        },
         // コンセント(プラグ・ソケット対): 挿抜表現(JIS C 0617のコネクタ対と同系)。ピンピッチ10mm。
         outletPlugSocket: {
           w: 10, h: 6,
@@ -8270,6 +8336,9 @@
             if (variant === "round") return "outletRound";
             if (variant === "earthed") return "outletEarthed";
             if (variant === "plugSocket") return "outletPlugSocket";
+            if (variant === "plug") return "outletPlug";
+            if (variant === "plugPin") return "outletPlugPin";
+            if (variant === "plugPin3") return "outletPlugPin3";
             return "outlet";
           }
           case "beacon": return "beacon";
@@ -8763,6 +8832,8 @@
           const cy = pitch * i + pitch / 2;
           g.appendChild(svgEl("circle", { cx, cy, r: 3.2, class: "terminal-dot", stroke }));
           if (labels[i]) g.appendChild(textEl(labels[i], cx, cy, { fontSize: 2, anchor: "middle" }));
+          if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, -STRIP_TERMINAL_MARK_GAP, cy, stroke);
+          if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, w + STRIP_TERMINAL_MARK_GAP, cy, stroke);
         }
         if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
       }
@@ -9486,7 +9557,7 @@
         transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "二巻線円形（JIS）"], ["circlesCore", "二巻線円形＋鉄心（JIS）"]],
         heater: [["standard", "箱＋斜線（設備標準）"], ["plain", "箱のみ（JIS抵抗器形）"]],
         arrester: [["standard", "箱＋矢印（設備標準）"], ["gap", "ギャップ形（対向三角）"]],
-        outlet: [["standard", "半円＋差込口"], ["box", "箱形（スロット2＋接地）"], ["boxDouble", "箱形2口"], ["round", "丸形（円＋差込口2本）"], ["earthed", "半円＋差込口（接地極付き）"], ["plugSocket", "プラグ・ソケット対（挿抜表現）"]],
+        outlet: [["standard", "半円＋差込口"], ["box", "箱形（スロット2＋接地）"], ["boxDouble", "箱形2口"], ["round", "丸形（円＋差込口2本）"], ["earthed", "半円＋差込口（接地極付き）"], ["plug", "プラグ（雄側・縦バー）"], ["plugPin", "プラグ（2本刃）"], ["plugPin3", "プラグ（2本刃＋接地ピン）"], ["plugSocket", "プラグ・ソケット対（挿抜表現）"]],
         pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "キノコ＋b接点（JIS C 0617）"], ["multi2", "縦連結2接点（連動）"], ["multi3", "縦連結3接点（連動）"], ["jisMulti2", "JIS縦連結2接点（連動）"], ["jisMulti3", "JIS縦連結3接点（連動）"], ["facility", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]],
         pressureSwitch: [["standard", "ダイヤフラム形（設備標準）"], ["nc", "b接点（閉じ線＋止め）"]],
         floatSwitch: [["standard", "a接点＋フロート"], ["nc", "b接点＋フロート"]],
@@ -9537,6 +9608,23 @@
             element.y = round(Number(element.y || 0) + (pinBefore.y - pinAfter.y));
           }
         }
+      }
+
+      // 端子台/PLCユニット列の端子記号(左右の小円)設定UI。既定の左右トグル+端子ごとの上書き。
+      function stripTerminalMarkFields(element, rowCount) {
+        return `
+            <label>端子記号（単体端子と同じ小円を各端子の脇に表示）</label>
+            <div class="inline">
+              <label><input data-bind="terminalMarkLeft" type="checkbox" ${element.terminalMarkLeft === true ? " checked" : ""} style="width:auto;min-height:auto"> 左（横向きは上）</label>
+              <label><input data-bind="terminalMarkRight" type="checkbox" ${element.terminalMarkRight === true ? " checked" : ""} style="width:auto;min-height:auto"> 右（横向きは下）</label>
+            </div>
+            <details class="attr-panel"><summary>端子ごとの表示（チェック=表示）</summary>
+              <div class="form-grid">
+                ${Array.from({ length: rowCount }, (_, index) => `
+                  <label><input data-bind="stripTerminalMarks.left-${index}" type="checkbox" ${stripTerminalMarkVisible(element, "left", index) ? " checked" : ""} style="width:auto;min-height:auto"> 左${index + 1}</label>
+                  <label><input data-bind="stripTerminalMarks.right-${index}" type="checkbox" ${stripTerminalMarkVisible(element, "right", index) ? " checked" : ""} style="width:auto;min-height:auto"> 右${index + 1}</label>`).join("")}
+              </div>
+            </details>`;
       }
 
       // 選択中要素に対応する「シンボルデザイン」セレクトHTML(バリエーションが無い種別は空文字)。
@@ -9860,6 +9948,7 @@
             </div>` : ""}
             <label>端子名（1行1点・空行は自動番号）</label>
             <textarea data-bind="terminalLabels">${escapeHtml(element.terminalLabels || "")}</textarea>
+            ${element.type === "terminalStrip" ? stripTerminalMarkFields(element, terminalStripGeometry(element).nodes) : ""}
           `;
         }
         if (element.type === "table") {
@@ -9892,6 +9981,7 @@
             <input data-bind="rows" data-kind="number" type="number" min="1"${plcStyle === "unit" && Number(element.pitch || 9.5) >= TEMPLATE_CIRCUIT_PITCH ? ` max="${TEMPLATE_UNIT_MAX_ROWS}"` : ""} step="1" value="${Number(element.rows || 8)}">
             <label>I/O名（1行1点）</label>
             <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
+            ${plcStyle === "unit" ? stripTerminalMarkFields(element, Math.max(1, Number(element.rows || 8))) : ""}
           `;
         }
         if (element.type === "terminalBox") {
@@ -9926,6 +10016,8 @@
             <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
             <label>右端子文字（1行1点）</label>
             <textarea data-bind="rightPinText">${escapeHtml(element.rightPinText || "")}</textarea>
+            <label>端子文字サイズ mm（ラベルは「文字スタイル」で変更）</label>
+            <input data-bind="pinFontSize" data-kind="number" type="number" min="1" step="0.1" value="${round(element.pinFontSize || 2.2)}">
             <label>端子記号</label>
             <div class="inline" role="radiogroup" aria-label="機器箱の端子記号">
               ${[["auto", "文字に連動"], ["always", "常に表示"], ["hidden", "非表示"]].map(([value, label]) => `<label><input data-bind="deviceTerminalMode" name="deviceTerminalMode" type="radio" value="${value}" ${terminalMode === value ? "checked" : ""} style="width:auto;min-height:auto"> ${label}</label>`).join("")}
@@ -10084,6 +10176,13 @@
           const stubKey = key.slice("terminalBoxStubs.".length);
           element.terminalBoxStubs = { ...(element.terminalBoxStubs || {}), [stubKey]: Boolean(value) };
           if (save) commitHistory("端子箱の引き出し線を変更しました。");
+          render();
+          return;
+        }
+        if (key.startsWith("stripTerminalMarks.")) {
+          const markKey = key.slice("stripTerminalMarks.".length);
+          element.stripTerminalMarks = { ...(element.stripTerminalMarks || {}), [markKey]: Boolean(value) };
+          if (save) commitHistory("端子記号の表示を変更しました。");
           render();
           return;
         }
@@ -10265,7 +10364,7 @@
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
           terminal: { ...base, w: 1.8, h: 1.8, label: "1", orientation: "horizontal", terminalShape: "circle" },
-          terminalStrip: { ...base, w: 10, h: 152, count: 16, start: 1, prefix: "", orientation: "vertical", terminalShape: "circle", stripStyle: "unit", label: "TB1", jumpers: "" },
+          terminalStrip: { ...base, w: 10, h: 152, count: 16, start: 1, prefix: "", orientation: "vertical", terminalShape: "circle", stripStyle: "unit", label: "TB1", jumpers: "", terminalMarkLeft: true },
           contactNO: { ...base, w: 10, h: 4.4, label: "NO", orientation: "horizontal", refNo: "" },
           contactNC: { ...base, w: 10, h: 4.4, label: "NC", orientation: "horizontal", refNo: "" },
           contactBlock: { ...base, w: 15, h: 8, label: "CR", orientation: "horizontal", blockContact: "NO", blockFrame: "solid", refNo: "" },
@@ -11048,7 +11147,8 @@
           orientation: "vertical",
           terminalShape: "circle",
           stripStyle: "unit",
-          label: options.label || "TB1"
+          label: options.label || "TB1",
+          terminalMarkLeft: false
         };
         for (let i = 0; i < count; i++) {
           const cy = round(y + pitch * i + pitch / 2);
@@ -11582,7 +11682,8 @@
           stripStyle: "unit",
           label: stripName,
           terminalLabels: rows.map(row => row.terminal || "").join("\n"),
-          note: "取込元: " + fileName
+          note: "取込元: " + fileName,
+          terminalMarkLeft: false
         };
         rows.forEach((row, index) => {
           const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * index);
@@ -12280,7 +12381,9 @@
           h: count * TEMPLATE_CIRCUIT_PITCH,
           pitch: TEMPLATE_CIRCUIT_PITCH,
           label: unitName,
-          pinText: addresses.join("\n")
+          pinText: addresses.join("\n"),
+          // 出力回路はユニット列の右側へ端子記号を出す
+          terminalMarkRight: true
         });
         state.pages.push(page);
         state.activePageId = page.id;
@@ -12320,7 +12423,9 @@
           h: count * TEMPLATE_CIRCUIT_PITCH,
           pitch: TEMPLATE_CIRCUIT_PITCH,
           label: unitName,
-          pinText: addresses.join("\n")
+          pinText: addresses.join("\n"),
+          // 入力回路はユニット列の左側へ端子記号を出す
+          terminalMarkLeft: true
         };
         const feederX = 47.5;
         if (withContacts && addresses.length) {
@@ -18211,6 +18316,8 @@
               <li>配置時は<b>接続ピンがグリッド・行に自動で一致</b>。配線上に置くと線が自動分割されて割り込む</li>
               <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大</b>をONにすると、以後パレットから配置する部品が<b>1.5倍</b>で置かれます（既存の部品は変わりません。接続ピン・DXF出力も倍率に追従）</li>
               <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
+              <li><b>端子台・PLCユニット列の端子記号</b>: 各端子の脇に<b>単体端子と同じ小円</b>を表示できます。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
+              <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
               <li>間違えたら <b>Ctrl+Z</b>。位置の微調整は<b>矢印キー</b>（1mm、Shiftで5mm）</li>
             </ul>`)}
@@ -18255,7 +18362,7 @@
             接地4種、ヒューズ3種、ダイオード6種（トライアック含む）、変圧器3種＋テンプレート専用10mm形、論理ゲート3種、押しボタンa/b接点（設備標準・JIS C 0617）、
             リミットスイッチ箱形NO/NC・ローラーNO/NC、圧力/フロート/温度/フロー/フットスイッチのa/b接点、
             切替接点（c接点）、接触器主接点（半円・JIS C 0617）、サーマルリレー10種（熱動素子付きa/b接点ほか）、照光式/パーム押しボタン、切替スイッチJIS形、ブリッジ整流◇、避雷器2種、
-            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント6種（箱形・箱形2口・丸形・接地極付き・プラグ対ほか）、蛍光灯、針付き計器、JISブザー半円形、交流電源（円＋〜）など100種類以上。
+            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント9種（箱形2口・丸形・接地極付き・雄側プラグ3種・プラグ対ほか）、蛍光灯、針付き計器、JISブザー半円形、交流電源（円＋〜）など100種類以上。
             切替時は<b>第1接続ピンの位置を保持</b>するため、そのピンへ接続した配線はずれません。ピン構成が共通のデザインではほかの接続点も維持され、
             縦連結接点や切替接点などでは必要な接続ピンが追加されます。複数選択+「同種を全選択」からの<b>一括切替</b>も可能です。
             接続ピンは原則<b>2.5mmグリッドの倍数</b>です。手動配置用の縦連結非常停止・変圧器の上下段・箱形コンセントは<b>設備行ピッチ9.5mm</b>を保持し、
@@ -20155,6 +20262,8 @@
               dxfCircleLocal(out, page, "SYMBOL", element, node.x, node.y, r);
               const label = terminalLabel(element, i);
               dxfTextLocal(out, page, "TEXT", element, node.x - label.length * .6, node.y + .7, 2, label);
+              if (stripTerminalMarkVisible(element, "left", i)) dxfCircleLocal(out, page, "SYMBOL", element, -STRIP_TERMINAL_MARK_GAP, node.y, STRIP_TERMINAL_MARK_R);
+              if (stripTerminalMarkVisible(element, "right", i)) dxfCircleLocal(out, page, "SYMBOL", element, w + STRIP_TERMINAL_MARK_GAP, node.y, STRIP_TERMINAL_MARK_R);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
             const unitJumperStart = Number(element.start || 1);
@@ -20176,6 +20285,8 @@
               const cy = pitch * i + pitch / 2;
               dxfTerminalNodeLocal(out, page, "SYMBOL", element, w / 2, cy, Math.min(2.8, pitch * .32), shape);
               dxfTextLocal(out, page, "TEXT", element, w / 2 - 1.1, cy + .65, 1.7, (element.prefix || "") + String(Number(element.start || 1) + i));
+              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "left", i)) dxfCircleLocal(out, page, "SYMBOL", element, -STRIP_TERMINAL_MARK_GAP, cy, STRIP_TERMINAL_MARK_R);
+              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "right", i)) dxfCircleLocal(out, page, "SYMBOL", element, w + STRIP_TERMINAL_MARK_GAP, cy, STRIP_TERMINAL_MARK_R);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, w + 3, 0, 2.5, element.label);
           } else {
@@ -20185,6 +20296,8 @@
               const cx = pitch * i + pitch / 2;
               dxfTerminalNodeLocal(out, page, "SYMBOL", element, cx, h / 2, Math.min(2.8, pitch * .32), shape);
               dxfTextLocal(out, page, "TEXT", element, cx - 1.1, h / 2 + .65, 1.7, (element.prefix || "") + String(Number(element.start || 1) + i));
+              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "left", i)) dxfCircleLocal(out, page, "SYMBOL", element, cx, -STRIP_TERMINAL_MARK_GAP, STRIP_TERMINAL_MARK_R);
+              if (element.type === "terminalStrip" && stripTerminalMarkVisible(element, "right", i)) dxfCircleLocal(out, page, "SYMBOL", element, cx, h + STRIP_TERMINAL_MARK_GAP, STRIP_TERMINAL_MARK_R);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -3, 2.5, element.label);
           }
@@ -20363,6 +20476,8 @@
               const cy = pitch * i + pitch / 2;
               dxfCircleLocal(out, page, "SYMBOL", element, cx, cy, 3.2);
               if (labels[i]) dxfTextLocal(out, page, "TEXT", element, cx - labels[i].length * .6, cy + .7, 2, labels[i]);
+              if (stripTerminalMarkVisible(element, "left", i)) dxfCircleLocal(out, page, "SYMBOL", element, -STRIP_TERMINAL_MARK_GAP, cy, STRIP_TERMINAL_MARK_R);
+              if (stripTerminalMarkVisible(element, "right", i)) dxfCircleLocal(out, page, "SYMBOL", element, uw + STRIP_TERMINAL_MARK_GAP, cy, STRIP_TERMINAL_MARK_R);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
             dxfVisibleAttributes(out, page, element);
@@ -20378,14 +20493,15 @@
             const terminalMode = element.deviceTerminalMode || "auto";
             const visibility = element.deviceTerminalVisibility || {};
             const showTerminal = (key, hasText) => typeof visibility[key] === "boolean" ? visibility[key] : terminalMode === "always" || (terminalMode === "auto" && hasText);
+            const pinFontSize = Math.max(1, Number(element.pinFontSize || 2.2));
             for (let i = 0; i < pins; i++) {
               const y = box.h * (i + 1) / (pins + 1);
               if (showTerminal("left-" + i, !!leftLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, 0, y, .55);
               if (showTerminal("right-" + i, !!rightLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, box.w, y, .55);
-              if (leftLabels[i]?.trim()) dxfTextLocal(out, page, "TEXT", element, 1.5, y + .55, 2.2, leftLabels[i].trim());
+              if (leftLabels[i]?.trim()) dxfTextLocal(out, page, "TEXT", element, 1.5, y + pinFontSize * .25, pinFontSize, leftLabels[i].trim());
               if (rightLabels[i]?.trim()) {
                 const text = rightLabels[i].trim();
-                dxfTextLocal(out, page, "TEXT", element, box.w - 1.5 - text.length * 1.1, y + .55, 2.2, text);
+                dxfTextLocal(out, page, "TEXT", element, box.w - 1.5 - text.length * pinFontSize * .5, y + pinFontSize * .25, pinFontSize, text);
               }
             }
             dxfVisibleAttributes(out, page, element);
