@@ -1836,6 +1836,66 @@
         return data;
       }
 
+      // 箱形コンセントの受電第2ピンを9.5mmピッチ(ローカル0,11.5)から10mmピッチ(0,12)へ統一し、
+      // テンプレート専用だったboxGrid10デザインをboxへ統合する。旧座標に一致する配線端点・接続点
+      // だけを動かす冪等な互換補修として全読込で実行する(スキーマ構造は不変)。
+      function alignLegacyOutletBoxConnections(data) {
+        const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.02;
+        const elementLists = [];
+        (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+          if (isPlainObject(page) && Array.isArray(page.elements)) elementLists.push(page.elements);
+        });
+        const collectCustomSymbolTemplates = symbols => {
+          (Array.isArray(symbols) ? symbols : []).forEach(symbol => {
+            if (!isPlainObject(symbol)) return;
+            if (Array.isArray(symbol.templates)) elementLists.push(symbol.templates);
+            else if (isPlainObject(symbol.template)) elementLists.push([symbol.template]);
+          });
+        };
+        collectCustomSymbolTemplates(data.customSymbols);
+        (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach(pack => {
+          if (isPlainObject(pack)) collectCustomSymbolTemplates(pack.customSymbols);
+        });
+        elementLists.forEach(elements => {
+          const moves = [];
+          elements.forEach(element => {
+            if (!isPlainObject(element) || element.type !== "outlet") return;
+            const variant = element.symbolVariant || "standard";
+            if (variant === "boxGrid10") {
+              // 統合後は形状・ピンともboxと同一のため名前だけ付け替える(配線は動かない)。
+              element.symbolVariant = "box";
+              return;
+            }
+            if (variant !== "box") return;
+            const scale = Number(element.scale || 1) || 1;
+            const angle = Number(element.rotation || 0) * Math.PI / 180;
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const globalAt = (localX, localY) => ({
+              x: Number(element.x || 0) + localX * scale * cos - localY * scale * sin,
+              y: Number(element.y || 0) + localX * scale * sin + localY * scale * cos
+            });
+            const before = globalAt(0, 11.5);
+            const after = globalAt(0, 12);
+            moves.push([before.x, before.y, after.x, after.y]);
+          });
+          if (!moves.length) return;
+          elements.forEach(element => {
+            if (!isPlainObject(element)) return;
+            if (["wire", "line", "arrow", "mechanicalLink"].includes(element.type) && Array.isArray(element.points)) {
+              element.points.forEach(point => {
+                const move = moves.find(item => near(item[0], point[0]) && near(item[1], point[1]));
+                if (move) { point[0] = round(move[2]); point[1] = round(move[3]); }
+              });
+            } else if (element.type === "junction") {
+              const move = moves.find(item => near(item[0], element.x || 0) && near(item[1], element.y || 0));
+              if (move) { element.x = round(move[2]); element.y = round(move[3]); }
+            }
+          });
+        });
+        return data;
+      }
+
       const MIGRATIONS = {
         // 1→2: schemaVersion欄の導入。構造変更はないが、欠落しがちな頁下位欄を補完する。
         1: data => {
@@ -2211,6 +2271,7 @@
           version += 1;
         }
         data = alignLegacyTransformerTopTapConnections(data);
+        data = alignLegacyOutletBoxConnections(data);
         data.schemaVersion = SCHEMA_VERSION;
         return data;
       }
@@ -7194,25 +7255,9 @@
           ]
         },
         // コンセント(箱形): 縦スロット2+接地端子。見本のSC1/SC2(盤内・操作盤コンセント)の表現。
-        // 2本の受電線が隣接ラング(ピッチ9.5mm)から左辺2ピンへ入る(行グリッド準拠)。
+        // 受電2ピンは10mmピッチ(2.5mmグリッド整合)。旧9.5mmピッチ版と旧boxGrid10は
+        // alignLegacyOutletBoxConnections()が読込時にこの形状へ統合する。
         outletBox: {
-          w: 10, h: 14,
-          anchors: [[0, 2], [0, 11.5]],
-          prims: [
-            { t: "line", p: [0, 2, 2.5, 2] },
-            { t: "line", p: [0, 11.5, 2.5, 11.5] },
-            { t: "rect", p: [2.5, 0, 7.5, 13.5], fill: "white" },
-            { t: "line", p: [5.5, 3.2, 5.5, 6.2] },
-            { t: "line", p: [7.5, 3.2, 7.5, 5.4] },
-            { t: "line", p: [6.5, 8.4, 6.5, 10.4] },
-            { t: "line", p: [6.5, 10.4, 6.5, 12] },
-            { t: "line", p: [5.3, 12, 7.7, 12] },
-            { t: "line", p: [5.8, 12.8, 7.2, 12.8] },
-            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
-          ]
-        },
-        // ACテンプレート専用10mm受電ピッチ版。筐体意匠は見本準拠の箱形を共有する。
-        outletBoxGrid10: {
           w: 10, h: 14,
           anchors: [[0, 2], [0, 12]],
           prims: [
@@ -7225,6 +7270,63 @@
             { t: "line", p: [6.5, 10.4, 6.5, 12] },
             { t: "line", p: [5.3, 12, 7.7, 12] },
             { t: "line", p: [5.8, 12.8, 7.2, 12.8] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // コンセント(箱形2口): 箱+差込口スロット2組+接地バー。ピンは箱形と共通。
+        outletBoxDouble: {
+          w: 10, h: 14,
+          anchors: [[0, 2], [0, 12]],
+          prims: [
+            { t: "line", p: [0, 2, 2.5, 2] },
+            { t: "line", p: [0, 12, 2.5, 12] },
+            { t: "rect", p: [2.5, 0, 7.5, 13.5], fill: "white" },
+            { t: "line", p: [5.2, 1.8, 5.2, 4.4] },
+            { t: "line", p: [7.2, 1.8, 7.2, 4.0] },
+            { t: "line", p: [5.2, 7.4, 5.2, 10.0] },
+            { t: "line", p: [7.2, 7.4, 7.2, 9.6] },
+            { t: "line", p: [5.3, 12, 7.7, 12] },
+            { t: "line", p: [5.8, 12.8, 7.2, 12.8] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // コンセント(丸形): 円+差込口の縦線2本。屋内配線図系の丸形表現。
+        outletRound: {
+          w: 10, h: 6,
+          anchors: [[0, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 2.4, 3] },
+            { t: "circle", p: [5, 3, 2.6], fill: "white" },
+            { t: "line", p: [4.2, 1.8, 4.2, 4.2] },
+            { t: "line", p: [5.8, 1.8, 5.8, 4.2] },
+            { t: "text", p: [8.4, 3], size: 1.8, anchor: "start", field: "label" }
+          ]
+        },
+        // コンセント(半円+接地極): 標準の半円ソケットに接地記号(横棒3本)を併記。
+        outletEarthed: {
+          w: 10, h: 8.2,
+          anchors: [[0, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 3.4, 3] },
+            { t: "arc", p: [6, 3, 2.6, 90, 270] },
+            { t: "line", p: [6, 0.4, 6, 5.6] },
+            { t: "line", p: [4.8, 2.0, 4.8, 4.0] },
+            { t: "line", p: [6, 5.6, 6, 6.6] },
+            { t: "line", p: [4.9, 6.6, 7.1, 6.6] },
+            { t: "line", p: [5.4, 7.3, 6.6, 7.3] },
+            { t: "line", p: [5.9, 8.0, 6.1, 8.0] },
+            { t: "text", p: [8.2, 3], size: 1.8, anchor: "start", field: "label" }
+          ]
+        },
+        // コンセント(プラグ・ソケット対): 挿抜表現(JIS C 0617のコネクタ対と同系)。ピンピッチ10mm。
+        outletPlugSocket: {
+          w: 10, h: 6,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 4.0, 3] },
+            { t: "line", p: [4.0, 1.6, 4.0, 4.4] },
+            { t: "arc", p: [5.8, 3, 1.5, 270, 450] },
+            { t: "line", p: [7.3, 3, 10, 3] },
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8162,8 +8264,13 @@
           }
           case "disconnector": return "disconnector";
           case "outlet": {
-            if (variant === "boxGrid10") return "outletBoxGrid10";
-            return variant === "box" ? "outletBox" : "outlet";
+            // boxGrid10は10mmピッチ統合によりboxと同一形状(旧図面互換の別名として受け付ける)。
+            if (variant === "box" || variant === "boxGrid10") return "outletBox";
+            if (variant === "boxDouble") return "outletBoxDouble";
+            if (variant === "round") return "outletRound";
+            if (variant === "earthed") return "outletEarthed";
+            if (variant === "plugSocket") return "outletPlugSocket";
+            return "outlet";
           }
           case "beacon": return "beacon";
           case "thermalElement": return "thermalElement";
@@ -9342,8 +9449,6 @@
               <div><label>ラベル位置 X</label><input data-bind="labelDx" data-kind="number" type="number" step="0.5" value="${round(element.labelDx || 0)}"></div>
               <div><label>ラベル位置 Y（上が＋）</label><input data-bind="labelDy" data-kind="number" type="number" step="0.5" value="${round(element.labelDy || 0)}"></div>
             </div>
-            <label>ラベル文字サイズ mm</label>
-            <input data-bind="labelFontSize" data-kind="number" type="number" min="0.5" step="0.1" value="${round(element.labelFontSize || 2.4)}">
           `;
         }
         return `
@@ -9353,8 +9458,6 @@
             <div><label>ラベル位置 X</label><input data-bind="labelDx" data-kind="number" type="number" step="0.5" value="${round(element.labelDx || 0)}"></div>
             <div><label>ラベル位置 Y（上が＋）</label><input data-bind="labelDy" data-kind="number" type="number" step="0.5" value="${round(element.labelDy || 0)}"></div>
           </div>
-          <label>ラベル文字サイズ mm</label>
-          <input data-bind="labelFontSize" data-kind="number" type="number" min="0.5" step="0.1" value="${round(element.labelFontSize || 2.2)}">
         `;
       }
 
@@ -9383,7 +9486,7 @@
         transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "二巻線円形（JIS）"], ["circlesCore", "二巻線円形＋鉄心（JIS）"]],
         heater: [["standard", "箱＋斜線（設備標準）"], ["plain", "箱のみ（JIS抵抗器形）"]],
         arrester: [["standard", "箱＋矢印（設備標準）"], ["gap", "ギャップ形（対向三角）"]],
-        outlet: [["standard", "半円＋差込口"], ["box", "箱形（スロット2＋接地）"]],
+        outlet: [["standard", "半円＋差込口"], ["box", "箱形（スロット2＋接地）"], ["boxDouble", "箱形2口"], ["round", "丸形（円＋差込口2本）"], ["earthed", "半円＋差込口（接地極付き）"], ["plugSocket", "プラグ・ソケット対（挿抜表現）"]],
         pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "キノコ＋b接点（JIS C 0617）"], ["multi2", "縦連結2接点（連動）"], ["multi3", "縦連結3接点（連動）"], ["jisMulti2", "JIS縦連結2接点（連動）"], ["jisMulti3", "JIS縦連結3接点（連動）"], ["facility", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]],
         pressureSwitch: [["standard", "ダイヤフラム形（設備標準）"], ["nc", "b接点（閉じ線＋止め）"]],
         floatSwitch: [["standard", "a接点＋フロート"], ["nc", "b接点＋フロート"]],
@@ -9444,9 +9547,9 @@
         const baseOptions = SYMBOL_VARIANT_OPTIONS[key];
         if (!baseOptions) return "";
         // 自動生成した10mm形状を別形状と取り違えず、変更後も選び直せるよう専用候補を明示する。
+        // コンセントの旧「箱形(テンプレート専用10mm)」はboxへ統合済み(選択肢からも廃止)。
         const templateVariantOptions = {
-          transformer: ["grid10", "巻線バー＋タップ（テンプレート専用10mm）"],
-          outlet: ["boxGrid10", "箱形（テンプレート専用10mm）"]
+          transformer: ["grid10", "巻線バー＋タップ（テンプレート専用10mm）"]
         };
         const templateOption = templateVariantOptions[key];
         let options = templateOption && !baseOptions.some(([value]) => value === templateOption[0])
@@ -10292,11 +10395,12 @@
           <summary>文字スタイル</summary>
           <label><input data-bind="fontBold" type="checkbox" ${element.fontBold ? "checked" : ""} style="width:auto;min-height:auto"> 太字</label>
         </details>`;
+        // ラベル文字サイズは「文字スタイル」の文字サイズへ一本化(旧labelFontSizeは描画互換のため残存)。
         const sizeBind = element.type === "text" ? "fontSize" : element.type === "wire" ? "wireNoFontSize" : "contentFontSize";
         const boldBind = element.type === "text" ? "fontBold" : element.type === "wire" ? "wireNoBold" : "contentFontBold";
         const size = element.type === "text" ? Number(element.fontSize || 3.5)
           : element.type === "wire" ? Number(element.wireNoFontSize || 2.3)
-            : Number(element.contentFontSize || element.labelFontSize || 2.2);
+            : Number(element.contentFontSize || element.labelFontSize || (["line", "mechanicalLink"].includes(element.type) ? 2.4 : 2.2));
         return `<details class="attr-panel" open>
           <summary>文字スタイル</summary>
           <label>文字サイズ mm</label>
@@ -13323,7 +13427,7 @@
             els.push({ ...defaultElement("mechanicalLink", cpLinkX, 0), points: [[cpLinkX, round(yA - 2.35)], [cpLinkX, round(yB - 2.35)]] });
             els.push({ ...defaultElement("wire", cpX + 12.5, yA), points: [[round(cpX + 12.5), yA], [147.5, yA]], wireNo: "101", wireNoAlign: "start" });
             els.push({ ...defaultElement("wire", cpX + 12.5, yB), points: [[round(cpX + 12.5), yB], [147.5, yB]], wireNo: "102", wireNoAlign: "start" });
-            els.push({ ...defaultElement("outlet", 147.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "boxGrid10", label: "SC1", tag: "SC1" });
+            els.push({ ...defaultElement("outlet", 147.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "box", label: "SC1", tag: "SC1" });
             els.push(textElement(160, round(yA + 1.4), "制御盤内", 1.8, 0, 12));
             els.push(textElement(160, round(yA + 4.4), "コンセント", 1.8, 0, 12));
           }
@@ -13339,7 +13443,7 @@
           els.push({ ...defaultElement("mechanicalLink", 109.75, 0), points: [[109.75, round(yA - 2.35)], [109.75, round(yB - 2.35)]] });
           els.push({ ...defaultElement("wire", 117.5, yA), points: [[117.5, yA], [122.5, yA]], wireNo: "107", wireNoAlign: "start" });
           els.push({ ...defaultElement("wire", 117.5, yB), points: [[117.5, yB], [122.5, yB]], wireNo: "108", wireNoAlign: "start" });
-          els.push({ ...defaultElement("outlet", 122.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "boxGrid10", label: "SC2", tag: "SC2" });
+          els.push({ ...defaultElement("outlet", 122.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "box", label: "SC2", tag: "SC2" });
           els.push(textElement(135, round(yA + 1.4), "操作盤", 1.8, 0, 12));
           els.push(textElement(135, round(yA + 4.4), "コンセント", 1.8, 0, 12));
         }
@@ -18151,7 +18255,7 @@
             接地4種、ヒューズ3種、ダイオード6種（トライアック含む）、変圧器3種＋テンプレート専用10mm形、論理ゲート3種、押しボタンa/b接点（設備標準・JIS C 0617）、
             リミットスイッチ箱形NO/NC・ローラーNO/NC、圧力/フロート/温度/フロー/フットスイッチのa/b接点、
             切替接点（c接点）、接触器主接点（半円・JIS C 0617）、サーマルリレー10種（熱動素子付きa/b接点ほか）、照光式/パーム押しボタン、切替スイッチJIS形、ブリッジ整流◇、避雷器2種、
-            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、箱形コンセント、蛍光灯、針付き計器、JISブザー半円形、交流電源（円＋〜）など100種類以上。
+            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント6種（箱形・箱形2口・丸形・接地極付き・プラグ対ほか）、蛍光灯、針付き計器、JISブザー半円形、交流電源（円＋〜）など100種類以上。
             切替時は<b>第1接続ピンの位置を保持</b>するため、そのピンへ接続した配線はずれません。ピン構成が共通のデザインではほかの接続点も維持され、
             縦連結接点や切替接点などでは必要な接続ピンが追加されます。複数選択+「同種を全選択」からの<b>一括切替</b>も可能です。
             接続ピンは原則<b>2.5mmグリッドの倍数</b>です。手動配置用の縦連結非常停止・変圧器の上下段・箱形コンセントは<b>設備行ピッチ9.5mm</b>を保持し、
