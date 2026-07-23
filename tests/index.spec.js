@@ -2684,6 +2684,26 @@ test("ページのシンボル拡大ONで新規配置が1.5倍になり接続点
   expect(result.plainSpan).toBe(10);
 });
 
+test("文字サイズ系の入力は0.1刻みで統一されている", async ({ page }) => {
+  const steps = await page.evaluate(() => {
+    const text = { ...window.__edsTest.defaultElement("text", 20, 20), id: "tx", text: "A" };
+    const coil = { ...window.__edsTest.defaultElement("coil", 60, 20), id: "cl", label: "CR1", tag: "CR1" };
+    window.__edsTest.installProjectData({
+      schemaVersion: 4,
+      activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [text, coil] }]
+    });
+    const collect = [];
+    ["tx", "cl"].forEach(id => {
+      window.__edsTest.selectElement(id);
+      document.querySelectorAll('[data-bind="fontSize"], [data-bind$="FontSize"]').forEach(input => collect.push(input.step));
+    });
+    return collect;
+  });
+  expect(steps.length).toBeGreaterThan(0);
+  expect(steps.every(step => step === "0.1")).toBe(true);
+});
+
 test("グリッド表示をスナップとは独立して切り替えて保存できる", async ({ page }) => {
   const gridLayers = page.locator("svg.drawing-page [data-grid-layer]");
   await expect(gridLayers).toHaveCount(2);

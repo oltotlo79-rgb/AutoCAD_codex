@@ -9291,7 +9291,7 @@
             <label>文字</label>
             <textarea data-bind="text">${escapeHtml(element.text || "")}</textarea>
             <label>文字サイズ mm</label>
-            <input data-bind="fontSize" data-kind="number" type="number" step="0.2" value="${round(element.fontSize || 3.5)}">
+            <input data-bind="fontSize" data-kind="number" type="number" step="0.1" value="${round(element.fontSize || 3.5)}">
             <label>横位置</label>
             <select data-bind="align">
               <option value="start"${(element.align || "start") === "start" ? " selected" : ""}>左</option>
@@ -9340,7 +9340,7 @@
               <div><label>ラベル位置 Y（上が＋）</label><input data-bind="labelDy" data-kind="number" type="number" step="0.5" value="${round(element.labelDy || 0)}"></div>
             </div>
             <label>ラベル文字サイズ mm</label>
-            <input data-bind="labelFontSize" data-kind="number" type="number" min="0.5" step="0.2" value="${round(element.labelFontSize || 2.4)}">
+            <input data-bind="labelFontSize" data-kind="number" type="number" min="0.5" step="0.1" value="${round(element.labelFontSize || 2.4)}">
           `;
         }
         return `
@@ -9351,7 +9351,7 @@
             <div><label>ラベル位置 Y（上が＋）</label><input data-bind="labelDy" data-kind="number" type="number" step="0.5" value="${round(element.labelDy || 0)}"></div>
           </div>
           <label>ラベル文字サイズ mm</label>
-          <input data-bind="labelFontSize" data-kind="number" type="number" min="0.5" step="0.2" value="${round(element.labelFontSize || 2.2)}">
+          <input data-bind="labelFontSize" data-kind="number" type="number" min="0.5" step="0.1" value="${round(element.labelFontSize || 2.2)}">
         `;
       }
 
@@ -9933,7 +9933,7 @@
             <div><label>表示Y</label><input data-bind="attrY" data-kind="number" type="number" step="0.5" value="${round(defaults.y)}"></div>
           </div>
           <label>表示文字サイズ mm</label>
-          <input data-bind="attrFontSize" data-kind="number" type="number" min="1" step="0.2" value="${round(defaults.fontSize)}">
+          <input data-bind="attrFontSize" data-kind="number" type="number" min="1" step="0.1" value="${round(defaults.fontSize)}">
         `;
       }
 
@@ -10293,7 +10293,7 @@
         return `<details class="attr-panel" open>
           <summary>文字スタイル</summary>
           <label>文字サイズ mm</label>
-          <input data-bind="${sizeBind}" data-kind="number" type="number" min="0.5" step="0.2" value="${round(size)}">
+          <input data-bind="${sizeBind}" data-kind="number" type="number" min="0.5" step="0.1" value="${round(size)}">
           <label><input data-bind="${boldBind}" type="checkbox" ${element[boldBind] ? "checked" : ""} style="width:auto;min-height:auto"> 太字</label>
         </details>`;
       }
