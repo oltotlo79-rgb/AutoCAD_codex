@@ -677,6 +677,25 @@
     .palette-icon { transition: transform .2s var(--ease); }
     .palette-item:hover .palette-icon { transform: scale(1.09); }
 
+    /* --- 右パネル: ページ設定/選択部品のタブ切替 --- */
+    .inspector-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+    .inspector-tabs button {
+      flex: 1; padding: 6px 4px; font-size: 12px; cursor: pointer;
+      border: 1px solid #c8d0d8; border-radius: 6px; background: #f2f5f8; color: #46505a;
+    }
+    .inspector-tabs button.active { background: var(--accent, #0f6f63); border-color: var(--accent, #0f6f63); color: #fff; font-weight: 700; }
+    .inspector-tabs button:disabled { opacity: .45; cursor: default; }
+    #inspectorPageTab.hidden, #selectionPanel.hidden { display: none; }
+
+    /* --- パレット: お気に入りピン留め(タイル右上の☆) --- */
+    .palette-item { position: relative; }
+    .palette-fav {
+      position: absolute; top: 1px; right: 1px; width: 18px; min-height: 18px; padding: 0;
+      border: none; background: transparent; color: #b8860b; font-size: 13px; line-height: 18px;
+      cursor: pointer; opacity: 0; transition: opacity .15s;
+    }
+    .palette-item:hover .palette-fav, .palette-item:focus-within .palette-fav, .palette-fav.active { opacity: 1; }
+
     /* --- 選択枠: 破線送り(マーチングアンツ)。ドラッグ中は再生成されるため実質静止=負荷なし --- */
     .selection-box { animation: ants 1.2s linear infinite; }
     @keyframes ants { to { stroke-dashoffset: -6.4; } }
@@ -1237,6 +1256,11 @@
 
       <!-- 右パネル: ページ設定・表題欄・テンプレート/下絵メニュー・選択中要素の編集(renderSelectionPanel) -->
       <aside class="inspector">
+        <div class="inspector-tabs" id="inspectorTabs" role="tablist">
+          <button type="button" id="inspectorTabPage" role="tab">ページ設定</button>
+          <button type="button" id="inspectorTabComponent" role="tab">選択部品</button>
+        </div>
+        <div id="inspectorPageTab">
         <div class="panel-title">ページ設定</div>
         <label for="drawingStandard">標準</label>
         <select id="drawingStandard"></select>
@@ -1343,6 +1367,7 @@
             <option value="twoUp">2面下絵ページを作成</option>
             <option value="select">下絵を選択（ロック中も可）</option>
           </select>
+        </div>
         </div>
 
         <div class="section" id="selectionPanel"></div>
@@ -2870,17 +2895,38 @@
       // Undo履歴へ現在stateを積み、localStorageへ自動バックアップする。
       // 変更操作は必ず最後にこれを呼ぶ(直前と同一なら何もしない)。
       // reasonはステータス表示と履歴タイムラインの操作名に使う。
-      function commitHistory(reason = "") {
+      // 直前コミットとの合体判定用(同一フィールドの連続編集を1履歴へまとめる)。
+      let lastCommitMergeKey = null;
+      let lastCommitMergeAt = 0;
+      const HISTORY_MERGE_WINDOW_MS = 4000;
+
+      function commitHistory(reason = "", options = {}) {
         syncPageTotals();
         const compact = serializeHistorySnapshot();
         const snapshot = compact.snapshot;
         if (history[historyIndex] === snapshot) return;
+        const mergeKey = options.mergeKey || null;
+        // 同一フィールドの連続編集(数値スピナー連打等)は先頭エントリを置き換えて合体し、
+        // Undo1回で編集開始前まで戻れるようにする。別操作を挟むか4秒空いたら新エントリ。
+        const merge = Boolean(mergeKey)
+          && mergeKey === lastCommitMergeKey
+          && historyIndex === history.length - 1
+          && history.length > 0
+          && Date.now() - lastCommitMergeAt < HISTORY_MERGE_WINDOW_MS;
         history = history.slice(0, historyIndex + 1);
         historyReasons = historyReasons.slice(0, historyIndex + 1);
         historyImageRefs = historyImageRefs.slice(0, historyIndex + 1);
-        history.push(snapshot);
-        historyReasons.push({ reason: reason || "変更", at: new Date().toISOString() });
-        historyImageRefs.push(compact.refs);
+        if (merge) {
+          history[history.length - 1] = snapshot;
+          historyReasons[historyReasons.length - 1] = { reason: reason || "変更", at: new Date().toISOString() };
+          historyImageRefs[historyImageRefs.length - 1] = compact.refs;
+        } else {
+          history.push(snapshot);
+          historyReasons.push({ reason: reason || "変更", at: new Date().toISOString() });
+          historyImageRefs.push(compact.refs);
+        }
+        lastCommitMergeKey = mergeKey;
+        lastCommitMergeAt = Date.now();
         // Redo分岐を切った直後の未参照画像を、容量判定より先に解放する。
         pruneHistoryImageAssets();
         while (history.length > 1 && (history.length > HISTORY_LIMIT
@@ -2949,6 +2995,8 @@
       // 履歴インデックスのスナップショットへstateを差し替える(Undo/Redoの実体)。
       function restoreHistory(index) {
         if (index < 0 || index >= history.length) return;
+        // Undo/Redo後の編集が移動前のエントリへ合体しないようにする。
+        lastCommitMergeKey = null;
         const previous = {
           state: { ...state },
           historyIndex,
@@ -3198,6 +3246,22 @@
           labelElement.className = "palette-label";
           labelElement.textContent = label;
           button.appendChild(labelElement);
+          // お気に入りピン留め(☆)。ユーザー部品以外の部品・回路をワンクリックで先頭固定できる。
+          if (!String(item.type).startsWith("custom:")) {
+            const favored = (state.settings.favoriteTools || []).includes(item.type);
+            const star = document.createElement("button");
+            star.type = "button";
+            star.className = "palette-fav" + (favored ? " active" : "");
+            star.textContent = favored ? "★" : "☆";
+            star.title = favored ? "お気に入りから外す" : "お気に入りに追加（パレット先頭に固定）";
+            star.setAttribute("aria-label", star.title);
+            star.addEventListener("click", event => {
+              event.stopPropagation();
+              toggleFavoriteTool(item.type);
+            });
+            star.addEventListener("dragstart", event => event.preventDefault());
+            button.appendChild(star);
+          }
           button.addEventListener("dragstart", event => {
             event.dataTransfer.setData("text/plain", item.type);
             event.dataTransfer.effectAllowed = "copy";
@@ -9097,8 +9161,59 @@
         return selectedElements()[0] || null;
       }
 
+      // ===== 選択パネルのグループ開閉状態の記憶(種別×見出しごと、localStorage) =====
+      const PANEL_GROUP_STORE_KEY = "eds-panel-groups";
+      let panelGroupMemory = {};
+      try {
+        const storedGroups = JSON.parse(localStorage.getItem(PANEL_GROUP_STORE_KEY) || "{}");
+        if (storedGroups && typeof storedGroups === "object") panelGroupMemory = storedGroups;
+      } catch (_) { /* 破損時は既定の開閉のまま */ }
+
+      function applyPanelGroupMemory(panel, typeKey) {
+        qsa("details.attr-panel", panel).forEach(details => {
+          const summary = details.querySelector("summary")?.textContent?.trim() || "";
+          if (!summary) return;
+          const key = typeKey + "::" + summary;
+          if (typeof panelGroupMemory[key] === "boolean") details.open = panelGroupMemory[key];
+          details.addEventListener("toggle", () => {
+            panelGroupMemory[key] = details.open;
+            try { localStorage.setItem(PANEL_GROUP_STORE_KEY, JSON.stringify(panelGroupMemory)); } catch (_) { /* 容量超過等は無視 */ }
+          });
+        });
+      }
+
+      // ===== 右パネルのタブ(ページ設定/選択部品) =====
+      // 既定は「選択なし=ページ設定、選択あり=選択部品」。ユーザーがタブをクリックした場合は
+      // 同じ選択状態の間だけその選択を優先する(選択が変わったら自動判定へ戻る)。
+      let inspectorTabChoice = null;
+
+      function inspectorSelectionKey() {
+        return selectedIds.join(",");
+      }
+
+      function currentInspectorTab() {
+        if (inspectorTabChoice && inspectorTabChoice.key === inspectorSelectionKey()) return inspectorTabChoice.tab;
+        return selectedIds.length ? "component" : "page";
+      }
+
+      function applyInspectorTab() {
+        const pageTab = qs("#inspectorPageTab");
+        const pageButton = qs("#inspectorTabPage");
+        const componentButton = qs("#inspectorTabComponent");
+        const panel = qs("#selectionPanel");
+        if (!pageTab || !pageButton || !componentButton || !panel) return;
+        const hasSelection = selectedIds.length > 0;
+        const tab = hasSelection ? currentInspectorTab() : "page";
+        componentButton.disabled = !hasSelection;
+        pageButton.classList.toggle("active", tab === "page");
+        componentButton.classList.toggle("active", tab === "component");
+        pageTab.classList.toggle("hidden", tab !== "page");
+        panel.classList.toggle("hidden", tab !== "component");
+      }
+
       // 右パネル全体(ページ設定+選択パネル)を現在stateへ同期。
       function syncInspector() {
+        applyInspectorTab();
         const page = currentPage();
         if (!page) return;
         renderStandardSelect();
@@ -9459,6 +9574,7 @@
         qs("#extendWireBtn", panel)?.addEventListener("click", extendSelectedWireEnd);
         qs("#trimWireBtn", panel)?.addEventListener("click", trimSelectedWireEnd);
         qs("#catalogPickBtn", panel)?.addEventListener("click", showCatalogPicker);
+        qs("#bulkTerminalEditBtn", panel)?.addEventListener("click", showTerminalBulkEditor);
         qs("#mirrorBtn", panel)?.addEventListener("click", mirrorSelectedHorizontal);
         qs("#arrayCopyBtn", panel)?.addEventListener("click", showArrayCopyDialog);
         qs("#lineStylePreset", panel)?.addEventListener("change", event => {
@@ -9474,6 +9590,8 @@
         attachSelectionActionButtons(panel);
         qs("#rotateLeftBtn", panel)?.addEventListener("click", () => rotateSelected(-90));
         qs("#rotateRightBtn", panel)?.addEventListener("click", () => rotateSelected(90));
+        // グループ(details)の開閉状態を種別ごとに記憶し、次回同種を選択した時に再現する。
+        applyPanelGroupMemory(panel, selectedElement()?.type || "generic");
       }
 
       // 選択パネル内の操作ボタン群(複製/削除/回転/整列/グループ等)へハンドラを付ける。
@@ -9696,6 +9814,149 @@
         }
       }
 
+      // ===== 端子の一括編集(表形式ダイアログ) =====
+      // 機器箱/端子台/PLCユニット列/端子箱の端子まわり設定を「行=端子」の表で編集する。
+      // パネルのチェックボックス群と同じ内容を扱うだけで、既存の個別編集UIはそのまま残す。
+      function terminalBulkConfig(element) {
+        if (element.type === "deviceBox") {
+          const pins = Math.max(0, Number(element.pins || 4));
+          const leftLabels = String(element.pinText || "").split(/\r?\n/);
+          const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
+          const terminalMode = element.deviceTerminalMode || "auto";
+          const visibility = element.deviceTerminalVisibility || {};
+          const checked = (key, hasText) => typeof visibility[key] === "boolean"
+            ? visibility[key]
+            : terminalMode === "always" || (terminalMode === "auto" && hasText);
+          return {
+            title: "機器箱の端子一括編集",
+            rows: pins,
+            columns: [
+              { key: "leftShow", label: "左端子", kind: "check", value: i => checked("left-" + i, !!leftLabels[i]?.trim()) },
+              { key: "leftText", label: "左端子文字", kind: "text", value: i => leftLabels[i] || "" },
+              { key: "rightShow", label: "右端子", kind: "check", value: i => checked("right-" + i, !!rightLabels[i]?.trim()) },
+              { key: "rightText", label: "右端子文字", kind: "text", value: i => rightLabels[i] || "" }
+            ],
+            apply: values => {
+              const next = { ...(element.deviceTerminalVisibility || {}) };
+              for (let i = 0; i < pins; i++) {
+                next["left-" + i] = values.leftShow[i];
+                next["right-" + i] = values.rightShow[i];
+              }
+              element.deviceTerminalVisibility = next;
+              element.pinText = values.leftText.join("\n").replace(/\n+$/, "");
+              element.rightPinText = values.rightText.join("\n").replace(/\n+$/, "");
+            }
+          };
+        }
+        if (element.type === "terminalStrip") {
+          const nodes = terminalStripGeometry(element).nodes;
+          const labels = String(element.terminalLabels || "").split(/\r?\n/);
+          return {
+            title: "端子台の端子一括編集",
+            rows: nodes,
+            columns: [
+              { key: "name", label: "端子名（空=自動番号）", kind: "text", value: i => labels[i] || "" },
+              { key: "leftMark", label: "左端子記号", kind: "check", value: i => stripTerminalMarkVisible(element, "left", i) },
+              { key: "rightMark", label: "右端子記号", kind: "check", value: i => stripTerminalMarkVisible(element, "right", i) }
+            ],
+            apply: values => {
+              element.terminalLabels = values.name.join("\n").replace(/\n+$/, "");
+              const marks = { ...(element.stripTerminalMarks || {}) };
+              for (let i = 0; i < nodes; i++) {
+                marks["left-" + i] = values.leftMark[i];
+                marks["right-" + i] = values.rightMark[i];
+              }
+              element.stripTerminalMarks = marks;
+            }
+          };
+        }
+        if (element.type === "plcBlock" && (element.plcStyle || "grid") === "unit") {
+          const rows = Math.max(1, Number(element.rows || 8));
+          const labels = String(element.pinText || "").split(/\r?\n/);
+          return {
+            title: "PLCユニット列の端子一括編集",
+            rows,
+            columns: [
+              { key: "name", label: "I/O名", kind: "text", value: i => labels[i] || "" },
+              { key: "leftMark", label: "左端子記号", kind: "check", value: i => stripTerminalMarkVisible(element, "left", i) },
+              { key: "rightMark", label: "右端子記号", kind: "check", value: i => stripTerminalMarkVisible(element, "right", i) }
+            ],
+            apply: values => {
+              element.pinText = values.name.join("\n").replace(/\n+$/, "");
+              const marks = { ...(element.stripTerminalMarks || {}) };
+              for (let i = 0; i < rows; i++) {
+                marks["left-" + i] = values.leftMark[i];
+                marks["right-" + i] = values.rightMark[i];
+              }
+              element.stripTerminalMarks = marks;
+            }
+          };
+        }
+        if (element.type === "terminalBox") {
+          const rows = Math.max(1, Number(element.rows || 3));
+          const labels = String(element.boxLabels || "").split(/\r?\n/);
+          return {
+            title: "端子箱の一括編集",
+            rows,
+            columns: [
+              { key: "name", label: "箱内文字", kind: "text", value: i => labels[i] || "" },
+              { key: "leftStub", label: "左引き出し線", kind: "check", value: i => terminalBoxStubVisible(element, "left", i) },
+              { key: "rightStub", label: "右引き出し線", kind: "check", value: i => terminalBoxStubVisible(element, "right", i) }
+            ],
+            apply: values => {
+              element.boxLabels = values.name.join("\n").replace(/\n+$/, "");
+              const stubs = { ...(element.terminalBoxStubs || {}) };
+              for (let i = 0; i < rows; i++) {
+                stubs["left-" + i] = values.leftStub[i];
+                stubs["right-" + i] = values.rightStub[i];
+              }
+              element.terminalBoxStubs = stubs;
+            }
+          };
+        }
+        return null;
+      }
+
+      function showTerminalBulkEditor() {
+        const element = selectedElement();
+        const config = element ? terminalBulkConfig(element) : null;
+        if (!config) { setStatus("端子設定を持つ部品を選択してください。"); return; }
+        const headerCells = config.columns.map(col => `<th>${escapeHtml(col.label)}${col.kind === "check" ? `
+          <div class="inline" style="gap:2px;margin-top:2px">
+            <button type="button" data-bulk-all="${col.key}:on" style="min-height:auto;padding:1px 5px;font-size:11px">全ON</button>
+            <button type="button" data-bulk-all="${col.key}:off" style="min-height:auto;padding:1px 5px;font-size:11px">全OFF</button>
+            <button type="button" data-bulk-all="${col.key}:invert" style="min-height:auto;padding:1px 5px;font-size:11px">反転</button>
+          </div>` : ""}</th>`).join("");
+        const bodyRows = Array.from({ length: config.rows }, (_, i) => `<tr><td style="text-align:center">${i + 1}</td>${config.columns.map(col => `<td style="text-align:center">${
+          col.kind === "check"
+            ? `<input type="checkbox" data-bulk-cell="${col.key}:${i}" ${col.value(i) ? "checked" : ""} style="width:auto;min-height:auto">`
+            : `<input type="text" data-bulk-cell="${col.key}:${i}" value="${escapeAttr(col.value(i))}" style="min-height:auto;padding:2px 4px">`
+        }</td>`).join("")}</tr>`).join("");
+        openDialog(config.title, `<p class="muted">行=端子。チェック列は見出しの全ON/全OFF/反転で一括変更できます。</p>
+          <table class="report-table"><thead><tr><th>No.</th>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="bulkTerminalApply" class="primary">適用</button></div>`, { wide: true });
+        qsa("[data-bulk-all]", qs("#dialogBody")).forEach(button => button.addEventListener("click", () => {
+          const [key, mode] = button.dataset.bulkAll.split(":");
+          qsa(`[data-bulk-cell^="${key}:"]`, qs("#dialogBody")).forEach(input => {
+            if (input.type !== "checkbox") return;
+            input.checked = mode === "on" ? true : mode === "off" ? false : !input.checked;
+          });
+        }));
+        qs("#bulkTerminalApply").onclick = () => {
+          const values = {};
+          config.columns.forEach(col => {
+            values[col.key] = Array.from({ length: config.rows }, (_, i) => {
+              const input = qs(`[data-bulk-cell="${col.key}:${i}"]`, qs("#dialogBody"));
+              return col.kind === "check" ? Boolean(input?.checked) : String(input?.value ?? "");
+            });
+          });
+          config.apply(values);
+          closeDialog();
+          commitHistory("端子設定を一括更新しました。");
+          render();
+        };
+      }
+
       // 端子台/PLCユニット列の端子記号(左右の小円)設定UI。既定の左右トグル+端子ごとの上書き。
       function stripTerminalMarkFields(element, rowCount) {
         return `
@@ -9704,6 +9965,7 @@
               <label><input data-bind="terminalMarkLeft" type="checkbox" ${element.terminalMarkLeft === true ? " checked" : ""} style="width:auto;min-height:auto"> 左（横向きは上）</label>
               <label><input data-bind="terminalMarkRight" type="checkbox" ${element.terminalMarkRight === true ? " checked" : ""} style="width:auto;min-height:auto"> 右（横向きは下）</label>
             </div>
+            <button type="button" id="bulkTerminalEditBtn" style="width:100%;margin-top:8px">端子の一括編集…</button>
             <details class="attr-panel"><summary>端子ごとの表示（チェック=表示）</summary>
               <div class="form-grid">
                 ${Array.from({ length: rowCount }, (_, index) => `
@@ -10080,12 +10342,14 @@
             <textarea data-bind="boxLabels">${escapeHtml(element.boxLabels || "")}</textarea>
             <label>箱内文字サイズ mm</label>
             <input data-bind="boxLabelFontSize" data-kind="number" type="number" min="1" step="0.1" value="${round(element.boxLabelFontSize || 2.2)}">
-            <label>箱ごとの引き出し線（チェック=線を出す）</label>
-            <div class="form-grid">
-              ${Array.from({ length: rows }, (_, index) => `
-                <label><input data-bind="terminalBoxStubs.left-${index}" type="checkbox" ${terminalBoxStubVisible(element, "left", index) ? "checked" : ""} style="width:auto;min-height:auto"> 左${index + 1}</label>
-                <label><input data-bind="terminalBoxStubs.right-${index}" type="checkbox" ${terminalBoxStubVisible(element, "right", index) ? "checked" : ""} style="width:auto;min-height:auto"> 右${index + 1}</label>`).join("")}
-            </div>
+            <button type="button" id="bulkTerminalEditBtn" style="width:100%;margin-top:8px">端子の一括編集…</button>
+            <details class="attr-panel"><summary>箱ごとの引き出し線（個別、チェック=線を出す）</summary>
+              <div class="form-grid">
+                ${Array.from({ length: rows }, (_, index) => `
+                  <label><input data-bind="terminalBoxStubs.left-${index}" type="checkbox" ${terminalBoxStubVisible(element, "left", index) ? "checked" : ""} style="width:auto;min-height:auto"> 左${index + 1}</label>
+                  <label><input data-bind="terminalBoxStubs.right-${index}" type="checkbox" ${terminalBoxStubVisible(element, "right", index) ? "checked" : ""} style="width:auto;min-height:auto"> 右${index + 1}</label>`).join("")}
+              </div>
+            </details>
             <p class="muted">引き出し線がある箱は線の先端、ない箱は箱の横辺中央が配線接続点になります。</p>
           `;
         }
@@ -10109,12 +10373,14 @@
             <div class="inline" role="radiogroup" aria-label="機器箱の端子記号">
               ${[["auto", "文字に連動"], ["always", "常に表示"], ["hidden", "非表示"]].map(([value, label]) => `<label><input data-bind="deviceTerminalMode" name="deviceTerminalMode" type="radio" value="${value}" ${terminalMode === value ? "checked" : ""} style="width:auto;min-height:auto"> ${label}</label>`).join("")}
             </div>
-            <label>端子ごとの表示</label>
-            <div class="form-grid">
-              ${Array.from({ length: pins }, (_, index) => `
-                <label><input data-bind="deviceTerminalVisibility.left-${index}" type="checkbox" ${terminalChecked("left-" + index, !!leftLabels[index]) ? "checked" : ""} style="width:auto;min-height:auto"> 左${index + 1}</label>
-                <label><input data-bind="deviceTerminalVisibility.right-${index}" type="checkbox" ${terminalChecked("right-" + index, !!rightLabels[index]) ? "checked" : ""} style="width:auto;min-height:auto"> 右${index + 1}</label>`).join("")}
-            </div>
+            <button type="button" id="bulkTerminalEditBtn" style="width:100%;margin-top:8px">端子の一括編集…</button>
+            <details class="attr-panel"><summary>端子ごとの表示（個別）</summary>
+              <div class="form-grid">
+                ${Array.from({ length: pins }, (_, index) => `
+                  <label><input data-bind="deviceTerminalVisibility.left-${index}" type="checkbox" ${terminalChecked("left-" + index, !!leftLabels[index]) ? "checked" : ""} style="width:auto;min-height:auto"> 左${index + 1}</label>
+                  <label><input data-bind="deviceTerminalVisibility.right-${index}" type="checkbox" ${terminalChecked("right-" + index, !!rightLabels[index]) ? "checked" : ""} style="width:auto;min-height:auto"> 右${index + 1}</label>`).join("")}
+              </div>
+            </details>
           `;
         }
         if (["rect", "circle"].includes(element.type)) {
@@ -10342,7 +10608,8 @@
             }
           }
         }
-        if (save) commitHistory("要素を更新しました。");
+        // 同じ要素の同じ項目の連続編集は履歴を1件へ合体(スピナー連打で履歴が埋まるのを防ぐ)。
+        if (save) commitHistory("要素を更新しました。", { mergeKey: "field:" + element.id + ":" + key });
         render(save ? {} : { light: true });
       }
 
@@ -14936,6 +15203,17 @@
         else if (command.kind === "action" && command.value) command.value();
       }
 
+      // パレットタイルの☆からお気に入り(パレット先頭固定)を追加/解除する。
+      function toggleFavoriteTool(type) {
+        const favorites = Array.isArray(state.settings.favoriteTools) ? state.settings.favoriteTools.slice() : [];
+        const index = favorites.indexOf(type);
+        if (index >= 0) favorites.splice(index, 1);
+        else favorites.push(type);
+        state.settings.favoriteTools = favorites;
+        commitHistory(index >= 0 ? "お気に入りから外しました。" : "お気に入りに追加しました。");
+        renderPalette();
+      }
+
       function showFavoriteManager() {
         const current = new Set(state.settings.favoriteTools || []);
         const choices = [...PALETTE, ...BUILTIN_CIRCUITS.map(item => ({ type: "circuit:" + item.id, label: item.label }))]
@@ -15174,19 +15452,41 @@
         };
       }
 
+      // クイックプロパティ: 種別ごとの「よく使う項目」だけを出す小カード。全項目は右パネル(選択部品タブ)へ。
       function showQuickProperties() {
         const item = selectedElement();
         if (!item) { setStatus("要素を選択してください。"); return; }
+        const variantKey = !item.points && item.type !== "text" ? variantOptionsKeyFor(item) : null;
+        const variantOptions = variantKey ? SYMBOL_VARIANT_OPTIONS[variantKey] : null;
+        const currentVariant = item.symbolVariant || "standard";
+        const variantHtml = variantOptions ? `
+          <label>シンボルデザイン</label>
+          <select id="quickVariant">
+            ${(variantOptions.some(([value]) => value === currentVariant) ? variantOptions : [[currentVariant, currentVariant], ...variantOptions])
+              .map(([value, label]) => `<option value="${escapeAttr(value)}"${currentVariant === value ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}
+          </select>` : "";
         openDialog("クイックプロパティ", `<div class="row"><div><label>タグ／ラベル／線番</label><input id="quickIdentity" value="${escapeAttr(item.type === "wire" ? item.wireNo || "" : (componentTag(item) || item.label || ""))}"></div>
           <div><label>回転</label><input id="quickRotation" type="number" step="15" value="${Number(item.rotation || 0)}"></div></div>
+          ${variantHtml}
           <div class="row"><div><label>レイヤ</label><select id="quickLayer">${state.layers.map(layer => `<option value="${escapeAttr(layer.id)}"${item.layer === layer.id ? " selected" : ""}>${escapeHtml(layer.label)}</option>`).join("")}</select></div>
           <div><label>説明</label><input id="quickDescription" value="${escapeAttr(item.description || "")}"></div></div>
-          <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="quickApply" class="primary">適用</button></div>`);
+          <div class="inline" style="justify-content:space-between;margin-top:12px">
+            <button id="quickOpenDetail" type="button">詳細（右パネルへ）</button>
+            <button id="quickApply" class="primary">適用</button>
+          </div>`);
         qs("#quickApply").onclick = () => {
           const identity = qs("#quickIdentity").value;
           if (item.type === "wire") item.wireNo = identity; else { if (supportsElectricalAttributes(item)) item.tag = identity; item.label = identity; }
           item.rotation = Number(qs("#quickRotation").value || 0); item.layer = qs("#quickLayer").value; item.description = qs("#quickDescription").value;
+          const variantSelect = qs("#quickVariant");
+          if (variantSelect && variantSelect.value !== currentVariant) applySymbolVariantTo(item, variantSelect.value);
           closeDialog(); commitHistory("クイックプロパティを更新しました。"); render();
+        };
+        qs("#quickOpenDetail").onclick = () => {
+          closeDialog();
+          inspectorTabChoice = { tab: "component", key: inspectorSelectionKey() };
+          render();
+          setTimeout(() => qs("#selectionPanel")?.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
         };
       }
 
@@ -18404,7 +18704,7 @@
               <li><b>上部ツールバー</b>: ファイル（新規/開く/復元/保存）｜検索・ヘルプ・表題欄｜出力（プレビュー/PDF/A3面付/SVG/PNG）｜作図ツール（S/W/T）と取消/やり直し/削除</li>
               <li><b>ページタブ</b>: クリックで切替、<b>ダブルクリックで名前変更</b></li>
               <li><b>左パネル</b>: 部品パレット（最近使用/検索つき）→ 表示（ズーム/<b>ページ表示</b>/グリッド/スナップ）→ 配線・レイヤ → 自動処理・機能メニュー</li>
-              <li><b>右パネル</b>: ページ設定 → テンプレート/下絵 → 選択中要素の編集（選択すると自動スクロール）</li>
+              <li><b>右パネル</b>: <b>「ページ設定」「選択部品」の2タブ</b>。部品を選択すると自動で選択部品タブへ切替（タブクリックで手動切替も可）。折りたたみグループの開閉は部品種別ごとに記憶されます</li>
               <li><b>ステータスバー</b>（右上）: 直前の操作結果。長文はマウスを乗せると全文表示</li>
               <li><b>右クリック</b>: 要素の上=編集メニュー（複製/回転/ロック/参照ジャンプ等）、空白=貼付/全体表示</li>
             </ul>`)}
@@ -18414,7 +18714,7 @@
               <li><b>ドラッグ配置</b>: パレットから用紙へドラッグ＆ドロップ</li>
               <li><b>連続配置</b>: 部品をクリック→用紙をクリックするたびに配置。<b>Esc</b>で終了</li>
               <li><b>検索して配置</b>: 部品検索に入力→<b>Enter</b>で先頭候補が配置モードに</li>
-              <li><b>最近使用</b>: パレット先頭に直近6件が自動で並ぶ</li>
+              <li><b>最近使用</b>: パレット先頭に直近6件が自動で並ぶ。タイル右上の<b>☆</b>クリックで<b>お気に入り（先頭固定）</b>へ追加/解除</li>
               <li>配置時は<b>接続ピンがグリッド・行に自動で一致</b>。配線上に置くと線が自動分割されて割り込む</li>
               <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大</b>をONにすると、以後パレットから配置する部品が<b>1.5倍</b>で置かれます（既存の部品は変わりません。接続ピン・DXF出力も倍率に追従）</li>
               <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
@@ -18445,6 +18745,8 @@
               <li>点ハンドル（配線・直線・多角形の頂点）はドラッグで移動し、端子・端点へ<b>吸着</b></li>
               <li><b>ミニツールバー</b>: 部品を選択すると要素から少し離れた位置に「<b>配線/回転/複製/編集</b>」ボタンが浮かびます（配線=接続点から配線を開始、編集=クイックプロパティ）。要素の操作を邪魔しないよう上または下へ表示されます</li>
               <li>右パネルの入力欄は<b>編集していた要素に確定</b>します。Enterを押さずに別の部品をクリックしても、クリックした部品へ書き込まれることはありません</li>
+              <li><b>端子の一括編集</b>: 機器箱・端子台・PLCユニット列・端子箱は「<b>端子の一括編集…</b>」で行=端子の表からまとめて設定（全ON/全OFF/反転つき）</li>
+              <li><b>同じ項目の連続編集は履歴1件</b>に合体（スピナー連打してもUndo1回で編集前へ）。クイックプロパティ（<b>Q</b>）ではデザイン切替と「詳細（右パネルへ）」も使えます</li>
             </ul>`)}
 
           ${section("ページ操作（タブ／並べて表示）", `
@@ -21448,6 +21750,15 @@
           state.settings.showPageName = event.target.checked;
           commitHistory("ページ名の図面表示設定を変更しました。");
           render();
+        });
+        qs("#inspectorTabPage").addEventListener("click", () => {
+          inspectorTabChoice = { tab: "page", key: inspectorSelectionKey() };
+          applyInspectorTab();
+        });
+        qs("#inspectorTabComponent").addEventListener("click", () => {
+          if (!selectedIds.length) return;
+          inspectorTabChoice = { tab: "component", key: inspectorSelectionKey() };
+          applyInspectorTab();
         });
         qs("#symbolScaleToggle").addEventListener("change", event => {
           const page = currentPage();
