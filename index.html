@@ -5580,6 +5580,9 @@
         return new Set(["contactNO", "contactNC", "timerContactNO", "timerContactNC", "contactBlock", "thermalRelay"]);
       }
 
+      // サーマルリレー接点のうちa接点(NO)扱いのデザイン。クロス参照の開閉判定に使う。
+      const THERMAL_RELAY_NO_VARIANTS = new Set(["jisNo", "iecNo", "barNo"]);
+
       // 全ページを走査してタグ→コイル/接点の対応表を構築(1 render中は使い回すキャッシュ)。
       // 接点下の自動参照番号・図枠クロス参照表・監査(コイル/接点ルール)が共用する。
       function buildCrossRefCache() {
@@ -5597,7 +5600,7 @@
                 page,
                 element,
                 address: elementAddress(page, element),
-                closed: element.type === "contactNC" || element.type === "timerContactNC" || element.type === "thermalRelay" || element.blockContact === "NC"
+                closed: element.type === "contactNC" || element.type === "timerContactNC" || (element.type === "thermalRelay" && !THERMAL_RELAY_NO_VARIANTS.has(element.symbolVariant || "standard")) || element.blockContact === "NC"
               });
               contacts.set(tag, list);
             }
@@ -5720,6 +5723,118 @@
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [5, 5.6], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // サーマルリレー接点デザイン: ✕のみ(端子小円を省いた簡易形)。ピンピッチ10mm。
+        thermalRelayX: {
+          w: 10, h: 4,
+          anchors: [[0, 2.4], [10, 2.4]],
+          prims: [
+            { t: "line", p: [0, 2.4, 3.8, 2.4] },
+            { t: "line", p: [6.2, 2.4, 10, 2.4] },
+            { t: "line", p: [4.2, 1.6, 5.8, 3.2] },
+            { t: "line", p: [4.2, 3.2, 5.8, 1.6] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 5.6], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // サーマルリレー接点デザイン: JIS C 0617系b接点(斜め可動線+止め)+熱動素子⊓(破線=機械連動)。
+        thermalRelayIecNc: {
+          w: 10, h: 6.5,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.9, 2.2] },
+            { t: "line", p: [6.1, 2.2, 10, 2.2] },
+            { t: "line", p: [6.1, 0.7, 6.1, 2.2] },
+            { t: "line", p: [3.9, 2.2, 6.6, 0.5] },
+            { t: "line", p: [5, 1.5, 5, 5.2], dash: "1.2 1.4" },
+            { t: "pline", pts: [[3.4, 6.4], [4, 6.4], [4, 5.2], [6, 5.2], [6, 6.4], [6.6, 6.4]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 8.4], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // サーマルリレー接点デザイン: JIS C 0617系a接点(斜め可動線)+熱動素子⊓(破線=機械連動)。
+        thermalRelayIecNo: {
+          w: 10, h: 6.5,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.9, 2.2] },
+            { t: "line", p: [6.1, 2.2, 10, 2.2] },
+            { t: "line", p: [3.9, 2.2, 6.4, 0.6] },
+            { t: "line", p: [5, 1.5, 5, 5.2], dash: "1.2 1.4" },
+            { t: "pline", pts: [[3.4, 6.4], [4, 6.4], [4, 5.2], [6, 5.2], [6, 6.4], [6.6, 6.4]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 8.4], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // サーマルリレー接点デザイン: 円端子b接点(閉じ線)+熱動素子⊓(破線=機械連動)。
+        thermalRelayJisNc: {
+          w: 10, h: 6.5,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.0, 2.2] },
+            { t: "line", p: [7.0, 2.2, 10, 2.2] },
+            { t: "circle", p: [3.6, 2.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.4, 2.2, 0.6], fill: "white" },
+            { t: "line", p: [3.6, 2.8, 6.4, 2.8] },
+            { t: "line", p: [5, 2.8, 5, 5.2], dash: "1.2 1.4" },
+            { t: "pline", pts: [[3.4, 6.4], [4, 6.4], [4, 5.2], [6, 5.2], [6, 6.4], [6.6, 6.4]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 8.4], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // サーマルリレー接点デザイン: 円端子a接点(開き線)+熱動素子⊓(破線=機械連動)。
+        thermalRelayJisNo: {
+          w: 10, h: 6.5,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.0, 2.2] },
+            { t: "line", p: [7.0, 2.2, 10, 2.2] },
+            { t: "circle", p: [3.6, 2.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.4, 2.2, 0.6], fill: "white" },
+            { t: "line", p: [4.14, 1.94, 7.1, 0.55] },
+            { t: "line", p: [5, 2.9, 5, 5.2], dash: "1.2 1.4" },
+            { t: "pline", pts: [[3.4, 6.4], [4, 6.4], [4, 5.2], [6, 5.2], [6, 6.4], [6.6, 6.4]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 8.4], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // サーマルリレー接点デザイン: 縦バーb接点+熱動素子⊓(破線=機械連動)。バー寸法はcontactNCと共通。
+        thermalRelayBarNc: {
+          w: 10, h: 7.6,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.88, 2.2] },
+            { t: "line", p: [6.12, 2.2, 10, 2.2] },
+            { t: "rect", p: [3.88, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "rect", p: [5.77, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "line", p: [3.5, 5.0, 6.5, -0.6] },
+            { t: "line", p: [5, 4.7, 5, 6.4], dash: "1.2 1.4" },
+            { t: "pline", pts: [[3.4, 7.6], [4, 7.6], [4, 6.4], [6, 6.4], [6, 7.6], [6.6, 7.6]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 9.6], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // サーマルリレー接点デザイン: 縦バーa接点+熱動素子⊓(破線=機械連動)。バー寸法はcontactNOと共通。
+        thermalRelayBarNo: {
+          w: 10, h: 7.6,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.88, 2.2] },
+            { t: "line", p: [6.12, 2.2, 10, 2.2] },
+            { t: "rect", p: [3.88, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "rect", p: [5.77, -0.2, 0.35, 4.8], fill: "white" },
+            { t: "line", p: [5, 4.7, 5, 6.4], dash: "1.2 1.4" },
+            { t: "pline", pts: [[3.4, 7.6], [4, 7.6], [4, 6.4], [6, 6.4], [6, 7.6], [6.6, 7.6]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 9.6], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
         // ⊓: 実測で山幅2.0mm・高さ1.2mm。ピンピッチ10mm(2.5mmグリッド整合)。
@@ -7936,7 +8051,18 @@
             return "contactNO";
           }
           case "contactNC": return variant === "jis" ? "contactNCJis" : (variant === "iec" ? "contactNCIec" : "contactNC");
-          case "thermalRelay": return variant === "box" ? "thermalRelayBox" : "thermalRelay";
+          case "thermalRelay": {
+            if (variant === "box") return "thermalRelayBox";
+            if (variant === "xOnly") return "thermalRelayX";
+            if (variant === "iecNc") return "thermalRelayIecNc";
+            if (variant === "iecNo") return "thermalRelayIecNo";
+            if (variant === "jisNc") return "thermalRelayJisNc";
+            if (variant === "jisNo") return "thermalRelayJisNo";
+            if (variant === "barNc") return "thermalRelayBarNc";
+            if (variant === "barNo") return "thermalRelayBarNo";
+            if (variant === "changeover") return "contactChangeover";
+            return "thermalRelay";
+          }
           case "disconnector": return "disconnector";
           case "outlet": {
             if (variant === "boxGrid10") return "outletBoxGrid10";
@@ -9143,7 +9269,7 @@
         transistor: [["npn", "NPN"], ["pnp", "PNP"]],
         meter: [["standard", "円形"], ["box", "角形"], ["double", "二重円（積算計）"], ["needle", "円＋針（アナログ）"]],
         motor: [["standard", "円（設備標準）"], ["double", "二重円（発電機等）"]],
-        thermalRelay: [["standard", "○✕○（設備標準）"], ["box", "箱形（内部⊓）"]],
+        thermalRelay: [["standard", "○✕○"], ["box", "箱形（内部⊓）"], ["iecNc", "b接点＋熱動素子（JIS C 0617）"], ["iecNo", "a接点＋熱動素子（JIS C 0617）"], ["jisNc", "円端子b接点＋熱動素子"], ["jisNo", "円端子a接点＋熱動素子"], ["barNc", "縦バーb接点＋熱動素子"], ["barNo", "縦バーa接点＋熱動素子"], ["changeover", "切替接点（1c・1入2出）"], ["xOnly", "✕のみ（簡易形）"]],
         inductor: [["standard", "コブ3個"], ["core", "鉄心入り（上線2本）"], ["box", "箱形（IEC）"]],
         currentTransformer: [["standard", "円（CT）"], ["zct", "二重円（ZCT）"], ["coil", "貫通線＋コブ2（旧JIS）"]],
         selectorSwitch: [["standard", "2位置（設備標準）"], ["onOff", "入・切表示付き（見本形）"], ["jis", "2位置（JIS C 0617）"], ["three", "3位置"], ["key", "鍵付き"]],
