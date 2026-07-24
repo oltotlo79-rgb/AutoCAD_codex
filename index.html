@@ -2683,8 +2683,8 @@
           name: options.name || "P" + index,
           size: options.size || "A4",
           orientation: options.orientation || "portrait",
-          // 既定図枠は参照様式と同じ「設備標準」(行番号+機器符号表)
-          frameVariant: options.frameVariant || "ladder",
+          // 既定図枠は「基本: 右下表題欄」(compact)。設備標準図枠は右パネルでページごとに選択する。
+          frameVariant: options.frameVariant || "compact",
           title: {
             drawingNo: options.drawingNo || "",
             title: options.title || "電気図面",
@@ -2741,7 +2741,7 @@
       function initProject() {
         ensureProjectDefaults();
         state.schemaVersion = SCHEMA_VERSION; // 新規図面は現行版(将来版データを開いた後の版数を引き継がない)
-        state.pages = [createPage({ name: "P1", frameVariant: "ladder", title: "電気図面" })];
+        state.pages = [createPage({ name: "P1", frameVariant: "compact", title: "電気図面" })];
         state.activePageId = state.pages[0].id;
         setSelection([]);
         pageCounter = 2;
@@ -3315,7 +3315,7 @@
         if (type === "mechanicalLink") return { ...defaultElement("mechanicalLink", 0, 0), points: [[0, 10], [16, 0]] };
         if (type === "dimension") return { ...defaultElement("dimension", 0, 0), points: [[0, 5], [20, 5]] };
         if (type === "arrow") return { ...defaultElement("arrow", 0, 0), points: [[0, 4], [16, 4]], label: "" };
-        if (type === "terminalStrip") return { ...defaultElement("terminalStrip", 0, 0), count: 3, h: 28.5, label: "", start: 1 };
+        if (type === "terminalStrip") return { ...defaultElement("terminalStrip", 0, 0), count: 3, h: 38, label: "", start: 1 };
         if (type === "plcBlock") {
           const element = defaultElement("plcBlock", 0, 0);
           return { ...element, plcStyle: "unit", rows: 3, w: 10, h: 28.5, label: "", pinText: "" };
@@ -4823,7 +4823,15 @@
         const levels = unit && Number(element.levels) === 2 ? 2 : 1;
         const pitchSize = element.type === "connector" ? 7 : 8;
         const w = Number(element.w || (vertical ? 12 : count * pitchSize));
-        const h = Number(element.h || (vertical ? count * pitchSize : 12));
+        // COMポート(ユニット列のみ): "auto"は既定端子記号の逆側へ端子記号を出す。
+        const comRaw = unit ? element.comTerminal : null;
+        const comEnabled = comRaw === "auto" || comRaw === "left" || comRaw === "right";
+        const comSide = !comEnabled ? null
+          : comRaw !== "auto" ? comRaw
+            : element.terminalMarkRight === true && element.terminalMarkLeft !== true ? "left" : "right";
+        const slots = count + (comEnabled ? 1 : 0);
+        const h = Number(element.h || (vertical ? slots * pitchSize : 12));
+        const pitch = (vertical ? h : w) / (unit ? slots : count);
         return {
           count,
           vertical,
@@ -4832,9 +4840,17 @@
           nodes: count * levels,
           w,
           h,
-          pitch: (vertical ? h : w) / count,
-          shape: element.terminalShape || "circle"
+          pitch,
+          shape: element.terminalShape || "circle",
+          comSide,
+          comY: pitch * count + pitch / 2
         };
+      }
+
+      // COMポートの端子記号の表示判定(stripTerminalMarksの"com"キーで個別上書き、既定=表示)。
+      function stripComMarkVisible(element) {
+        const override = element.stripTerminalMarks?.com;
+        return typeof override === "boolean" ? override : true;
       }
 
       // index が count 以上のときは2段目(右列)のノードを返す
@@ -4968,6 +4984,12 @@
             g.appendChild(textEl(terminalLabel(element, i), node.x, node.y, { fontSize: 2, anchor: "middle" }));
             if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, 0, node.y, stroke);
             if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, geo.w, node.y, stroke);
+          }
+          if (geo.comSide) {
+            const comR = Math.min(3.2, geo.pitch * .35);
+            g.appendChild(svgEl("circle", { cx: geo.w / 2, cy: geo.comY, r: comR, class: "terminal-dot", stroke }));
+            g.appendChild(textEl("COM", geo.w / 2, geo.comY, { fontSize: 1.8, anchor: "middle" }));
+            if (stripComMarkVisible(element)) drawStripTerminalMark(g, geo.comSide === "left" ? 0 : geo.w, geo.comY, stroke);
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
           const unitJumperStart = Number(element.start || 1);
@@ -5273,7 +5295,8 @@
         g.appendChild(svgEl("line", { x1: cx - w * .42, y1: h * .45, x2: cx + w * .42, y2: h * .45, class: "symbol-line", stroke }));
         g.appendChild(svgEl("line", { x1: cx - w * .28, y1: h * .68, x2: cx + w * .28, y2: h * .68, class: "symbol-line", stroke }));
         g.appendChild(svgEl("line", { x1: cx - w * .14, y1: h * .88, x2: cx + w * .14, y2: h * .88, class: "symbol-line", stroke }));
-        if (element.label) g.appendChild(textEl(element.label, cx, h + 4, { fontSize: 2.3, anchor: "middle" }));
+        // ラベルはシンボル上側で統一(上から入る接地線を避けて右寄せ)。
+        if (element.label) g.appendChild(textEl(element.label, cx + 1.4, -1.2, { fontSize: 2.3 }));
       }
 
       // モータの描画フォールバック(標準は円内タグ+端子小円のSYMBOL_GEO)。
@@ -5612,7 +5635,8 @@
           if (terminalBoxStubVisible(element, "right", i)) g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 6, y2: y, class: "symbol-line", stroke }));
           if (boxLabels[i]) g.appendChild(textEl(boxLabels[i], w / 2, y, { fontSize: boxLabelSize, anchor: "middle" }));
         }
-        if (element.label) g.appendChild(textEl(element.label, w / 2, h + 4, { fontSize: 2.2, anchor: "middle" }));
+        // ラベルはシンボル上側で統一(DXF出力の-2.2と同じ側)。
+        if (element.label) g.appendChild(textEl(element.label, w / 2, -1.8, { fontSize: 2.2, anchor: "middle" }));
       }
 
       // 表の描画。colWidths/rowHeights(カンマ区切り比率)、cellText(タブ区切り)、斜線セル対応。
@@ -6266,8 +6290,8 @@
             { t: "line", p: [2.6, 2.2, 7.4, 2.2] },
             { t: "line", p: [5, 2.2, 5, 1.0] },
             { t: "line", p: [4.3, 1.0, 5.7, 1.0] },
-            { t: "text", p: [5, 6.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 非常停止PB(参照実測): 端子円2+ワイドな傘弧+プランジャ+押し方向の矢頭+
@@ -6287,8 +6311,8 @@
             { t: "line", p: [3.95, 4.83, 6.05, 4.83] },
             { t: "line", p: [3.95, 6.07, 6.05, 6.07] },
             { t: "text", p: [7.7, 1.6], size: 1.6, anchor: "start", value: "R" },
-            { t: "text", p: [5, 8.2], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 非常停止デザイン2: バー押込式(押しバー+キノコ傘)。寸法・接続点は設備標準版と共通。
@@ -6304,8 +6328,8 @@
             { t: "line", p: [5, 5.0, 5, 1.9] },
             { t: "arc", p: [5, 3.4, 2.2, 215, 325] },
             { t: "text", p: [7.6, 1.7], size: 1.6, anchor: "start", value: "R" },
-            { t: "text", p: [5, 8.2], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 非常停止デザイン一般形(既定): キノコ傘(半円)+押込みb接点(可動バーが端子円上に閉)。
@@ -6322,8 +6346,8 @@
             { t: "line", p: [5, 5.0, 5, 1.7] },
             { t: "arc", p: [5, 1.7, 1.7, 180, 360] },
             { t: "line", p: [3.3, 1.7, 6.7, 1.7] },
-            { t: "text", p: [5, 8.2], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 非常停止・縦連結2接点: 1つのキノコ操作部で連動する2接点を縦に連ね、破線(機械連動)で結ぶ。
@@ -6346,8 +6370,8 @@
             { t: "circle", p: [3.4, 13.9, 0.6], fill: "white" },
             { t: "circle", p: [6.6, 13.9, 0.6], fill: "white" },
             { t: "line", p: [2.8, 14.5, 7.2, 14.5] },
-            { t: "text", p: [5, 17.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 非常停止・縦連結3接点: 連動3接点版(段ピッチ9.5mm)。
@@ -6374,8 +6398,8 @@
             { t: "circle", p: [3.4, 23.4, 0.6], fill: "white" },
             { t: "circle", p: [6.6, 23.4, 0.6], fill: "white" },
             { t: "line", p: [2.8, 24.0, 7.2, 24.0] },
-            { t: "text", p: [5, 27.1], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 非常停止・JIS C 0617(IEC 60617)形: キノコ操作部+破線の機械連動+IEC様式のb接点
@@ -6391,8 +6415,8 @@
             { t: "line", p: [5, 1.7, 5, 3.55], dash: "1.2 1.4" },
             { t: "arc", p: [5, 1.7, 1.7, 180, 360] },
             { t: "line", p: [3.3, 1.7, 6.7, 1.7] },
-            { t: "text", p: [5, 8.2], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 非常停止・JIS縦連結2接点: JIS C 0617様式のb接点を縦に2段連ね、破線(機械連動)で結ぶ。
@@ -6412,8 +6436,8 @@
             { t: "line", p: [6.6, 13.9, 10, 13.9] },
             { t: "line", p: [6.6, 13.9, 6.6, 12.25] },
             { t: "line", p: [3.4, 13.9, 6.6, 12.25] },
-            { t: "text", p: [5, 17.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 非常停止・JIS縦連結3接点: JIS C 0617様式の連動3接点版(段ピッチ9.5mm)。
@@ -6436,8 +6460,8 @@
             { t: "line", p: [6.6, 23.4, 10, 23.4] },
             { t: "line", p: [6.6, 23.4, 6.6, 21.75] },
             { t: "line", p: [3.4, 23.4, 6.6, 21.75] },
-            { t: "text", p: [5, 27.1], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 押しボタンb接点(NC): 可動バーが端子円上に閉じた押込み形。寸法・接続点はa接点版と共通。
@@ -6452,8 +6476,8 @@
             { t: "line", p: [2.8, 4.1, 7.2, 4.1] },
             { t: "line", p: [5, 4.1, 5, 1.0] },
             { t: "line", p: [4.3, 1.0, 5.7, 1.0] },
-            { t: "text", p: [5, 6.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 押しボタンa接点・JIS C 0617(IEC)形: 押しキャップ+破線の機械連動+開き線接点。
@@ -6468,8 +6492,8 @@
             { t: "line", p: [4.3, 0.4, 5.7, 0.4] },
             { t: "line", p: [5, 0.4, 5, 1.0] },
             { t: "line", p: [5, 1.0, 5, 2.65], dash: "1.2 1.4" },
-            { t: "text", p: [5, 6.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 押しボタンb接点・JIS C 0617(IEC)形: 押しキャップ+破線連動+閉じ線(止めの上を横切る)。
@@ -6484,8 +6508,8 @@
             { t: "line", p: [4.3, 0.2, 5.7, 0.2] },
             { t: "line", p: [5, 0.2, 5, 0.8] },
             { t: "line", p: [5, 0.8, 5, 2.55], dash: "1.2 1.4" },
-            { t: "text", p: [5, 6.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 押しボタン(照光式): ランプ球内蔵の押しa接点。表示色はランプ同様lampColorで指定。
@@ -6506,8 +6530,8 @@
             { t: "line", p: [6.27, 3.67, 6.7, 4.1] },
             { t: "line", p: [3.73, 3.67, 3.3, 4.1] },
             { t: "text", p: [5, 2.4], size: 2.2, anchor: "middle", field: "lampColor" },
-            { t: "text", p: [5, 10.9], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 押しボタン(パーム/大形キノコ・a接点): 両手押し起動などの起動用キノコボタン。
@@ -6523,8 +6547,8 @@
             { t: "line", p: [5, 3.7, 5, 3.0] },
             { t: "arc", p: [5, 3.0, 1.7, 180, 360] },
             { t: "line", p: [3.3, 3.0, 6.7, 3.0] },
-            { t: "text", p: [5, 8.1], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         selectorSwitch: {
@@ -6537,7 +6561,7 @@
             { t: "circle", p: [6.45, 3.2, 0.6], fill: "white" },
             { t: "pline", pts: [[3.6, 3.2], [4.2, 3.2], [4.2, 1.95]] },
             { t: "pline", pts: [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]] },
-            { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
         // 見本PDFの切替スイッチ＋「切」線表示＋「入」箱表示を一体化した配置用シンボル。
@@ -6557,7 +6581,7 @@
             { t: "rect", p: [26, 2.1, 2, 2.2] },
             { t: "line", p: [27, 0.2, 27, 6.2] },
             { t: "text", p: [27, -1.2], size: 2, anchor: "middle", value: "入" },
-            { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
         limitSwitch: {
@@ -6707,7 +6731,7 @@
             { t: "line", p: [2.0, 2.6, 0.87, 3.73] },
             { t: "line", p: [2.6, 3.05, 1.47, 4.18] },
             { t: "line", p: [3.2, 3.5, 2.07, 4.63] },
-            { t: "text", p: [2, 6.6], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [3.4, -1.2], size: 2, anchor: "start", field: "label" }
           ]
         },
         // 接地デザイン2: 横棒3本式(長→短)。寸法・接続点は斜線ハッチ版と共通。
@@ -6719,7 +6743,7 @@
             { t: "line", p: [0.6, 2.4, 3.4, 2.4] },
             { t: "line", p: [1.2, 3.4, 2.8, 3.4] },
             { t: "line", p: [1.7, 4.4, 2.3, 4.4] },
-            { t: "text", p: [2, 6.6], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [3.4, -1.2], size: 2, anchor: "start", field: "label" }
           ]
         },
         // 計器(電圧計/電流計など): 円+中央にラベル文字(V/A等)。
@@ -6817,7 +6841,7 @@
             { t: "line", p: [5, -3.7, 5, -0.2] },
             { t: "line", p: [4.5, -1.2, 5, -0.2] },
             { t: "line", p: [5.5, -1.2, 5, -0.2] },
-            { t: "text", p: [5, 4.4], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [7.4, -1.4], size: 2, anchor: "start", field: "label" }
           ]
         },
         // 抵抗デザイン・ジグザグ(旧JIS/IEEE系)。寸法・接続点は箱形と共通。
@@ -6920,7 +6944,7 @@
             { t: "line", p: [0.9, 2.1, 3.1, 2.1] },
             { t: "line", p: [1.35, 3, 2.65, 3] },
             { t: "line", p: [1.8, 3.9, 2.2, 3.9] },
-            { t: "text", p: [2, 6.9], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [3.4, -1.2], size: 2, anchor: "start", field: "label" }
           ]
         },
         // 接地デザイン4: シャーシ/フレーム接地(横棒+櫛形斜線3本)。寸法・接続点は他デザインと共通。
@@ -6933,7 +6957,7 @@
             { t: "line", p: [0.8, 2.4, 0.2, 3.6] },
             { t: "line", p: [2.0, 2.4, 1.4, 3.6] },
             { t: "line", p: [3.2, 2.4, 2.6, 3.6] },
-            { t: "text", p: [2, 6.6], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [3.4, -1.2], size: 2, anchor: "start", field: "label" }
           ]
         },
         // ダイオード(標準): 三角+バー。
@@ -7080,7 +7104,7 @@
             { t: "pline", pts: [[3.6, 3.2], [4.2, 3.2], [4.2, 1.95]] },
             { t: "pline", pts: [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]] },
             { t: "line", p: [4.675, 0.7, 4.675, 1.55] },
-            { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
         // リミットスイッチ(ローラーレバー)。
@@ -7320,8 +7344,8 @@
             { t: "line", p: [4.3, 1.0, 5.7, 1.0] },
             { t: "line", p: [4.3, 1.0, 4.3, 0.2] },
             { t: "line", p: [5.7, 1.0, 5.7, 0.2] },
-            { t: "text", p: [5, 6.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 押しボタン(ひねり): レバー+ハンドル。
@@ -7336,8 +7360,8 @@
             { t: "line", p: [2.6, 2.2, 7.4, 2.2] },
             { t: "line", p: [5, 2.2, 6.2, 0.9] },
             { t: "line", p: [5.7, 0.5, 6.7, 1.3] },
-            { t: "text", p: [5, 6.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, -1.2], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // フリッカコイル: 円+F。
@@ -7666,7 +7690,7 @@
             { t: "line", p: [3.9, 3.2, 6.4, 1.6] },
             { t: "pline", pts: [[4.2, 0.3], [5, 0.3], [5, 0.9]] },
             { t: "line", p: [5, 0.9, 5, 2.4], dash: "1.2 1.4" },
-            { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
         // 切替スイッチ(鍵付き): 2位置+鍵記号。
@@ -7682,7 +7706,7 @@
             { t: "pline", pts: [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]] },
             { t: "circle", p: [4.675, 0.75, 0.6] },
             { t: "line", p: [4.675, 1.35, 4.675, 1.6] },
-            { t: "text", p: [5, 6.2], size: 2, anchor: "middle", field: "label" }
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
         // 論理ゲート(AND, IEC/JIS矩形式): 箱+&。入力2(±2.5mm)/出力1。
@@ -8383,7 +8407,7 @@
             { t: "line", p: [2.3, 0.3, 2.3, 2.7] },
             { t: "arc", p: [3.9, 1.5, 1.2, 270, 450] },
             { t: "line", p: [5.1, 1.5, 6, 1.5] },
-            { t: "text", p: [3, 4.4], size: 1.8, anchor: "middle", field: "label" }
+            { t: "text", p: [3, -1.4], size: 1.8, anchor: "middle", field: "label" }
           ]
         },
         // 接点ブロック: ピンピッチ15mm(2.5mmグリッド整合)。
@@ -10296,6 +10320,15 @@
             <input data-bind="prefix" type="text" value="${escapeAttr(element.prefix || "")}">
             <label>ジャンパ(例: 1-2;3-5)</label>
             <input data-bind="jumpers" type="text" value="${escapeAttr(element.jumpers || "")}" placeholder="1-2;3-5">
+            ${element.type === "terminalStrip" && stripStyle === "unit" ? `
+            <label>COMポート（ユニット列の最下段）</label>
+            <select data-bind="comTerminal">
+              <option value=""${!["auto", "left", "right"].includes(element.comTerminal) ? " selected" : ""}>なし</option>
+              <option value="auto"${element.comTerminal === "auto" ? " selected" : ""}>あり（端子記号は他の端子の逆側＝自動）</option>
+              <option value="left"${element.comTerminal === "left" ? " selected" : ""}>あり（端子記号を左に）</option>
+              <option value="right"${element.comTerminal === "right" ? " selected" : ""}>あり（端子記号を右に）</option>
+            </select>
+            <label><input data-bind="stripTerminalMarks.com" type="checkbox" ${stripComMarkVisible(element) ? " checked" : ""} style="width:auto;min-height:auto"> COMの端子記号を表示</label>` : ""}
             ${element.type === "terminalStrip" ? `
             <label>段数（ユニット列のみ）</label>
             <select data-bind="levels" data-kind="number">
@@ -10595,7 +10628,7 @@
               item.id !== element.id && item.type === element.type && componentTag(item) === value));
             if (dup) setStatus("注意: 同種部品でタグ「" + value + "」が重複しています。");
           }
-          if (["orientation", "count", "stripStyle", "levels"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element);
+          if (["orientation", "count", "stripStyle", "levels", "comTerminal"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element);
           if (key === "orientation" && element.type === "terminal" && !resizeGeoElementForOrientation(element)) resizeSingleTerminalForOrientation(element);
           if (key === "orientation" && ["contactNO", "contactNC", "pushButton", "selectorSwitch", "limitSwitch", "pressureSwitch", "thermalRelay", "thermalElement", "contactBlock"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeContactElementForOrientation(element);
           if (key === "orientation" && ["fuse", "breaker", "resistor"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
@@ -10661,8 +10694,10 @@
       function resizeTerminalElementForOrientation(element) {
         const count = Math.max(1, Number(element.count || 8));
         if (element.type === "terminalStrip" && element.stripStyle === "unit" && element.orientation === "vertical") {
+          const rowPitch = Math.max(2.5, Number(element.pitch || 9.5));
+          const comRows = ["auto", "left", "right"].includes(element.comTerminal) ? 1 : 0;
           element.w = Number(element.levels) === 2 ? 20 : 10;
-          element.h = count * Math.max(2.5, Number(element.pitch || 9.5));
+          element.h = (count + comRows) * rowPitch;
           return;
         }
         const pitch = element.type === "connector" ? 7 : 8;
@@ -10738,7 +10773,7 @@
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
           terminal: { ...base, w: 1.8, h: 1.8, label: "1", orientation: "horizontal", terminalShape: "circle" },
-          terminalStrip: { ...base, w: 10, h: 152, count: 16, start: 1, prefix: "", orientation: "vertical", terminalShape: "circle", stripStyle: "unit", label: "TB1", jumpers: "", terminalMarkLeft: true },
+          terminalStrip: { ...base, w: 10, h: 161.5, count: 16, start: 1, prefix: "", orientation: "vertical", terminalShape: "circle", stripStyle: "unit", label: "TB1", jumpers: "", terminalMarkLeft: true, comTerminal: "auto" },
           contactNO: { ...base, w: 10, h: 4.4, label: "NO", orientation: "horizontal", refNo: "" },
           contactNC: { ...base, w: 10, h: 4.4, label: "NC", orientation: "horizontal", refNo: "" },
           contactBlock: { ...base, w: 15, h: 8, label: "CR", orientation: "horizontal", blockContact: "NO", blockFrame: "solid", refNo: "" },
@@ -10973,6 +11008,10 @@
             stripTerminalMarkLocalAnchors(element).forEach(([x, y]) => {
               anchors.push({ ...localAnchor(element, x, y), elementId: element.id, kind: "terminal" });
             });
+            if (geo.comSide) {
+              const comX = stripComMarkVisible(element) ? (geo.comSide === "left" ? 0 : geo.w) : geo.w / 2;
+              anchors.push({ ...localAnchor(element, comX, geo.comY), elementId: element.id, kind: "terminal" });
+            }
             return;
           }
           elementConnectionAnchors(element).forEach(anchor => anchors.push({ ...anchor, elementId: element.id, kind: "terminal" }));
@@ -11038,6 +11077,11 @@
             add(node.x, node.y);
           }
           stripTerminalMarkLocalAnchors(element).forEach(([x, y]) => add(x, y));
+          // COMポート: 端子記号表示中はその辺のみ、非表示ならCOM円中心が接続点。
+          if (geo.comSide) {
+            if (stripComMarkVisible(element)) add(geo.comSide === "left" ? 0 : geo.w, geo.comY);
+            else add(geo.w / 2, geo.comY);
+          }
           return anchors;
         }
         if (element.type === "terminal") {
@@ -11541,7 +11585,8 @@
           terminalShape: "circle",
           stripStyle: "unit",
           label: options.label || "TB1",
-          terminalMarkLeft: false
+          terminalMarkLeft: false,
+          comTerminal: ""
         };
         for (let i = 0; i < count; i++) {
           const cy = round(y + pitch * i + pitch / 2);
@@ -11819,7 +11864,7 @@
           name: "端子接続図" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
-          frameVariant: "ladder",
+          frameVariant: "compact",
           title: "端子接続図"
         });
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
@@ -12041,7 +12086,7 @@
             name: "端子接続図",
             size: "A4",
             orientation: "portrait",
-            frameVariant: "ladder",
+            frameVariant: "compact",
             title: "端子接続図 " + pageNo + "/" + totalPages
           });
           populateTerminalCsvPage(page, chunk, pageNo, totalPages, fileName, offset);
@@ -12076,7 +12121,8 @@
           label: stripName,
           terminalLabels: rows.map(row => row.terminal || "").join("\n"),
           note: "取込元: " + fileName,
-          terminalMarkLeft: false
+          terminalMarkLeft: false,
+          comTerminal: ""
         };
         rows.forEach((row, index) => {
           const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * index);
@@ -12108,7 +12154,7 @@
             name: "制御盤",
             size: "A4",
             orientation: "portrait",
-            frameVariant: "ladder",
+            frameVariant: "compact",
             title: "PLC I/O 接続図 " + pageNo + "/" + totalPages
           });
           populatePlcCsvPage(page, chunk, pageNo, totalPages, fileName);
@@ -12651,7 +12697,7 @@
           name: "リレー回路" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
-          frameVariant: "ladder",
+          frameVariant: "compact",
           title: "リレー回路"
         });
         (rails.length ? rails : ["P1"]).forEach((name, i) => {
@@ -12752,7 +12798,7 @@
           name: "制御盤",
           size: "A4",
           orientation: "portrait",
-          frameVariant: "ladder",
+          frameVariant: "compact",
           title: "出力回路(" + addresses[0] + ")"
         });
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
@@ -12764,10 +12810,12 @@
           // 配線はユニット列右辺(57.5=グリッド点)の端子記号まで。中央アドレス円へは入れない。
           page.elements.push({ ...defaultElement("wire", 57.5, y), points: [[57.5, y], [135, y]], wireNo: "", wireNoAlign: "start" });
           page.elements.push({ ...defaultElement("coil", 135, round(y - 2.2)), label: "", tag: "" });
+          page.elements.push(defaultElement("junction", 147.5, y));
           page.elements.push({ ...defaultElement("wire", 145, y), points: [[145, y], [147.5, y]] });
         });
-        // 出力カードのCOM: ユニット列最下段の左側端子からP1(+24V)へ配線する。
+        // 出力カードのCOM: ユニット列最下段の左側端子からP1(+24V)へ配線し、レール上に接続点を打つ。
         const comY = round(37.5 + TEMPLATE_CIRCUIT_PITCH * count);
+        page.elements.push(defaultElement("junction", 32.5, comY));
         page.elements.push({ ...defaultElement("wire", 32.5, comY), points: [[32.5, comY], [unitX, comY]], wireNo: "" });
         page.elements.push({
           ...defaultElement("plcBlock", unitX, 32.5),
@@ -12806,7 +12854,7 @@
           name: "制御盤",
           size: "A4",
           orientation: "portrait",
-          frameVariant: "ladder",
+          frameVariant: "compact",
           title: "入力回路(" + addresses[0] + ")"
         });
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
@@ -12825,31 +12873,22 @@
           terminalMarkLeft: true,
           comTerminal: "right"
         };
-        const feederX = 47.5;
-        if (withContacts && addresses.length) {
-          const yFirst = 37.5;
-          const yLast = round(yFirst + TEMPLATE_CIRCUIT_PITCH * (addresses.length - 1));
-          page.elements.push(defaultElement("junction", 32.5, yFirst));
-          page.elements.push({ ...defaultElement("wire", 32.5, yFirst), points: [[32.5, yFirst], [feederX, yFirst]] });
-          if (addresses.length > 1) {
-            page.elements.push({ ...defaultElement("wire", feederX, yFirst), points: [[feederX, yFirst], [feederX, yLast]] });
-          }
-        }
+        // 各行を個別にP1へ接続する(出力回路の各行→N1と同じ書き方で入出力の様式を揃える)。
         addresses.forEach((address, i) => {
           const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * i);
+          page.elements.push(defaultElement("junction", 32.5, y));
           if (withContacts) {
-            page.elements.push(defaultElement("junction", feederX, y));
             page.elements.push({ ...defaultElement("contactNO", 52.5, y - 2.2), label: "" });
-            page.elements.push({ ...defaultElement("wire", feederX, y), points: [[feederX, y], [52.5, y]] });
+            page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [52.5, y]] });
             page.elements.push({ ...defaultElement("wire", 62.5, y), points: [[62.5, y], [125, y]], wireNo: "", wireNoAlign: "end" });
           } else {
-            page.elements.push(defaultElement("junction", 32.5, y));
             page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [125, y]], wireNo: "", wireNoAlign: "end" });
           }
           // 配線はユニット列左辺(125=グリッド点)の端子記号まで。中央アドレス円へは入れない。
         });
-        // 入力カードのCOM: ユニット列最下段の右側端子からN1(0V)へ配線する。
+        // 入力カードのCOM: ユニット列最下段の右側端子からN1(0V)へ配線し、レール上に接続点を打つ。
         const comY = round(37.5 + TEMPLATE_CIRCUIT_PITCH * addresses.length);
+        page.elements.push(defaultElement("junction", 147.5, comY));
         page.elements.push({ ...defaultElement("wire", 135, comY), points: [[135, comY], [147.5, comY]], wireNo: "" });
         // 白抜き端子円を最後に描き、配線がアドレス文字を横切らないようにする。
         page.elements.push(unit);
@@ -12893,7 +12932,7 @@
           name: "インターロック",
           size: "A4",
           orientation: "portrait",
-          frameVariant: "ladder",
+          frameVariant: "compact",
           title: "インターロック接続"
         });
         const boxTop = 32.5;
@@ -13615,7 +13654,7 @@
           name: "AC電源回路",
           size: "A4",
           orientation: "portrait",
-          frameVariant: "ladder",
+          frameVariant: "compact",
           title: "AC電源_" + motorTag + "モータ"
         });
         const els = page.elements;
@@ -13813,7 +13852,7 @@
         const withSc1 = (qs("#acSc1")?.value || "on") === "on";
         const withSc2 = (qs("#acSc2")?.value || "on") === "on";
         const withGot = (qs("#acGot")?.value || "on") === "on";
-        const page = createPage({ name: "AC電源回路", size: "A4", orientation: "portrait", frameVariant: "ladder", title: "AC電源回路" });
+        const page = createPage({ name: "AC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "AC電源回路" });
         const els = page.elements;
         const phaseXs = [35, 40, 45].slice(0, phaseCount);
         // 各2線回路を10mm間隔にし、上下とも2.5mm方眼へ載せる。
@@ -14006,7 +14045,7 @@
         const m2Name = qs("#acMotor2Name")?.value || "モータ2";
         const brTag = qs("#acBrakeRelay")?.value || "CRMBR";
         const posUnit = qs("#acPosUnit")?.value || "QD77MS2";
-        const page = createPage({ name: "AC電源回路", size: "A4", orientation: "portrait", frameVariant: "ladder", title: "AC電源回路（モータ）" });
+        const page = createPage({ name: "AC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "AC電源回路（モータ）" });
         const els = page.elements;
         const railXs = [35, 40, 45];
         const railAll = groundName ? [[groundName, 30], [rails[0], 35], [rails[1], 40], [rails[2], 45]] : rails.map((n, i) => [n, railXs[i]]);
@@ -14156,7 +14195,7 @@
         const recModel = qs("#dcRecModel")?.value || "";
         const withBrake = (qs("#dcBrake")?.value || "on") === "on";
         const withGout = (qs("#dcGoutArrow")?.value || "on") === "on";
-        const page = createPage({ name: "DC電源回路", size: "A4", orientation: "portrait", frameVariant: "ladder", title: "DC電源回路" });
+        const page = createPage({ name: "DC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "DC電源回路" });
         const els = page.elements;
         const railAll = groundName ? [[groundName, 30], [rails[0], 35], [rails[1], 40]] : [[rails[0], 35], [rails[1], 40]];
         railAll.forEach(([name, x]) => {
@@ -14267,7 +14306,7 @@
           setStatus("PLC電源回路の接点タグは12文字以内で入力してください。");
           return;
         }
-        const page = createPage({ name: "PLC電源回路", size: "A4", orientation: "portrait", frameVariant: "ladder", title: "PLC電源回路" });
+        const page = createPage({ name: "PLC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "PLC電源回路" });
         const els = page.elements;
         [["G", 30], ["N1", 35], ["P0", 40]].forEach(([name, x]) => {
           els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, TEMPLATE_RAIL_BOTTOM]], wireNo: "", hideWireNo: true, ladderRail: name, wireType: state.settings.currentWireType });
@@ -14368,7 +14407,7 @@
         const monTag = qs("#sfMonTag")?.value || "CR11";
         const pb1Name = qs("#sfPb1")?.value || "非常停止PB1";
         const pb2Name = qs("#sfPb2")?.value || "非常停止PB2";
-        const page = createPage({ name: "リレー回路", size: "A4", orientation: "portrait", frameVariant: "ladder", title: "リレー回路_非常停止" });
+        const page = createPage({ name: "リレー回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "リレー回路_非常停止" });
         const els = page.elements;
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
@@ -18749,7 +18788,8 @@
               <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大</b>をONにすると、以後パレットから配置する部品が<b>1.5倍</b>で置かれます（既存の部品は変わりません。接続ピン・DXF出力も倍率に追従）</li>
               <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
               <li><b>端子台・PLCユニット列の端子記号</b>: 本体の辺上に<b>機器箱と同じ白抜き小円の端子</b>を表示し、その<b>端子だけが配線接続点</b>になります。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
-              <li><b>PLCユニット列のCOM端子</b>: 右パネルの「COM端子」で最下段へCOM行を追加できます（<b>左/右を任意切替</b>・端子記号つき・端子のみ配線可）。PLC入出力回路テンプレートは<b>入力=右からN1へ／出力=左からP1へ</b>COM線を自動配線</li>
+              <li><b>PLCユニット列のCOM端子</b>: 右パネルの「COM端子」で最下段へCOM行を追加できます（<b>左/右を任意切替</b>・端子記号つき・端子のみ配線可）。PLC入出力回路テンプレートは<b>入力=右からN1へ／出力=左からP1へ</b>COM線を自動配線し、各行・COMともレール接続部に接続点(黒丸)を打ちます</li>
+              <li><b>端子台のCOMポート</b>: パレットの端子台は<b>最下段にCOMポートを標準装備</b>。端子記号の位置は<b>他の端子の逆側が自動既定</b>で、右パネルの「COMポート」で なし/自動/左/右 を切替、COMの端子記号だけの表示/非表示もできます</li>
               <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
               <li>間違えたら <b>Ctrl+Z</b>。位置の微調整は<b>矢印キー</b>（1mm、Shiftで5mm）</li>
@@ -18788,7 +18828,7 @@
               <li>タブの<b>ダブルクリック</b>で改名、「前へ/後へ」でも並び替え</li>
               <li><b>複製</b>はオフセット指定つき: 例 オフセット16×2枚 → X060の頁からX070・X080を量産（線番・タグ・ピン文字・頁名を自動加算）</li>
               <li>機能メニュー「<b>行挿入/行削除</b>」: 設備標準の行番号基準で、指定行から下を一括で下げ/詰め（縦レールは自動伸縮）</li>
-              <li>図枠は右パネルで変更（既定は行番号つきの<b>設備標準</b>）。基本/詳細表題欄は機能メニュー「表題欄レイアウト編集」で自社様式化可</li>
+              <li>図枠は右パネルで変更（既定は<b>基本: 右下表題欄</b>。行番号つきの設備標準図枠も選択可）。基本/詳細表題欄は機能メニュー「表題欄レイアウト編集」で自社様式化可</li>
             </ul>`)}
 
           ${section("シンボルデザイン（JIS/IEC切替）", `
@@ -20688,7 +20728,8 @@
           const w = Number(element.w || (vertical ? 12 : count * pitchSize));
           const h = Number(element.h || (vertical ? count * pitchSize : 12));
           if (element.type === "terminalStrip" && element.stripStyle === "unit" && vertical) {
-            const pitch = h / count;
+            const stripGeo = terminalStripGeometry(element);
+            const pitch = stripGeo.pitch;
             dxfLineLocal(out, page, "SYMBOL", element, 0, 0, 0, h);
             dxfLineLocal(out, page, "SYMBOL", element, w, 0, w, h);
             [0, h].forEach(y => {
@@ -20706,6 +20747,11 @@
               dxfTextLocal(out, page, "TEXT", element, node.x - label.length * .6, node.y + .7, 2, label);
               if (stripTerminalMarkVisible(element, "left", i)) dxfStripTerminalMark(out, page, element, 0, node.y);
               if (stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, w, node.y);
+            }
+            if (stripGeo.comSide) {
+              dxfCircleLocal(out, page, "SYMBOL", element, w / 2, stripGeo.comY, Math.min(3.2, pitch * .35));
+              dxfTextLocal(out, page, "TEXT", element, w / 2 - 3 * 1.8 * .3, stripGeo.comY + 1.8 * .35, 1.8, "COM");
+              if (stripComMarkVisible(element)) dxfStripTerminalMark(out, page, element, stripGeo.comSide === "left" ? 0 : w, stripGeo.comY);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
             const unitJumperStart = Number(element.start || 1);
@@ -22537,6 +22583,10 @@
             anchors.push(terminalStripNodeGlobal(element, i));
           }
           stripTerminalMarkLocalAnchors(element).forEach(([x, y]) => anchors.push(localAnchor(element, x, y)));
+          if (geo.comSide) {
+            const comX = stripComMarkVisible(element) ? (geo.comSide === "left" ? 0 : geo.w) : geo.w / 2;
+            anchors.push(localAnchor(element, comX, geo.comY));
+          }
           return anchors;
         }
         if (element.type === "junction") return [{ x: element.x || 0, y: element.y || 0 }];
