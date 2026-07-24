@@ -4872,6 +4872,14 @@
         return typeof override === "boolean" ? override : true;
       }
 
+      // COM/0Vポートの表示名。comLabelStyle="plusMinus"でCOM→"COM+"、0V→"COM-"に切り替える。
+      function comPortLabel(element) {
+        return element.comLabelStyle === "plusMinus" ? "COM+" : "COM";
+      }
+      function zeroPortLabel(element) {
+        return element.comLabelStyle === "plusMinus" ? "COM-" : "0V";
+      }
+
       // 出力カードのポート行(a接点+上にデバイス名)のSVG描画。cx=行中心X、y=行中心Y。
       function drawCardContactRow(g, cx, y, name, stroke) {
         g.appendChild(svgEl("line", { x1: cx - 3.8, y1: y, x2: cx - 1.05, y2: y, class: "symbol-line", stroke }));
@@ -5030,13 +5038,13 @@
           if (geo.comSide) {
             const comR = Math.min(3.2, geo.pitch * .35);
             g.appendChild(svgEl("circle", { cx: geo.w / 2, cy: geo.comY, r: comR, class: "terminal-dot", stroke }));
-            g.appendChild(textEl("COM", geo.w / 2, geo.comY, { fontSize: 1.8, anchor: "middle" }));
+            g.appendChild(textEl(comPortLabel(element), geo.w / 2, geo.comY, { fontSize: 1.8, anchor: "middle" }));
             if (stripComMarkVisible(element)) drawStripTerminalMark(g, geo.comSide === "left" ? 0 : geo.w, geo.comY, stroke);
           }
           if (geo.zeroSide) {
             const zeroR = Math.min(3.2, geo.pitch * .35);
             g.appendChild(svgEl("circle", { cx: geo.w / 2, cy: geo.zeroY, r: zeroR, class: "terminal-dot", stroke }));
-            g.appendChild(textEl("0V", geo.w / 2, geo.zeroY, { fontSize: 1.8, anchor: "middle" }));
+            g.appendChild(textEl(zeroPortLabel(element), geo.w / 2, geo.zeroY, { fontSize: 1.8, anchor: "middle" }));
             if (stripZeroMarkVisible(element)) drawStripTerminalMark(g, geo.zeroSide === "left" ? 0 : geo.w, geo.zeroY, stroke);
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
@@ -9141,12 +9149,12 @@
         g.appendChild(svgEl("line", { x1: 0, y1: totalH, x2: w, y2: totalH, class: "symbol-line", stroke }));
         if (comSide) {
           g.appendChild(svgEl("circle", { cx, cy: comY, r: 3.2, class: "terminal-dot", stroke }));
-          g.appendChild(textEl("COM", cx, comY, { fontSize: 1.8, anchor: "middle" }));
+          g.appendChild(textEl(comPortLabel(element), cx, comY, { fontSize: 1.8, anchor: "middle" }));
           if (stripComMarkVisible(element)) drawStripTerminalMark(g, comSide === "left" ? 0 : w, comY, stroke);
         }
         if (zeroSide) {
           g.appendChild(svgEl("circle", { cx, cy: zeroY, r: 3.2, class: "terminal-dot", stroke }));
-          g.appendChild(textEl("0V", cx, zeroY, { fontSize: 1.8, anchor: "middle" }));
+          g.appendChild(textEl(zeroPortLabel(element), cx, zeroY, { fontSize: 1.8, anchor: "middle" }));
           if (stripZeroMarkVisible(element)) drawStripTerminalMark(g, zeroSide === "left" ? 0 : w, zeroY, stroke);
         }
         for (let i = 0; i < rows; i++) {
@@ -10480,7 +10488,12 @@
               <option value="left"${element.comTerminal === "left" ? " selected" : ""}>あり（端子記号を左に）</option>
               <option value="right"${element.comTerminal === "right" ? " selected" : ""}>あり（端子記号を右に）</option>
             </select>
-            <label><input data-bind="stripTerminalMarks.com" type="checkbox" ${stripComMarkVisible(element) ? " checked" : ""} style="width:auto;min-height:auto"> COMの端子記号を表示</label>` : ""}
+            <label><input data-bind="stripTerminalMarks.com" type="checkbox" ${stripComMarkVisible(element) ? " checked" : ""} style="width:auto;min-height:auto"> COMの端子記号を表示</label>
+            <label>COM/0Vポートの表示名</label>
+            <select data-bind="comLabelStyle">
+              <option value=""${element.comLabelStyle !== "plusMinus" ? " selected" : ""}>COM / 0V</option>
+              <option value="plusMinus"${element.comLabelStyle === "plusMinus" ? " selected" : ""}>COM＋ / COM−</option>
+            </select>` : ""}
             ${element.type === "terminalStrip" ? `
             <label>段数（ユニット列のみ）</label>
             <select data-bind="levels" data-kind="number">
@@ -10544,7 +10557,12 @@
               <option value="left"${element.zeroVTerminal === "left" || (element.zeroVTerminal === undefined && element.cardMode === "output") ? " selected" : ""}>あり（端子記号を左に）</option>
               <option value="right"${element.zeroVTerminal === "right" ? " selected" : ""}>あり（端子記号を右に）</option>
             </select>
-            <label><input data-bind="stripTerminalMarks.zero" type="checkbox" ${stripZeroMarkVisible(element) ? " checked" : ""} style="width:auto;min-height:auto"> 0Vの端子記号を表示</label>` : ""}
+            <label><input data-bind="stripTerminalMarks.zero" type="checkbox" ${stripZeroMarkVisible(element) ? " checked" : ""} style="width:auto;min-height:auto"> 0Vの端子記号を表示</label>
+            <label>COM/0Vポートの表示名</label>
+            <select data-bind="comLabelStyle">
+              <option value=""${element.comLabelStyle !== "plusMinus" ? " selected" : ""}>COM / 0V</option>
+              <option value="plusMinus"${element.comLabelStyle === "plusMinus" ? " selected" : ""}>COM＋ / COM−</option>
+            </select>` : ""}
             ${plcStyle === "unit" ? stripTerminalMarkFields(element, Math.max(1, Number(element.rows || 8))) : ""}
           `;
         }
@@ -18982,7 +19000,7 @@
               <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
               <li><b>端子台・PLCユニット列の端子記号</b>: 本体の辺上に<b>機器箱と同じ白抜き小円の端子</b>を表示し、その<b>端子だけが配線接続点</b>になります。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
               <li><b>端子台・PLCユニット列のカード種別</b>: 本体は<b>長方形</b>（上下も直線）。右パネルの「カード種別」で<b>入力カード（円＋デバイス名）／出力カード（a接点＋上にデバイス名）</b>を切替できます。出力カードは<b>0Vポート</b>（既定=左・表示/非表示切替可）も付きます</li>
-              <li><b>COM/0Vポート</b>: パレットの端子台は<b>最下段にCOMポートを標準装備</b>（位置は他の端子の逆側が自動既定、なし/自動/左/右を切替可）。PLC入出力回路テンプレートは<b>入力=円モード・COM右→N1／出力=a接点モード・COMと0Vを右→N1</b>へ自動配線し、各行・COM・0Vともレール接続部に接続点(黒丸)を打ちます</li>
+              <li><b>COM/0Vポート</b>: パレットの端子台は<b>最下段にCOMポートを標準装備</b>（位置は他の端子の逆側が自動既定、なし/自動/左/右を切替可）。右パネルの<b>「COM/0Vポートの表示名」で COM/0V ⇔ COM＋/COM− を切替</b>できます。PLC入出力回路テンプレートは<b>入力=円モード・COM右→N1／出力=a接点モード・COMと0Vを右→N1</b>へ自動配線し、各行・COM・0Vともレール接続部に接続点(黒丸)を打ちます</li>
               <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
               <li>間違えたら <b>Ctrl+Z</b>。位置の微調整は<b>矢印キー</b>（1mm、Shiftで5mm）</li>
@@ -20942,13 +20960,15 @@
               if (stripTerminalMarkVisible(element, "right", i)) dxfStripTerminalMark(out, page, element, w, node.y);
             }
             if (stripGeo.comSide) {
+              const comText = comPortLabel(element);
               dxfCircleLocal(out, page, "SYMBOL", element, w / 2, stripGeo.comY, Math.min(3.2, pitch * .35));
-              dxfTextLocal(out, page, "TEXT", element, w / 2 - 3 * 1.8 * .3, stripGeo.comY + 1.8 * .35, 1.8, "COM");
+              dxfTextLocal(out, page, "TEXT", element, w / 2 - comText.length * 1.8 * .3, stripGeo.comY + 1.8 * .35, 1.8, comText);
               if (stripComMarkVisible(element)) dxfStripTerminalMark(out, page, element, stripGeo.comSide === "left" ? 0 : w, stripGeo.comY);
             }
             if (stripGeo.zeroSide) {
+              const zeroText = zeroPortLabel(element);
               dxfCircleLocal(out, page, "SYMBOL", element, w / 2, stripGeo.zeroY, Math.min(3.2, pitch * .35));
-              dxfTextLocal(out, page, "TEXT", element, w / 2 - 2 * 1.8 * .3, stripGeo.zeroY + 1.8 * .35, 1.8, "0V");
+              dxfTextLocal(out, page, "TEXT", element, w / 2 - zeroText.length * 1.8 * .3, stripGeo.zeroY + 1.8 * .35, 1.8, zeroText);
               if (stripZeroMarkVisible(element)) dxfStripTerminalMark(out, page, element, stripGeo.zeroSide === "left" ? 0 : w, stripGeo.zeroY);
             }
             if (element.label) dxfTextLocal(out, page, "TEXT", element, 0, -2.4, 2.2, element.label);
@@ -21154,13 +21174,15 @@
             // 端子台は長方形(上下も直線)。旧来の波形破断線は廃止。
             dxfRectLocal(out, page, "SYMBOL", element, 0, 0, uw, totalH);
             if (comSide) {
+              const comText = comPortLabel(element);
               dxfCircleLocal(out, page, "SYMBOL", element, cx, comY, 3.2);
-              dxfTextLocal(out, page, "TEXT", element, cx - 3 * 1.8 * .3, comY + 1.8 * .35, 1.8, "COM");
+              dxfTextLocal(out, page, "TEXT", element, cx - comText.length * 1.8 * .3, comY + 1.8 * .35, 1.8, comText);
               if (stripComMarkVisible(element)) dxfStripTerminalMark(out, page, element, comSide === "left" ? 0 : uw, comY);
             }
             if (zeroSide) {
+              const zeroText = zeroPortLabel(element);
               dxfCircleLocal(out, page, "SYMBOL", element, cx, zeroY, 3.2);
-              dxfTextLocal(out, page, "TEXT", element, cx - 2 * 1.8 * .3, zeroY + 1.8 * .35, 1.8, "0V");
+              dxfTextLocal(out, page, "TEXT", element, cx - zeroText.length * 1.8 * .3, zeroY + 1.8 * .35, 1.8, zeroText);
               if (stripZeroMarkVisible(element)) dxfStripTerminalMark(out, page, element, zeroSide === "left" ? 0 : uw, zeroY);
             }
             for (let i = 0; i < rows; i++) {
