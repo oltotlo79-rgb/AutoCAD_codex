@@ -4192,6 +4192,9 @@
         if (drawGeoSymbol(g, element, stroke)) {
           applyLabelPresentation(g, element);
           drawVisibleAttributes(g, element);
+          // geoシンボルも「文字スタイル」の文字サイズ・太字(contentFontSize/Bold)をラベルへ反映する。
+          // (フォールバック描画経路と同じ処理。これが無いとgeo部品でラベルサイズ変更が効かない)
+          applyContentTextPresentation(g, element);
           svg.appendChild(g);
           return;
         }
@@ -8895,7 +8898,13 @@
             g.appendChild(svgEl("path", { d: svgArcPath(prim.p[0], prim.p[1], prim.p[2], prim.p[3], prim.p[4]), class: "symbol-line", stroke, fill: "none" }));
           } else if (prim.t === "text") {
             const value = geoTextValue(element, prim);
-            if (value) g.appendChild(textEl(value, prim.p[0], prim.p[1], { fontSize: prim.size || 2, anchor: prim.anchor || "middle" }));
+            if (value) {
+              const node = textEl(value, prim.p[0], prim.p[1], { fontSize: prim.size || 2, anchor: prim.anchor || "middle" });
+              // ラベル以外の固定文字(COM/0V/C/M/t°等の構造記号や説明・参照番号)は
+              // 「文字スタイル」の一括サイズ・太字の対象外にする(ラベルだけを変更対象にする)。
+              if (prim.field !== "label") node.setAttribute("data-content-exempt", "true");
+              g.appendChild(node);
+            }
           }
         });
         return true;
@@ -8922,7 +8931,11 @@
           } else if (prim.t === "text") {
             const value = geoTextValue(element, prim);
             if (!value) return;
-            const size = prim.size || 2;
+            // ラベルは「文字スタイル」の文字サイズ(contentFontSize、旧labelFontSizeも互換)を反映。
+            // 構造記号・説明・参照番号はgeo定義のサイズのまま(SVGのdata-content-exemptと同じ規則)。
+            const size = prim.field === "label" && (Number(element.contentFontSize) > 0 || Number(element.labelFontSize) > 0)
+              ? (Number(element.contentFontSize) > 0 ? Number(element.contentFontSize) : Number(element.labelFontSize))
+              : (prim.size || 2);
             const dx = prim.anchor === "middle" ? value.length * size * .3 : (prim.anchor === "end" ? value.length * size * .6 : 0);
             dxfTextLocal(out, page, "TEXT", element, prim.p[0] - dx, prim.p[1] + size * .35, size, value);
           }
