@@ -3030,6 +3030,61 @@ test("クイックプロパティにデザイン切替と詳細ボタンが出�
   await expect(page.locator("#selectionPanel")).toBeVisible();
 });
 
+test("PLCユニット列のCOM端子とテンプレートのCOM配線", async ({ page }) => {
+  const geo = await page.evaluate(() => {
+    const unit = {
+      ...window.__edsTest.defaultElement("plcBlock", 120, 30),
+      id: "pu", plcStyle: "unit", rows: 3, w: 10, h: 40, pitch: 10,
+      comTerminal: "right", pinText: "Y0\nY1\nY2"
+    };
+    window.__edsTest.installProjectData({
+      schemaVersion: 4,
+      activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [unit] }]
+    });
+    const target = window.__edsTest.state.pages[0].elements[0];
+    const anchors = window.__edsTest.elementConnectionAnchors(target).map(anchor => [anchor.x - 120, anchor.y - 30]);
+    const comTexts = Array.from(document.querySelectorAll('g[data-id="pu"] text')).filter(node => node.textContent === "COM").length;
+    const marks = Array.from(document.querySelectorAll('g[data-id="pu"] circle'))
+      .filter(node => Math.abs(Number(node.getAttribute("r")) - 0.55) < 0.01).length;
+    return { anchors, comTexts, marks };
+  });
+  expect(geo.comTexts).toBe(1);
+  expect(geo.marks).toBe(1);
+  // COM接続点は指定側(右)の辺のみ。中央のCOM円には接続点を作らない
+  expect(geo.anchors).toEqual(expect.arrayContaining([[10, 35]]));
+  expect(geo.anchors).toEqual(expect.not.arrayContaining([[5, 35]]));
+
+  await page.locator("#templateMenu").selectOption("plcInput");
+  await page.locator("#plcInCount").fill("4");
+  await page.locator("#plcInBuildBtn").click();
+  const input = await page.evaluate(() => {
+    const current = window.__edsTest.state.pages.find(item => item.id === window.__edsTest.state.activePageId);
+    const unit = current.elements.find(element => element.type === "plcBlock");
+    const com = current.elements.find(element => element.type === "wire" && Array.isArray(element.points)
+      && element.points[0][1] === 77.5 && element.points[1][1] === 77.5);
+    return { comTerminal: unit.comTerminal, h: unit.h, wire: com ? com.points : null };
+  });
+  expect(input.comTerminal).toBe("right");
+  expect(input.h).toBe(50);
+  expect(input.wire).toEqual([[135, 77.5], [147.5, 77.5]]);
+
+  await page.goto(appUrl, { waitUntil: "load" });
+  await page.locator("#templateMenu").selectOption("plcInput");
+  await page.evaluate(() => { document.querySelector("#plcInDir").value = "output"; });
+  await page.locator("#plcInCount").fill("4");
+  await page.locator("#plcInBuildBtn").click();
+  const output = await page.evaluate(() => {
+    const current = window.__edsTest.state.pages.find(item => item.id === window.__edsTest.state.activePageId);
+    const unit = current.elements.find(element => element.type === "plcBlock");
+    const com = current.elements.find(element => element.type === "wire" && Array.isArray(element.points)
+      && element.points[0][1] === 77.5 && element.points[1][1] === 77.5);
+    return { comTerminal: unit.comTerminal, wire: com ? com.points : null };
+  });
+  expect(output.comTerminal).toBe("left");
+  expect(output.wire).toEqual([[32.5, 77.5], [47.5, 77.5]]);
+});
+
 test("グリッド表示をスナップとは独立して切り替えて保存できる", async ({ page }) => {
   const gridLayers = page.locator("svg.drawing-page [data-grid-layer]");
   await expect(gridLayers).toHaveCount(2);
