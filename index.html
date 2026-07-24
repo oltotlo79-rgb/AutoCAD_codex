@@ -5459,30 +5459,49 @@
       }
 
       // ブザーの描画(ホーン形)。スピーカー形はdrawSpeakerBuzzer()。
+      // ホーン形ブザーの各部寸法(SVG/DXFで共有)。全て枠(w,h)への比率で定義し、はみ出さずに縮小追従する。
+      function buzzerHornGeom(w, h) {
+        const cy = h / 2;
+        const throat = w * .28;
+        return {
+          cy,
+          throat,
+          throatX2: throat + w * .05,
+          leadEnd: throat - w * .06,
+          mouthX: w * .95,
+          kneeX: throat + (w * .95 - throat) * .62,
+          amp: h * .46,   // 開口部の半高
+          flare: h * .24, // のど元の半高
+          dotR: Math.min(.85, h * .13)
+        };
+      }
+
       function drawBuzzer(g, element, stroke) {
-        const w = Number(element.w || 14);
-        const h = Number(element.h || 9);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 6);
         if ((element.buzzerVariant || "horn") === "speaker") {
           drawSpeakerBuzzer(g, element, stroke, w, h);
           return;
         }
-        const cy = h / 2;
-        const throat = Math.max(4.2, w * .26);
-        const mouthX = w - .4;
-        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: throat - .8, y2: cy, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("circle", { cx: throat, cy, r: .85, class: "symbol-fill", stroke }));
-        g.appendChild(svgEl("path", { d: "M " + (throat + .7) + " " + (cy - 2.3) + " C " + (throat + 2.6) + " " + (cy - 4.5) + " " + (throat + 5.2) + " " + (cy - 4.2) + " " + (throat + 6.8) + " " + (cy - 2.4) + " L " + mouthX + " " + (cy - 4.9), class: "symbol-line", stroke }));
-        g.appendChild(svgEl("path", { d: "M " + (throat + .7) + " " + (cy + 2.3) + " C " + (throat + 2.6) + " " + (cy + 4.5) + " " + (throat + 5.2) + " " + (cy + 4.2) + " " + (throat + 6.8) + " " + (cy + 2.4) + " L " + mouthX + " " + (cy + 4.9), class: "symbol-line", stroke }));
-        g.appendChild(svgEl("path", { d: "M " + mouthX + " " + (cy - 4.9) + " C " + w + " " + (cy - 2) + " " + w + " " + (cy + 2) + " " + mouthX + " " + (cy + 4.9), class: "symbol-line", stroke }));
+        const b = buzzerHornGeom(w, h);
+        const cy = b.cy;
+        g.appendChild(svgEl("line", { x1: 0, y1: cy, x2: b.leadEnd, y2: cy, class: "symbol-line", stroke }));
+        g.appendChild(svgEl("circle", { cx: b.throat, cy, r: b.dotR, class: "symbol-fill", stroke }));
+        const flareMid = b.throat + (b.mouthX - b.throat) * .55;
+        g.appendChild(svgEl("path", { d: "M " + b.throatX2 + " " + (cy - b.flare) + " Q " + flareMid + " " + (cy - b.amp) + " " + b.mouthX + " " + (cy - b.amp), class: "symbol-line", stroke, fill: "none" }));
+        g.appendChild(svgEl("path", { d: "M " + b.throatX2 + " " + (cy + b.flare) + " Q " + flareMid + " " + (cy + b.amp) + " " + b.mouthX + " " + (cy + b.amp), class: "symbol-line", stroke, fill: "none" }));
+        g.appendChild(svgEl("path", { d: "M " + b.mouthX + " " + (cy - b.amp) + " C " + w + " " + (cy - b.amp * .42) + " " + w + " " + (cy + b.amp * .42) + " " + b.mouthX + " " + (cy + b.amp), class: "symbol-line", stroke, fill: "none" }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
-      // スピーカー形ブザーの描画。
+      // スピーカー形ブザーの描画。上下マージンも比率化し縮小へ追従する。
       function drawSpeakerBuzzer(g, element, stroke, w, h) {
         const cy = h / 2;
-        g.appendChild(svgEl("path", { d: "M 0 " + cy + " H " + (w * .24) + " L " + (w * .62) + " 2.2 V " + (h - 2.2) + " L " + (w * .24) + " " + cy, class: "symbol-line", stroke }));
-        g.appendChild(svgEl("path", { d: "M " + (w * .72) + " " + (h * .3) + " C " + (w * .9) + " " + (h * .42) + " " + (w * .9) + " " + (h * .58) + " " + (w * .72) + " " + (h * .7), class: "symbol-line", stroke }));
-        g.appendChild(svgEl("path", { d: "M " + (w * .84) + " " + (h * .18) + " C " + w + " " + (h * .38) + " " + w + " " + (h * .62) + " " + (w * .84) + " " + (h * .82), class: "symbol-line", stroke }));
+        const top = h * .22;
+        const bot = h * .78;
+        g.appendChild(svgEl("path", { d: "M 0 " + cy + " H " + (w * .24) + " L " + (w * .62) + " " + top + " V " + bot + " L " + (w * .24) + " " + cy, class: "symbol-line", stroke, fill: "none" }));
+        g.appendChild(svgEl("path", { d: "M " + (w * .72) + " " + (h * .3) + " C " + (w * .9) + " " + (h * .42) + " " + (w * .9) + " " + (h * .58) + " " + (w * .72) + " " + (h * .7), class: "symbol-line", stroke, fill: "none" }));
+        g.appendChild(svgEl("path", { d: "M " + (w * .84) + " " + (h * .18) + " C " + w + " " + (h * .38) + " " + w + " " + (h * .62) + " " + (w * .84) + " " + (h * .82), class: "symbol-line", stroke, fill: "none" }));
         if (element.label) g.appendChild(textEl(element.label, w / 2, -2.2, { fontSize: 1.9, anchor: "middle" }));
       }
 
@@ -10936,7 +10955,7 @@
           fuse: { ...base, w: 10, h: 4.4, label: "F", orientation: "horizontal" },
           breaker: { ...base, w: 12.5, h: 5, label: "CB", orientation: "horizontal", refNo: "" },
           lamp: { ...base, w: 10, h: 4.4, label: "PL", lampVariant: "pilot", lampColor: "W" },
-          buzzer: { ...base, w: 15, h: 9, label: "BZ", buzzerVariant: "horn" },
+          buzzer: { ...base, w: 12, h: 6, label: "BZ", buzzerVariant: "horn" },
           solenoidValve: { ...base, w: 25, h: 16, label: "SOL" },
           sensor: { ...base, w: 25, h: 14, label: "SEN" },
           photoelectricSwitch: { ...base, w: 15, h: 8.4, label: "", symbolVariant: "throughBeam" },
@@ -21413,28 +21432,30 @@
 
       // ブザーのDXF出力。
       function dxfBuzzerLocal(out, page, element) {
-        const w = Number(element.w || 14);
-        const h = Number(element.h || 9);
+        const w = Number(element.w || 12);
+        const h = Number(element.h || 6);
         const cy = h / 2;
         if ((element.buzzerVariant || "horn") === "horn") {
-          const throat = Math.max(4.2, w * .26);
-          const mouthX = w - .4;
-          dxfLineLocal(out, page, "SYMBOL", element, 0, cy, throat - .8, cy);
-          dxfCircleLocal(out, page, "SYMBOL", element, throat, cy, .85);
-          dxfLineLocal(out, page, "SYMBOL", element, throat + .7, cy - 2.3, throat + 6.8, cy - 2.4);
-          dxfLineLocal(out, page, "SYMBOL", element, throat + 6.8, cy - 2.4, mouthX, cy - 4.9);
-          dxfLineLocal(out, page, "SYMBOL", element, throat + .7, cy + 2.3, throat + 6.8, cy + 2.4);
-          dxfLineLocal(out, page, "SYMBOL", element, throat + 6.8, cy + 2.4, mouthX, cy + 4.9);
-          dxfLineLocal(out, page, "SYMBOL", element, mouthX, cy - 4.9, w, cy - 2);
-          dxfLineLocal(out, page, "SYMBOL", element, w, cy - 2, w, cy + 2);
-          dxfLineLocal(out, page, "SYMBOL", element, w, cy + 2, mouthX, cy + 4.9);
+          // SVGのbuzzerHornGeomと同一寸法。曲線は直線近似(のど元→膝→開口の2分割+開口3分割)。
+          const b = buzzerHornGeom(w, h);
+          dxfLineLocal(out, page, "SYMBOL", element, 0, cy, b.leadEnd, cy);
+          dxfCircleLocal(out, page, "SYMBOL", element, b.throat, cy, b.dotR);
+          dxfLineLocal(out, page, "SYMBOL", element, b.throatX2, cy - b.flare, b.kneeX, cy - b.flare * 1.05);
+          dxfLineLocal(out, page, "SYMBOL", element, b.kneeX, cy - b.flare * 1.05, b.mouthX, cy - b.amp);
+          dxfLineLocal(out, page, "SYMBOL", element, b.throatX2, cy + b.flare, b.kneeX, cy + b.flare * 1.05);
+          dxfLineLocal(out, page, "SYMBOL", element, b.kneeX, cy + b.flare * 1.05, b.mouthX, cy + b.amp);
+          dxfLineLocal(out, page, "SYMBOL", element, b.mouthX, cy - b.amp, w, cy - b.amp * .42);
+          dxfLineLocal(out, page, "SYMBOL", element, w, cy - b.amp * .42, w, cy + b.amp * .42);
+          dxfLineLocal(out, page, "SYMBOL", element, w, cy + b.amp * .42, b.mouthX, cy + b.amp);
           if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
           return;
         }
+        const top = h * .22;
+        const bot = h * .78;
         dxfLineLocal(out, page, "SYMBOL", element, 0, cy, w * .24, cy);
-        dxfLineLocal(out, page, "SYMBOL", element, w * .24, cy, w * .62, 2.2);
-        dxfLineLocal(out, page, "SYMBOL", element, w * .62, 2.2, w * .62, h - 2.2);
-        dxfLineLocal(out, page, "SYMBOL", element, w * .62, h - 2.2, w * .24, cy);
+        dxfLineLocal(out, page, "SYMBOL", element, w * .24, cy, w * .62, top);
+        dxfLineLocal(out, page, "SYMBOL", element, w * .62, top, w * .62, bot);
+        dxfLineLocal(out, page, "SYMBOL", element, w * .62, bot, w * .24, cy);
         dxfLineLocal(out, page, "SYMBOL", element, w * .72, h * .3, w * .86, h * .42);
         dxfLineLocal(out, page, "SYMBOL", element, w * .86, h * .42, w * .86, h * .58);
         dxfLineLocal(out, page, "SYMBOL", element, w * .86, h * .58, w * .72, h * .7);
