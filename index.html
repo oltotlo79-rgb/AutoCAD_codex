@@ -8117,43 +8117,66 @@
             { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // ブザー(JIS C 0617): ドーム半円+弦(かまぼこ形)。ベルとの違いは内部の打ち棒なし。
-        // ブザー(JIS C 0617): 半円が下向き(∪・お椀形)。弦(直径)を配線上に置く。
-        // ベル(半円が上向き∩)と向きで区別する。旧定義はドーム(∩)でベルと同形だったため修正。
+        // ブザー(JIS C 0617-8, 08-10-10「半円」): 半円(かまぼこ形・弦を配線上、ドームが上∩)のみ。
+        // 音響信号一般(半円+線)やサイレン(直角三角形)とは、線・三角の有無で区別する。
         buzzerJis: {
           w: 10, h: 4.4,
-          anchors: [[0, 2], [10, 2]],
-          prims: [
-            { t: "line", p: [0, 2, 3.1, 2] },
-            { t: "line", p: [6.9, 2, 10, 2] },
-            { t: "line", p: [3.1, 2, 6.9, 2] },
-            { t: "arc", p: [5, 2, 1.9, 0, 180] },
-            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
-          ]
-        },
-        // ブザー(発音強調): ∪半円+内側にもう1つの弧。単発の半円(jis)と区別し発音を表す。
-        buzzerSound: {
-          w: 10, h: 4.4,
-          anchors: [[0, 2], [10, 2]],
-          prims: [
-            { t: "line", p: [0, 2, 3.1, 2] },
-            { t: "line", p: [6.9, 2, 10, 2] },
-            { t: "line", p: [3.1, 2, 6.9, 2] },
-            { t: "arc", p: [5, 2, 1.9, 0, 180] },
-            { t: "arc", p: [5, 2, 1.0, 0, 180] },
-            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
-          ]
-        },
-        // 電子ブザー(圧電): 箱+内部に∪の発音素子。電子式のモジュール表現。
-        buzzerPiezo: {
-          w: 10, h: 6,
           anchors: [[0, 3], [10, 3]],
           prims: [
-            { t: "line", p: [0, 3, 2.5, 3] },
-            { t: "line", p: [7.5, 3, 10, 3] },
-            { t: "rect", p: [2.5, 1, 5, 4], fill: "white" },
-            { t: "line", p: [3.6, 3, 6.4, 3] },
-            { t: "arc", p: [5, 3, 1.4, 0, 180] },
+            { t: "line", p: [0, 3, 3.1, 3] },
+            { t: "line", p: [6.9, 3, 10, 3] },
+            { t: "line", p: [3.1, 3, 6.9, 3] },
+            { t: "arc", p: [5, 3, 1.9, 180, 360] },
+            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 音響信号一般(JIS C 0617-8, 08-10-06「半円、線」): 半円+弦+短い線。ホーン・ベル等の一般記号。
+        buzzerGeneral: {
+          w: 10, h: 4.4,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 3.1, 3] },
+            { t: "line", p: [6.9, 3, 10, 3] },
+            { t: "line", p: [3.1, 3, 6.9, 3] },
+            { t: "arc", p: [5, 3, 1.9, 180, 360] },
+            { t: "line", p: [5, 3, 5, 4.1] },
+            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // サイレン(JIS C 0617-8, 08-10-09「直角三角形」): 配線上に直角三角形。
+        buzzerSiren: {
+          w: 10, h: 5,
+          anchors: [[0, 3.5], [10, 3.5]],
+          prims: [
+            { t: "line", p: [0, 3.5, 3, 3.5] },
+            { t: "line", p: [7, 3.5, 10, 3.5] },
+            { t: "pline", pts: [[3, 3.5], [7, 3.5], [3, 0.5], [3, 3.5]] },
+            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // ブザー(発音強調・略画): 半円∩+内側にもう1つの弧。JIS規格外の簡略表現。
+        buzzerSound: {
+          w: 10, h: 4.4,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 3.1, 3] },
+            { t: "line", p: [6.9, 3, 10, 3] },
+            { t: "line", p: [3.1, 3, 6.9, 3] },
+            { t: "arc", p: [5, 3, 1.9, 180, 360] },
+            { t: "arc", p: [5, 3, 1.0, 180, 360] },
+            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 電子ブザー(圧電・略画): 箱+内部に半円∩の発音素子。JIS規格外の簡略表現。
+        buzzerPiezo: {
+          w: 10, h: 6,
+          anchors: [[0, 3.5], [10, 3.5]],
+          prims: [
+            { t: "line", p: [0, 3.5, 2.5, 3.5] },
+            { t: "line", p: [7.5, 3.5, 10, 3.5] },
+            { t: "rect", p: [2.5, 1.5, 5, 4], fill: "white" },
+            { t: "line", p: [3.6, 3.5, 6.4, 3.5] },
+            { t: "arc", p: [5, 3.5, 1.4, 180, 360] },
             { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8815,7 +8838,7 @@
           case "floatSwitch": return variant === "nc" ? "floatSwitchNC" : "floatSwitch";
           case "thermoSwitch": return variant === "nc" ? "thermoSwitchNC" : "thermoSwitch";
           case "bell": return "bell";
-          case "buzzer": return ({ jis: "buzzerJis", sound: "buzzerSound", piezo: "buzzerPiezo" })[element.buzzerVariant] || null;
+          case "buzzer": return ({ jis: "buzzerJis", general: "buzzerGeneral", siren: "buzzerSiren", sound: "buzzerSound", piezo: "buzzerPiezo" })[element.buzzerVariant] || null;
           case "battery": return variant === "single" ? "batterySingle" : "battery";
           case "rectifierBox": return "rectifierBox";
           case "currentTransformer": return variant === "zct" ? "currentTransformerZct" : (variant === "coil" ? "currentTransformerCoil" : "currentTransformer");
@@ -10437,11 +10460,13 @@
           return `
             <label>ブザー形状</label>
             <select data-bind="buzzerVariant">
-              <option value="horn"${variant === "horn" ? " selected" : ""}>ホーン（メガホン）</option>
-              <option value="speaker"${variant === "speaker" ? " selected" : ""}>スピーカー</option>
-              <option value="jis"${variant === "jis" ? " selected" : ""}>半円・下向き（JIS C 0617）</option>
-              <option value="sound"${variant === "sound" ? " selected" : ""}>半円＋音波（発音強調）</option>
-              <option value="piezo"${variant === "piezo" ? " selected" : ""}>電子ブザー（箱＋半円）</option>
+              <option value="jis"${variant === "jis" ? " selected" : ""}>ブザー・半円（JIS C 0617 08-10-10）</option>
+              <option value="general"${variant === "general" ? " selected" : ""}>音響信号一般・半円＋線（JIS 08-10-06）</option>
+              <option value="siren"${variant === "siren" ? " selected" : ""}>サイレン・直角三角形（JIS 08-10-09）</option>
+              <option value="horn"${variant === "horn" ? " selected" : ""}>ホーン（ラッパ形・略画）</option>
+              <option value="speaker"${variant === "speaker" ? " selected" : ""}>スピーカー（略画）</option>
+              <option value="sound"${variant === "sound" ? " selected" : ""}>半円＋音波（略画）</option>
+              <option value="piezo"${variant === "piezo" ? " selected" : ""}>電子ブザー・箱＋半円（略画）</option>
             </select>
           `;
         }
@@ -19078,7 +19103,7 @@
             接地4種、ヒューズ3種、ダイオード7種（トライアック・フォトダイオード含む）、変圧器3種＋テンプレート専用10mm形、論理ゲート3種、押しボタンa/b接点（設備標準・JIS C 0617）、
             リミットスイッチ箱形NO/NC・ローラーNO/NC、圧力/フロート/温度/フロー/フットスイッチのa/b接点、
             切替接点（c接点）、接触器主接点（半円・JIS C 0617）、サーマルリレー10種（熱動素子付きa/b接点ほか）、照光式/パーム押しボタン、切替スイッチJIS形、ブリッジ整流◇、避雷器2種、
-            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント9種（箱形2口・丸形・接地極付き・雄側プラグ3種・プラグ対ほか）、蛍光灯、針付き計器、ブザー5形状（ホーン/スピーカー/JIS下向き半円/音波強調/電子ブザー）、交流電源（円＋〜）、ポテンショメータ3端子、AC/DC・DC/AC（インバータ）・DC/DC変換器箱、光電スイッチ10種（透過/回帰反射/拡散/距離設定BGS/ファイバ/溝形/マーク・カラー/一般形ほか）、マットスイッチ・リードスイッチなど100種類以上。
+            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント9種（箱形2口・丸形・接地極付き・雄側プラグ3種・プラグ対ほか）、蛍光灯、針付き計器、ブザー7形状（JIS半円/音響信号一般・半円＋線/サイレン・直角三角形/ホーン/スピーカーほか）、交流電源（円＋〜）、ポテンショメータ3端子、AC/DC・DC/AC（インバータ）・DC/DC変換器箱、光電スイッチ10種（透過/回帰反射/拡散/距離設定BGS/ファイバ/溝形/マーク・カラー/一般形ほか）、マットスイッチ・リードスイッチなど100種類以上。
             光電・マット・リードスイッチは他の接点部品と揃うサイズ（幅15mm前後）で配置されます。
             光電/マット/リード/ライトカーテン/センサ/ソレノイド弁/電源も、選択して右パネルの「シンボルデザイン」から様式を切り替えられます。
             切替時は<b>第1接続ピンの位置を保持</b>するため、そのピンへ接続した配線はずれません。ピン構成が共通のデザインではほかの接続点も維持され、

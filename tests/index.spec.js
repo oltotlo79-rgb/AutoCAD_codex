@@ -3444,14 +3444,16 @@ test("COM/0Vポートの表示名をCOM＋/COM−へ切り替えられる", asyn
   expect(result.dxfPm).toBe(true);
 });
 
-test("ブザーJISは下向き半円(∪)でベルと区別され、追加形状も枠内に収まる", async ({ page }) => {
+test("ブザー系はJIS C 0617準拠(半円/半円+線/直角三角形)で枠内に収まる", async ({ page }) => {
   const result = await page.evaluate(() => {
-    const arcOf = (type, variant) => {
+    const infoOf = (type, variant) => {
       const el = window.__edsTest.defaultElement(type, 20, 20);
       if (variant) el.buzzerVariant = variant;
       const prims = window.__edsTest.geoPrims(el);
       const arcs = prims.filter(p => p.t === "arc").map(p => [p.p[3], p.p[4]]);
-      // 図形が枠[0..w]x[-margin..h]内か(ラベル除く)
+      const plines = prims.filter(p => p.t === "pline").length;
+      // 垂直線(x1≈x2)の本数=striker等
+      const vlines = prims.filter(p => p.t === "line" && Math.abs(p.p[0] - p.p[2]) < 0.01).length;
       let maxY = -Infinity, minX = Infinity, maxX = -Infinity;
       prims.forEach(p => {
         if (p.t === "text") return;
@@ -3460,28 +3462,65 @@ test("ブザーJISは下向き半円(∪)でベルと区別され、追加形状
         minX = Math.min(minX, ...xs.filter(Number.isFinite)); maxX = Math.max(maxX, ...xs.filter(Number.isFinite));
         maxY = Math.max(maxY, ...ys.filter(Number.isFinite));
       });
-      return { arcs, w: el.w, h: el.h, minX: Math.round(minX * 10) / 10, maxX: Math.round(maxX * 10) / 10, maxY: Math.round(maxY * 10) / 10, anchorCount: window.__edsTest.elementConnectionAnchors(el).length };
+      return { arcs, plines, vlines, w: el.w, h: el.h, minX: Math.round(minX * 10) / 10, maxX: Math.round(maxX * 10) / 10, maxY: Math.round(maxY * 10) / 10, anchorCount: window.__edsTest.elementConnectionAnchors(el).length };
     };
     return {
-      jis: arcOf("buzzer", "jis"),
-      sound: arcOf("buzzer", "sound"),
-      piezo: arcOf("buzzer", "piezo"),
-      bell: arcOf("bell")
+      jis: infoOf("buzzer", "jis"),
+      general: infoOf("buzzer", "general"),
+      siren: infoOf("buzzer", "siren"),
+      bell: infoOf("bell")
     };
   });
-  // JISブザーは下向き半円(0→180)。ベルは上向き(180→360)。向きが逆
-  expect(result.jis.arcs).toEqual([[0, 180]]);
+  // ブザー(08-10-10): 半円のみ=上向きドーム(180→360)、垂直線(striker)なし
+  expect(result.jis.arcs).toEqual([[180, 360]]);
+  expect(result.jis.vlines).toBe(0);
+  // 音響信号一般(08-10-06): 半円+線=ドーム+短い垂直線1本
+  expect(result.general.arcs).toEqual([[180, 360]]);
+  expect(result.general.vlines).toBe(1);
+  // サイレン(08-10-09): 直角三角形(pline)、弧なし
+  expect(result.siren.arcs).toEqual([]);
+  expect(result.siren.plines).toBe(1);
+  // ベルも半円+線(上向きドーム)
   expect(result.bell.arcs).toEqual([[180, 360]]);
-  // sound=二重∪(下向き弧2本)、piezo=∪1本
-  expect(result.sound.arcs).toEqual([[0, 180], [0, 180]]);
-  expect(result.piezo.arcs).toEqual([[0, 180]]);
-  // 3形状とも枠内(横0..w、縦はh以内=はみ出さない)、接続点2点
-  [result.jis, result.sound, result.piezo].forEach(r => {
+  // いずれも枠内(横0..w、縦h以内)、接続点2点
+  [result.jis, result.general, result.siren].forEach(r => {
     expect(r.anchorCount).toBe(2);
     expect(r.minX).toBeGreaterThanOrEqual(0);
     expect(r.maxX).toBeLessThanOrEqual(r.w);
     expect(r.maxY).toBeLessThanOrEqual(r.h);
   });
+});
+
+test("全パレット部品が配置でき、ブザー等の全バリアントが選択できる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const paletteTypes = Array.from(document.querySelectorAll('#paletteGrid .palette-item')).map(n => n.dataset.type)
+      .filter(t => !t.startsWith("custom:") && !t.startsWith("circuit:"));
+    const placeFail = [];
+    paletteTypes.forEach(t => {
+      try { if (!window.__edsTest.defaultElementAtPlacement(t, 40, 40)) placeFail.push(t); }
+      catch (e) { placeFail.push(t + ":" + e.message); }
+    });
+    // buzzerVariant/lampVariant/resistorStyle の各値が右パネルのセレクトに存在するか
+    const cfgs = [
+      ["buzzer", "buzzerVariant", ["jis", "general", "siren", "horn", "speaker", "sound", "piezo"]],
+      ["lamp", "lampVariant", ["pilot", "cross", "cylinder", "fluor"]],
+      ["resistor", "resistorStyle", ["box", "varistor", "variable", "thermistor", "zigzag", "potentiometer"]]
+    ];
+    const missing = [];
+    cfgs.forEach(([type, bind, values]) => {
+      window.__edsTest.installProjectData({ schemaVersion: 4, activePageId: "p",
+        pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [{ ...window.__edsTest.defaultElement(type, 30, 30), id: "v" }] }] });
+      window.__edsTest.selectElement("v");
+      const sel = document.querySelector(`#selectionPanel select[data-bind="${bind}"]`);
+      if (!sel) { missing.push(type + ":" + bind); return; }
+      const opts = Array.from(sel.querySelectorAll("option")).map(o => o.value);
+      values.forEach(val => { if (!opts.includes(val)) missing.push(type + ":" + val); });
+    });
+    return { paletteCount: paletteTypes.length, placeFail, missing };
+  });
+  expect(result.paletteCount).toBeGreaterThan(70);
+  expect(result.placeFail).toEqual([]);
+  expect(result.missing).toEqual([]);
 });
 
 test("グリッド表示をスナップとは独立して切り替えて保存できる", async ({ page }) => {
