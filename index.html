@@ -12925,12 +12925,11 @@
           page.elements.push(defaultElement("junction", 147.5, y));
           page.elements.push({ ...defaultElement("wire", 145, y), points: [[145, y], [147.5, y]] });
         });
-        // COM(右辺)はP1(+24V)へ、0V(右辺)はN1(0V)へ配線し、それぞれレール上へ接続点を打つ。
-        // COM配線はカードの下段を横切るが、白抜きのCOM円が後描きで線を隠す。
+        // COM(左辺)はP1(+24V)へ、0V(右辺)はN1(0V)へ配線し、それぞれレール上へ接続点を打つ。
         const comY = round(37.5 + TEMPLATE_CIRCUIT_PITCH * count);
         const zeroY = round(comY + TEMPLATE_CIRCUIT_PITCH);
         page.elements.push(defaultElement("junction", 32.5, comY));
-        page.elements.push({ ...defaultElement("wire", 32.5, comY), points: [[32.5, comY], [57.5, comY]], wireNo: "" });
+        page.elements.push({ ...defaultElement("wire", 32.5, comY), points: [[32.5, comY], [unitX, comY]], wireNo: "" });
         page.elements.push(defaultElement("junction", 147.5, zeroY));
         page.elements.push({ ...defaultElement("wire", 57.5, zeroY), points: [[57.5, zeroY], [147.5, zeroY]], wireNo: "" });
         page.elements.push({
@@ -12942,10 +12941,10 @@
           pitch: TEMPLATE_CIRCUIT_PITCH,
           label: unitName,
           pinText: addresses.join("\n"),
-          // 出力カード: 各ポートはa接点表示・端子は右(出力側)、COM=右→P1、0V=右→N1
+          // 出力カード: 各ポートはa接点表示・端子は右(出力側)、COM=左→P1、0V=右→N1
           cardMode: "output",
           terminalMarkRight: true,
-          comTerminal: "right",
+          comTerminal: "left",
           zeroVTerminal: "right"
         });
         state.pages.push(page);

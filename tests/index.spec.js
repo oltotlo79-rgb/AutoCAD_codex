@@ -3094,11 +3094,11 @@ test("PLCユニット列のCOM端子とテンプレートのCOM配線", async ({
       && element.points[0][1] === 87.5 && element.points[1][1] === 87.5);
     return { comTerminal: unit.comTerminal, cardMode: unit.cardMode, zeroVTerminal: unit.zeroVTerminal, wire: com ? com.points : null, zeroWire: zero ? zero.points : null };
   });
-  // 出力カード(左置き): a接点モード・COM(右辺)→P1、0V(右辺)→N1
+  // 出力カード(左置き): a接点モード・COM(左辺)→P1、0V(右辺)→N1
   expect(output.cardMode).toBe("output");
-  expect(output.comTerminal).toBe("right");
+  expect(output.comTerminal).toBe("left");
   expect(output.zeroVTerminal).toBe("right");
-  expect(output.wire).toEqual([[32.5, 77.5], [57.5, 77.5]]);
+  expect(output.wire).toEqual([[32.5, 77.5], [47.5, 77.5]]);
   expect(output.zeroWire).toEqual([[57.5, 87.5], [147.5, 87.5]]);
 });
 
