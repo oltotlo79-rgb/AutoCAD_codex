@@ -5553,7 +5553,27 @@
         return position;
       }
 
+      // 機器箱の端子レイアウト。pinPitch(端子間距離)・pinMargin(上下端〜端子)が指定されていれば
+      // その値で端子を配置し、箱の高さもそれに追従する。未指定の既存図面は従来どおり高さを等分する。
+      function deviceBoxPinLayout(element) {
+        const pins = Math.max(0, Number(element.pins || 4));
+        const hasPitch = element.pinPitch !== undefined && element.pinPitch !== "" && Number.isFinite(Number(element.pinPitch));
+        const hasMargin = element.pinMargin !== undefined && element.pinMargin !== "" && Number.isFinite(Number(element.pinMargin));
+        if (!hasPitch && !hasMargin) return { explicit: false, pins };
+        const pitch = Math.max(1, Number(hasPitch ? element.pinPitch : 6));
+        const margin = Math.max(0.5, Number(hasMargin ? element.pinMargin : pitch));
+        return { explicit: true, pins, pitch, margin, h: round(margin * 2 + Math.max(0, pins - 1) * pitch) };
+      }
+
+      // 機器箱の外形高さ(端子ピッチ指定時はその合計、未指定は保存されたelement.h)。
+      function deviceBoxHeight(element) {
+        const layout = deviceBoxPinLayout(element);
+        return layout.explicit ? layout.h : Number(element.h || 20);
+      }
+
       function deviceBoxPinY(element, index) {
+        const layout = deviceBoxPinLayout(element);
+        if (layout.explicit) return round(layout.margin + index * layout.pitch);
         const h = Number(element.h || 20);
         const pins = Math.max(0, Number(element.pins || 4));
         return cleanConnectionOffset(h * (index + 1) / (pins + 1));
@@ -5580,7 +5600,7 @@
 
       function drawDeviceBox(g, element, stroke) {
         const w = Number(element.w || 28);
-        const h = Number(element.h || 20);
+        const h = deviceBoxHeight(element);
         const pins = Math.max(0, Number(element.pins || 4));
         const leftLabels = String(element.pinText || "").split(/\r?\n/);
         const rightLabels = String(element.rightPinText || "").split(/\r?\n/);
@@ -9360,7 +9380,9 @@
         }
         const s = elementScale(element);
         const w = Number(element.w || defaultElement(element.type).w || 20) * s;
-        const h = Number(element.h || defaultElement(element.type).h || 10) * s;
+        // 機器箱で端子ピッチ指定時は、外形高さを端子レイアウトに合わせる。
+        const rawH = element.type === "deviceBox" ? deviceBoxHeight(element) : Number(element.h || defaultElement(element.type).h || 10);
+        const h = rawH * s;
         return { x: Number(element.x || 0), y: Number(element.y || 0), w, h };
       }
 
@@ -10651,6 +10673,10 @@
           return `
             <label>左右ピン数</label>
             <input data-bind="pins" data-kind="number" type="number" min="0" step="1" value="${Number(element.pins || 4)}">
+            <div class="row">
+              <div><label>端子ピッチ mm（空=高さを等分）</label><input data-bind="pinPitch" data-kind="number" type="number" min="1" step="0.5" value="${element.pinPitch === undefined || element.pinPitch === "" ? "" : round(element.pinPitch)}" placeholder="等分"></div>
+              <div><label>上下マージン mm</label><input data-bind="pinMargin" data-kind="number" type="number" min="0.5" step="0.5" value="${element.pinMargin === undefined || element.pinMargin === "" ? "" : round(element.pinMargin)}" placeholder="ピッチと同じ"></div>
+            </div>
             <label>左端子文字（1行1点）</label>
             <textarea data-bind="pinText">${escapeHtml(element.pinText || "")}</textarea>
             <label>右端子文字（1行1点）</label>
@@ -10859,6 +10885,11 @@
         } else {
           element[key] = value;
           if (key === "deviceTerminalMode") element.deviceTerminalVisibility = {};
+          // 機器箱の端子ピッチ/上下マージン/ピン数の変更時は外形高さを端子レイアウトへ同期。
+          if (element.type === "deviceBox" && ["pins", "pinPitch", "pinMargin"].includes(key)) {
+            const layout = deviceBoxPinLayout(element);
+            if (layout.explicit) element.h = layout.h;
+          }
           if (key === "tag" && supportsElectricalAttributes(element) && !element.label) element.label = value;
           if (key === "tag" && value) {
             const dup = state.pages.some(page => page.elements.some(item =>
@@ -19056,7 +19087,7 @@
               <li><b>端子台・PLCユニット列の端子記号</b>: 本体の辺上に<b>機器箱と同じ白抜き小円の端子</b>を表示し、その<b>端子だけが配線接続点</b>になります。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
               <li><b>端子台・PLCユニット列のカード種別</b>: 本体は<b>長方形</b>（上下も直線）。右パネルの「カード種別」で<b>入力カード（円＋デバイス名）／出力カード（a接点＋上にデバイス名）</b>を切替できます。出力カードは<b>0Vポート</b>（既定=左・表示/非表示切替可）も付きます</li>
               <li><b>COM/0Vポート</b>: パレットの端子台は<b>最下段にCOMポートを標準装備</b>（位置は他の端子の逆側が自動既定、なし/自動/左/右を切替可）。右パネルの<b>「COM/0Vポートの表示名」で COM/0V ⇔ COM＋/COM− を切替</b>できます。PLC入出力回路テンプレートは<b>入力=円モード・COM右→N1／出力=a接点モード・COMと0Vを右→N1</b>へ自動配線し、各行・COM・0Vともレール接続部に接続点(黒丸)を打ちます</li>
-              <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます</li>
+              <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます。<b>端子ピッチ（端子間距離）と上下マージン（上下端〜端子）</b>を指定でき、指定すると箱の高さが端子配置に自動追従します（空欄なら従来どおり高さを等分）</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
               <li>間違えたら <b>Ctrl+Z</b>。位置の微調整は<b>矢印キー</b>（1mm、Shiftで5mm）</li>
             </ul>`)}
@@ -21267,7 +21298,7 @@
             const showTerminal = (key, hasText) => typeof visibility[key] === "boolean" ? visibility[key] : terminalMode === "always" || (terminalMode === "auto" && hasText);
             const pinFontSize = Math.max(1, Number(element.pinFontSize || 2.2));
             for (let i = 0; i < pins; i++) {
-              const y = box.h * (i + 1) / (pins + 1);
+              const y = deviceBoxPinY(element, i);
               if (showTerminal("left-" + i, !!leftLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, 0, y, .55);
               if (showTerminal("right-" + i, !!rightLabels[i]?.trim())) dxfCircleLocal(out, page, "SYMBOL", element, box.w, y, .55);
               if (leftLabels[i]?.trim()) dxfTextLocal(out, page, "TEXT", element, 1.5, y + pinFontSize * .25, pinFontSize, leftLabels[i].trim());

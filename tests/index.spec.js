@@ -3523,6 +3523,48 @@ test("全パレット部品が配置でき、ブザー等の全バリアント�
   expect(result.missing).toEqual([]);
 });
 
+test("機器箱の端子ピッチと上下マージンを任意で指定でき外形が追従する", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const el = (id, props) => ({ ...window.__edsTest.defaultElement("deviceBox", 40, 30), id, pins: 4, pinText: "1\n2\n3\n4", deviceTerminalMode: "always", ...props });
+    const def = el("d0", {});
+    const custom = el("d1", { pinPitch: 5, pinMargin: 3 });
+    window.__edsTest.installProjectData({ schemaVersion: 4, activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: [def, custom] }] });
+    const pinYs = id => {
+      const e = window.__edsTest.state.pages[0].elements.find(x => x.id === id);
+      return window.__edsTest.elementConnectionAnchors(e).map(a => Math.round((a.y - e.y) * 10) / 10)
+        .filter((v, i, arr) => arr.indexOf(v) === i).sort((a, b) => a - b);
+    };
+    const boxH = id => {
+      const e = window.__edsTest.state.pages[0].elements.find(x => x.id === id);
+      // 外形高さ(選択枠と同じelementBounds由来)を取得
+      const before = e.h;
+      return { boundsH: (() => { const g = document.querySelector(`g[data-id="${id}"] rect.symbol-fill`); return g ? Number(g.getAttribute("height")) : null; })(), stored: before };
+    };
+    const results = { defYs: pinYs("d0"), customYs: pinYs("d1"), defBoxH: boxH("d0").boundsH, customBoxH: boxH("d1").boundsH };
+    // パネルからpinPitchを実際に変更→element.hが同期するか
+    window.__edsTest.selectElement("d0");
+    const pitchInput = document.querySelector('#selectionPanel [data-bind="pinPitch"]');
+    const marginInput = document.querySelector('#selectionPanel [data-bind="pinMargin"]');
+    results.hasInputs = !!pitchInput && !!marginInput;
+    if (pitchInput && marginInput) {
+      marginInput.value = "4"; marginInput.dispatchEvent(new Event("change", { bubbles: true }));
+      pitchInput.value = "8"; pitchInput.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    results.syncedH = window.__edsTest.state.pages[0].elements.find(x => x.id === "d0").h;
+    return results;
+  });
+  // 既定: 高さ25を等分 → 5,10,15,20
+  expect(result.defYs).toEqual([5, 10, 15, 20]);
+  // ピッチ5・マージン3 → 3,8,13,18、外形高さ=2*3+3*5=21
+  expect(result.customYs).toEqual([3, 8, 13, 18]);
+  expect(result.customBoxH).toBe(21);
+  expect(result.defBoxH).toBe(25);
+  // 右パネルにピッチ/マージン入力があり、d0でピッチ8・マージン4へ変更→高さ=2*4+3*8=32へ同期
+  expect(result.hasInputs).toBe(true);
+  expect(result.syncedH).toBe(32);
+});
+
 test("グリッド表示をスナップとは独立して切り替えて保存できる", async ({ page }) => {
   const gridLayers = page.locator("svg.drawing-page [data-grid-layer]");
   await expect(gridLayers).toHaveCount(2);
