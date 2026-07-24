@@ -1466,6 +1466,8 @@
 
       // 端点・接続点スナップの吸着半径(mm)。
       const SNAP_RADIUS_MM = 4;
+      // 接続点の黒丸半径。接続点シンボル(junction)・配線/直線/連動破線の端点接続点で共通。
+      const CONNECTION_DOT_R = 0.5;
       // 太グリッド(メジャーグリッド)の間隔(mm)。
       const MAJOR_GRID_MM = 10;
 
@@ -4298,8 +4300,8 @@
           endPrev = points[points.length - 2];
           end = points[points.length - 1];
         }
-        if (element.showStartConnection) g.appendChild(svgEl("circle", { cx: start[0], cy: start[1], r: .75, fill: stroke, stroke: "none", "data-endpoint-connection": "start" }));
-        if (element.showEndConnection) g.appendChild(svgEl("circle", { cx: end[0], cy: end[1], r: .75, fill: stroke, stroke: "none", "data-endpoint-connection": "end" }));
+        if (element.showStartConnection) g.appendChild(svgEl("circle", { cx: start[0], cy: start[1], r: CONNECTION_DOT_R, fill: stroke, stroke: "none", "data-endpoint-connection": "start" }));
+        if (element.showEndConnection) g.appendChild(svgEl("circle", { cx: end[0], cy: end[1], r: CONNECTION_DOT_R, fill: stroke, stroke: "none", "data-endpoint-connection": "end" }));
         const legacyMode = element.endpointArrowMode || "none";
         const startStyle = element.startArrowStyle || (legacyMode === "reverse" || legacyMode === "both" ? "reverse" : "none");
         const endStyle = element.endArrowStyle || (legacyMode === "forward" || legacyMode === "both" ? "forward" : "none");
@@ -5716,7 +5718,7 @@
 
       // 接続点(塗り小円)の描画。ネット結合の見た目でもある。
       function drawJunction(g, element, stroke) {
-        g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: Number(element.r || 0.5), fill: stroke }));
+        g.appendChild(svgEl("circle", { cx: 0, cy: 0, r: Number(element.r || CONNECTION_DOT_R), fill: stroke }));
       }
 
       // ===== 寸法記入(直線寸法・水平/垂直自動) =====
@@ -20487,6 +20489,9 @@
           const wireLtype = dashLtypeName(wireStyle(element).dash);
           const points = element.points || [[0, 0], [20, 0]];
           dxfWireSegments(element).forEach(segment => dxfLine(out, page, layer, segment[0], segment[1], segment[2], segment[3], wireLtype));
+          // 端点接続点(SVGと同じく接続点シンボルと同径)をDXFへも出力する。
+          if (element.showStartConnection) dxfCircle(out, page, layer, points[0][0], points[0][1], CONNECTION_DOT_R);
+          if (element.showEndConnection) dxfCircle(out, page, layer, points[points.length - 1][0], points[points.length - 1][1], CONNECTION_DOT_R);
           if (element.wireNo) {
             const pos = wireNoAnchorPoint(element);
             if (element.wireNoLeader) {
@@ -20516,6 +20521,10 @@
           const points = element.points || [[0, 0], [20, 0]];
           const a = points[0];
           const b = points[points.length - 1];
+          const lineLayer = element.type === "mechanicalLink" ? "SYMBOL" : "GEOMETRY";
+          // 端点接続点(SVGと同じく接続点シンボルと同径)をDXFへも出力する。
+          if (element.showStartConnection) dxfCircle(out, page, lineLayer, a[0], a[1], CONNECTION_DOT_R);
+          if (element.showEndConnection) dxfCircle(out, page, lineLayer, b[0], b[1], CONNECTION_DOT_R);
           if (element.lineKind === "wave") {
             waveLinePoints(a, b).forEach(q => {
               let prev = q.from;
@@ -20954,7 +20963,7 @@
           return;
         }
         if (element.type === "junction") {
-          dxfCircleLocal(out, page, "SYMBOL", element, 0, 0, Number(element.r || 0.5));
+          dxfCircleLocal(out, page, "SYMBOL", element, 0, 0, Number(element.r || CONNECTION_DOT_R));
           if (element.label) dxfTextLocal(out, page, "TEXT", element, -4, -8, 2.4, element.label);
           dxfVisibleAttributes(out, page, element);
           return;

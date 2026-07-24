@@ -3085,6 +3085,35 @@ test("PLCユニット列のCOM端子とテンプレートのCOM配線", async ({
   expect(output.wire).toEqual([[32.5, 77.5], [47.5, 77.5]]);
 });
 
+test("端点の接続点は接続点シンボルと同径でDXFにも出力される", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const line = { ...window.__edsTest.defaultElement("line", 0, 0), id: "ln", showStartConnection: true, showEndConnection: true };
+    line.points = [[40, 40], [80, 40]];
+    const dot = { ...window.__edsTest.defaultElement("junction", 100, 40), id: "jn" };
+    window.__edsTest.installProjectData({
+      schemaVersion: 4,
+      activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [line, dot] }]
+    });
+    const endR = Array.from(document.querySelectorAll('g[data-id="ln"] [data-endpoint-connection]')).map(node => Number(node.getAttribute("r")));
+    const junctionR = Array.from(document.querySelectorAll('g[data-id="jn"] circle'))
+      .filter(node => !node.getAttribute("fill-opacity")).map(node => Number(node.getAttribute("r")));
+    const dxf = window.__edsTest.buildDxf(window.__edsTest.state.pages[0]);
+    return {
+      endR,
+      junctionR,
+      circles: dxf.split("\nCIRCLE\n").length - 1,
+      hasHalfRadius: dxf.includes("\n40\n0.5")
+    };
+  });
+  // 端点接続点(直線・配線・連動破線)は接続点シンボル(junction)と同じr0.5
+  expect(result.endR).toEqual([0.5, 0.5]);
+  expect(result.junctionR).toEqual([0.5]);
+  // DXFにも同径で出る: junction 1個 + 端点2個 = CIRCLE 3個
+  expect(result.circles).toBe(3);
+  expect(result.hasHalfRadius).toBe(true);
+});
+
 test("グリッド表示をスナップとは独立して切り替えて保存できる", async ({ page }) => {
   const gridLayers = page.locator("svg.drawing-page [data-grid-layer]");
   await expect(gridLayers).toHaveCount(2);
