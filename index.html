@@ -10264,7 +10264,7 @@
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
           `;
         }
-        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor", "inductor", "logicGate", "pressureSwitch", "floatSwitch", "thermoSwitch", "flowSwitch", "footSwitch", "battery", "heater", "arrester", "outlet"].includes(element.type)) {
+        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor", "inductor", "logicGate", "pressureSwitch", "floatSwitch", "thermoSwitch", "flowSwitch", "footSwitch", "battery", "heater", "arrester", "outlet", "sensor", "photoelectricSwitch", "matSwitch", "reedSwitch", "lightCurtain", "solenoidValve", "powerSupply"].includes(element.type)) {
           return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
@@ -19002,6 +19002,7 @@
             切替接点（c接点）、接触器主接点（半円・JIS C 0617）、サーマルリレー10種（熱動素子付きa/b接点ほか）、照光式/パーム押しボタン、切替スイッチJIS形、ブリッジ整流◇、避雷器2種、
             コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント9種（箱形2口・丸形・接地極付き・雄側プラグ3種・プラグ対ほか）、蛍光灯、針付き計器、JISブザー半円形、交流電源（円＋〜）、ポテンショメータ3端子、AC/DC・DC/AC（インバータ）・DC/DC変換器箱、光電スイッチ10種（透過/回帰反射/拡散/距離設定BGS/ファイバ/溝形/マーク・カラー/一般形ほか）、マットスイッチ・リードスイッチなど100種類以上。
             光電・マット・リードスイッチは他の接点部品と揃うサイズ（幅15mm前後）で配置されます。
+            光電/マット/リード/ライトカーテン/センサ/ソレノイド弁/電源も、選択して右パネルの「シンボルデザイン」から様式を切り替えられます。
             切替時は<b>第1接続ピンの位置を保持</b>するため、そのピンへ接続した配線はずれません。ピン構成が共通のデザインではほかの接続点も維持され、
             縦連結接点や切替接点などでは必要な接続ピンが追加されます。複数選択+「同種を全選択」からの<b>一括切替</b>も可能です。
             接続ピンは原則<b>2.5mmグリッドの倍数</b>です。手動配置用の縦連結非常停止・変圧器の上下段・箱形コンセントは<b>設備行ピッチ9.5mm</b>を保持し、
@@ -23398,6 +23399,7 @@
         formatLocalDate,
         collectConnectionAnchors,
         SYMBOL_GEO,
+        SYMBOL_VARIANT_OPTIONS,
         geoPrims,
         terminalStripNodeLocal,
         plcUnitGeometry,
