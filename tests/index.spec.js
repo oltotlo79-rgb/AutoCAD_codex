@@ -3444,6 +3444,46 @@ test("COM/0Vポートの表示名をCOM＋/COM−へ切り替えられる", asyn
   expect(result.dxfPm).toBe(true);
 });
 
+test("ブザーJISは下向き半円(∪)でベルと区別され、追加形状も枠内に収まる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const arcOf = (type, variant) => {
+      const el = window.__edsTest.defaultElement(type, 20, 20);
+      if (variant) el.buzzerVariant = variant;
+      const prims = window.__edsTest.geoPrims(el);
+      const arcs = prims.filter(p => p.t === "arc").map(p => [p.p[3], p.p[4]]);
+      // 図形が枠[0..w]x[-margin..h]内か(ラベル除く)
+      let maxY = -Infinity, minX = Infinity, maxX = -Infinity;
+      prims.forEach(p => {
+        if (p.t === "text") return;
+        const xs = p.pts ? p.pts.map(pt => pt[0]) : (p.t === "circle" || p.t === "arc" ? [p.p[0] - p.p[2], p.p[0] + p.p[2]] : [p.p[0], p.p[2]]);
+        const ys = p.pts ? p.pts.map(pt => pt[1]) : (p.t === "circle" ? [p.p[1] - p.p[2], p.p[1] + p.p[2]] : p.t === "arc" ? [p.p[1], p.p[1] + p.p[2]] : [p.p[1], p.p[3]]);
+        minX = Math.min(minX, ...xs.filter(Number.isFinite)); maxX = Math.max(maxX, ...xs.filter(Number.isFinite));
+        maxY = Math.max(maxY, ...ys.filter(Number.isFinite));
+      });
+      return { arcs, w: el.w, h: el.h, minX: Math.round(minX * 10) / 10, maxX: Math.round(maxX * 10) / 10, maxY: Math.round(maxY * 10) / 10, anchorCount: window.__edsTest.elementConnectionAnchors(el).length };
+    };
+    return {
+      jis: arcOf("buzzer", "jis"),
+      sound: arcOf("buzzer", "sound"),
+      piezo: arcOf("buzzer", "piezo"),
+      bell: arcOf("bell")
+    };
+  });
+  // JISブザーは下向き半円(0→180)。ベルは上向き(180→360)。向きが逆
+  expect(result.jis.arcs).toEqual([[0, 180]]);
+  expect(result.bell.arcs).toEqual([[180, 360]]);
+  // sound=二重∪(下向き弧2本)、piezo=∪1本
+  expect(result.sound.arcs).toEqual([[0, 180], [0, 180]]);
+  expect(result.piezo.arcs).toEqual([[0, 180]]);
+  // 3形状とも枠内(横0..w、縦はh以内=はみ出さない)、接続点2点
+  [result.jis, result.sound, result.piezo].forEach(r => {
+    expect(r.anchorCount).toBe(2);
+    expect(r.minX).toBeGreaterThanOrEqual(0);
+    expect(r.maxX).toBeLessThanOrEqual(r.w);
+    expect(r.maxY).toBeLessThanOrEqual(r.h);
+  });
+});
+
 test("グリッド表示をスナップとは独立して切り替えて保存できる", async ({ page }) => {
   const gridLayers = page.locator("svg.drawing-page [data-grid-layer]");
   await expect(gridLayers).toHaveCount(2);
