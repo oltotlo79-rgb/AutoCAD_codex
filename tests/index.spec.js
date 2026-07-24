@@ -3094,12 +3094,12 @@ test("PLCユニット列のCOM端子とテンプレートのCOM配線", async ({
       && element.points[0][1] === 87.5 && element.points[1][1] === 87.5);
     return { comTerminal: unit.comTerminal, cardMode: unit.cardMode, zeroVTerminal: unit.zeroVTerminal, wire: com ? com.points : null, zeroWire: zero ? zero.points : null };
   });
-  // 出力カード: a接点モード・COM/0VはN1側(右)へ配線
+  // 出力カード(左置き): a接点モード・COM(右辺)→P1、0V(右辺)→N1
   expect(output.cardMode).toBe("output");
   expect(output.comTerminal).toBe("right");
   expect(output.zeroVTerminal).toBe("right");
-  expect(output.wire).toEqual([[135, 77.5], [147.5, 77.5]]);
-  expect(output.zeroWire).toEqual([[135, 87.5], [147.5, 87.5]]);
+  expect(output.wire).toEqual([[32.5, 77.5], [57.5, 77.5]]);
+  expect(output.zeroWire).toEqual([[57.5, 87.5], [147.5, 87.5]]);
 });
 
 test("端点の接続点は接続点シンボルと同径でDXFにも出力される", async ({ page }) => {
@@ -3198,7 +3198,7 @@ test("PLC入力回路は各行が個別にP1へ接続されCOMもレール接続
     const feeder = current.elements.find(element => element.type === "wire" && Array.isArray(element.points)
       && element.points[0][0] === 47.5 && element.points[1][0] === 47.5);
     const rowWires = current.elements.filter(element => element.type === "wire" && Array.isArray(element.points)
-      && element.points[0][0] === 32.5 && element.points[1][0] === 52.5).length;
+      && element.points[0][0] === 32.5 && element.points[1][0] === 40).length;
     return { junctions, feeder: Boolean(feeder), rowWires };
   });
   // 縦フィーダは廃止し、各行がP1(32.5)から個別配線+接続点。COMはN1(147.5)側に接続点
@@ -3215,8 +3215,8 @@ test("PLC入力回路は各行が個別にP1へ接続されCOMもレール接続
     const current = window.__edsTest.state.pages.find(item => item.id === window.__edsTest.state.activePageId);
     return current.elements.filter(element => element.type === "junction").map(element => [element.x, element.y]);
   });
-  // 出力: 各行のP1(32.5)接続点 + COM/0VのN1(147.5)接続点(様式を入力回路と統一)
-  expect(output).toEqual(expect.arrayContaining([[32.5, 37.5], [32.5, 47.5], [32.5, 57.5], [147.5, 67.5], [147.5, 77.5]]));
+  // 出力: 各行(コイル右)のN1接続点 + COMのP1接続点 + 0VのN1接続点
+  expect(output).toEqual(expect.arrayContaining([[147.5, 37.5], [147.5, 47.5], [147.5, 57.5], [32.5, 67.5], [147.5, 77.5]]));
 });
 
 test("端子台の出力カードモードはa接点+デバイス名+0Vポートで描かれる", async ({ page }) => {

@@ -12915,23 +12915,24 @@
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
         page.elements.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
-        // 出力回路も入力回路と同じ「カードは右・レール接続は個別+接続点」の様式。
-        // 各行: P1 →(接続点)→ 負荷コイル → 出力カードのポート端子(左辺)。
-        const unitX = 125;
+        // 出力回路: 出力カードは左、負荷(コイル)は右で縦整列。
+        // 各行: カードのポート端子(右辺57.5) → コイル(135) →(接続点)→ N1。
+        const unitX = 47.5;
         addresses.forEach((address, i) => {
           const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * i);
-          page.elements.push(defaultElement("junction", 32.5, y));
-          page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [90, y]], wireNo: "" });
-          page.elements.push({ ...defaultElement("coil", 90, round(y - 2.2)), label: "", tag: "" });
-          page.elements.push({ ...defaultElement("wire", 100, y), points: [[100, y], [125, y]], wireNo: "", wireNoAlign: "end" });
+          page.elements.push({ ...defaultElement("wire", 57.5, y), points: [[57.5, y], [135, y]], wireNo: "", wireNoAlign: "start" });
+          page.elements.push({ ...defaultElement("coil", 135, round(y - 2.2)), label: "", tag: "" });
+          page.elements.push(defaultElement("junction", 147.5, y));
+          page.elements.push({ ...defaultElement("wire", 145, y), points: [[145, y], [147.5, y]] });
         });
-        // COM(右辺135)と0V(テンプレートでは配線の取り回し上、右辺へ寄せる)をN1(0V)へ配線し接続点を打つ。
+        // COM(右辺)はP1(+24V)へ、0V(右辺)はN1(0V)へ配線し、それぞれレール上へ接続点を打つ。
+        // COM配線はカードの下段を横切るが、白抜きのCOM円が後描きで線を隠す。
         const comY = round(37.5 + TEMPLATE_CIRCUIT_PITCH * count);
         const zeroY = round(comY + TEMPLATE_CIRCUIT_PITCH);
-        page.elements.push(defaultElement("junction", 147.5, comY));
-        page.elements.push({ ...defaultElement("wire", 135, comY), points: [[135, comY], [147.5, comY]], wireNo: "" });
+        page.elements.push(defaultElement("junction", 32.5, comY));
+        page.elements.push({ ...defaultElement("wire", 32.5, comY), points: [[32.5, comY], [57.5, comY]], wireNo: "" });
         page.elements.push(defaultElement("junction", 147.5, zeroY));
-        page.elements.push({ ...defaultElement("wire", 135, zeroY), points: [[135, zeroY], [147.5, zeroY]], wireNo: "" });
+        page.elements.push({ ...defaultElement("wire", 57.5, zeroY), points: [[57.5, zeroY], [147.5, zeroY]], wireNo: "" });
         page.elements.push({
           ...defaultElement("plcBlock", unitX, 32.5),
           plcStyle: "unit",
@@ -12941,9 +12942,9 @@
           pitch: TEMPLATE_CIRCUIT_PITCH,
           label: unitName,
           pinText: addresses.join("\n"),
-          // 出力カード: 各ポートはa接点表示・端子は左、COM/0Vは配線先のN1側(右)へ
+          // 出力カード: 各ポートはa接点表示・端子は右(出力側)、COM=右→P1、0V=右→N1
           cardMode: "output",
-          terminalMarkLeft: true,
+          terminalMarkRight: true,
           comTerminal: "right",
           zeroVTerminal: "right"
         });
@@ -12996,9 +12997,10 @@
           const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * i);
           page.elements.push(defaultElement("junction", 32.5, y));
           if (withContacts) {
-            page.elements.push({ ...defaultElement("contactNO", 52.5, y - 2.2), label: "" });
-            page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [52.5, y]] });
-            page.elements.push({ ...defaultElement("wire", 62.5, y), points: [[62.5, y], [125, y]], wireNo: "", wireNoAlign: "end" });
+            // 接点はP1配線へ12.5mm寄せる(x=40)。
+            page.elements.push({ ...defaultElement("contactNO", 40, y - 2.2), label: "" });
+            page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [40, y]] });
+            page.elements.push({ ...defaultElement("wire", 50, y), points: [[50, y], [125, y]], wireNo: "", wireNoAlign: "end" });
           } else {
             page.elements.push({ ...defaultElement("wire", 32.5, y), points: [[32.5, y], [125, y]], wireNo: "", wireNoAlign: "end" });
           }
