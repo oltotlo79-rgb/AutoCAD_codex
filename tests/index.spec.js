@@ -3736,3 +3736,144 @@ test("移動中の吸着は外接矩形の角より接続点を優先する", as
   // 角(100,102.2)ではなくa1の接続ピン(100,100)へ吸着する
   expect(pins).toEqual([[90, 100], [100, 100]]);
 });
+
+test("同じ要素を素早く2回押すとその場編集が開き、ドラッグ移動は妨げない", async ({ page }) => {
+  const install = () => page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "landscape", frameVariant: "blank", title: {},
+      elements: [
+        { ...window.__edsTest.defaultElement("contactNO", 60, 60), id: "c1", label: "CR9" },
+        { ...window.__edsTest.defaultElement("text", 60, 100), id: "x1", text: "ラベル", w: 40, h: 8 },
+        { id: "w1", type: "wire", points: [[40, 130], [140, 130]], wireNo: "77", layer: "wires" }
+      ]
+    }]
+  }));
+
+  // 部品ラベル・文字本文・線番の3種で編集が開き、Enterで確定できる
+  for (const [id, mm, field, before] of [["c1", [65, 62.2], "label", "CR9"], ["x1", [80, 104], "text", "ラベル"], ["w1", [90, 130], "wireNo", "77"]]) {
+    await install();
+    const [point] = await canvasClientPoints(page, [mm]);
+    await page.mouse.dblclick(point.x, point.y);
+    await page.waitForTimeout(150);
+    const editor = await page.evaluate(() => ({ tag: document.activeElement?.tagName, value: document.activeElement?.value ?? null }));
+    expect(editor, id).toEqual({ tag: "INPUT", value: before });
+    await page.keyboard.press("Control+a");
+    await page.keyboard.type("ZZZ");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(150);
+    expect(await page.evaluate(([i, f]) => window.__edsTest.state.pages[0].elements.find(e => e.id === i)[f], [id, field]), id).toBe("ZZZ");
+  }
+
+  // ゆっくり2回押しただけでは編集を開かない
+  await install();
+  const [slow] = await canvasClientPoints(page, [[65, 62.2]]);
+  await page.mouse.click(slow.x, slow.y);
+  await page.waitForTimeout(700);
+  await page.mouse.click(slow.x, slow.y);
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("INPUT");
+
+  // 2回目の押下からドラッグしたときは移動が優先され、編集は開かない
+  await install();
+  const [grab] = await canvasClientPoints(page, [[65, 62.2]]);
+  await page.mouse.click(grab.x, grab.y);
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(grab.x + 80, grab.y + 30, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+  const moved = await page.evaluate(() => {
+    const element = window.__edsTest.state.pages[0].elements.find(e => e.id === "c1");
+    return { x: element.x, y: element.y, editing: document.activeElement?.tagName === "INPUT" };
+  });
+  expect(moved.editing).toBe(false);
+  expect(moved.x).not.toBe(60);
+});
+
+test("左右ミラーはgeoシンボル自体を反転し、対称図形では正直に知らせる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const T = window.__edsTest;
+    T.installProjectData({
+      schemaVersion: 4, activePageId: "p1",
+      pages: [{
+        id: "p1", name: "P1", size: "A4", orientation: "landscape", frameVariant: "blank", title: {},
+        elements: [
+          { ...T.defaultElement("diode", 60, 160), id: "d1" },
+          { ...T.defaultElement("rect", 150, 60), id: "rc1" }
+        ]
+      }]
+    });
+    const snapshot = id => {
+      const element = T.state.pages[0].elements.find(e => e.id === id);
+      return {
+        prims: T.geoPrims(element).map(prim => prim.t + ":" + JSON.stringify(prim.p || prim.pts)),
+        anchors: T.elementConnectionAnchors(element).map(a => [a.x, a.y]),
+        mirrorX: Boolean(element.mirrorX)
+      };
+    };
+    const before = snapshot("d1");
+    T.selectElement("d1");
+    document.querySelector("#mirrorBtn").click();
+    const after = snapshot("d1");
+    const dxf = T.buildDxf(T.state.pages[0]);
+    document.querySelector("#mirrorBtn").click();
+    const restored = snapshot("d1");
+    T.selectElement("rc1");
+    document.querySelector("#mirrorBtn").click();
+    return {
+      before, after, restored,
+      symmetricStatus: document.querySelector("#status")?.textContent || "",
+      dxfBroken: /NaN|undefined/.test(dxf),
+      svgFlipped: Array.from(document.querySelectorAll('g[data-id="d1"] line')).map(n => n.getAttribute("x1"))
+    };
+  });
+  // 記号そのものが左右反転する(位置だけの移動ではない)
+  expect(result.after.mirrorX).toBe(true);
+  expect(result.after.prims).not.toEqual(result.before.prims);
+  // 接続点も反転し、左右のピンが入れ替わる
+  expect(result.after.anchors).toEqual([result.before.anchors[1], result.before.anchors[0]]);
+  // DXFにも同じ座標が流れる(壊れた値が出ない)
+  expect(result.dxfBroken).toBe(false);
+  // もう一度実行すると元へ戻る
+  expect(result.restored.prims).toEqual(result.before.prims);
+  expect(result.restored.mirrorX).toBe(false);
+  // 左右対称な図形は黙って何もせず、その旨を知らせる
+  expect(result.symmetricStatus).toContain("左右ミラーしても形が変わりません");
+});
+
+test("プロジェクト一括更新はUndo1回で実行前へ戻せる", async ({ page }) => {
+  await page.evaluate(() => {
+    const T = window.__edsTest;
+    T.installProjectData({
+      schemaVersion: 4, activePageId: "p1",
+      pages: [{
+        id: "p1", name: "P1", size: "A4", orientation: "landscape", frameVariant: "detailed", title: {},
+        elements: [
+          { ...T.defaultElement("contactNO", 40, 40), id: "e1" },
+          { ...T.defaultElement("coil", 90, 40), id: "e2" },
+          { id: "w1", type: "wire", points: [[50, 40], [90, 40]], layer: "wires" },
+          { id: "w2", type: "wire", points: [[70, 40], [70, 80]], layer: "wires" }
+        ]
+      }]
+    });
+    T.commitHistory("基準");
+  });
+  const base = await page.evaluate(() => JSON.stringify(window.__edsTest.state.pages));
+  const historyBefore = await page.evaluate(() => window.__edsTest.historyDiagnostics().count);
+  await page.locator("#actionMenu").selectOption("projectUpdate");
+  await page.locator("#projectUpdateApply").click();
+  await page.waitForTimeout(300);
+  const applied = await page.evaluate(() => ({
+    json: JSON.stringify(window.__edsTest.state.pages),
+    count: window.__edsTest.historyDiagnostics().count,
+    status: document.querySelector("#status")?.textContent || ""
+  }));
+  expect(applied.json).not.toBe(base);
+  // タグ採番・線番・接続点などをまとめて1履歴にする
+  expect(applied.count).toBe(historyBefore + 1);
+  expect(applied.status).toContain("プロジェクト一括更新");
+  await page.keyboard.press("Control+z");
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => JSON.stringify(window.__edsTest.state.pages))).toBe(base);
+});

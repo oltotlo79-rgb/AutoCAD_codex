@@ -2384,6 +2384,11 @@
       let navigatingHistory = false;
       let paletteFilterText = "";
       let dragState = null;
+      // 直前にキャンバス上で押した要素と時刻・位置(自前のダブルクリック判定用)。
+      let lastCanvasTap = { id: null, at: 0, x: 0, y: 0 };
+      // ダブルクリックとみなす最大間隔(ms)と最大ずれ(mm)。
+      const DOUBLE_TAP_MS = 450;
+      const DOUBLE_TAP_RADIUS_MM = 3;
       let clipboardElement = null;
       let installLocationClipboard = null;
       let history = [];
@@ -2925,11 +2930,25 @@
       // 連続編集を1履歴へ合体できる猶予時間(ms)。これを超えたら別操作として積む。
       const HISTORY_MERGE_WINDOW_MS = 4000;
 
+      // trueの間はcommitHistoryが履歴を積まない(複数処理を1操作にまとめるため)。
+      // 直接触らずrunAsSingleHistory()経由で使う。
+      let historySuspended = false;
+
+      // 複数の更新処理をまとめて実行し、履歴を1エントリだけ積む。
+      // 中の処理が個別にcommitHistoryを呼んでも1回に集約されるので、Undo1回で操作前へ戻せる。
+      function runAsSingleHistory(reason, run) {
+        const already = historySuspended;
+        historySuspended = true;
+        try { run(); } finally { historySuspended = already; }
+        if (!already) commitHistory(reason);
+      }
+
       // Undo履歴へ現在stateを積み、localStorageへ自動バックアップする。
       // 変更操作は必ず最後にこれを呼ぶ(直前と同一なら何もしない)。
       // reasonはステータス表示と履歴タイムラインの操作名に使い、
       // options.mergeKeyを渡すと同一キーの連続編集を1履歴へ合体する。
       function commitHistory(reason = "", options = {}) {
+        if (historySuspended) return;
         syncPageTotals();
         const compact = serializeHistorySnapshot();
         const snapshot = compact.snapshot;
@@ -3081,6 +3100,8 @@
           replaceStateContents(candidate);
           ensureProjectDefaults();
           pageCounter = state.pages.length + 1;
+          // 図面を入れ替えたら直前の押下記録は無効(前の図面のクリックと連続扱いにしない)。
+          lastCanvasTap = { id: null, at: 0, x: 0, y: 0 };
           setSelection([]);
           syncPageTotals();
           render();
@@ -3147,7 +3168,7 @@
         } else if (selectedIds.length > 1) {
           text = "複数選択中: ドラッグで一括移動 ／ Ctrl+D 複製 ／ Delete 削除 ／ 右パネルで整列・回転";
         } else if (selectedIds.length === 1) {
-          text = "選択中: ドラッグで移動 ／ ダブルクリックでその場編集 ／ Ctrl+D 複製 ／ Delete 削除 ／ 詳細は右パネル";
+          text = "選択中: ドラッグで移動 ／ 素早く2回押すとその場編集 ／ Ctrl+D 複製 ／ Delete 削除 ／ 詳細は右パネル";
         } else {
           text = "部品: 左パレットからドラッグ ／ 配線: W ／ 範囲選択: 空白からドラッグ ／ ズーム: Ctrl+ホイール";
         }
@@ -8981,8 +9002,11 @@
         const bh = vertical ? geo.w : geo.h;
         const ox = (Number(element.w || bw) - bw) / 2;
         const oy = (Number(element.h || bh) - bh) / 2;
-        if (vertical) return [geo.h - y + ox, x + oy];
-        return [x + ox, y + oy];
+        const point = vertical ? [geo.h - y + ox, x + oy] : [x + ox, y + oy];
+        // 左右ミラー(mirrorX)は要素枠の左右中心で折り返す。SVG・DXF・接続点が
+        // すべてこの関数を通るため、反転しても3者は必ず同じ座標になる。
+        if (element.mirrorX) point[0] = round(Number(element.w || bw) - point[0]);
+        return point;
       }
 
       // geo定義のプリミティブ列(line/pline/rect/circle/arc/text)を要素ローカル座標へ展開。
@@ -9008,10 +9032,15 @@
           } else if (prim.t === "arc") {
             const c = map(prim.p[0], prim.p[1]);
             const rot = element.orientation === "vertical" ? 90 : 0;
-            q.p = [c[0], c[1], prim.p[2], prim.p[3] + rot, prim.p[4] + rot];
+            // 左右ミラー時は掃引も鏡像にする(θ→180-θ。時計回りを保つため開始と終了を入替)。
+            q.p = element.mirrorX
+              ? [c[0], c[1], prim.p[2], round(180 - (prim.p[4] + rot)), round(180 - (prim.p[3] + rot))]
+              : [c[0], c[1], prim.p[2], prim.p[3] + rot, prim.p[4] + rot];
           } else if (prim.t === "text") {
             const c = map(prim.p[0], prim.p[1]);
             q.p = [c[0], c[1]];
+            // 文字は鏡文字にせず位置だけ反転するため、寄せ方向だけ入れ替える。
+            if (element.mirrorX && prim.anchor) q.anchor = prim.anchor === "start" ? "end" : prim.anchor === "end" ? "start" : prim.anchor;
           }
           if (element.type === "contactBlock" && element.blockFrame === "dashed" && index === 0 && q.t === "rect") {
             q.dash = "1.4 1.2";
@@ -16048,11 +16077,14 @@
         qs("#projectUpdateApply").onclick = () => {
           const enabled = new Set(qsa("[data-project-update]", qs("#dialogBody")).filter(input => input.checked).map(input => input.dataset.projectUpdate));
           closeDialog();
-          if (enabled.has("tags")) autoTagComponents();
-          if (enabled.has("wires")) autoWireNumbers();
-          if (enabled.has("junctions")) autoJunctions();
-          if (enabled.has("titles")) { syncPageTotals(); commitHistory("表題欄の頁情報を更新しました。"); }
-          if (enabled.has("panel")) syncPanelFootprints("toPanel");
+          // 各処理は個別に履歴を積むが、一括更新はまとめて1操作として扱う(Undo1回で戻せるように)。
+          runAsSingleHistory("プロジェクト一括更新を実行しました。", () => {
+            if (enabled.has("tags")) autoTagComponents();
+            if (enabled.has("wires")) autoWireNumbers();
+            if (enabled.has("junctions")) autoJunctions();
+            if (enabled.has("titles")) syncPageTotals();
+            if (enabled.has("panel")) syncPanelFootprints("toPanel");
+          });
           render();
           if (enabled.has("audit")) showAudit();
         };
@@ -16730,23 +16762,32 @@
           setStatus("ロックされた要素はミラーできません。");
           return;
         }
+        const before = JSON.stringify(selected);
         const target = unionBounds(selected.map(elementBounds).filter(Boolean));
         const axis = target.x + target.w / 2;
         selected.forEach(element => {
           if (element.points) {
             element.points = element.points.map(point => [round(axis * 2 - point[0]), point[1]]);
-          } else {
-            const box = elementBounds(element);
-            element.x = round(axis * 2 - box.x - box.w);
-            if (element.type === "arc") {
-              // 左右反転で弧の向きも反転(θ→180-θ、掃引の時計回りを保つため入替)。
-              const a0 = Number(element.a0 ?? 0);
-              const a1 = Number(element.a1 ?? 90);
-              element.a0 = round(((180 - a1) % 360 + 360) % 360);
-              element.a1 = round(((180 - a0) % 360 + 360) % 360);
-            }
+            return;
           }
+          const box = elementBounds(element);
+          element.x = round(axis * 2 - box.x - box.w);
+          if (element.type === "arc") {
+            // 左右反転で弧の向きも反転(θ→180-θ、掃引の時計回りを保つため入替)。
+            const a0 = Number(element.a0 ?? 0);
+            const a1 = Number(element.a1 ?? 90);
+            element.a0 = round(((180 - a1) % 360 + 360) % 360);
+            element.a1 = round(((180 - a0) % 360 + 360) % 360);
+            return;
+          }
+          // geo定義を持つシンボルは記号自体も左右反転する(位置だけの反転では
+          // 単体選択のとき必ず元の位置へ戻り、何も起きないため)。
+          if (geoFor(element)) element.mirrorX = !element.mirrorX;
         });
+        if (JSON.stringify(selected) === before) {
+          setStatus("この選択は左右ミラーしても形が変わりません(左右対称の図形、または反転に対応していない部品です)。");
+          return;
+        }
         commitHistory("左右ミラーしました。");
         render();
       }
@@ -19286,7 +19327,8 @@
 
           ${section("選択・編集を速くするコツ", `
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
-              <li><b>ダブルクリックでその場編集</b>: 配線=線番、部品=ラベル、文字=本文。Enter確定・Esc取消・<b>Tabで次の要素へ連続入力</b></li>
+              <li><b>同じ要素を素早く2回押すとその場編集</b>（ダブルクリック）: 配線=線番、部品=ラベル、文字=本文。Enter確定・Esc取消・<b>Tabで次の要素へ連続入力</b>。2回目の押下からドラッグしたときは移動が優先されます</li>
+              <li><b>左右ミラー</b>（右パネル/右クリック）: 記号そのものが左右反転し、<b>表示・DXF・接続点が同時に反転</b>します。もう一度実行すると戻ります。左右対称な図形や個別描画の部品（ホーン形ブザー・電源・センサ・箱物など）は形が変わらないため、その旨を表示して何もしません</li>
               <li><b>右クリックメニュー</b>: その場編集/コピー/複製/削除/回転/ミラー/ロック/参照ジャンプをその場で実行</li>
               <li><b>同種をページ内全選択</b>（右パネル/右クリック）→ 一括デザイン変更・一括線色・一括ロックと組み合わせて様式替えが数クリック</li>
               <li><b>Shift+クリック</b>や範囲ドラッグで複数選択 → 整列（左/中/右/上/下）・均等配置・剛体回転</li>
@@ -22647,6 +22689,15 @@
             render();
             return;
           }
+          // 2回続けて同じ要素を押したらその場編集を開く。ブラウザのdblclickは、
+          // 押下時の再描画でg要素が作り直されて押下先と離す先が別ノードになるため
+          // キャンバス上では発火しない。そのため押下の間隔と位置で自前に判定する。
+          const now = Date.now();
+          const doubleTap = lastCanvasTap.id === targetId
+            && now - lastCanvasTap.at <= DOUBLE_TAP_MS
+            && Math.hypot(point.x - lastCanvasTap.x, point.y - lastCanvasTap.y) <= DOUBLE_TAP_RADIUS_MM;
+          lastCanvasTap = { id: targetId, at: now, x: point.x, y: point.y };
+          if (doubleTap) lastCanvasTap = { id: null, at: 0, x: 0, y: 0 };
           if (!selectedIds.includes(targetId)) selectSingle(targetId);
           expandSelectionToGroups();
           const element = selectedElement();
@@ -22664,6 +22715,8 @@
             mode: "move",
             elementId: targetId,
             start: point,
+            // 2回目の押下なら、動かさずに離したときだけその場編集を開く(ドラッグ移動を優先)。
+            inlineEditId: doubleTap ? targetId : null,
             originals: selectedElements().map(item => deepClone(item)),
             attachedWires: currentPage().elements
               .filter(item => item.type === "wire" && !currentSelectionIdSet().has(item.id))
@@ -22672,6 +22725,7 @@
           try { svg.setPointerCapture(event.pointerId); } catch (_) { /* 合成イベント等でキャプチャ不可の場合は無視 */ }
           render();
         } else {
+          lastCanvasTap = { id: null, at: 0, x: 0, y: 0 };
           if (!event.shiftKey) setSelection([]);
           dragState = { mode: "marquee", start: point, current: point, append: event.shiftKey, originalIds: [...selectedIds] };
           try { svg.setPointerCapture(event.pointerId); } catch (_) { /* 合成イベント等でキャプチャ不可の場合は無視 */ }
@@ -23238,6 +23292,12 @@
         commitHistory("作図を更新しました。");
         if (finishedDrag.mode === "draw" && element?.type === "wire") setActiveTool("select");
         render();
+        // 同じ要素を素早く2回押して動かさずに離した=ダブルクリック。ここでその場編集を開く。
+        // (押下時の再描画でノードが差し替わるため、ブラウザのdblclickはキャンバス上では発火しない)
+        if (finishedDrag.mode === "move" && finishedDrag.inlineEditId && !finishedDrag.didMove) {
+          const target = page?.elements.find(item => item.id === finishedDrag.inlineEditId);
+          if (target) startInlineEdit(target);
+        }
       }
 
       // 範囲選択の確定(交差する表示中要素を選択、Shiftで追加)。
@@ -23526,7 +23586,9 @@
         showContextMenu(event, items);
       }
 
-      // ダブルクリックでその場編集を開始。
+      // ブラウザのdblclickでその場編集を開始する予備の経路。
+      // キャンバス上では押下時の再描画でノードが差し替わりdblclickが発火しないため、
+      // 通常はonCanvasPointerDown/Up側の2回押し判定が担当する(再描画しない環境向けの保険)。
       function onCanvasDoubleClick(event) {
         activatePageFromEvent(event);
         const targetElement = event.target.closest("[data-id]");
