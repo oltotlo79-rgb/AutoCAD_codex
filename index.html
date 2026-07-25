@@ -10360,9 +10360,10 @@
           const gapCount = (element.gapAtMid ? 1 : 0) + (element.gapPoints?.length || 0);
           return `
             <div class="row" style="margin-top:8px">
-              <button type="button" id="addWirePointBtn">中間点追加</button>
-              <button type="button" id="removeWirePointBtn" ${pointCount <= 2 ? "disabled" : ""}>中間点削除</button>
+              <button type="button" id="addWirePointBtn">曲がり角追加</button>
+              <button type="button" id="removeWirePointBtn" ${pointCount <= 2 ? "disabled" : ""}>最後の曲がり角削除</button>
             </div>
+            <p class="muted">曲がり角を追加すると図面上に□ハンドルと中間点X/Yが表示されます。ハンドルのドラッグまたは数値入力で位置を変更できます。</p>
             <div class="row" style="margin-top:8px">
               <button type="button" id="orthogonalizeWireBtn">直交整形</button>
               <button type="button" id="flipWireBendBtn" title="L字の折れ向き(縦先行/横先行)を切り替えます。作図中はShiftでも切替できます。">折れ向き反転</button>
@@ -15837,7 +15838,7 @@
         if (!node) { host.classList.add("hidden"); return; }
         const box = node.getBoundingClientRect();
         const actions = element.type === "wire"
-          ? [["線番", () => startInlineEdit(element)], ["曲げ", flipSelectedWireBend], ["分割", splitSelectedWire], ["削除", deleteSelected]]
+          ? [["線番", () => startInlineEdit(element)], ["曲がり角＋", addSelectedWirePoint], ["分割", splitSelectedWire], ["削除", deleteSelected]]
           : element.type === "text"
             ? [["編集", () => startInlineEdit(element)], ["左回転", () => rotateSelected(-90)], ["複製", duplicateSelected], ["削除", deleteSelected]]
             : [["配線", () => startWireFromSelected()], ["回転", () => rotateSelected(90)], ["複製", duplicateSelected], ["編集", showQuickProperties]];
@@ -17285,7 +17286,8 @@
           || (Math.abs(segment[2] - x) < .6 && Math.abs(segment[3] - y) < .6);
       }
 
-      // 選択配線へ折れ点を追加(L字なら既存折れ位置へ)。
+      // 選択配線へ曲がり角を追加する。
+      // 2点L字は画面上の暗黙の角を実点化し、既存折れ線は最長線分の中央へ追加する。
       function addSelectedWirePoint() {
         const element = selectedElement();
         if (!element || element.type !== "wire") return;
@@ -17293,17 +17295,37 @@
           setStatus("ロックされた配線は変更できません。");
           return;
         }
-        const points = element.points || [[0, 0], [20, 0]];
-        const insertAt = Math.max(1, points.length - 1);
+        let points = element.points || [[0, 0], [20, 0]];
+        const first = points[0];
+        const last = points[points.length - 1];
+        const implicitBend = points.length === 2
+          && Math.abs(first[0] - last[0]) > .001
+          && Math.abs(first[1] - last[1]) > .001;
+        if (implicitBend) {
+          points = materializedWirePoints(element);
+          element.points = points;
+          element.orthoFlip = false;
+          commitHistory("配線の曲がり角を編集可能にしました。");
+          render();
+          return;
+        }
+        let insertAt = 1;
+        let longest = -1;
+        for (let index = 1; index < points.length; index++) {
+          const a = points[index - 1];
+          const b = points[index];
+          const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          if (length > longest) {
+            longest = length;
+            insertAt = index;
+          }
+        }
         const a = points[insertAt - 1];
         const b = points[insertAt];
-        // 2点L字は見た目どおりの折れ角(orthoFlip考慮)を実点化する。
-        const point = points.length === 2 && Math.abs(a[0] - b[0]) > .001 && Math.abs(a[1] - b[1]) > .001
-          ? (element.orthoFlip ? [round(b[0]), round(a[1])] : [round(a[0]), round(b[1])])
-          : [round((a[0] + b[0]) / 2), round((a[1] + b[1]) / 2)];
+        const point = [round((a[0] + b[0]) / 2), round((a[1] + b[1]) / 2)];
         points.splice(insertAt, 0, point);
         element.points = points;
-        commitHistory("配線の中間点を追加しました。");
+        commitHistory("配線の曲がり角を追加しました。");
         render();
       }
 
@@ -19306,7 +19328,7 @@
               <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
               <li><b>端子台・PLCユニット列の端子記号</b>: 本体の辺上に<b>機器箱と同じ白抜き小円の端子</b>を表示し、その<b>端子だけが配線接続点</b>になります。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
               <li><b>端子台・PLCユニット列のカード種別</b>: 本体は<b>長方形</b>（上下も直線）。右パネルの「カード種別」で<b>入力カード（円＋デバイス名）／出力カード（a接点＋上にデバイス名）</b>を切替できます。出力カードは<b>0Vポート</b>（既定=左・表示/非表示切替可）も付きます</li>
-              <li><b>COM/0Vポート</b>: パレットの端子台は<b>最下段にCOMポートを標準装備</b>（位置は他の端子の逆側が自動既定、なし/自動/左/右を切替可）。右パネルの<b>「COM/0Vポートの表示名」で COM/0V ⇔ COM＋/COM− を切替</b>できます。PLC入出力回路テンプレートは<b>入力=円モード・COM右→N1／出力=a接点モード・COMと0Vを右→N1</b>へ自動配線し、各行・COM・0Vともレール接続部に接続点(黒丸)を打ちます</li>
+              <li><b>COM/0Vポート</b>: パレットの端子台は<b>最下段にCOMポートを標準装備</b>（位置は他の端子の逆側が自動既定、なし/自動/左/右を切替可）。右パネルの<b>「COM/0Vポートの表示名」で COM/0V ⇔ COM＋/COM− を切替</b>できます。PLC入出力回路テンプレートは<b>入力=円モード・COM右→N1／出力=a接点モード・COM左→P1・0V右→N1</b>へ自動配線し、各行・COM・0Vともレール接続部に接続点(黒丸)を打ちます</li>
               <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます。<b>端子ピッチ（端子間距離）と上下マージン（上下端〜端子）</b>を指定でき、指定すると箱の高さが端子配置に自動追従します（空欄なら従来どおり高さを等分）</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
               <li><b>円・楕円の接続点</b>: 外周の<b>0/45/90/135/180/225/270/315度</b>の8点が配線接続点です（矩形の頂点+辺中央と同じ扱い）。楕円は同じ8方向を外周へ投影した点になります</li>
@@ -19321,7 +19343,7 @@
               <li>T分岐の黒丸は機能メニュー「<b>接続点生成</b>」で一括追加</li>
               <li>交差を飛び越す表現は選択して「<b>配線ギャップ</b>」（交差一括追加も可）</li>
               <li><b>矩形・多角形の頂点と各辺中央</b>へも配線が吸着します（囲み枠・機器外形への引き込み線に）</li>
-              <li>編集: 中間点追加/削除・直交整形・折れ向き反転・<b>分割/結合/終点延長/トリム</b>（選択パネルのボタン）</li>
+              <li>編集: 配線を選択して<b>曲がり角追加</b>。図面上の□ハンドルをドラッグ、または右パネルの中間点X/Yへ数値入力して位置を変更できます。曲がり角削除・直交整形・折れ向き反転・<b>分割/結合/終点延長/トリム</b>にも対応</li>
               <li><b>線番</b>は「線番採番」で自動付与。書式に<b>%R（行番号）</b>を使うと「105=1頁05行」の行ベース採番</li>
             </ul>`)}
 

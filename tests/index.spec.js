@@ -3877,3 +3877,29 @@ test("プロジェクト一括更新はUndo1回で実行前へ戻せる", async 
   await page.waitForTimeout(200);
   expect(await page.evaluate(() => JSON.stringify(window.__edsTest.state.pages))).toBe(base);
 });
+
+test("選択済み配線へ曲がり角を追加しハンドルと座標で編集できる", async ({ page }) => {
+  await page.evaluate(() => {
+    const api = window.__edsTest;
+    const drawingPage = api.createPage({ name: "配線曲がり角" });
+    const wire = api.defaultElement("wire", 20, 30);
+    wire.points = [[20, 30], [60, 50]];
+    drawingPage.elements = [wire];
+    api.installProjectData({ ...api.state, pages: [drawingPage], activePageId: drawingPage.id });
+    api.selectElement(wire.id);
+  });
+
+  await expect(page.locator("#addWirePointBtn")).toHaveText("曲がり角追加");
+  await expect(page.locator("#miniToolbar")).toContainText("曲がり角＋");
+  await page.locator("#addWirePointBtn").click();
+  await expect(page.locator('input[data-bind="p1x"]')).toHaveValue("20");
+  await expect(page.locator('input[data-bind="p1y"]')).toBeVisible();
+  await expect(page.locator("svg.drawing-page [data-point-index]")).toHaveCount(3);
+
+  await page.locator('input[data-bind="p1x"]').fill("35");
+  await page.locator('input[data-bind="p1x"]').press("Enter");
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements[0].points[1])).toEqual([35, 50]);
+
+  await page.locator("#miniToolbar").getByRole("button", { name: "曲がり角＋" }).click();
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements[0].points.length)).toBe(4);
+});
