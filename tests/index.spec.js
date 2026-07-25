@@ -1124,7 +1124,8 @@ test("全テンプレートの接続点・配線・主要枠は2.5mmグリッド
         counts[element.type] = (counts[element.type] || 0) + 1;
         // mechanicalLinkは操作軸の描画であり、電気接続ピンではない。CP弧頂点の実測位置を優先する。
         // rectの接続点(頂点+辺中央)は図形吸着用のため格子検査から除外(角は下の専用チェックが担う)。
-        const points = element.type === "mechanicalLink" || element.type === "rect" ? [] : element.type === "junction"
+        // circle(円・楕円)の45度点も同様に図形吸着用で、斜め45度は原理的に2.5mm格子へ乗らない。
+        const points = ["mechanicalLink", "rect", "circle"].includes(element.type) ? [] : element.type === "junction"
           ? [{ x: Number(element.x), y: Number(element.y) }]
           : Array.isArray(element.points)
           ? element.points.map(point => ({ x: Number(point[0]), y: Number(point[1]) }))
@@ -3579,4 +3580,66 @@ test("グリッド表示をスナップとは独立して切り替えて保存�
   await page.locator("#gridVisibility").selectOption("on");
   await expect(gridLayers).toHaveCount(2);
   expect(await page.evaluate(() => window.__edsTest.state.settings.showGrid)).toBe(true);
+});
+
+test("基本図形の円と楕円は45度刻み8方向の配線接続点を持つ", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const circle = { ...window.__edsTest.defaultElement("circle", 40, 40), id: "c1", w: 20, h: 20 };
+    const ellipse = { ...window.__edsTest.defaultElement("ellipse", 100, 40), id: "e1" };
+    const rotated = { ...window.__edsTest.defaultElement("circle", 160, 40), id: "r1", w: 20, h: 20, rotation: 90 };
+    window.__edsTest.installProjectData({
+      schemaVersion: 4, activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "landscape", frameVariant: "blank", title: {}, elements: [circle, ellipse, rotated] }]
+    });
+    const localAnchors = id => {
+      const element = window.__edsTest.state.pages[0].elements.find(item => item.id === id);
+      return window.__edsTest.elementConnectionAnchors(element)
+        .map(anchor => [Math.round((anchor.x - element.x) * 100) / 100, Math.round((anchor.y - element.y) * 100) / 100]);
+    };
+    const snapCount = id => window.__edsTest.collectConnectionAnchors(window.__edsTest.state.pages[0])
+      .filter(anchor => anchor.elementId === id).length;
+    return {
+      ellipseType: window.__edsTest.state.pages[0].elements.find(item => item.id === "e1").type,
+      circle: localAnchors("c1"),
+      ellipse: localAnchors("e1"),
+      rotated: localAnchors("r1"),
+      snapCircle: snapCount("c1"),
+      snapEllipse: snapCount("e1")
+    };
+  });
+  // 楕円は円と同一種別(w≠h)なので同じ接続点規則が効く
+  expect(result.ellipseType).toBe("circle");
+  // 20x20の円: 0/45/90/135/180/225/270/315度(角度0=右・時計回り)
+  expect(result.circle).toEqual([[20, 10], [17.07, 17.07], [10, 20], [2.93, 17.07], [0, 10], [2.93, 2.93], [10, 0], [17.07, 2.93]]);
+  // 24x14の楕円: 同じ8方向を各半径へ掛けた外周上の点
+  expect(result.ellipse).toEqual([[24, 7], [20.49, 11.95], [12, 14], [3.51, 11.95], [0, 7], [3.51, 2.05], [12, 0], [20.49, 2.05]]);
+  // 回転90度でも8点が図形と一緒に回る(描画のtransformと同じ規約)
+  expect(result.rotated).toEqual([[-10, 20], [-17.07, 17.07], [-20, 10], [-17.07, 2.93], [-10, 0], [-2.93, 2.93], [0, 10], [-2.93, 17.07]]);
+  // 配線スナップ候補としても8点そのまま拾える
+  expect(result.snapCircle).toBe(8);
+  expect(result.snapEllipse).toBe(8);
+
+  // 配線ツールで45度点の近くから引くと端点がその接続点へ吸着する
+  await page.evaluate(() => window.__edsTest.setActiveTool("wire"));
+  const points = await page.evaluate(() => {
+    const svg = document.querySelector("svg#canvas");
+    const matrix = svg.getScreenCTM();
+    const toClient = (x, y) => {
+      const point = svg.createSVGPoint();
+      point.x = x;
+      point.y = y;
+      const moved = point.matrixTransform(matrix);
+      return { x: moved.x, y: moved.y };
+    };
+    return { from: toClient(58.2, 58.2), to: toClient(80, 58.2) };
+  });
+  await page.mouse.move(points.from.x, points.from.y);
+  await page.mouse.down();
+  await page.mouse.move(points.to.x, points.to.y, { steps: 3 });
+  await page.mouse.up();
+  const wireStart = await page.evaluate(() => {
+    const wire = window.__edsTest.state.pages[0].elements.find(item => item.type === "wire");
+    return wire ? wire.points[0] : null;
+  });
+  expect(wireStart).toEqual([57.07, 57.07]);
 });

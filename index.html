@@ -10282,6 +10282,11 @@
             <p class="muted">ギャップ数: ${gapCount}</p>
           `;
         }
+        if (element.type === "circle") {
+          return `
+            <p class="muted" style="margin-top:8px">幅=高さなら円、異なれば楕円になります。外周の<b>0/45/90/135/180/225/270/315度</b>の8点が配線接続点です（配線はこの8点へ吸着します）。</p>
+          `;
+        }
         if (element.type === "arc") {
           return `
             <div class="row" style="margin-top:8px">
@@ -11335,6 +11340,9 @@
         return { x: x1 + dx * t, y: y1 + dy * t };
       }
 
+      // 円・楕円(基本図形)の接続点角度。45度刻みの8方向。
+      const CIRCLE_ANCHOR_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
+
       // 要素種別ごとの接続点(配線が刺さる点)一覧。geoシンボルはgeoAnchors()を使用。
       function elementConnectionAnchors(element) {
         const fromGeo = geoAnchors(element);
@@ -11404,6 +11412,18 @@
           add(0, 0); add(w / 2, 0); add(w, 0);
           add(w, h / 2); add(w, h);
           add(w / 2, h); add(0, h); add(0, h / 2);
+          return anchors;
+        }
+        if (element.type === "circle") {
+          // 円・楕円は外周の0/45/90/135/180/225/270/315度を配線接続点にする。
+          // 角度規約はellipseArcPath/DXFと同じ(0=右・時計回り=画面下向きが+)。
+          // 楕円は媒介変数角(cos/sinを各半径へ掛けた点)で、円のときは実角度と一致する。
+          const rx = w / 2;
+          const ry = h / 2;
+          CIRCLE_ANCHOR_ANGLES.forEach(deg => {
+            const rad = deg * Math.PI / 180;
+            add(round(rx + rx * Math.cos(rad)), round(ry + ry * Math.sin(rad)));
+          });
           return anchors;
         }
         if (element.type === "terminalBox") {
@@ -19089,6 +19109,7 @@
               <li><b>COM/0Vポート</b>: パレットの端子台は<b>最下段にCOMポートを標準装備</b>（位置は他の端子の逆側が自動既定、なし/自動/左/右を切替可）。右パネルの<b>「COM/0Vポートの表示名」で COM/0V ⇔ COM＋/COM− を切替</b>できます。PLC入出力回路テンプレートは<b>入力=円モード・COM右→N1／出力=a接点モード・COMと0Vを右→N1</b>へ自動配線し、各行・COM・0Vともレール接続部に接続点(黒丸)を打ちます</li>
               <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます。<b>端子ピッチ（端子間距離）と上下マージン（上下端〜端子）</b>を指定でき、指定すると箱の高さが端子配置に自動追従します（空欄なら従来どおり高さを等分）</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
+              <li><b>円・楕円の接続点</b>: 外周の<b>0/45/90/135/180/225/270/315度</b>の8点が配線接続点です（矩形の頂点+辺中央と同じ扱い）。楕円は同じ8方向を外周へ投影した点になります</li>
               <li>間違えたら <b>Ctrl+Z</b>。位置の微調整は<b>矢印キー</b>（1mm、Shiftで5mm）</li>
             </ul>`)}
 
