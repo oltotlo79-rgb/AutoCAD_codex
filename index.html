@@ -1466,6 +1466,10 @@
 
       // 端点・接続点スナップの吸着半径(mm)。
       const SNAP_RADIUS_MM = 4;
+      // 複製・貼り付けで元要素からずらす量(mm)。グリッド2.5mmの倍数にしておかないと
+      // 複製した部品の接続ピンがグリッドから外れ、以後の移動(グリッド倍数の平行移動)では
+      // 他シンボルの接続点の高さ・列へ二度と一致しなくなる。
+      const DUPLICATE_OFFSET_MM = 5;
       // 接続点の黒丸半径。接続点シンボル(junction)・配線/直線/連動破線の端点接続点で共通。
       const CONNECTION_DOT_R = 0.5;
       // 太グリッド(メジャーグリッド)の間隔(mm)。
@@ -10044,15 +10048,7 @@
       // シンボルデザインを1要素へ適用する(寸法補正+第1ピン位置保存)。一括変更用。
       // 単一要素の切替はupdateSelectedFromInputのGEOMETRY_KEYS経路が同じ規則で処理する。
       function applySymbolVariantTo(element, value) {
-        const firstPinOf = target => {
-          if (target.points) return null;
-          if ((target.type === "terminalStrip" || target.type === "connector") && target.connStyle !== "pair") {
-            return terminalStripNodeGlobal(target, 0);
-          }
-          const anchors = elementConnectionAnchors(target);
-          return anchors && anchors.length ? anchors[0] : null;
-        };
-        const pinBefore = firstPinOf(element);
+        const pinBefore = elementFirstPin(element);
         element.symbolVariant = value;
         if (!resizeGeoElementForOrientation(element)) {
           if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
@@ -10062,7 +10058,7 @@
           if (element.type === "powerSupply") { element.w = 35; element.h = 25; }
         }
         if (pinBefore) {
-          const pinAfter = firstPinOf(element);
+          const pinAfter = elementFirstPin(element);
           if (pinAfter && (Math.abs(pinAfter.x - pinBefore.x) > 0.001 || Math.abs(pinAfter.y - pinBefore.y) > 0.001)) {
             element.x = round(Number(element.x || 0) + (pinBefore.x - pinAfter.x));
             element.y = round(Number(element.y || 0) + (pinBefore.y - pinAfter.y));
@@ -10863,22 +10859,14 @@
         // 形状・向き・デザイン等の切替で要素寸法が変わる可能性のあるキー。
         // 切替の前後で第1接続ピンの絶対位置を保存し、寸法変更によるピンのズレを常に打ち消す。
         const GEOMETRY_KEYS = ["orientation", "pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "buzzerVariant", "terminalShape", "connStyle", "blockContact", "symbolVariant", "contactGap", "count", "stripStyle", "levels", "plcStyle", "rows", "pins"];
-        const firstPinOf = target => {
-          if (target.points) return null;
-          if ((target.type === "terminalStrip" || target.type === "connector") && target.connStyle !== "pair") {
-            return terminalStripNodeGlobal(target, 0);
-          }
-          const anchors = elementConnectionAnchors(target);
-          return anchors && anchors.length ? anchors[0] : null;
-        };
-        const pinBefore = !pointMatch && GEOMETRY_KEYS.includes(key) ? firstPinOf(element) : null;
+        const pinBefore = !pointMatch && GEOMETRY_KEYS.includes(key) ? elementFirstPin(element) : null;
         if (key === "rows" && element.type === "plcBlock" && (element.plcStyle || "grid") === "unit"
           && Number(element.pitch || 9.5) >= TEMPLATE_CIRCUIT_PITCH) {
           value = Math.max(1, Math.min(TEMPLATE_UNIT_MAX_ROWS, Math.floor(Number(value || 1))));
           input.value = String(value);
         }
         if (input.dataset.anchorCoordinate === "true" && (key === "x" || key === "y")) {
-          const anchor = firstPinOf(element);
+          const anchor = elementFirstPin(element);
           if (anchor) {
             const current = key === "x" ? anchor.x : anchor.y;
             element[key] = round(Number(element[key] || 0) + value - current);
@@ -10930,7 +10918,7 @@
           }
           // 第1ピンを切替前の位置へ戻す(配線・グリッドとの整合を維持)
           if (pinBefore) {
-            const pinAfter = firstPinOf(element);
+            const pinAfter = elementFirstPin(element);
             if (pinAfter && (Math.abs(pinAfter.x - pinBefore.x) > 0.001 || Math.abs(pinAfter.y - pinBefore.y) > 0.001)) {
               element.x = round(Number(element.x || 0) + (pinBefore.x - pinAfter.x));
               element.y = round(Number(element.y || 0) + (pinBefore.y - pinAfter.y));
@@ -11500,6 +11488,16 @@
         if (!element || element.points) return null;
         const anchors = elementConnectionAnchors(element);
         return anchors && anchors.length ? anchors[0] : null;
+      }
+
+      // 第1接続ピンの絶対座標。端子台・コネクタは端子ノード中心を使う(端子記号の有無で
+      // 第1接続点が辺上へ移るため)。デザイン切替・座標入力・移動時の格子合わせで共通に使う。
+      function elementFirstPin(element) {
+        if (!element || element.points) return null;
+        if ((element.type === "terminalStrip" || element.type === "connector") && element.connStyle !== "pair") {
+          return terminalStripNodeGlobal(element, 0);
+        }
+        return primaryConnectionPoint(element);
       }
 
       // 要素ローカル座標の接続点→絶対座標(回転考慮)。
@@ -16853,10 +16851,10 @@
           copy.id = uid("el");
           copy.locked = false;
           incrementDuplicateAttributes(copy);
-          if (copy.points) copy.points = copy.points.map(point => [point[0] + 6, point[1] + 6]);
+          if (copy.points) copy.points = copy.points.map(point => [point[0] + DUPLICATE_OFFSET_MM, point[1] + DUPLICATE_OFFSET_MM]);
           else {
-            copy.x = Number(copy.x || 0) + 6;
-            copy.y = Number(copy.y || 0) + 6;
+            copy.x = round(Number(copy.x || 0) + DUPLICATE_OFFSET_MM);
+            copy.y = round(Number(copy.y || 0) + DUPLICATE_OFFSET_MM);
           }
           return copy;
         });
@@ -16888,10 +16886,10 @@
           const copy = deepClone(element);
           copy.id = uid("el");
           copy.locked = false;
-          if (copy.points) copy.points = copy.points.map(point => [point[0] + 6, point[1] + 6]);
+          if (copy.points) copy.points = copy.points.map(point => [point[0] + DUPLICATE_OFFSET_MM, point[1] + DUPLICATE_OFFSET_MM]);
           else {
-            copy.x = Number(copy.x || 0) + 6;
-            copy.y = Number(copy.y || 0) + 6;
+            copy.x = round(Number(copy.x || 0) + DUPLICATE_OFFSET_MM);
+            copy.y = round(Number(copy.y || 0) + DUPLICATE_OFFSET_MM);
           }
           return copy;
         });
@@ -19102,6 +19100,7 @@
               <li><b>検索して配置</b>: 部品検索に入力→<b>Enter</b>で先頭候補が配置モードに</li>
               <li><b>最近使用</b>: パレット先頭に直近6件が自動で並ぶ。タイル右上の<b>☆</b>クリックで<b>お気に入り（先頭固定）</b>へ追加/解除</li>
               <li>配置時は<b>接続ピンがグリッド・行に自動で一致</b>。配線上に置くと線が自動分割されて割り込む</li>
+              <li><b>移動（ドラッグ）でも接続ピンがグリッドへ乗り直します</b>。ズレた部品は動かすだけで揃い、近くに他の接続点があれば<b>外接矩形の角より接続点を優先</b>して吸着します。<b>複製（Ctrl+D）・貼り付け（Ctrl+V）は5mm</b>（グリッドの倍数）ずらすので、コピーした部品もグリッド上に残ります</li>
               <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大</b>をONにすると、以後パレットから配置する部品が<b>1.5倍</b>で置かれます（既存の部品は変わりません。接続ピン・DXF出力も倍率に追従）</li>
               <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
               <li><b>端子台・PLCユニット列の端子記号</b>: 本体の辺上に<b>機器箱と同じ白抜き小円の端子</b>を表示し、その<b>端子だけが配線接続点</b>になります。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
@@ -22697,19 +22696,28 @@
           let dy = point.y - dragState.start.y;
           if (state.settings.snap) {
             const gridStep = Number(state.settings.grid || 2.5);
+            const originals = dragState.originals || [];
+            const rawDx = dx;
             const rawDy = dy;
             dx = Math.round(dx / gridStep) * gridStep;
             dy = Math.round(dy / gridStep) * gridStep;
-            if (page && page.frameVariant === "ladder" && (dragState.originals || []).length) {
+            // 掴んだ要素の第1接続ピンを「絶対位置で」グリッドへ乗せ直す。
+            // 移動量だけを丸めると、複製・貼付や矢印キーでグリッドから外れたピンは
+            // 平行移動のままズレを保持し続け、他シンボルの接続点の高さ・列に永久に合わない。
+            // (パレット配置は配置点そのものへピンを合わせるため、そちらとの挙動差の原因でもあった)
+            const grabbed = originals.find(item => item.id === dragState.elementId);
+            const pin = elementFirstPin(grabbed) || originals.map(item => elementFirstPin(item)).find(Boolean) || null;
+            if (pin) {
+              dx = round(Math.round((pin.x + rawDx) / gridStep) * gridStep - pin.x);
+              dy = round(Math.round((pin.y + rawDy) / gridStep) * gridStep - pin.y);
+            }
+            if (page && page.frameVariant === "ladder" && originals.length) {
               // 行磁気スナップは要素中心ではなく接続ピンの高さを基準にする
               // (押しボタン等ピンが中心にない部品でも配線高さが行に乗るように)。
-              const first = dragState.originals[0];
-              const anchors0 = elementConnectionAnchors(first);
+              const first = originals[0];
               const box0 = elementBounds(first);
-              let cy0 = anchors0 && anchors0.length ? anchors0[0].y : (box0 ? box0.y + box0.h / 2 : null);
-              if ((first.type === "terminalStrip" || first.type === "connector") && first.connStyle !== "pair") {
-                cy0 = terminalStripNodeGlobal(first, 0).y;
-              }
+              const pin0 = elementFirstPin(first);
+              const cy0 = pin0 ? pin0.y : (box0 ? box0.y + box0.h / 2 : null);
               if (cy0 !== null) {
                 const targetY = cy0 + rawDy;
                 const row = LADDER_GRID.top + LADDER_GRID.pitch * Math.round((targetY - LADDER_GRID.top) / LADDER_GRID.pitch);
@@ -22934,23 +22942,32 @@
         if (!state.settings.objectSnap || !originals.length) return { dx: 0, dy: 0 };
         const page = currentPage();
         const excludeIds = new Set(originals.map(original => original.id));
-        const targets = collectSnapAnchors(page, excludeIds);
-        let best = null;
-        originals.flatMap(original => movedElementAnchors(original, dx, dy)).forEach(source => {
-          targets.forEach(target => {
-            const d = Math.hypot(target.x - source.x, target.y - source.y);
-            if (d <= SNAP_RADIUS_MM && (!best || d < best.d)) {
-              best = { d, dx: target.x - source.x, dy: target.y - source.y };
+        const sources = originals.flatMap(original => movedElementAnchors(original, dx, dy));
+        // 接続点(端子・シンボルのピン)を最優先で探し、範囲内に無いときだけ
+        // 図形の外接矩形の角・中心や線上へ吸着する。角が接続点よりわずかに近いだけで吸われると、
+        // 配線できない位置なのに「合った」ように見えてしまうため。
+        const pick = (targets, withSegments) => {
+          let best = null;
+          sources.forEach(source => {
+            targets.forEach(target => {
+              const d = Math.hypot(target.x - source.x, target.y - source.y);
+              if (d <= SNAP_RADIUS_MM && (!best || d < best.d)) {
+                best = { d, dx: target.x - source.x, dy: target.y - source.y };
+              }
+            });
+            if (!withSegments) return;
+            const segmentTarget = closestSegmentSnapPoint(page, source.x, source.y, excludeIds);
+            if (segmentTarget) {
+              const d = Math.hypot(segmentTarget.x - source.x, segmentTarget.y - source.y);
+              if (d <= SNAP_RADIUS_MM && (!best || d < best.d)) {
+                best = { d, dx: segmentTarget.x - source.x, dy: segmentTarget.y - source.y };
+              }
             }
           });
-          const segmentTarget = closestSegmentSnapPoint(page, source.x, source.y, excludeIds);
-          if (segmentTarget) {
-            const d = Math.hypot(segmentTarget.x - source.x, segmentTarget.y - source.y);
-            if (d <= SNAP_RADIUS_MM && (!best || d < best.d)) {
-              best = { d, dx: segmentTarget.x - source.x, dy: segmentTarget.y - source.y };
-            }
-          }
-        });
+          return best;
+        };
+        const best = pick(collectConnectionAnchors(page, excludeIds), false)
+          || pick(collectSnapAnchors(page, excludeIds), true);
         return best ? { dx: best.dx, dy: best.dy } : { dx: 0, dy: 0 };
       }
 
@@ -23543,6 +23560,7 @@
         defaultElementAtPlacement,
         elementConnectionAnchors,
         primaryConnectionPoint,
+        elementFirstPin,
         snapLineEndpoint,
         axisAwareDrawingPoint,
         dragPreferredAxis,

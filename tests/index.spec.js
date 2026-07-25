@@ -3643,3 +3643,96 @@ test("基本図形の円と楕円は45度刻み8方向の配線接続点を持�
   });
   expect(wireStart).toEqual([57.07, 57.07]);
 });
+
+// ドラッグ用: mm座標をクライアント座標へ変換する(ズーム・スクロールに依存しない)
+async function canvasClientPoints(page, pairs) {
+  return page.evaluate(list => {
+    const svg = document.querySelector("svg#canvas");
+    const matrix = svg.getScreenCTM();
+    return list.map(([x, y]) => {
+      const point = svg.createSVGPoint();
+      point.x = x;
+      point.y = y;
+      const moved = point.matrixTransform(matrix);
+      return { x: moved.x, y: moved.y };
+    });
+  }, pairs);
+}
+
+test("複製・貼り付けはグリッド倍数でずらし接続ピンをグリッド上に保つ", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const T = window.__edsTest;
+    const base = { ...T.defaultElementAtPlacement("contactNO", 60, 60), id: "a1", label: "A1" };
+    T.installProjectData({
+      schemaVersion: 4, activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "landscape", frameVariant: "blank", title: {}, elements: [base] }]
+    });
+    T.selectElement("a1");
+    const pin = id => {
+      const element = T.state.pages[0].elements.find(item => item.id === id);
+      return T.elementFirstPin(element);
+    };
+    return { grid: T.state.settings.grid || 2.5, basePin: pin("a1") };
+  });
+  expect(result.basePin).toEqual({ x: 55, y: 60 });
+
+  await page.keyboard.press("Control+d");
+  await page.keyboard.press("Control+c");
+  await page.keyboard.press("Control+v");
+  const pins = await page.evaluate(() => {
+    const T = window.__edsTest;
+    return T.state.pages[0].elements.map(element => T.elementFirstPin(element));
+  });
+  // 元→複製→貼付が5mm(グリッド2.5mmの倍数)ずつずれ、すべてグリッド上に乗る
+  expect(pins).toEqual([{ x: 55, y: 60 }, { x: 60, y: 65 }, { x: 65, y: 70 }]);
+  expect(pins.every(pin => pin.x % 2.5 === 0 && pin.y % 2.5 === 0)).toBe(true);
+});
+
+test("移動ドラッグは第1接続ピンを絶対位置でグリッドへ乗せ直す", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p",
+    pages: [{
+      id: "p", name: "P1", size: "A4", orientation: "landscape", frameVariant: "blank", title: {},
+      // 第1ピンが(56,61)＝グリッド2.5mmから1mmずれた状態(旧版の複製やキー移動で起きる)
+      elements: [{ id: "off", type: "contactNO", x: 56, y: 58.8, w: 10, h: 4.4, orientation: "horizontal", layer: "symbols" }]
+    }]
+  }));
+  const before = await page.evaluate(() => window.__edsTest.elementFirstPin(window.__edsTest.state.pages[0].elements[0]));
+  expect(before).toEqual({ x: 56, y: 61 });
+
+  const [from, to] = await canvasClientPoints(page, [[61, 61], [81, 71]]);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 12, from.y + 12, { steps: 2 });
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+  await page.mouse.up();
+  const after = await page.evaluate(() => window.__edsTest.elementFirstPin(window.__edsTest.state.pages[0].elements[0]));
+  // 移動量ではなくピンの着地点を丸めるので、1mmのズレは移動しただけで解消する
+  expect(after).toEqual({ x: 75, y: 70 });
+});
+
+test("移動中の吸着は外接矩形の角より接続点を優先する", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 4, activePageId: "p", settings: { snap: false, objectSnap: true },
+    pages: [{
+      id: "p", name: "P1", size: "A4", orientation: "landscape", frameVariant: "blank", title: {},
+      elements: [
+        // a1のピンは(100,100)/(110,100)、外接矩形の角は(100,102.2)など
+        { id: "a1", type: "contactNO", x: 100, y: 97.8, w: 10, h: 4.4, orientation: "horizontal", layer: "symbols" },
+        { id: "b1", type: "contactNO", x: 60, y: 120, w: 10, h: 4.4, orientation: "horizontal", layer: "symbols" }
+      ]
+    }]
+  }));
+  // b1の右ピンがa1の外接矩形の左下角(100,102.2)へちょうど重なるようにドラッグする
+  const [from, to] = await canvasClientPoints(page, [[65, 122.2], [95, 102.2]]);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 10, from.y - 10, { steps: 2 });
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+  await page.mouse.up();
+  const pins = await page.evaluate(() => window.__edsTest.elementConnectionAnchors(
+    window.__edsTest.state.pages[0].elements.find(item => item.id === "b1")
+  ).map(anchor => [Math.round(anchor.x * 100) / 100, Math.round(anchor.y * 100) / 100]));
+  // 角(100,102.2)ではなくa1の接続ピン(100,100)へ吸着する
+  expect(pins).toEqual([[90, 100], [100, 100]]);
+});
