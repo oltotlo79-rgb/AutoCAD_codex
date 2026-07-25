@@ -1443,13 +1443,19 @@
        *    接点下のアドレス表示と設備標準図枠の表へ反映する。アドレス=シート+行2桁。
        *
        * ■ コメント規約(このファイル内の統一基準)
-       *  1) 日本語で、定義の直上に同インデントの // 一行要約(体言止め/「〜する。」)。
-       *     必要な場合のみ2〜3行目に規約・単位・呼び出し関係を補足する。
+       *  1) 日本語で、定義(関数・上位の定数/変数)の直上に同インデントの // 一行要約
+       *     (体言止め/「〜する。」)。必要な場合のみ2〜3行目に規約・単位・呼び出し関係を補足する。
+       *     関数内のごく短いローカル補助(rad/px/py等)は自明なので書かない。
        *  2) セクション見出しは // ===== 名称 ===== 。
+       *     セクション内の段取り見出し(テンプレート作図の手順など)は // --- 名称 --- 。
        *  3) 内容は「何をするか」と「重要な前提(座標系・単位・いつ呼ぶか)」のみ。
        *     実装の逐語説明・自明な繰り返しは書かない。
        *  4) 型の目安: 定数=用途 / 描画系「〜を描画。」/ ダイアログ系「〜ダイアログを開く。」/
        *     build系「ダイアログ入力から〜を生成。」/ dxf系「〜のDXF出力。」
+       *  5) 文末は「。」で閉じる(2)の見出し行と、続きが次行にある箇条書きの途中は除く)。
+       *     丸括弧は半角()、行内の区切りは「・」を使う。
+       *  6) コード行の末尾には書かず、必ず直上の行へ置く。
+       *     例外は1行で閉じる catch の「何もしない理由」だけで、その場合のみ行内ブロックコメントを使う。
        * ===================================================================== */
 
       // 用紙サイズ定義(mm)。portrait/landscapeの[幅,高さ]。全座標系はmm単位・左上原点・y下向き。
@@ -1927,6 +1933,9 @@
         return data;
       }
 
+      // スキーマ移行関数の一覧(キー=移行元の版数、値=data→dataの変換)。
+      // migrateProjectData()が現行版になるまでキー順に適用するので、
+      // 版を上げるときはここへ「旧版→次版」の1関数を追加する。何度適用しても同じ結果になるよう書く。
       const MIGRATIONS = {
         // 1→2: schemaVersion欄の導入。構造変更はないが、欠落しがちな頁下位欄を補完する。
         1: data => {
@@ -2379,10 +2388,14 @@
       let installLocationClipboard = null;
       let history = [];
       let projectDirty = false;
-      let historyReasons = []; // historyと同じ並びの{reason, at}(履歴タイムライン表示用)
-      let historyImageRefs = []; // 各履歴スナップショットが参照する下絵アセットID集合
-      const historyImageAssets = new Map(); // 下絵data URLは履歴ごとに複製せず1回だけ保持
-      const historyImageRefByData = new Map(); // 同一画像を複数要素で使う場合も同じアセットを共有
+      // historyと同じ並びの{reason, at}(履歴タイムライン表示用)。
+      let historyReasons = [];
+      // 各履歴スナップショットが参照する下絵アセットID集合。
+      let historyImageRefs = [];
+      // 下絵data URLは履歴ごとに複製せず1回だけ保持。
+      const historyImageAssets = new Map();
+      // 同一画像を複数要素で使う場合も同じアセットを共有。
+      const historyImageRefByData = new Map();
       let historyIndex = -1;
 
       // 未保存変更がある状態で再読み込み・タブ終了・ページ移動を行う場合だけ、
@@ -2744,7 +2757,8 @@
       // アプリ初期化: 既定1ページを作って履歴をリセットし初回描画。
       function initProject() {
         ensureProjectDefaults();
-        state.schemaVersion = SCHEMA_VERSION; // 新規図面は現行版(将来版データを開いた後の版数を引き継がない)
+        // 新規図面は現行版(将来版データを開いた後の版数を引き継がない)。
+        state.schemaVersion = SCHEMA_VERSION;
         state.pages = [createPage({ name: "P1", frameVariant: "compact", title: "電気図面" })];
         state.activePageId = state.pages[0].id;
         setSelection([]);
@@ -2775,15 +2789,17 @@
         commitHistory("初期化");
       }
 
-      // Undo履歴へ現在stateのスナップショットを積み、localStorageへ自動バックアップする。
-      // 変更を伴う操作は必ず最後にこれを呼ぶ(直前と同一なら何もしない)。reasonはステータスバー表示。
       // Undo履歴の保持上限。全量スナップショット方式のため、下絵入り大規模図面での
       // メモリ肥大を防ぐ(超過分は古い方から破棄)。
       const HISTORY_LIMIT = 60;
+      // 履歴全体(下絵画像を除いたJSON文字列)の合計文字数の上限。
+      // 世代数だけでは大きな図面のメモリを抑えられないため、文字数でも頭打ちにする。
       const HISTORY_MAX_CHARS = 16 * 1024 * 1024;
       // 現在stateが参照する画像は不可避なので除外し、過去履歴だけが保持する画像を別枠で制限する。
-      // 25MB入力（data URL約33MB）を少なくとも1世代Undoできるよう64MBとする。
+      // 25MB入力(data URL約33MB)を少なくとも1世代Undoできるよう64MBとする。
       const HISTORY_IMAGE_MAX_CHARS = 64 * 1024 * 1024;
+      // 履歴スナップショット内で下絵data URLの実体を置き換える差し込みキー。
+      // 同じ画像を履歴ごとに複製せず、historyImageAssetsのアセットIDだけを持たせる。
       const HISTORY_IMAGE_REF_KEY = "__edsHistoryImageRef";
       let backupFailureWarned = false;
 
@@ -2791,9 +2807,13 @@
       // 最新(BACKUP_KEY)に加え、約5分おきに直前の最新を世代1〜3へ繰り下げて保存する。
       // 「誤操作に気づかず上書きし続けた」場合でも、少し前の状態へ戻れるようにする保険。
       const BACKUP_KEY = "electricalDrawingStudio.backup";
+      // 世代バックアップのlocalStorageキー接頭辞(実キーは末尾に世代番号1〜3が付く)。
       const BACKUP_GEN_PREFIX = "electricalDrawingStudio.backupGen";
+      // 各世代の保存日時を並べた配列を入れるlocalStorageキー([0]=世代1)。
       const BACKUP_GEN_META_KEY = "electricalDrawingStudio.backupGenMeta";
+      // 保持する世代数。これを超えた最古の世代は繰り下げ時に破棄する。
       const BACKUP_GEN_COUNT = 3;
+      // 世代を繰り下げる最短間隔(ms)。連続操作のたびに世代を消費しないための間引き。
       const BACKUP_GEN_INTERVAL_MS = 5 * 60 * 1000;
 
       // 世代メタ(各世代の保存日時の配列。[0]=世代1)を読む。壊れていれば空。
@@ -2822,7 +2842,7 @@
           const nextMeta = [{ at: new Date().toISOString() }, ...meta].slice(0, BACKUP_GEN_COUNT);
           localStorage.setItem(BACKUP_GEN_META_KEY, JSON.stringify(nextMeta));
         } catch (_) {
-          // 容量超過時は世代を諦めて最新のみ保護する(古い世代から削除して空きを作る)
+          // 容量超過時は世代を諦めて最新のみ保護する(古い世代から削除して空きを作る)。
           try {
             for (let i = BACKUP_GEN_COUNT; i >= 1; i--) localStorage.removeItem(BACKUP_GEN_PREFIX + i);
             localStorage.removeItem(BACKUP_GEN_META_KEY);
@@ -2887,7 +2907,7 @@
         return total;
       }
 
-      // Undo保持の追加負担（コンパクトJSON＋過去だけが持つ画像）。
+      // Undo保持の追加負担(コンパクトJSON＋過去だけが持つ画像)。
       function historyRetainedChars() {
         return historySnapshotChars() + historicalImageAssetChars();
       }
@@ -2898,14 +2918,17 @@
         localStorage.setItem(BACKUP_KEY, snapshot);
       }
 
-      // Undo履歴へ現在stateを積み、localStorageへ自動バックアップする。
-      // 変更操作は必ず最後にこれを呼ぶ(直前と同一なら何もしない)。
-      // reasonはステータス表示と履歴タイムラインの操作名に使う。
-      // 直前コミットとの合体判定用(同一フィールドの連続編集を1履歴へまとめる)。
+      // 直前コミットの合体キー(同一フィールドの連続編集を1履歴へまとめる判定に使う)。
       let lastCommitMergeKey = null;
+      // 直前コミットの時刻(ms)。合体できる時間内かの判定に使う。
       let lastCommitMergeAt = 0;
+      // 連続編集を1履歴へ合体できる猶予時間(ms)。これを超えたら別操作として積む。
       const HISTORY_MERGE_WINDOW_MS = 4000;
 
+      // Undo履歴へ現在stateを積み、localStorageへ自動バックアップする。
+      // 変更操作は必ず最後にこれを呼ぶ(直前と同一なら何もしない)。
+      // reasonはステータス表示と履歴タイムラインの操作名に使い、
+      // options.mergeKeyを渡すと同一キーの連続編集を1履歴へ合体する。
       function commitHistory(reason = "", options = {}) {
         syncPageTotals();
         const compact = serializeHistorySnapshot();
@@ -3087,7 +3110,7 @@
         const status = qs("#status");
         status.textContent = message;
         status.title = message;
-        // 更新を視覚的に知らせるワンショットアニメ(classを付け直して再生)
+        // 更新を視覚的に知らせるワンショットアニメ(classを付け直して再生)。
         status.classList.remove("pop");
         void status.offsetWidth;
         status.classList.add("pop");
@@ -3128,7 +3151,7 @@
         } else {
           text = "部品: 左パレットからドラッグ ／ 配線: W ／ 範囲選択: 空白からドラッグ ／ ズーム: Ctrl+ホイール";
         }
-        // 文言が変わった時だけワンショットのポップを再生(毎renderでの再生を防ぐ)
+        // 文言が変わった時だけワンショットのポップを再生(毎renderでの再生を防ぐ)。
         if (hint.textContent !== text) {
           hint.textContent = text;
           hint.title = text;
@@ -3336,7 +3359,7 @@
       function paletteIconHtml(item) {
         if (String(item.type).startsWith("custom:")) return iconSvg(item.icon);
         if (paletteIconCache.has(item.type)) return paletteIconCache.get(item.type);
-        // 回路ライブラリは登録テンプレート全体を実描画してアイコン化する
+        // 回路ライブラリは登録テンプレート全体を実描画してアイコン化する。
         if (String(item.type).startsWith("circuit:")) {
           const circuit = BUILTIN_CIRCUITS.find(c => "circuit:" + c.id === item.type);
           let html = iconSvg("box");
@@ -3453,7 +3476,7 @@
             state.activePageId = page.id;
             setSelection([]);
             render();
-            // 並べて表示中はタブクリックで該当ページへスクロール
+            // 並べて表示中はタブクリックで該当ページへスクロール。
             if (isMultiPageView()) pageSvgPool.get(page.id)?.slot.scrollIntoView({ block: "start", behavior: "smooth" });
           });
           tab.addEventListener("dblclick", () => {
@@ -3493,8 +3516,11 @@
       // ===== ページ表示モード(タブ=1ページずつ / 並べて表示=全ページを縦に並べて直接編集) =====
       // 並べて表示では各ページが専用SVGを持ち、クリックしたページが自動的に編集対象(アクティブ)になる。
       // 既存コードの qs("#canvas") 参照を壊さないよう、常にアクティブページのSVGへ id="canvas" を付け替える。
-      const pageSvgPool = new Map(); // pageId -> { slot, header, svg }
-      let stageMode = "single"; // 初期HTMLは単一#canvas構成
+      // 並べて表示のページ枠を使い回すためのプール(pageId -> { slot, header, svg })。
+      // 毎renderでDOMを作り直さず、既存SVGの中身だけ差し替えてスクロール位置を保つ。
+      const pageSvgPool = new Map();
+      // 初期HTMLは単一#canvas構成。
+      let stageMode = "single";
 
       // ページ表示モードが「並べて表示」か(タブ表示=false)。
       function isMultiPageView() {
@@ -3616,7 +3642,8 @@
           entry.nextBtn.textContent = direction === "column" ? "▼" : "▶";
           entry.prevBtn.disabled = index === 0;
           entry.nextBtn.disabled = index === state.pages.length - 1;
-          stage.appendChild(entry.slot); // append順でページ並びを常に同期
+          // append順でページ並びを常に同期。
+          stage.appendChild(entry.slot);
           const isActive = page.id === state.activePageId;
           if (options.light && !isActive) return;
           drawPageSvg(entry.svg, page, { selection: isActive, scaled: true, grid: true });
@@ -3670,7 +3697,7 @@
           drawAlignGuides(svg);
         }
         if (options.selection && !page.elements.length) {
-          // 空ページの「はじめかた」カード(画面表示のみ。印刷・出力には含まれない)
+          // 空ページの「はじめかた」カード(画面表示のみ。印刷・出力には含まれない)。
           const cx = size.w / 2;
           const cy = size.h / 2;
           const card = svgEl("g", { "pointer-events": "none" });
@@ -4179,7 +4206,7 @@
                 "stroke-width": 2.4, "pointer-events": "stroke"
               }));
             } else if (element.type === "arc") {
-              // 弧の曲線に沿ったヒット(外接箱全体だと下の要素が選べないため)
+              // 弧の曲線に沿ったヒット(外接箱全体だと下の要素が選べないため)。
               g.appendChild(svgEl("path", {
                 d: ellipseArcPath(hitW / 2, hitH / 2, hitW / 2, hitH / 2, Number(element.a0 ?? 0), Number(element.a1 ?? 90)),
                 fill: "none", stroke: "#000", "stroke-opacity": 0,
@@ -4197,7 +4224,7 @@
           applyLabelPresentation(g, element);
           drawVisibleAttributes(g, element);
           // geoシンボルも「文字スタイル」の文字サイズ・太字(contentFontSize/Bold)をラベルへ反映する。
-          // (フォールバック描画経路と同じ処理。これが無いとgeo部品でラベルサイズ変更が効かない)
+          // (フォールバック描画経路と同じ処理。これが無いとgeo部品でラベルサイズ変更が効かない)。
           applyContentTextPresentation(g, element);
           svg.appendChild(g);
           return;
@@ -4252,6 +4279,9 @@
         svg.appendChild(g);
       }
 
+      // 要素内の文字へ「文字スタイル」の一括サイズ・太字を適用する。描画の最後に呼ぶ。
+      // 参照するキーは種別で異なる(text=fontSize/fontBold、wire=wireNoFontSize/wireNoBold、
+      // それ以外=contentFontSize/contentFontBold)。data-content-exempt="true"の文字は対象外。
       function applyContentTextPresentation(g, element) {
         const size = element.type === "text" ? Number(element.fontSize || 0)
           : element.type === "wire" ? Number(element.wireNoFontSize || 0)
@@ -4273,7 +4303,7 @@
           : (page?.elements || []);
         candidates.forEach(element => {
           if (!isElementVisible(element) || element.type === "wire" || element.points) return;
-          // 端子台も端子記号込みの接続点(componentConnectionAnchors)を使う
+          // 端子台も端子記号込みの接続点(componentConnectionAnchors)を使う。
           const anchors = componentConnectionAnchors(element);
           anchors.forEach(anchor => {
             const key = round(anchor.x) + "," + round(anchor.y);
@@ -4288,6 +4318,8 @@
         });
       }
 
+      // 線もの(配線・直線・連動破線)の両端に、接続点の黒丸と矢印を描画する。
+      // 端点の向きは端の線分から求めるので、L字・コの字配線でも矢印が経路に沿う。
       function drawEndpointPresentation(g, element, stroke) {
         if (!["wire", "line", "mechanicalLink"].includes(element.type)) return;
         let start, startNext, endPrev, end;
@@ -4530,7 +4562,7 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
       }
 
-      // 雲マーク(改訂範囲)の縁飾り: 各辺を約6mmピッチの外向き半円弧に分割する
+      // 雲マーク(改訂範囲)の縁飾り: 各辺を約6mmピッチの外向き半円弧に分割する。
       function cloudScallopArcs(w, h) {
         const arcs = [];
         const edge = (x0, y0, x1, y1, a0, a1) => {
@@ -4880,6 +4912,7 @@
       function comPortLabel(element) {
         return element.comLabelStyle === "plusMinus" ? "COM+" : "COM";
       }
+      // 0Vポートの表示名。comPortLabel()と対で使い、plusMinus指定時は"COM-"にする。
       function zeroPortLabel(element) {
         return element.comLabelStyle === "plusMinus" ? "COM-" : "0V";
       }
@@ -4902,13 +4935,13 @@
         if (name) dxfTextLocal(out, page, "TEXT", element, cx - name.length * 1.8 * .3, y - 3.1 + 1.8 * .35, 1.8, name);
       }
 
-      // index が count 以上のときは2段目(右列)のノードを返す
+      // index が count 以上のときは2段目(右列)のノードを返す。
       function terminalStripNodeLocal(element, index) {
         const geo = terminalStripGeometry(element);
         if (geo.unit) {
           const level2 = index >= geo.count;
           // 端子円の描画中心と、吸着・配線・帳票で使う接続点を必ず同じ座標にする。
-          // 1段は列中央、2段は左右5mm内側（既定幅20mmならx=5/15）に置く。
+          // 1段は列中央、2段は左右5mm内側(既定幅20mmならx=5/15)に置く。
           const inset = element.terminalNodeInset === undefined ? 5 : Number(element.terminalNodeInset);
           const x = geo.levels === 2 ? (level2 ? geo.w - inset : inset) : geo.w / 2;
           return { x, y: geo.pitch * (index % geo.count) + geo.pitch / 2 };
@@ -4958,10 +4991,13 @@
         g.appendChild(textEl(label, cx, cy + .12, { fontSize: 1.8, anchor: "middle" }));
       }
 
-      // 端子台/PLCユニット列に付ける端子記号の表示判定。
-      // 既定は要素のterminalMarkLeft/terminalMarkRight、stripTerminalMarksのleft-n/right-nで個別上書き。
-      // 記号は機器箱の端子円と同一仕様: 白抜き小円(r0.55)を本体の辺上へ載せるだけで、余計な線は出さない。
+      // 端子記号の白抜き小円の半径(mm)。機器箱の端子円と同一仕様で、
+      // 本体の辺上へ載せるだけにして余計な線は出さない。
       const STRIP_TERMINAL_MARK_R = 0.55;
+
+      // 端子台/PLCユニット列に付ける端子記号の表示判定(side="left"|"right"、index=行番号)。
+      // 既定は要素のterminalMarkLeft/terminalMarkRight、stripTerminalMarksのleft-n/right-nで個別上書き。
+      // 表示中の行は端子記号だけが配線接続点になるため、接続点計算側もこの判定を使う。
       function stripTerminalMarkVisible(element, side, index) {
         const override = element.stripTerminalMarks?.[side + "-" + index];
         if (typeof override === "boolean") return override;
@@ -5482,12 +5518,16 @@
           leadEnd: throat - w * .06,
           mouthX: w * .95,
           kneeX: throat + (w * .95 - throat) * .62,
-          amp: h * .46,   // 開口部の半高
-          flare: h * .24, // のど元の半高
+          // 開口部の半高。
+          amp: h * .46,
+          // のど元の半高。
+          flare: h * .24,
           dotR: Math.min(.85, h * .13)
         };
       }
 
+      // ブザーのSVG描画(SYMBOL_GEO対象外のホーン形・スピーカー形)。
+      // JIS形などgeoシンボルを持つ形状はdrawGeoSymbol側が描くため、ここへは来ない。
       function drawBuzzer(g, element, stroke) {
         const w = Number(element.w || 12);
         const h = Number(element.h || 6);
@@ -5547,11 +5587,14 @@
         if (element.label) g.appendChild(textEl(element.label, w / 2, -3, { fontSize: 2.4, anchor: "middle" }));
       }
 
-      // 機器箱(汎用ボックス)の描画。pins/pinText/rightPinTextで左右の端子番号文字を表示。
+      // 要素内の接続ピンのオフセットを2.5mmグリッドの倍数へ丸める。
+      // 等分配置で端数が出る箱の端子を、配置後もグリッド行に乗せるために使う。
       function cleanConnectionOffset(value) {
         return round(Math.round(Number(value || 0) / 2.5) * 2.5);
       }
 
+      // 線番の表示位置を確定する(現仕様では指定位置をそのまま返す)。
+      // 周辺要素と重なっても位置を動かさず、暗黙の引き出し線も作らない方針のため素通しにしている。
       function avoidWireNumberCollision(element, position) {
         // 周辺要素と重なっても指定位置を維持し、暗黙の引き出し線は生成しない。
         return position;
@@ -5575,6 +5618,8 @@
         return layout.explicit ? layout.h : Number(element.h || 20);
       }
 
+      // 機器箱のindex番目(0始まり)の端子のローカルY。SVG・DXF・接続点で必ずこれを使う。
+      // ピッチ指定時は margin + index×pitch、未指定時は箱の高さを等分して2.5mmグリッドへ丸める。
       function deviceBoxPinY(element, index) {
         const layout = deviceBoxPinLayout(element);
         if (layout.explicit) return round(layout.margin + index * layout.pitch);
@@ -5583,6 +5628,7 @@
         return cleanConnectionOffset(h * (index + 1) / (pins + 1));
       }
 
+      // 端子箱のindex番目(0始まり)の箱の中心Y。区画を等分した中央に置く。
       function terminalBoxPinY(element, index) {
         const h = Number(element.h || 18);
         const rows = Math.max(1, Number(element.rows || 3));
@@ -5596,12 +5642,17 @@
         return typeof value === "boolean" ? value : true;
       }
 
+      // PLCブロック(格子スタイル)のindex番目(0始まり)の端子行のローカルY。
+      // 上下5mmの余白を除いた範囲を行数で割り、2.5mmグリッドへ丸めて配線と揃える。
       function plcGridPinY(element, index) {
         const rows = Math.max(2, Number(element.rows || 8));
         const h = Number(element.h || rows * 6 + 10);
         return cleanConnectionOffset(5 + (index + 1) * ((h - 10) / rows));
       }
 
+      // 機器箱(汎用ボックス)のSVG描画。pins/pinText/rightPinTextで左右の端子番号文字を表示し、
+      // deviceTerminalMode/deviceTerminalVisibilityで端子円(白抜き小円)の表示を切り替える。
+      // 外形高さはdeviceBoxHeight()、端子YはdeviceBoxPinY()に従う(DXF・接続点と同じ値)。
       function drawDeviceBox(g, element, stroke) {
         const w = Number(element.w || 28);
         const h = deviceBoxHeight(element);
@@ -5805,6 +5856,8 @@
         return { open: [3, .35], solid: [3.4, .26], fork: [3.2, .44], chevron: [2.2, .49] }[style] || [3, .35];
       }
 
+      // 矢頭1個の描画。tip=先端座標、dirAngle=線の進行方向(rad、画面系)、styleはarrowHeadSpec()の種別。
+      // solidのみ塗り三角、その他は開いた折れ線。forkは先端から外向きに開く(送り矢印用)。
       function appendArrowHead(g, tip, dirAngle, style, stroke, attributes = {}) {
         const [len, half] = arrowHeadSpec(style);
         const sgn = style === "fork" ? 1 : -1;
@@ -5889,18 +5942,26 @@
       // 設備図枠の行番号は9.5mm間隔だが、テンプレートの電気接続点は作図方眼(2.5mm)へ載せる。
       // 旧保存図面の行座標は変更せず、新規生成時だけこの固定方眼へ丸める。
       const TEMPLATE_GRID_STEP = 2.5;
+      // テンプレートで1回路が占める上下の間隔(mm)。行ピッチ9.5mmではなく方眼の倍数にする。
       const TEMPLATE_CIRCUIT_PITCH = 10;
+      // テンプレートの縦レールを下ろせる下限y(mm)。図枠下部の機器符号表帯より上に収める。
       const TEMPLATE_RAIL_BOTTOM = 217.5;
+      // ユニット列(端子台・PLC)としてテンプレートが生成できる最大行数。用紙内へ収める上限。
       const TEMPLATE_UNIT_MAX_ROWS = 19;
 
+      // テンプレート用: 任意のmm値を作図方眼(2.5mm)の最寄り点へ丸める。
       function templateGridCoordinate(value) {
         return round(Math.round(Number(value || 0) / TEMPLATE_GRID_STEP) * TEMPLATE_GRID_STEP);
       }
 
+      // テンプレート用: index番目(0始まり)のラダー行のy。行ピッチのまま置くと方眼から
+      // 外れる行があるため、方眼へ丸めた値を返す。
       function templateGridRow(index) {
         return templateGridCoordinate(LADDER_GRID.top + LADDER_GRID.pitch * Number(index || 0));
       }
 
+      // テンプレート用: index番目の行と、その1回路ぶん下の行の[上, 下]を返す。
+      // 2極機器(CPの両極など)の上下ピンを方眼へ載せるために使う。
       function templateGridPair(index) {
         const first = templateGridRow(index);
         return [first, round(first + TEMPLATE_CIRCUIT_PITCH)];
@@ -6759,7 +6820,7 @@
         // 変圧器(参照実測): 縦長の巻線バー2本+タップ端子円。上下ライン間は行ピッチ9.5mmで
         // 2行にまたがって配置する。左=一次(上端/上段/中間タップ/下段)、右=二次(上端/上段/下段)。
         transformer: {
-          // ピンピッチ15mm・上タップは主ピンの1行(9.5mm)上=行グリッドに載る(実測14/3.4/0.9から微調整)
+          // ピンピッチ15mm・上タップは主ピンの1行(9.5mm)上=行グリッドに載る(実測14/3.4/0.9から微調整)。
           w: 15, h: 17,
           anchors: [[0, 5.5], [15, 5.5], [0, 15.0], [15, 15.0], [5, -4], [10, -4]],
           prims: [
@@ -8292,7 +8353,7 @@
             { t: "text", p: [5, -0.6], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 近接センサ（誘導形）: コイル面を右側へ配置し、リードとの不要交差を避ける。
+        // 近接センサ(誘導形): コイル面を右側へ配置し、リードとの不要交差を避ける。
         sensorInductive: {
           w: 25, h: 14,
           anchors: [[0, 7], [25, 7]],
@@ -8329,7 +8390,7 @@
             { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 磁気（リード）センサ。
+        // 磁気(リード)センサ。
         sensorMagnetic: {
           w: 25, h: 14,
           anchors: [[0, 7], [25, 7]],
@@ -8649,6 +8710,9 @@
       // 突出していた。共通の縮小率で幅15mm前後へ縮め、サイズ感を揃える。接続ピン間隔も0.6倍=15mm
       // (2.5mmグリッドの倍数)で整合する。定義を1箇所で縮小し、SVG/DXF/接続点/既定寸法へ一律反映する。
       const COMPACT_SWITCH_SCALE = 0.6;
+      // geo定義を一律k倍へ縮小した新しい定義を返す(元のgeoは変更しない)。
+      // 寸法・接続点・プリミティブを同じ倍率で潰すので、SVG・DXF・接続点の一致が保たれる。
+      // 弧の角度と文字サイズだけは倍率をそのまま掛けない(角度は不変、文字は下限1.4mm)。
       function compactScaleGeo(geo, k) {
         const s = value => round(value * k);
         const scaled = { w: s(geo.w), h: s(geo.h), anchors: geo.anchors.map(([x, y]) => [s(x), s(y)]) };
@@ -9429,6 +9493,8 @@
         if (storedGroups && typeof storedGroups === "object") panelGroupMemory = storedGroups;
       } catch (_) { /* 破損時は既定の開閉のまま */ }
 
+      // 右パネル内の折りたたみ(details.attr-panel)へ、記憶した開閉状態を復元する。
+      // 記憶キーは「種別キー::見出し文言」。以後の開閉はtoggleでlocalStorageへ書き戻す。
       function applyPanelGroupMemory(panel, typeKey) {
         qsa("details.attr-panel", panel).forEach(details => {
           const summary = details.querySelector("summary")?.textContent?.trim() || "";
@@ -9447,15 +9513,20 @@
       // 同じ選択状態の間だけその選択を優先する(選択が変わったら自動判定へ戻る)。
       let inspectorTabChoice = null;
 
+      // 現在の選択を表す文字列キー。選択が変わったらタブの手動選択を捨てる判定に使う。
       function inspectorSelectionKey() {
         return selectedIds.join(",");
       }
 
+      // 右パネルで表示すべきタブ("page"|"component")。
+      // 同じ選択のままユーザーが選んだタブがあればそれを、無ければ選択の有無で決める。
       function currentInspectorTab() {
         if (inspectorTabChoice && inspectorTabChoice.key === inspectorSelectionKey()) return inspectorTabChoice.tab;
         return selectedIds.length ? "component" : "page";
       }
 
+      // 右パネルのタブ表示を現在のタブ状態へ合わせる(表示切替とボタンの活性/非活性)。
+      // 選択が無いときは常にページ設定タブで、部品タブは押せない。
       function applyInspectorTab() {
         const pageTab = qs("#inspectorPageTab");
         const pageButton = qs("#inspectorTabPage");
@@ -9571,7 +9642,7 @@
         // (編集欄が下に隠れていて見つからない問題の対策。選択が変わった時のみ)。
         if (selectedId && selectedId !== lastScrolledSelectionId) {
           lastScrolledSelectionId = selectedId;
-          // rAFはタブ非表示時に停止するためsetTimeoutで確実に実行する
+          // rAFはタブ非表示時に停止するためsetTimeoutで確実に実行する。
           setTimeout(() => {
             const inspector = qs(".inspector");
             const panelNow = qs("#selectionPanel");
@@ -9583,7 +9654,7 @@
           lastScrolledSelectionId = null;
         }
         if (selected.length > 1) {
-          // 選択中の部品(配線・文字以外)が全て同じデザイン系列なら一括切替セレクトを出す
+          // 選択中の部品(配線・文字以外)が全て同じデザイン系列なら一括切替セレクトを出す。
           const variantKeys = new Set(selected
             .filter(el => !el.points && el.type !== "text")
             .map(el => variantOptionsKeyFor(el)));
@@ -10169,6 +10240,8 @@
         return null;
       }
 
+      // 端子の一括編集ダイアログを開く。端子設定を持つ部品(端子台・機器箱・PLC等)が対象。
+      // 行=端子、列=terminalBulkConfig()が種別ごとに返す編集項目で、確定時にまとめて反映する。
       function showTerminalBulkEditor() {
         const element = selectedElement();
         const config = element ? terminalBulkConfig(element) : null;
@@ -10916,7 +10989,7 @@
               element.h = Math.max(2, Number(element.rows || 8)) * 6 + 10;
             }
           }
-          // 第1ピンを切替前の位置へ戻す(配線・グリッドとの整合を維持)
+          // 第1ピンを切替前の位置へ戻す(配線・グリッドとの整合を維持)。
           if (pinBefore) {
             const pinAfter = elementFirstPin(element);
             if (pinAfter && (Math.abs(pinAfter.x - pinBefore.x) > 0.001 || Math.abs(pinAfter.y - pinBefore.y) > 0.001)) {
@@ -11126,7 +11199,7 @@
 
       // ポインタイベント→用紙mm座標へ変換(getScreenCTMの逆行列)。raw指定でスナップなしの生座標。
       function canvasPoint(event, options = {}) {
-        // 並べて表示ではイベントの発生したページSVG基準で座標変換する(単一表示は#canvas)
+        // 並べて表示ではイベントの発生したページSVG基準で座標変換する(単一表示は#canvas)。
         const svg = (event.target && event.target.closest && event.target.closest("svg.drawing-page")) || qs("#canvas");
         const point = svg.createSVGPoint();
         point.x = event.clientX;
@@ -11142,6 +11215,8 @@
         return snapToGrid(value);
       }
 
+      // 線もの(配線・直線・連動破線)向けの右パネル項目のHTMLを返す(線幅・端点の接続点/矢印)。
+      // 旧endpointArrowModeしか持たない既存図面は、対応する新キーの初期値へ読み替えて表示する。
       function endpointPresentationFields(element) {
         if (!["wire", "line", "mechanicalLink"].includes(element.type)) return "";
         const legacyMode = element.endpointArrowMode || "none";
@@ -11164,6 +11239,9 @@
           </details>`;
       }
 
+      // 「文字スタイル」グループ(文字サイズ・太字)の右パネルHTMLを返す。
+      // 参照キーは種別で異なる(text=fontSize、wire=wireNoFontSize、他=contentFontSize)。
+      // 下絵画像と接続点は文字を持たないため空文字を返す。
       function contentTextStyleFields(element) {
         if (element.type === "underlayImage" || element.type === "junction") return "";
         if (element.type === "text") return `<details class="attr-panel" open>
@@ -11244,10 +11322,10 @@
           if (excludeIds.has(element.id)) return;
           if (!isElementVisible(element)) return;
           if (element.type === "wire" || element.type === "line" || element.type === "mechanicalLink" || element.type === "arrow" || element.type === "polygon") {
-            // 多角形は各頂点が吸着先になる(配線・直線の端点も同様)
+            // 多角形は各頂点が吸着先になる(配線・直線の端点も同様)。
             (element.points || []).forEach(point => anchors.push({ x: point[0], y: point[1], elementId: element.id, kind: "point" }));
             if (element.type === "polygon" && (element.points || []).length >= 2) {
-              // 多角形は各辺の中央(閉じる辺を含む)も吸着先にする
+              // 多角形は各辺の中央(閉じる辺を含む)も吸着先にする。
               element.points.forEach((point, index) => {
                 const next = element.points[(index + 1) % element.points.length];
                 anchors.push({ x: round((point[0] + next[0]) / 2), y: round((point[1] + next[1]) / 2), elementId: element.id, kind: "point" });
@@ -11256,7 +11334,7 @@
             return;
           }
           if (element.type === "arc") {
-            // 円弧・楕円弧は両端点を吸着先にする
+            // 円弧・楕円弧は両端点を吸着先にする。
             arcEndpoints(element).forEach(point => anchors.push({ ...point, elementId: element.id, kind: "point" }));
             return;
           }
@@ -11484,6 +11562,8 @@
         return anchors;
       }
 
+      // 要素の代表接続点(第1接続ピン)の絶対座標。線ものと接続点を持たない要素はnull。
+      // 端子台の端子ノード中心が必要な場面ではelementFirstPin()を使う。
       function primaryConnectionPoint(element) {
         if (!element || element.points) return null;
         const anchors = elementConnectionAnchors(element);
@@ -11508,6 +11588,8 @@
         return Number.isFinite(s) && s > 0 ? s : 1;
       }
 
+      // 要素ローカル座標(x,y)を絶対座標へ変換する。表示倍率→回転の順で適用し、
+      // 要素のx,yを足す。SVG描画のtransformと同じ規約なので、接続点は必ず見た目と一致する。
       function localAnchor(element, x, y) {
         const angle = Number(element.rotation || 0) * Math.PI / 180;
         const s = elementScale(element);
@@ -11634,7 +11716,7 @@
         // ページ設定「シンボル拡大」ON時は、新規配置分のみ1.5倍で置く(既存要素は変えない)。
         // 以降のピン合わせ・接続点・DXFはelementScale経由で倍率込みの座標を使う。
         if (currentPage()?.symbolScale && !element.points && element.type !== "junction") element.scale = 1.5;
-        // 別名種別(非常停止ボタン等)は生成後のelement.typeで配置方法を判定する
+        // 別名種別(非常停止ボタン等)は生成後のelement.typeで配置方法を判定する。
         const kind = element.type;
         autoOrientElementForPlacement(element, x, y);
         if (centerPlacedTypes().has(kind)) {
@@ -11698,6 +11780,8 @@
 
       // パレット種別を用紙へ配置する入口。配線分割・スナップ・履歴記録まで行う。
       const placementTrail = [];
+      // 同じ種別を等間隔に置き続けているとき、次の配置点を予測して返す(連続配置の補助)。
+      // 直近2回の間隔から求めた予測点が指定点の8mm以内なら予測点へ寄せ、外れていれば指定点のまま。
       function smartPlacementPoint(type, x, y) {
         const recent = placementTrail.filter(item => item.type === type).slice(-2);
         if (recent.length === 2) {
@@ -11707,6 +11791,8 @@
         return { x, y };
       }
 
+      // パレット種別を(x,y)へ配置する入口。連続配置の予測・配線の自動分割・履歴記録まで行う。
+      // 実際の座標決めはdefaultElementAtPlacement()が担当し、接続ピンがグリッド・行へ乗る。
       function placeElement(type, x, y) {
         const page = currentPage();
         if (!page) return;
@@ -11737,7 +11823,7 @@
         page.elements.push(element);
         breakWiresForInlineElement(page, element);
         selectSingle(element.id);
-        // バリエーションを持つ部品は、初心者向けにデザイン切替の案内を出す
+        // バリエーションを持つ部品は、初心者向けにデザイン切替の案内を出す。
         const variantKey = element.type === "pushButton"
           ? ((element.pbStyle || "momentary") === "emergency" ? "pushButtonEmergency" : "")
           : element.type;
@@ -11870,7 +11956,7 @@
       // 端子配線セットの本体生成(横配線+端子小円+ユニット列端子台、線番は終点寄せ)。
       function addReferenceTerminalWiringSet(page, x, y, options = {}) {
         // 端子台配線図の型:
-        // 左から横配線 → ユニット列端子台(波形破断線+端子円)、線番は終点寄せ表示
+        // 左から横配線 → ユニット列端子台(波形破断線+端子円)、線番は終点寄せ表示。
         const count = Math.max(1, Number(options.count || 16));
         const startNo = Number(options.start || 1);
         const pitch = Math.max(TEMPLATE_GRID_STEP, Number(options.pitch || TEMPLATE_CIRCUIT_PITCH));
@@ -12644,7 +12730,7 @@
           return anchors && anchors.length ? anchors[0].y : Number(el.y || 0);
         };
         if (direction < 0) {
-          // 削除帯[fromRow, fromRow+count)に載っている部品があれば中止(配線は跨ぎ可)
+          // 削除帯[fromRow, fromRow+count)に載っている部品があれば中止(配線は跨ぎ可)。
           const bandTop = boundaryY;
           const bandBottom = boundaryY + count * pitch;
           const blocking = page.elements.filter(el => !el.points && !isFrameLikeType(el.type) && refYOf(el) >= bandTop && refYOf(el) < bandBottom);
@@ -12830,7 +12916,7 @@
       function ladderConfig(page) {
         const size = pageSize(page);
         const portrait = size.h >= size.w;
-        // 母線・ラング位置は2.5mmグリッドに乗せる(スナップ配置した部品と揃うように)
+        // 母線・ラング位置は2.5mmグリッドに乗せる(スナップ配置した部品と揃うように)。
         const leftRail = portrait ? 35 : 42.5;
         const rightRail = size.w - (portrait ? 35 : 57.5);
         const startY = portrait ? 55 : 45;
@@ -13011,8 +13097,9 @@
           // 複数レールは右方向へ展開する(左へ広げると図枠の行番号帯(x≈25.5)を貫通するため)。
           // ピッチ5mm=2.5mmグリッド整合(タップ配線がグリッドに乗る)。
           const x = round(32.5 + 5 * i);
-          page.elements.push(...facilityRailElements(name, x, "+", 22.4)); // 全レール同じ高さ(段差をつけると3本目の⊕が線上端へ食い込む)
-          // 下端レール名: fork矢の開脚(y217〜220)を避け、矢の先端より下へ中央合わせで置く
+          // 全レール同じ高さ(段差をつけると3本目の⊕が線上端へ食い込む)。
+          page.elements.push(...facilityRailElements(name, x, "+", 22.4));
+          // 下端レール名: fork矢の開脚(y217〜220)を避け、矢の先端より下へ中央合わせで置く。
           page.elements.push(textElement(round(x - name.length * 0.62), 222.4, name, 2.2, 0, 12));
         });
         page.elements.push(...facilityRailElements(rightName, 147.5, "-", 22.4));
@@ -13137,7 +13224,7 @@
           pitch: TEMPLATE_CIRCUIT_PITCH,
           label: unitName,
           pinText: addresses.join("\n"),
-          // 出力カード: 各ポートはa接点表示・端子は右(出力側)、COM=左→P1、0V=右→N1
+          // 出力カード: 各ポートはa接点表示・端子は右(出力側)、COM=左→P1、0V=右→N1。
           cardMode: "output",
           terminalMarkRight: true,
           comTerminal: "left",
@@ -13182,7 +13269,7 @@
           pitch: TEMPLATE_CIRCUIT_PITCH,
           label: unitName,
           pinText: addresses.join("\n"),
-          // 入力カード(円+デバイス名): 端子記号は左、COMは右側からN1(0V)へ返す
+          // 入力カード(円+デバイス名): 端子記号は左、COMは右側からN1(0V)へ返す。
           cardMode: "input",
           terminalMarkLeft: true,
           comTerminal: "right"
@@ -13251,7 +13338,8 @@
           title: "インターロック接続"
         });
         const boxTop = 32.5;
-        const boxBottom = TEMPLATE_RAIL_BOTTOM; // 図枠下部の機器符号表帯(y224〜)より上の方眼線まで
+        // 図枠下部の機器符号表帯(y224〜)より上の方眼線まで。
+        const boxBottom = TEMPLATE_RAIL_BOTTOM;
         const leftBox = { x1: 37.5, x2: 105 };
         const rightBox = { x1: 117.5, x2: 175 };
         page.elements.push({ ...defaultElement("rect", leftBox.x1, boxTop), w: leftBox.x2 - leftBox.x1, h: boxBottom - boxTop, label: "" });
@@ -13279,7 +13367,7 @@
         page.elements.push(textElement(rightBox.x1 + 2, boxTop - 3.5, rightName, 2.6, 0, 60));
         let signalIndex = 0;
         const nextSignalY = () => round(45 + 17.5 * signalIndex++);
-        // 境界端子は中心102.5=グリッド点。配線は円中心まで届かせ、後から積む端子円が隠す
+        // 境界端子は中心102.5=グリッド点。配線は円中心まで届かせ、後から積む端子円が隠す。
         const termCx = round(leftBox.x2 - 2.5);
         for (let i = 0; i < outCount; i++) {
           const y = nextSignalY();
@@ -13384,7 +13472,7 @@
         const yTop = y0;
         const yBot = y0 + pitch * (count - 1);
         // 楕円束は両端寄り(短スパンでも中央の撚り交差が確保できるように上限10mm)。
-        // 交差線・シールド破線・楕円束も2.5mmグリッドに乗せる(マージンは2.5の倍数へ切下げ)
+        // 交差線・シールド破線・楕円束も2.5mmグリッドに乗せる(マージンは2.5の倍数へ切下げ)。
         const margin = Math.min(10, Math.max(2.5, Math.floor(span / 5 / 2.5) * 2.5));
         const exL = round(x0 + margin);
         const exR = round(x0 + span - margin);
@@ -13392,7 +13480,7 @@
           const y = round(y0 + pitch * i);
           created.push({ ...defaultElement("wire", x0, y), points: [[x0, y], [round(x0 + span), y]] });
           created.push({ ...defaultElement("arrow", x0 - 5, y), points: [[x0 - 5, y], [x0, y]], label: "", arrowStyle: "chevron" });
-          // 信号名はシェブロンの左に右寄せで置く(左側の縦レール等と重ならないように)
+          // 信号名はシェブロンの左に右寄せで置く(左側の縦レール等と重ならないように)。
           if (labels[i]) created.push(textElement(round(x0 - 6.2 - String(labels[i]).length * 1.15), y - 1.2, labels[i], 2.2, 0, 12));
         }
         const ellH = round((count - 1) * pitch + 5);
@@ -13458,7 +13546,8 @@
         const y0 = snap(Number(options.y0 || 65));
         const span = Math.max(70, snap(Number(options.span || 95)));
         const tag = options.tag || "M1";
-        const pitch = 5; // モータ端子ピッチ(2.5mmグリッド整合)
+        // モータ端子ピッチ(2.5mmグリッド整合)。
+        const pitch = 5;
         const withBreaker = options.withBreaker !== false;
         const withThermal = options.withThermal !== false;
         const withGround = options.withGround !== false;
@@ -13466,11 +13555,13 @@
         const thermalTag = options.thermalTag || "OL1";
         const created = [];
         const lineYs = [y0, y0 + pitch, y0 + pitch * 2];
-        const motorX = round(x0 + span - 0.9); // モータ第1ピン(x+0.9)が終端グリッド点(x0+span)に乗るよう補正
+        // モータ第1ピン(x+0.9)が終端グリッド点(x0+span)に乗るよう補正。
+        const motorX = round(x0 + span - 0.9);
         const motor = { ...defaultElement("motor", motorX, round(y0 - 3)), label: tag, tag };
         created.push(motor);
         const stations = [];
-        let cursor = x0 + 5; // 各機器の左ピンを2.5mmグリッドに乗せる(ピッチも2.5の倍数)
+        // 各機器の左ピンを2.5mmグリッドに乗せる(ピッチも2.5の倍数)。
+        let cursor = x0 + 5;
         const breakers = [];
         if (withBreaker) {
           lineYs.forEach(y => {
@@ -13503,7 +13594,8 @@
           created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), round(y)], [round(motorX + 0.9), round(y)]] });
         });
         if (withBreaker && breakers.length === 3) {
-          const lx = round(breakers[0].x + 5); // 極中心(+4.75)の最寄りグリッド点
+          // 極中心(+4.75)の最寄りグリッド点。
+          const lx = round(breakers[0].x + 5);
           created.push({
             ...defaultElement("mechanicalLink", lx, 0),
             points: [[lx, round(breakers[0].y + 0.5)], [lx, round(breakers[2].y + 0.5)]]
@@ -13568,13 +13660,14 @@
         const prefix = qs("#esPrefix").value || "PBE";
         const withLamps = (qs("#esLamps").value || "on") === "on";
         const created = [];
-        const terminals = []; // 端子円は最後に積み、配線端(円中心)を白抜きで隠す
+        // 端子円は最後に積み、配線端(円中心)を白抜きで隠す。
+        const terminals = [];
         const rails = ladderRailSpanX(page, true);
         // 4局時は開始位置を左へ寄せ、27.5mmピッチのまま左右母線内へ収める。
         const stationX = i => (stations === 4 ? 37.5 + 27.5 * i : 52.5 + 27.5 * i);
         const railL = rails.left;
         const railR = rails.right;
-        // 局間の線番: 最終区間="Si{c}"、その手前は右から A,B,C…(見本: Si0B→Si0A→Si0)
+        // 局間の線番: 最終区間="Si{c}"、その手前は右から A,B,C…(見本: Si0B→Si0A→Si0)。
         const segNo = (c, i) => "Si" + c + (i === stations - 1 ? "" : String.fromCharCode(65 + (stations - 2 - i)));
         for (let c = 0; c < chains; c++) {
           const y = round(LADDER_GRID.top + LADDER_GRID.pitch * (2 + 2 * c));
@@ -13586,7 +13679,8 @@
               ...defaultElement("pushButton", cx, round(y - 4.4)),
               pbStyle: "emergency",
               w: 10,
-              h: 7, // キノコ形ジオメトリの本体寸法。既定(h5)のままだと中央寄せで接続点が1mm浮く
+              // キノコ形ジオメトリの本体寸法。既定(h5)のままだと中央寄せで接続点が1mm浮く。
+              h: 7,
               label: c === 0 ? prefix + (i + 1) : "",
               tag: prefix + (i + 1)
             });
@@ -13594,7 +13688,7 @@
             if (Math.abs(sx - cx) > .001) {
               created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), y], [round(cx), y]] });
             }
-            // 局の右側に境界端子(○・中心cx+15=グリッド点)+線番。配線は円中心まで届かせる
+            // 局の右側に境界端子(○・中心cx+15=グリッド点)+線番。配線は円中心まで届かせる。
             created.push({ ...defaultElement("wire", cx + 10, y), points: [[round(cx + 10), y], [round(cx + 15), y]] });
             terminals.push({ ...defaultElement("terminal", 0, 0), x: round(cx + 14.1), y: round(y - 0.9), label: "" });
             sx = cx + 15;
@@ -13618,7 +13712,7 @@
           });
         }
         if (withLamps) {
-          // 表示灯行: 同じPBの別接点から下段のRランプへループ配線(見本の局内ループ形)
+          // 表示灯行: 同じPBの別接点から下段のRランプへループ配線(見本の局内ループ形)。
           for (let i = 0; i < stations; i++) {
             const cx = stationX(i);
             const yT = round(LADDER_GRID.top + LADDER_GRID.pitch * (2 + 2 * chains + 2 * i));
@@ -13631,7 +13725,8 @@
               ...defaultElement("pushButton", cx, round(yT - 4.4)),
               pbStyle: "emergency",
               w: 10,
-              h: 7, // 同上: 接続点を行の高さに正確に載せる
+              // 同上: 接続点を行の高さに正確に載せる。
+              h: 7,
               label: "",
               tag: prefix + (i + 1)
             });
@@ -13698,18 +13793,20 @@
         const yA = round(LADDER_GRID.top + LADDER_GRID.pitch * row0);
         const yB = round(LADDER_GRID.top + LADDER_GRID.pitch * (row0 + 2));
         const yB2 = round(LADDER_GRID.top + LADDER_GRID.pitch * (row0 + 3));
-        // 行A: 切替スイッチ + 入/切ポジション + コイル
+        // 行A: 切替スイッチ + 入/切ポジション + コイル。
         created.push(defaultElement("junction", railL, yA));
         created.push({ ...defaultElement("wire", railL, yA), points: [[railL, yA], [52.5, yA]] });
         created.push({ ...defaultElement("wire", 62.5, yA), points: [[62.5, yA], [135, yA]] });
         created.push({ ...defaultElement("selectorSwitch", 52.5, round(yA - 3.2)), label: ksTag });
         // 見本順: SS→切(線)→入(箱)。中心は2.5mmグリッド上、相互間隔10mm。
-        created.push({ ...defaultElement("positionMark", 68, round(yA - 3)), label: "切", markStyle: "line" }); // アンカー=70
-        created.push({ ...defaultElement("positionMark", 78, round(yA - 3)), label: "入", markStyle: "box" }); // アンカー=80
+        // アンカー=70。
+        created.push({ ...defaultElement("positionMark", 68, round(yA - 3)), label: "切", markStyle: "line" });
+        // アンカー=80。
+        created.push({ ...defaultElement("positionMark", 78, round(yA - 3)), label: "入", markStyle: "box" });
         created.push({ ...defaultElement("coil", 135, round(yA - 2.2)), label: cr1, tag: cr1 });
         created.push({ ...defaultElement("wire", 145, yA), points: [[145, yA], [railR, yA]] });
         created.push(defaultElement("junction", railR, yA));
-        // 行B: 準備PB + 自己保持接点(並列) + コイル
+        // 行B: 準備PB + 自己保持接点(並列) + コイル。
         created.push(defaultElement("junction", railL, yB));
         created.push({ ...defaultElement("wire", railL, yB), points: [[railL, yB], [47.5, yB]] });
         created.push(defaultElement("junction", 47.5, yB));
@@ -13721,7 +13818,7 @@
         created.push({ ...defaultElement("coil", 135, round(yB - 2.2)), label: cr2, tag: cr2 });
         created.push({ ...defaultElement("wire", 145, yB), points: [[145, yB], [railR, yB]] });
         created.push(defaultElement("junction", railR, yB));
-        // 自己保持分岐(下段に a接点 cr2)
+        // 自己保持分岐(下段に a接点 cr2)。
         created.push({ ...defaultElement("wire", 47.5, yB), points: [[47.5, yB], [47.5, yB2]] });
         created.push({ ...defaultElement("contactNO", 52.5, round(yB2 - 2.2)), label: cr2 });
         created.push({ ...defaultElement("wire", 47.5, yB2), points: [[47.5, yB2], [52.5, yB2]] });
@@ -13989,27 +14086,32 @@
         if (groundName) {
           railTop(groundName, 30);
           // 下端は⊕(保安接地マーク)。ラベル重複を避けるためマーク自体のラベルは空にする。
-          els.push({ ...defaultElement("polarityMark", 28.7, 219.9), label: "", sign: "+" }); // アンカー(x+1.3,y+2.6)=(30,222.5)
+          // アンカー(x+1.3,y+2.6)=(30,222.5)。
+          els.push({ ...defaultElement("polarityMark", 28.7, 219.9), label: "", sign: "+" });
         }
         railNames.forEach((name, i) => {
           railTop(name, phaseXs[i]);
           els.push(textElement(round(phaseXs[i] - name.length * 0.62), 222.4, name, 2.2, 0, 12));
         });
         // --- モータ分岐の行位置(ブレーキ行の下)。相ピッチ5mmは現行モータ記号の端子間隔 ---
-        const rCB = Math.max(3, brakeCount * 2 + 3); // ブレーキは行2から2行/回路+1行空き
+        // ブレーキは行2から2行/回路+1行空き。
+        const rCB = Math.max(3, brakeCount * 2 + 3);
         // 相ライン3本は2.5mmグリッドに乗せる: 開始行は行グリッド位置を最寄りのグリッド点へ丸め、
-        // 相ピッチはモータ端子ピッチと同じ5mm(2.5mm×2)
+        // 相ピッチはモータ端子ピッチと同じ5mm(2.5mm×2)。
         const yP0 = round(Math.round((LADDER_GRID.top + LADDER_GRID.pitch * rCB) / 2.5) * 2.5);
         const yP = [0, 1, 2].map(i => round(yP0 + 5 * i));
-        // 各機器の左ピン・縦タップ線・箱の辺は2.5mmグリッドに乗せる(記号内部の実測幅由来の右ピンは除く)
+        // 各機器の左ピン・縦タップ線・箱の辺は2.5mmグリッドに乗せる(記号内部の実測幅由来の右ピンは除く)。
         const xCB = 55;
-        const xJA = 70;   // ブレーキ送り縦線1(相1タップ)
-        const xJB = 72.5; // ブレーキ送り縦線2(相3タップ)
+        // ブレーキ送り縦線1(相1タップ)。
+        const xJA = 70;
+        // ブレーキ送り縦線2(相3タップ)。
+        const xJB = 72.5;
         const xInvL = 85;
         const xInvR = 117.5;
         const xMC = 120;
         const xOL = 130;
-        const xTerm = 147.5; // モータ手前の端子中心（線番と端子円の離隔を確保）
+        // モータ手前の端子中心(線番と端子円の離隔を確保)。
+        const xTerm = 147.5;
         // --- 遮断器3極(連動破線)+レールからのタップ ---
         const breakers = [];
         yP.forEach((y, i) => {
@@ -14020,7 +14122,7 @@
           els.push(cb);
         });
         els.push({
-          // 機械連動線は標準遮断器のアーチ頂点(r=2.25)へ正確に接続する（電気グリッド検査の対象外）。
+          // 機械連動線は標準遮断器のアーチ頂点(r=2.25)へ正確に接続する(電気グリッド検査の対象外)。
           ...defaultElement("mechanicalLink", round(xCB + 4.75), 0),
           points: [[round(xCB + 4.75), round(yP[0] - 2.25)], [round(xCB + 4.75), round(yP[2] - 2.25)]]
         });
@@ -14042,12 +14144,13 @@
         // --- ブレーキ/整流回路(見本頁10: 接点2段 → 整流器(2/1入・4出) → ブレーキコイル) ---
         for (let b = 0; b < brakeCount; b++) {
           // 接点2段は45/55起点の10mmピッチ(2.5mmグリッド)。コイル行は接点行の5mm上。
-          // 整流器箱の上下マージンは2.5mm: 次ブレーキのコイル行(yA+20-5)と箱下辺(yB+2.5)が重ならない
+          // 整流器箱の上下マージンは2.5mm: 次ブレーキのコイル行(yA+20-5)と箱下辺(yB+2.5)が重ならない。
           const yA = round(45 + 20 * b);
           const yB = round(yA + 10);
-          const yC = round(yA - 5); // コイル行(接点行の上)
+          // コイル行(接点行の上)。
+          const yC = round(yA - 5);
           const n = b + 1;
-          // 送り縦線(相1→接点上段、相3→接点下段)。最初のブレーキで縦線本体を引く
+          // 送り縦線(相1→接点上段、相3→接点下段)。最初のブレーキで縦線本体を引く。
           if (b === 0) {
             els.push({ ...defaultElement("wire", xJA, yA), points: [[xJA, yA], [xJA, yP[0]]] });
             els.push({ ...defaultElement("wire", xJB, yB), points: [[xJB, yB], [xJB, yP[2]]] });
@@ -14057,20 +14160,20 @@
           }
           els.push({ ...defaultElement("wire", xJA, yA), points: [[xJA, yA], [75, yA]] });
           els.push({ ...defaultElement("wire", xJB, yB), points: [[xJB, yB], [75, yB]] });
-          // ブレーキ接点(両段に同タグ)
+          // ブレーキ接点(両段に同タグ)。
           els.push({ ...defaultElement("contactNO", 75, round(yA - 2.2)), label: brakePrefix + n, tag: brakePrefix + n });
           els.push({ ...defaultElement("contactNO", 75, round(yB - 2.2)), label: brakePrefix + n, tag: brakePrefix + n });
-          // 接点→整流器(線番B0n/Bn1は接点直後に前寄せ)。接点右ピン(75+10=85)がそのまま分岐junctionに乗る
+          // 接点→整流器(線番B0n/Bn1は接点直後に前寄せ)。接点右ピン(75+10=85)がそのまま分岐junctionに乗る。
           els.push(defaultElement("junction", 85, yA));
           els.push({ ...defaultElement("wire", 85, yA), points: [[85, yA], [92.5, yA]], wireNo: "B0" + n, wireNoAlign: "start" });
           els.push({ ...defaultElement("wire", 85, yB), points: [[85, yB], [92.5, yB]], wireNo: "B" + n + "1", wireNoAlign: "start" });
-          // 整流器箱(ピン2/1=左、4=右上)
+          // 整流器箱(ピン2/1=左、4=右上)。
           els.push({ ...defaultElement("rect", 92.5, round(yA - 2.5)), w: 22.5, h: round(yB - yA + 5), label: "" });
           els.push(textElement(94, yA - 1.4, "2", 2.2, 0, 6));
           els.push(textElement(94, yB - 1.4, "1", 2.2, 0, 6));
           els.push(textElement(111.2, yA - 1.4, "4", 2.2, 0, 6));
           els.push(textElement(99, round((yA + yB) / 2 - 1.4), "整流器", 2.4, 0, 16));
-          // ピン4→コイル右、上段線の分岐→コイル左(見本のループ配線)
+          // ピン4→コイル右、上段線の分岐→コイル左(見本のループ配線)。
           els.push({ ...defaultElement("wire", 85, yA), points: [[85, yA], [85, yC], [135, yC]] });
           els.push({ ...defaultElement("coil", 135, round(yC - 2.2)), label: "B" + n, tag: "B" + n });
           els.push({ ...defaultElement("wire", 115, yA), points: [[115, yA], [147.5, yA], [147.5, yC], [145, yC]], wireNo: "B" + n });
@@ -14083,14 +14186,14 @@
         els.push({ ...defaultElement("rect", xInvL, yBoxTop), w: round(xInvR - xInvL), h: round(yBoxBottom - yBoxTop), label: "" });
         els.push(textElement(94.5, yBoxTop + 0.8, invModel, 2.2, 0, 24));
         els.push(textElement(104.5, yBoxTop + 4.2, "CC-LINK", 1.8, 0, 10));
-        // L1/L2/L3ピン箱(外箱の左辺に接する)
+        // L1/L2/L3ピン箱(外箱の左辺に接する)。
         els.push({ ...defaultElement("rect", xInvL, round(yP[0] - 2.5)), w: 7.5, h: round(yP[2] - yP[0] + 5), label: "" });
         ["L1", "L2", "L3"].forEach((t, i) => els.push(textElement(87.2, yP[i] - 1.4, t, 2.2, 0, 6)));
         els.push(textElement(93.8, yP[0] - 1.4, invTag, 2.2, 0, 12));
-        // U/V/Wピン箱(外箱の右辺に接する)
+        // U/V/Wピン箱(外箱の右辺に接する)。
         els.push({ ...defaultElement("rect", round(xInvR - 7.5), round(yP[0] - 2.5)), w: 7.5, h: round(yP[2] - yP[0] + 5), label: "" });
         ["U", "V", "W"].forEach((t, i) => els.push(textElement(113.2, yP[i] - 1.4, t, 2.2, 0, 6)));
-        // 接地(箱の下辺中央101.25付近のグリッド点から)
+        // 接地(箱の下辺中央101.25付近のグリッド点から)。
         const gx = 100;
         els.push({ ...defaultElement("wire", gx, yBoxBottom), points: [[gx, yBoxBottom], [gx, round(yBoxBottom + 5)]] });
         els.push({ ...defaultElement("ground", round(gx - 2), round(yBoxBottom + 5)), label: "" });
@@ -14102,7 +14205,8 @@
             pitch: 5,
             x0: 55,
             y0: ySig0,
-            span: round(xInvL - 55), // 導体端=端子中心85(グリッド点)。端子円の白抜きが端を隠す
+            // 導体端=端子中心85(グリッド点)。端子円の白抜きが端を隠す。
+            span: round(xInvL - 55),
             labels
           }));
           for (let i = 0; i < sigCount; i++) {
@@ -14116,11 +14220,11 @@
         yP.forEach((y, i) => {
           els.push({ ...defaultElement("wire", xInvR, y), points: [[xInvR, y], [xMC, y]] });
           els.push({ ...defaultElement("contactNO", xMC, round(y - 2.2)), label: i === 0 ? contactTag : "", tag: contactTag });
-          // 端子は中心xTerm=グリッド点。配線は円中心まで届かせ、後から積む端子円が隠す
+          // 端子は中心xTerm=グリッド点。配線は円中心まで届かせ、後から積む端子円が隠す。
           if (i === 1) {
             els.push({ ...defaultElement("wire", xMC + 10, y), points: [[round(xMC + 10), y], [xTerm, y]], wireNo: phaseNo[i] });
           } else {
-            // MC接点右ピン(xMC+10=130)がサーマル左ピン(xOL)と一致するため中間配線は不要
+            // MC接点右ピン(xMC+10=130)がサーマル左ピン(xOL)と一致するため中間配線は不要。
             els.push({ ...defaultElement("thermalElement", xOL, round(y - 3)), label: i === 0 ? thermalTag : "" });
             els.push({ ...defaultElement("wire", xOL + 10, y), points: [[round(xOL + 10), y], [xTerm, y]], wireNo: phaseNo[i] });
           }
@@ -14128,7 +14232,7 @@
           els.push({ ...defaultElement("terminal", 0, 0), x: round(xTerm - 0.9), y: round(y - 0.9), label: "" });
         });
         els.push({ ...defaultElement("motor", 154.1, round(yP[0] - 3)), label: motorTag, tag: motorTag, description: motorModel });
-        // モータ接地(右下端子→下へ→接地)。接地ピンは第1ピン+(12.5,12.5)=グリッド点
+        // モータ接地(右下端子→下へ→接地)。接地ピンは第1ピン+(12.5,12.5)=グリッド点。
         const mgx = round(154.1 + 13.4);
         const mgy = round(yP[0] - 3 + 15.5);
         els.push({ ...defaultElement("wire", mgx, mgy), points: [[mgx, mgy], [mgx, round(mgy + 5)]] });
@@ -14173,7 +14277,8 @@
         // 各2線回路を10mm間隔にし、上下とも2.5mm方眼へ載せる。
         const pair = index => templateGridPair(index);
         const yElbTop = 52.5;
-        const yElbBot = 65; // 縦向きCP(12.5mmピンピッチ)の下端
+        // 縦向きCP(12.5mmピンピッチ)の下端。
+        const yElbBot = 65;
         // --- 接地レール+メインアースブロック(点線枠+端子2) ---
         if (groundName) {
           els.push({ ...defaultElement("wire", 30, 30), points: [[30, 30], [30, TEMPLATE_RAIL_BOTTOM]], wireNo: "", hideWireNo: true, ladderRail: groundName, wireType: state.settings.currentWireType });
@@ -14237,8 +14342,10 @@
           // 見本の線番円はSS0本体とは別要素で、SS0の左右ピンと同心。
           els.push({ ...defaultElement("terminal", 0, 0), x: 74.1, y: round(yA - 0.9), label: "201" });
           els.push({ ...defaultElement("terminal", 0, 0), x: 84.1, y: round(yA - 0.9), label: "201A" });
-          els.push({ ...defaultElement("positionMark", 90.5, round(yA - 3)), label: "切", markStyle: "line" }); // アンカー=92.5
-          els.push({ ...defaultElement("positionMark", 100.5, round(yA - 3)), label: "入", markStyle: "box" }); // アンカー=102.5
+          // アンカー=92.5。
+          els.push({ ...defaultElement("positionMark", 90.5, round(yA - 3)), label: "切", markStyle: "line" });
+          // アンカー=102.5。
+          els.push({ ...defaultElement("positionMark", 100.5, round(yA - 3)), label: "入", markStyle: "box" });
           els.push({ ...defaultElement("lamp", 105, round(yB - 2.2)), lampVariant: "fluor", label: "FL1", tag: "FL1" });
           els.push({ ...defaultElement("terminal", 0, 0), x: 74.1, y: round(yB - 0.9), label: "202" });
         }
@@ -14398,7 +14505,7 @@
         amplifierPins.forEach(([t, y]) => {
           els.push(textElement(boxL + 1.5, round(y + 0.7), t, 1.7, 0, 16));
         });
-        // P3-P4短絡ジャンパ
+        // P3-P4短絡ジャンパ。
         els.push({ ...defaultElement("line", 100, 85), points: [[100, 85], [boxL, 85]], label: "" });
         els.push({ ...defaultElement("line", 100, 85), points: [[100, 85], [100, 90]], label: "" });
         els.push({ ...defaultElement("line", 100, 90), points: [[100, 90], [boxL, 90]], label: "" });
@@ -14448,12 +14555,12 @@
           els.push({ ...defaultElement("motor", 154.1, round(yU - 3)), label: motorTag, tag: motorTag, description: motorModel });
           els.push({ ...defaultElement("wire", boxR, yPe), points: [[boxR, yPe], [170, yPe], [170, round(yU + 12.5)], [round(155 + 12.5), round(yU + 12.5)]] });
           els.push(textElement(150, round(yU - 5), motorNames[a] + "（" + motorModel + "）", 1.7, 0, 34));
-          // エンコーダ送り(CN2A/CN2B)
+          // エンコーダ送り(CN2A/CN2B)。
           els.push({ ...defaultElement("rect", boxR, round(yEnc - 1.25)), w: 2.5, h: 2.5, label: "", gridEdgeException: true });
           els.push(textElement(boxR - 9, round(yEnc + 0.7), "CN2" + (a === 0 ? "A" : "B"), 1.7, 0, 9));
           els.push({ ...defaultElement("wire", round(boxR + 2.5), yEnc), points: [[round(boxR + 2.5), yEnc], [150, yEnc]] });
           els.push({ ...defaultElement("arrow", 150, yEnc), points: [[150, yEnc], [167.5, yEnc]], label: motorTag + "エンコーダ", arrowStyle: "open", signalRole: "source" });
-          // ブレーキ回路(P24/N24受け→リレー接点→バリスタ+ブレーキコイル)
+          // ブレーキ回路(P24/N24受け→リレー接点→バリスタ+ブレーキコイル)。
           const yBrkB = round(yBrk + 10);
           els.push({ ...defaultElement("arrow", 30, yBrk), points: [[30, yBrk], [37.5, yBrk]], label: "P24", arrowStyle: "chevron", signalRole: "destination" });
           els.push({ ...defaultElement("wire", 37.5, yBrk), points: [[37.5, yBrk], [55, yBrk]] });
@@ -14522,8 +14629,9 @@
         if (groundName) els.push({ ...defaultElement("polarityMark", 28.7, 219.9), label: "", sign: "+" });
         els.push(textElement(50, 24.5, "(AC200V)", 1.9, 0, 16));
         els.push(textElement(117.5, 24.5, "(DC24V)", 1.9, 0, 16));
-        const [yA, yB] = templateGridPair(2); // 45 / 55: CP1両極とREC入出力を方眼へ整合
-        // CP1 2極 → REC1
+        // CP1の両極とREC入出力を方眼へ載せる2行(y=45 / 55)。
+        const [yA, yB] = templateGridPair(2);
+        // CP1 2極 → REC1。
         els.push(defaultElement("junction", 35, yA));
         els.push({ ...defaultElement("wire", 35, yA), points: [[35, yA], [55, yA]] });
         els.push(defaultElement("junction", 40, yB));
@@ -14533,7 +14641,7 @@
         els.push({ ...defaultElement("mechanicalLink", 59.75, 0), points: [[59.75, round(yA - 2.35)], [59.75, round(yB - 2.35)]] });
         els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "201", wireNoAlign: "start" });
         els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]], wireNo: "202", wireNoAlign: "start" });
-        // REC箱(L/N入力、-V/+V出力、下辺接地)
+        // REC箱(L/N入力、-V/+V出力、下辺接地)。
         els.push({ ...defaultElement("rect", 105, 42.5), w: 25, h: 30, label: "" });
         els.push(textElement(106.5, round(yA + 0.7), "L", 1.7, 0, 6));
         els.push(textElement(106.5, round(yB + 0.7), "N", 1.7, 0, 6));
@@ -14543,7 +14651,7 @@
         els.push({ ...textElement(112.5, 76.4, recTag + (recModel ? " " + recModel : ""), 1.8, 0, 45), align: "end" });
         els.push({ ...defaultElement("wire", 117.5, 72.5), points: [[117.5, 72.5], [117.5, 77.5]] });
         els.push({ ...defaultElement("ground", 115.5, 77.5), label: "" });
-        // 出力: -V→N1(行2)、+V→P0(行4)
+        // 出力: -V→N1(行2)、+V→P0(行4)。
         els.push(textElement(126, round(yA + 0.7), "-V", 1.7, 0, 6));
         els.push({ ...defaultElement("wire", 130, yA), points: [[130, yA], [150, yA]] });
         els.push({ ...defaultElement("arrow", 150, yA), points: [[150, yA], [172.5, yA]], label: "N1", arrowStyle: "open", signalRole: "source" });
@@ -14553,7 +14661,7 @@
         els.push(defaultElement("junction", 140, yP0));
         els.push({ ...defaultElement("arrow", 150, yP0), points: [[150, yP0], [172.5, yP0]], label: "P0", arrowStyle: "open", signalRole: "source" });
         els.push(textElement(160, 53.4, "制御電源", 1.8, 0, 14));
-        // ブレーキ電源分岐 CP8(P0/N1→P24/N24)
+        // ブレーキ電源分岐 CP8(P0/N1→P24/N24)。
         if (withBrake) {
           const yC = 85, yD = 95;
           els.push({ ...defaultElement("wire", 140, yP0), points: [[140, yP0], [140, yC], [145, yC]] });
@@ -14568,7 +14676,7 @@
           els.push({ ...defaultElement("arrow", 160, yD), points: [[160, yD], [172.5, yD]], label: "N24", arrowStyle: "open", signalRole: "source" });
           els.push(textElement(140, 103.4, "サーボモーターブレーキ電源", 1.8, 0, 34));
         }
-        // 接地送り(行9)
+        // 接地送り(行9)。
         if (withGout && groundName) {
           const yG = 112.5;
           els.push(defaultElement("junction", 30, yG));
@@ -14631,7 +14739,7 @@
         });
         els.push({ ...defaultElement("polarityMark", 28.7, 219.9), label: "", sign: "+" });
         els.push(textElement(50, 24.5, "(DC24V)", 1.9, 0, 16));
-        // CP4 → P0A → ベースDC+
+        // CP4 → P0A → ベースDC+。
         const yIn = 102.5, yN = 107.5, yG = 112.5;
         els.push(defaultElement("junction", 40, yIn));
         els.push({ ...defaultElement("wire", 40, yIn), points: [[40, yIn], [55, yIn]] });
@@ -14641,7 +14749,7 @@
         els.push({ ...defaultElement("wire", 35, yN), points: [[35, yN], [75, yN]] });
         els.push(defaultElement("junction", 30, yG));
         els.push({ ...defaultElement("wire", 30, yG), points: [[30, yG], [75, yG]] });
-        // PLCベース箱+スロット
+        // PLCベース箱+スロット。
         const baseL = 75, baseR = 150, baseT = 90, baseB = 140;
         els.push({ ...defaultElement("rect", baseL, baseT), w: round(baseR - baseL), h: round(baseB - baseT), label: "" });
         els.push(textElement(baseL, 87.4, baseName, 2, 0, 60));
@@ -14661,7 +14769,7 @@
         els.push(textElement(baseL + 1.5, round(yIn + 0.7), "DC+", 1.6, 0, 12));
         els.push(textElement(baseL + 1.5, round(yN + 0.7), "DC-", 1.6, 0, 12));
         els.push(textElement(baseL + 1.5, round(yG + 0.7), "⏚", 1.6, 0, 12));
-        // 分岐行(入出力COM/制御電源/運転準備/動力供給)
+        // 分岐行(入出力COM/制御電源/運転準備/動力供給)。
         const row = i => round(templateGridRow(14) + TEMPLATE_CIRCUIT_PITCH * (i - 14));
         const pushOut = (y, cpTag, rating, contacts, wireNo, note) => {
           els.push(defaultElement("junction", 40, y));
@@ -14730,10 +14838,10 @@
         const row = i => templateGridRow(i);
         const boxL = 85, boxR = 110;
         const yT11 = row(2), yT21 = row(3), yT12 = row(4), yT22 = row(5);
-        // ユニット箱
+        // ユニット箱。
         els.push({ ...defaultElement("rect", boxL, 40), w: round(boxR - boxL), h: 170, label: "" });
         els.push(textElement(round((boxL + boxR) / 2 - unitTag.length * 1.1), 37.5, unitTag, 2.2, 0, 24));
-        // 非常停止PB(縦連結2接点×2)の入力ループ
+        // 非常停止PB(縦連結2接点×2)の入力ループ。
         const pb1X = 50, pb2X = 70;
         // 配線を先に描き、白抜き端子円を持つPBを上へ重ねる。
         els.push({ ...defaultElement("wire", boxL, yT11), points: [[boxL, yT11], [pb2X + 10, yT11]], wireNo: "1N20", wireNoAlign: "start" });
@@ -14747,13 +14855,13 @@
         [["T11", yT11], ["T21", yT21], ["T12", yT12], ["T22", yT22]].forEach(([t, y]) => {
           els.push(textElement(boxL + 8, round(y + 0.7), t, 1.7, 0, 8));
         });
-        // オートリセット設定(B-A短絡)
+        // オートリセット設定(B-A短絡)。
         const yB = row(7), yA2 = row(8);
         els.push({ ...defaultElement("line", boxR, yB), points: [[boxR, yB], [115, yB], [115, yA2], [boxR, yA2]], label: "" });
         els.push(textElement(boxR - 4, round(yB + 0.7), "B", 1.7, 0, 5));
         els.push(textElement(boxR - 4, round(yA2 + 0.7), "A", 1.7, 0, 5));
         els.push(textElement(117.5, round(yB + 0.7), "オートリセットモード", 1.7, 0, 26));
-        // 出力接点13-14/23-24(送り)、41-42(モニタリレー)
+        // 出力接点13-14/23-24(送り)、41-42(モニタリレー)。
         const contactRow = (y, pinL, pinR, inNo, outNo) => {
           els.push({ ...defaultElement("contactNO", 92.5, round(y - 2.2)), label: "" });
           els.push({ ...defaultElement("wire", boxL, y), points: [[boxL, y], [92.5, y]] });
@@ -14771,7 +14879,7 @@
         };
         contactRow(row(12), "13", "14", "1N51", "1N52");
         contactRow(row(13), "23", "24", "1N61", "1N62");
-        // 41-42 → モニタリレー
+        // 41-42 → モニタリレー。
         const yMon = row(15);
         els.push(defaultElement("junction", 32.5, yMon));
         els.push({ ...defaultElement("wire", 32.5, yMon), points: [[32.5, yMon], [boxL, yMon]] });
@@ -14784,7 +14892,7 @@
         els.push({ ...defaultElement("coil", 125, round(yMon - 2.2)), label: monTag, tag: monTag, description: "非常停止モニタ" });
         els.push({ ...defaultElement("wire", 135, yMon), points: [[135, yMon], [147.5, yMon]] });
         els.push(defaultElement("junction", 147.5, yMon));
-        // A1-A2(ユニット電源)
+        // A1-A2(ユニット電源)。
         const yPwr = row(19);
         els.push(defaultElement("junction", 32.5, yPwr));
         els.push({ ...defaultElement("wire", 32.5, yPwr), points: [[32.5, yPwr], [boxL, yPwr]] });
@@ -14835,7 +14943,8 @@
           created.push(defaultElement("junction", leftX, y));
           let sx = leftX;
           for (let k = 0; k < nContacts; k++) {
-            const cx = 45 + 17.5 * k; // 接点ピッチ17.5=2.5mmグリッド整合(左ピンが乗る)
+            // 接点ピッチ17.5=2.5mmグリッド整合(左ピンが乗る)。
+            const cx = 45 + 17.5 * k;
             created.push({ ...defaultElement("contactNO", cx, round(y - 2.2)), label: "" });
             created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), y], [round(cx), y]] });
             sx = cx + 10;
@@ -14869,7 +14978,7 @@
             });
           });
         });
-        // 同じ信号ラベルに接するグループをページ横断で統合する
+        // 同じ信号ラベルに接するグループをページ横断で統合する。
         const bySignal = new Map();
         groups.forEach(group => {
           group.signals.forEach(signal => {
@@ -14938,7 +15047,8 @@
           name: "目次" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
-          frameVariant: "compact", // index図枠の空目次グリッドと二重にならないよう基本図枠にする
+          // index図枠の空目次グリッドと二重にならないよう基本図枠にする。
+          frameVariant: "compact",
           title: "図面目次"
         });
         page.elements.push({ ...textElement(103, 31, "図面目次", 4, 0, 40), align: "middle" });
@@ -15266,7 +15376,7 @@
               const jumperPairs = terminalJumperPairs(strip);
               for (let i = 0; i < total; i++) {
                 const node = terminalStripNodeGlobal(strip, i);
-                // 端子小円を挟んで配線が届く構成があるため、許容は2.5mmとする
+                // 端子小円を挟んで配線が届く構成があるため、許容は2.5mmとする。
                 const wires = page.elements.filter(wire => wire.type === "wire"
                   && wireEndpointsOf(wire).some(point => Math.hypot(point[0] - node.x, point[1] - node.y) <= 2.5));
                 const wireNos = Array.from(new Set(wires.map(wire => wire.wireNo).filter(Boolean)));
@@ -15413,6 +15523,7 @@
         return [...keyed.values()];
       }
 
+      // ケーブル・芯線管理ダイアログを開く。全ページのケーブルタグ要素を表形式で一覧・編集する。
       function showCableManager() {
         const rows = cableCoreRows();
         const rowHtml = (row = {}) => `<tr data-cable-row>
@@ -15535,6 +15646,7 @@
         commitHistory("ユーザー回路「" + name + "」を登録しました。"); setStatus("ユーザー回路を登録しました。");
       }
 
+      // 登録済みユーザー回路を挿入するダイアログを開く。挿入位置(X/Y)の指定と削除もここで行う。
       function showUserCircuitInsertDialog() {
         const circuits = state.userCircuits || [];
         if (!circuits.length) { openDialog("ユーザー回路", '<p class="muted">登録済みのユーザー回路がありません。</p>'); return; }
@@ -15551,6 +15663,8 @@
         };
       }
 
+      // 盤面図の外形(panelRefを持つ矩形)と、対応するタグの部品との寸法・注記を同期する。
+      // direction="toPanel"で部品→盤面図、それ以外で盤面図→部品へ反映する。
       function syncPanelFootprints(direction = "toPanel") {
         let count = 0;
         state.pages.forEach(page => page.elements.filter(item => item.type === "rect" && item.panelRef).forEach(footprint => {
@@ -15598,6 +15712,7 @@
         renderPalette();
       }
 
+      // 「お気に入り設定」ダイアログを開く。左パレット先頭へ固定する部品・回路と連続配置を設定する。
       function showFavoriteManager() {
         const current = new Set(state.settings.favoriteTools || []);
         const choices = [...PALETTE, ...BUILTIN_CIRCUITS.map(item => ({ type: "circuit:" + item.id, label: item.label }))]
@@ -15614,13 +15729,17 @@
         };
       }
 
+      // ツール切替キーの既定割り当て(操作名→1文字)。state.settings.shortcutMapで上書きできる。
       const DEFAULT_SHORTCUTS = { select: "s", wire: "w", text: "t", line: "l", rect: "r", circle: "c", quick: "q" };
+      // 作図中に打ち込んだ数値の入力途中の文字列(寸法直接入力用)。確定・取消で空へ戻す。
       let drawNumericBuffer = "";
 
+      // 操作名に対して現在有効なショートカットキー(小文字1文字)を返す。ユーザー設定が既定に優先する。
       function effectiveShortcut(action) {
         return String(state.settings.shortcutMap?.[action] || DEFAULT_SHORTCUTS[action] || "").toLowerCase();
       }
 
+      // 画面右下へ一時通知(トースト)を出す。actionLabelとactionを渡すと取り消し等のボタンを付ける。
       function showToast(message, actionLabel = "", action = null) {
         const host = qs("#toastStack");
         if (!host) return;
@@ -15638,6 +15757,7 @@
         setTimeout(() => item.remove(), 5200);
       }
 
+      // 左右パネルの開閉を切り替える(force省略でトグル、true=閉じる)。設定は自動バックアップへ保存。
       function togglePanel(side, force) {
         const key = side === "left" ? "leftPanelCollapsed" : "rightPanelCollapsed";
         state.settings[key] = force === undefined ? !state.settings[key] : !!force;
@@ -15645,6 +15765,7 @@
         persistAutomaticBackup(JSON.stringify(state));
       }
 
+      // 集中表示(左右パネルを同時に閉じる)の切替。両方閉じているときは両方開く。Tabキー割当。
       function toggleFocusMode() {
         const both = state.settings.leftPanelCollapsed && state.settings.rightPanelCollapsed;
         state.settings.leftPanelCollapsed = !both;
@@ -15653,6 +15774,8 @@
         setStatus(both ? "左右パネルを表示しました。" : "集中表示に切り替えました。Tabで戻せます。");
       }
 
+      // パネル開閉状態を画面へ反映する(クラス付け替え・トグルボタンの向き・ミニツールバー再描画)。
+      // 表示だけを更新するので、state変更後に呼んでも履歴は増えない。
       function updateProductivityUi() {
         const app = qs(".app");
         if (!app) return;
@@ -15671,6 +15794,8 @@
         renderMiniToolbar();
       }
 
+      // 選択要素の近くへ出すミニツールバー(配線・回転・複製・編集)を描画する。
+      // 選択が無い/ドラッグ中/文字編集中は隠す(操作の邪魔をしないため)。
       function renderMiniToolbar() {
         const host = qs("#miniToolbar");
         const element = selectedElement();
@@ -15700,6 +15825,8 @@
         host.style.top = (above >= 84 ? above : Math.min(window.innerHeight - 48, box.bottom + 28)) + "px";
       }
 
+      // 選択部品から配線を始める(ミニツールバーの「配線」)。配線ツールへ切り替え、
+      // 接続点が複数ある部品は始点を選ばせるため、その部品の接続点だけを候補として強調する。
       function startWireFromSelected() {
         const element = selectedElement();
         const anchors = element && componentConnectionAnchors(element);
@@ -15710,12 +15837,14 @@
           : "強調表示された配線接続点を選択してください。");
       }
 
+      // 図面上のエラー表示(監査オーバーレイ)の表示/非表示を切り替える。表示状態は図面へ保存する。
       function toggleAuditOverlay() {
         state.settings.auditOverlay = !state.settings.auditOverlay;
         commitHistory(state.settings.auditOverlay ? "図面上のエラー表示を有効にしました。" : "図面上のエラー表示を無効にしました。");
         render();
       }
 
+      // ショートカット設定ダイアログを開く。ツール切替キーを1文字ずつ割り当て、重複は保存時に弾く。
       function showShortcutSettings() {
         const rows = [
           ["select", "選択"], ["wire", "配線"], ["text", "文字"], ["line", "直線"],
@@ -15734,6 +15863,7 @@
         };
       }
 
+      // ページナビゲータを開く。全ページを縮小カードで一覧し、クリックで移動・ドラッグで並べ替える。
       function showPageNavigator() {
         openDialog("ページナビゲータ", `<p class="muted">カードをドラッグして並べ替え、クリックして移動します。</p><div id="pageNavigatorGrid" class="page-navigator"></div>`, { wide: true });
         const grid = qs("#pageNavigatorGrid");
@@ -15761,6 +15891,8 @@
         });
       }
 
+      // コマンドパレット(クイックパレット)を開く。部品配置と主要操作を検索して実行できる。
+      // 検索ボックスでEnterを押すと先頭候補をそのまま実行し、キーボードだけで配置まで進める。
       function showCommandPalette() {
         const commands = [
           ...PALETTE.map(item => ({ label: "配置: " + item.label, kind: "tool", value: item.type })),
@@ -15798,7 +15930,10 @@
         renderResults(); setTimeout(() => qs("#commandSearch")?.focus(), 0);
       }
 
+      // 属性スポイトでコピーする属性キーの一覧。座標・寸法・タグなど個体固有の値は含めない。
       const BRUSH_KEYS = ["manufacturer", "catalog", "rating", "installation", "location", "description", "stroke", "strokeWidth", "dash", "layer", "wireType", "orientation", "symbolVariant"];
+
+      // 選択要素の属性を属性スポイトへ取り込む。以後クリックした要素へapplyAttributeBrush()で貼る。
       function startAttributeBrush() {
         const source = selectedElement();
         if (!source) { setStatus("属性を取得する元要素を選択してください。"); return; }
@@ -15807,6 +15942,7 @@
         setStatus("属性スポイト中: 適用先をクリックしてください。Escで終了");
       }
 
+      // 取り込み済みの属性を対象要素へ適用する。適用したらtrue、スポイト未使用・ロック時はfalse。
       function applyAttributeBrush(target) {
         if (!attributeBrush || !target || isElementLocked(target)) return false;
         Object.assign(target, deepClone(attributeBrush));
@@ -15814,6 +15950,7 @@
         return true;
       }
 
+      // 選択要素の一括編集ダイアログを開く。タグ/線番・説明・メーカー等を表形式でまとめて書き換える。
       function showBatchEdit() {
         const rows = selectedElements();
         if (!rows.length) { setStatus("一括編集する要素を選択してください。"); return; }
@@ -15874,6 +16011,8 @@
         };
       }
 
+      // 選択部品の第1接続ピンの高さを、最初に選んだ部品へ揃える(上下方向のみ移動)。
+      // 線ものとロック要素は対象外。2個以上選んでいないと何もしない。
       function smartAlignConnectionPoints() {
         const items = selectedElements().filter(item => !item.points && !isElementLocked(item));
         if (items.length < 2) { setStatus("接続点整列には2個以上の部品を選択してください。"); return; }
@@ -15885,6 +16024,8 @@
         commitHistory("第1接続点を同じYへ整列しました。"); render();
       }
 
+      // 指定点に重なっている要素を、クリックのたびに前面から順へ1つずつ返す(Alt+クリックの重なり選択)。
+      // 同じ点を続けてクリックする限り順に巡回し、点が変わったら先頭(最前面)から数え直す。
       function cycleElementAtPoint(point) {
         const hits = currentPage().elements.filter(isElementVisible).filter(item => {
           const box = elementBounds(item); return box && point.x >= box.x - 1 && point.x <= box.x + box.w + 1 && point.y >= box.y - 1 && point.y <= box.y + box.h + 1;
@@ -15917,6 +16058,8 @@
         };
       }
 
+      // 要素を別種別へ置き換える(タグ・属性・レイヤ等は引き継ぐ)。
+      // 置換前後で第1接続ピンの絶対位置を合わせ、つながっていた配線の端点も新しいピンへ寄せる。
       function replaceElementType(page, element, targetType) {
         const oldAnchors = elementConnectionAnchors(element);
         const replacement = { ...defaultElement(targetType, Number(element.x || 0), Number(element.y || 0)) };
@@ -15942,6 +16085,7 @@
         Object.assign(element, replacement);
       }
 
+      // シンボル一括置換ダイアログを開く。選択した部品と同種別の要素を、指定種別へまとめて置き換える。
       function showSymbolSwapDialog() {
         const selected = selectedElement();
         if (!selected || selected.points || selected.type === "text") { setStatus("置換元のシンボルを1個選択してください。"); return; }
@@ -15965,6 +16109,8 @@
         };
       }
 
+      // 表計算往復編集用の行データを全ページから集める。1行=1要素で、電気属性を持つ要素と
+      // 配線・端子・端子台・PLCが対象。id/page/typeは照合用なので編集させない。
       function spreadsheetRows() {
         const rows = [];
         state.pages.forEach(page => page.elements.forEach(item => {
@@ -15979,6 +16125,7 @@
         return rows;
       }
 
+      // 表計算データ往復編集ダイアログを開く。タブ区切りで書き出し、貼り戻した内容をidで照合して反映する。
       function showSpreadsheetRoundtrip() {
         const headers = ["id", "page", "type", "tag", "description", "manufacturer", "catalog", "installation", "location", "terminals"];
         const text = [headers.join("\t"), ...spreadsheetRows().map(row => headers.map(key => String(row[key] || "").replace(/\t/g, " ")).join("\t"))].join("\n");
@@ -16007,6 +16154,7 @@
         };
       }
 
+      // カタログ再取得ダイアログを開く。図面の部品と部品カタログの差分を一覧し、選んだ項目だけ更新する。
       function showCatalogRefresh() {
         const differences = [];
         state.pages.forEach(page => page.elements.forEach(item => {
@@ -16022,6 +16170,7 @@
         qs("#catalogRefreshApply")?.addEventListener("click", () => { differences.forEach(diff => { diff.item[diff.key] = diff.value; }); closeDialog(); commitHistory(differences.length + "件のカタログ属性を更新しました。"); render(); });
       }
 
+      // フットプリント検索DBダイアログを開く。メーカー・品番・種別ごとの盤図外形寸法を編集する。
       function showFootprintDb() {
         const rowHtml = (item = {}) => `<tr data-footprint-row><td><input data-fp="manufacturer" value="${escapeAttr(item.manufacturer || "")}"></td><td><input data-fp="catalog" value="${escapeAttr(item.catalog || "")}"></td><td><input data-fp="type" value="${escapeAttr(item.type || "")}"></td><td><input data-fp="label" value="${escapeAttr(item.label || "")}"></td><td><input data-fp="w" type="number" step="0.5" value="${Number(item.w || 20)}"></td><td><input data-fp="h" type="number" step="0.5" value="${Number(item.h || 14)}"></td><td><button data-fp-delete>削除</button></td></tr>`;
         openDialog("フットプリント検索DB", `<table class="report-table"><thead><tr><th>メーカー</th><th>品番</th><th>回路図種別</th><th>盤図形名</th><th>幅</th><th>高さ</th><th></th></tr></thead><tbody id="footprintRows">${(state.footprintDb || []).map(rowHtml).join("")}</tbody></table>
@@ -16037,11 +16186,14 @@
         };
       }
 
+      // 盤面図に置く外形の寸法[幅, 高さ]を決める。フットプリントDBの一致行を優先し、
+      // 無ければ種別ごとの既定値(FOOTPRINT_SIZES)、それも無ければ18×14mmを使う。
       function footprintSizeFor(row) {
         const found = (state.footprintDb || []).find(item => (!item.manufacturer || item.manufacturer === row.manufacturer) && (!item.catalog || item.catalog === row.catalog) && (!item.type || item.type === row.type));
         return found ? [Number(found.w || 20), Number(found.h || 14)] : (FOOTPRINT_SIZES[row.type] || [18, 14]);
       }
 
+      // 項目番号・バルーン・銘板の生成ダイアログを開く。現在ページの盤フットプリントが対象。
       function showPanelAnnotationDialog() {
         const footprints = currentPage()?.elements.filter(item => item.type === "rect" && item.panelRef) || [];
         if (!footprints.length) { setStatus("現在ページに盤フットプリントがありません。"); return; }
@@ -16065,6 +16217,7 @@
         };
       }
 
+      // ケーブル展開(ファンイン/アウト)ダイアログを開く。芯数ぶんの配線と芯番号をまとめて作図する。
       function showCableFanDialog() {
         openDialog("ケーブル展開（ファンイン／アウト）", `<div class="row"><div><label>ケーブルタグ</label><input id="fanCableTag" value="CBL1"></div><div><label>芯数</label><input id="fanCoreCount" type="number" min="2" max="64" value="4"></div></div>
           <div class="row"><div><label>左X</label><input id="fanX1" type="number" step="2.5" value="30"></div><div><label>右X</label><input id="fanX2" type="number" step="2.5" value="150"></div></div>
@@ -16155,7 +16308,7 @@
       // 標準パックJSONを読み込み・検証して適用。
       // - 入口検証NGなら状態を一切変えず、項目パス付きで理由を表示する
       // - 同じidのパックは重複追加せず更新として置き換える
-      // - 適用途中の失敗時は退避しておいた設定へ戻す(半分だけ適用された状態を残さない)
+      // - 適用途中の失敗時は退避しておいた設定へ戻す(半分だけ適用された状態を残さない)。
       function importStandardPackFile(file) {
         const reader = new FileReader();
         reader.onerror = () => setStatus("標準パックを読み込めませんでした: " + (file?.name || ""));
@@ -16405,7 +16558,7 @@
         svg.style.width = "100%";
         svg.style.height = "auto";
         svg.style.display = "block";
-        // 削除要素: 旧版の姿を赤の半透明ゴーストで重ねる
+        // 削除要素: 旧版の姿を赤の半透明ゴーストで重ねる。
         diff.removed.forEach(element => {
           const ghost = deepClone(element);
           ghost.id = "diff-ghost-" + ghost.id;
@@ -16414,7 +16567,7 @@
           drawElement(g, ghost);
           svg.appendChild(g);
         });
-        // 枠: 追加=緑 / 変更=橙 / 削除=赤
+        // 枠: 追加=緑 / 変更=橙 / 削除=赤。
         const frameFor = (element, color) => {
           const box = elementBounds(element);
           if (!box) return;
@@ -16472,7 +16625,7 @@
           } else if (current.name === "TEXT" && d[1] !== undefined) {
             out.push({ ...defaultElement("text", round(d[10] || 0), flipY(d[20])), text: String(d[1]), fontSize: Number(d[40] || 2.5) });
           } else if (current.name === "ARC" && d[40] !== undefined) {
-            // 円弧は12分割の折れ線として取り込む(CADのCCW角度→画面系へ変換)
+            // 円弧は12分割の折れ線として取り込む(CADのCCW角度→画面系へ変換)。
             const r = Number(d[40]);
             const cx = Number(d[10] || 0);
             const cyCad = Number(d[20] || 0);
@@ -16586,7 +16739,7 @@
             const box = elementBounds(element);
             element.x = round(axis * 2 - box.x - box.w);
             if (element.type === "arc") {
-              // 左右反転で弧の向きも反転(θ→180-θ、掃引の時計回りを保つため入替)
+              // 左右反転で弧の向きも反転(θ→180-θ、掃引の時計回りを保つため入替)。
               const a0 = Number(element.a0 ?? 0);
               const a1 = Number(element.a1 ?? 90);
               element.a0 = round(((180 - a1) % 360 + 360) % 360);
@@ -16679,7 +16832,7 @@
         render();
       }
 
-      // 終点側の線分を軸方向に伸ばし、最初に交差する他配線まで延長する
+      // 終点側の線分を軸方向に伸ばし、最初に交差する他配線まで延長する。
       function extendSelectedWireEnd() {
         const page = currentPage();
         const element = selectedElement();
@@ -16722,7 +16875,7 @@
         render();
       }
 
-      // 終点側の線分を、他配線との最初の交差位置まで切り詰める
+      // 終点側の線分を、他配線との最初の交差位置まで切り詰める。
       function trimSelectedWireEnd() {
         const page = currentPage();
         const element = selectedElement();
@@ -16774,7 +16927,7 @@
         const isDiagonal2 = points.length === 2
           && Math.abs(points[0][0] - points[1][0]) > .001 && Math.abs(points[0][1] - points[1][1]) > .001;
         if (isDiagonal2) {
-          // L字は経路上にある折れ角(orthoFlip考慮)で2本の直線に分割する
+          // L字は経路上にある折れ角(orthoFlip考慮)で2本の直線に分割する。
           const c = element.orthoFlip
             ? [round(points[1][0]), round(points[0][1])]
             : [round(points[0][0]), round(points[1][1])];
@@ -16828,6 +16981,8 @@
         });
       }
 
+      // 複製した要素の識別名(タグ・ラベル・線番等)の末尾番号を1つ進める。
+      // fixedTag等のフラグが立っている項目は採番済みとみなして据え置く。
       function incrementDuplicateAttributes(copy) {
         ["tag", "label", "wireNo", "cableTag", "coreNo"].forEach(key => {
           if (copy[key] && !copy["fixed" + key[0].toUpperCase() + key.slice(1)]) copy[key] = incrementTrailingCode(copy[key]);
@@ -16842,6 +16997,8 @@
         return (element.points || [[0, 0], [20, 0]]).map(point => [point[0], point[1]]);
       }
 
+      // 選択要素をDUPLICATE_OFFSET_MMだけずらして複製し、複製側を選択状態にする(Ctrl+D)。
+      // 識別名の末尾番号は自動で進める。ずらし量はグリッドの倍数なので接続ピンはグリッド上に残る。
       function duplicateSelected() {
         const page = currentPage();
         const selected = selectedElements();
@@ -16932,7 +17089,7 @@
         render();
       }
 
-      // 選択全体の境界中心を回転中心として剛体回転する(複数選択対応)
+      // 選択全体の境界中心を回転中心として剛体回転する(複数選択対応)。
       function rotateSelected(degrees, center) {
         const selected = selectedElements();
         if (!selected.length) return;
@@ -17099,7 +17256,7 @@
         const insertAt = Math.max(1, points.length - 1);
         const a = points[insertAt - 1];
         const b = points[insertAt];
-        // 2点L字は見た目どおりの折れ角(orthoFlip考慮)を実点化する
+        // 2点L字は見た目どおりの折れ角(orthoFlip考慮)を実点化する。
         const point = points.length === 2 && Math.abs(a[0] - b[0]) > .001 && Math.abs(a[1] - b[1]) > .001
           ? (element.orthoFlip ? [round(b[0]), round(a[1])] : [round(a[0]), round(b[1])])
           : [round((a[0] + b[0]) / 2), round((a[1] + b[1]) / 2)];
@@ -17131,7 +17288,7 @@
           return;
         }
         const original = element.points || [[0, 0], [20, 0]];
-        // 2点L字は表示どおり(orthoFlip考慮)の角を実点化してから直交化する
+        // 2点L字は表示どおり(orthoFlip考慮)の角を実点化してから直交化する。
         const normalized = orthogonalizePoints(materializedWirePoints(element));
         if (JSON.stringify(original) === JSON.stringify(normalized)) {
           setStatus("この配線はすでに直交しています。");
@@ -17763,7 +17920,7 @@
                 });
             };
             image.onerror = () => {
-              // 解釈できない画像は要素を作らず中止する(壊れたデータを図面へ持ち込まない)
+              // 解釈できない画像は要素を作らず中止する(壊れたデータを図面へ持ち込まない)。
               setStatus("画像を解釈できませんでした（ファイルが壊れているか未対応形式です）: " + (file.name || ""));
               resolve(false);
             };
@@ -18071,11 +18228,11 @@
             const svg = svgEl("svg", {});
             drawPageSvg(svg, page, { selection: false, grid: false, scaled: false, output: true });
             if (zoomValue === "fit") {
-              // ダイアログ内幅いっぱい(A3横などもはみ出さない)
+              // ダイアログ内幅いっぱい(A3横などもはみ出さない)。
               card.style.width = "100%";
               svg.style.width = "100%";
             } else {
-              // mm→px(96dpi)×倍率の実寸基準
+              // mm→px(96dpi)×倍率の実寸基準。
               const widthPx = Math.round(size.w / 25.4 * 96 * Number(zoomValue));
               card.style.width = widthPx + "px";
               svg.style.width = widthPx + "px";
@@ -18221,7 +18378,9 @@
         let next = Number(startInput || 1);
         const pages = allPages ? state.pages : [currentPage()];
         let netCount = 0;
-        const signalGroups = new Map(); // 信号矢印ラベル -> { value, members: [{net}] }
+        // 信号矢印ラベルごとのネット集合(ラベル -> { value, members: [{net}] })。
+        // 同じラベルの矢印で結ばれたネットをページ横断で1本の線番へまとめるために使う。
+        const signalGroups = new Map();
         const numberedNets = [];
         pages.forEach(page => {
           const nets = buildWireNets(page)
@@ -18244,7 +18403,7 @@
             members.forEach(wire => {
               if (!wire.fixedWireNo) wire.wireNo = value;
             });
-            // ネット内は代表1本のみ表示(最長の配線)。他は自動的に非表示
+            // ネット内は代表1本のみ表示(最長の配線)。他は自動的に非表示。
             const visible = members.slice().sort((a, b) => {
               const lengthOf = wire => wireSegments(wire).reduce((sum, s) => sum + Math.hypot(s[2] - s[0], s[3] - s[1]), 0);
               return lengthOf(b) - lengthOf(a);
@@ -18262,7 +18421,7 @@
             });
           });
         });
-        // 信号矢印ラベルで結ばれたネットはページをまたいで同一線番を共有する
+        // 信号矢印ラベルで結ばれたネットはページをまたいで同一線番を共有する。
         let linked = 0;
         signalGroups.forEach(group => {
           if (group.members.length < 2 || group.value === null) return;
@@ -18512,6 +18671,7 @@
         render();
       }
 
+      // 端子台の端子明細エディタを開く。端子ごとの端子名・行き先・線種などを段数×端子数の表で編集する。
       function showTerminalDetailEditor(element) {
         const count = Math.max(1, Number(element.count || 1));
         const levels = Math.max(1, Number(element.levels || 1));
@@ -19284,6 +19444,7 @@
       // 検索一致箇所を一括置換(対象フィールドを走査)。
       // 一括置換の対象(ページ/要素/フィールド/変更前)を全ページから収集する。
       const REPLACE_FIELDS = ["wireNo", "label", "text", "tag", "note", "cellText", "pinText", "rightPinText", "terminalLabels", "description", "fromOverride", "toOverride"];
+      // 一括置換の対象フィールド→画面表示名。検索結果一覧で「どの欄が当たったか」を出すために使う。
       const REPLACE_FIELD_LABELS = { wireNo: "線番", label: "ラベル", text: "文字", tag: "タグ", note: "属性メモ", cellText: "表セル", pinText: "ピン文字", rightPinText: "右ピン文字", terminalLabels: "端子名", description: "説明", fromOverride: "FROM", toOverride: "TO" };
 
       // 一括置換の対象(ページ/要素/フィールド/変更前値)を全ページから収集する。
@@ -19396,7 +19557,7 @@
 
       // ===== シンボルビルダー(簡易・テキスト定義) =====
       // 1行1プリミティブ: line x1 y1 x2 y2 / rect x y w h / circle cx cy r /
-      // text x y サイズ 文字列 / anchor x y (接続点=小端子として生成)
+      // text x y サイズ 文字列 / anchor x y (接続点=小端子として生成)。
       function parseSymbolScript(text) {
         const templates = [];
         const errors = [];
@@ -19602,7 +19763,9 @@
         let sbTemplates = parseSymbolScript(qs("#sbScript").value).templates;
         let sbTool = "select";
         let sbSel = -1;
-        let sbDrag = null; // { mode: "draw"|"move", start:[x,y], original? }
+        // 図形ビルダーのドラッグ状態({ mode: "draw"|"move", start:[x,y], original? })。
+        // nullはドラッグしていない状態。pointerup/pointercancelで必ずnullへ戻す。
+        let sbDrag = null;
         const sbSvg = qs("#sbCanvas");
         const sbSnapStep = () => Number(qs("#sbSnap").value || 1);
         const sbSnapV = v => round(Math.round(v / sbSnapStep()) * sbSnapStep());
@@ -19613,14 +19776,14 @@
             -2 + (event.clientY - r.top) / r.height * 20
           ];
         };
-        // GUI変更→スクリプト書き戻し+再描画(scriptが常に保存の正)
+        // GUI変更→スクリプト書き戻し+再描画(scriptが常に保存の正)。
         const sbSyncScript = () => {
           const script = symbolToScript({ templates: sbTemplates });
           if (script !== null) qs("#sbScript").value = script;
           sbRenderCanvas();
           buildPreview();
         };
-        // 線分と点の距離(選択ヒット用)
+        // 線分と点の距離(選択ヒット用)。
         const sbDistSeg = (px, py, x1, y1, x2, y2) => {
           const dx = x2 - x1, dy = y2 - y1;
           const len2 = dx * dx + dy * dy;
@@ -19675,7 +19838,7 @@
         const sbRenderCanvas = ghost => {
           if (!sbSvg) return;
           sbSvg.innerHTML = "";
-          // 方眼(1mm細・5mm中・原点軸濃)
+          // 方眼(1mm細・5mm中・原点軸濃)。
           for (let gx = -2; gx <= 26; gx += 1) {
             sbSvg.appendChild(svgEl("line", { x1: gx, y1: -2, x2: gx, y2: 18, stroke: gx === 0 ? "#9fb0c0" : (gx % 5 === 0 ? "#d7dfe7" : "#edf1f5"), "stroke-width": gx === 0 ? .1 : .05 }));
           }
@@ -19687,12 +19850,12 @@
             clone.id = "sbpv" + index;
             drawElement(sbSvg, clone);
           });
-          // 接続点を赤リングで強調
+          // 接続点を赤リングで強調。
           sbTemplates.forEach(t => {
             if (t.type !== "terminal") return;
             sbSvg.appendChild(svgEl("circle", { cx: Number(t.x) + 0.9, cy: Number(t.y) + 0.9, r: 1.3, fill: "none", stroke: "#d23", "stroke-width": .18, "stroke-dasharray": ".5 .35", "pointer-events": "none" }));
           });
-          // 選択枠+変形ハンドル(青□=寸法/端点、橙○=弧の角度)
+          // 選択枠+変形ハンドル(青□=寸法/端点、橙○=弧の角度)。
           if (sbSel >= 0 && sbTemplates[sbSel]) {
             const b = elementBounds({ ...sbTemplates[sbSel], x: sbTemplates[sbSel].x || 0, y: sbTemplates[sbSel].y || 0 });
             if (b) sbSvg.appendChild(svgEl("rect", { x: b.x - .5, y: b.y - .5, width: b.w + 1, height: b.h + 1, fill: "none", stroke: "#2563eb", "stroke-width": .15, "stroke-dasharray": ".8 .5", "pointer-events": "none" }));
@@ -19704,7 +19867,7 @@
               }
             });
           }
-          // ドラッグ中ゴースト
+          // ドラッグ中ゴースト。
           if (ghost) {
             const attrs = { fill: "none", stroke: "#2563eb", "stroke-width": .2, opacity: .6, "pointer-events": "none" };
             if (ghost.kind === "line") sbSvg.appendChild(svgEl("line", { ...attrs, x1: ghost.a[0], y1: ghost.a[1], x2: ghost.b[0], y2: ghost.b[1] }));
@@ -19718,7 +19881,7 @@
             }
           }
         };
-        // ツール切替
+        // ツール切替。
         qsa("[data-sb-tool]", qs("#dialogBody")).forEach(button => {
           button.addEventListener("click", () => {
             sbTool = button.dataset.sbTool;
@@ -19726,7 +19889,7 @@
             sbSvg.style.cursor = sbTool === "select" ? "default" : (sbTool === "delete" ? "not-allowed" : "crosshair");
           });
         });
-        // キャンバス操作: クリック配置(文字/接続点/削除)、ドラッグ作図(線/矩形/円)、選択移動
+        // キャンバス操作: クリック配置(文字/接続点/削除)、ドラッグ作図(線/矩形/円)、選択移動。
         sbSvg.addEventListener("pointerdown", event => {
           event.preventDefault();
           const [rawX, rawY] = sbPointOf(event);
@@ -19755,7 +19918,7 @@
             return;
           }
           if (sbTool === "select") {
-            // 変形ハンドルを優先ヒット(選択中のみ)
+            // 変形ハンドルを優先ヒット(選択中のみ)。
             if (sbSel >= 0 && sbTemplates[sbSel]) {
               const handle = sbHandlesFor(sbTemplates[sbSel]).find(hd => Math.hypot(rawX - hd.x, rawY - hd.y) < .9);
               if (handle) {
@@ -19765,13 +19928,13 @@
             }
             const hit = sbHitAt(rawX, rawY);
             sbSel = hit;
-            // 文字を選択したら「文字内容」欄へ内容を反映(そのまま書き換え可能)
+            // 文字を選択したら「文字内容」欄へ内容を反映(そのまま書き換え可能)。
             if (hit >= 0 && sbTemplates[hit].type === "text") qs("#sbTextContent").value = sbTemplates[hit].text || "";
             if (hit >= 0) sbDrag = { mode: "move", start: [x, y], original: deepClone(sbTemplates[hit]) };
             sbRenderCanvas();
             return;
           }
-          // line / rect / circle / ellipse / arc: ドラッグ開始
+          // line / rect / circle / ellipse / arc: ドラッグ開始。
           sbDrag = { mode: "draw", start: [x, y] };
         });
         sbSvg.addEventListener("pointermove", event => {
@@ -19806,7 +19969,7 @@
                 ? [[x, y], [original.points[1][0], original.points[1][1]]]
                 : [[original.points[0][0], original.points[0][1]], [x, y]];
             } else if (target.type === "rect") {
-              // 反対側の角を固定してリサイズ
+              // 反対側の角を固定してリサイズ。
               const fx = handle === "nw" || handle === "sw" ? Number(original.x) + Number(original.w) : Number(original.x);
               const fy = handle === "nw" || handle === "ne" ? Number(original.y) + Number(original.h) : Number(original.y);
               target.x = round(Math.min(x, fx));
@@ -19827,7 +19990,7 @@
                 target.y = round(cy - ry);
                 target.h = round(ry * 2);
               } else if (handle === "a0" || handle === "a1") {
-                // 楕円パラメータ角(5°刻み)。rx/ryで正規化してから角度を取る
+                // 楕円パラメータ角(5°刻み)。rx/ryで正規化してから角度を取る。
                 const rx = Number(target.w) / 2 || .1;
                 const ry = Number(target.h) / 2 || .1;
                 const ccx = Number(target.x) + rx;
@@ -19854,7 +20017,8 @@
           const [ax, ay] = drag.start;
           if (Math.abs(x - ax) < .01 && Math.abs(y - ay) < .01) {
             sbRenderCanvas();
-            return; // ゼロ寸法は破棄
+            // ゼロ寸法は破棄。
+            return;
           }
           const base = { label: "", rotation: 0, stroke: state.settings.stroke, layer: "symbols" };
           if (sbTool === "line") {
@@ -19869,7 +20033,7 @@
             const ry = round(Math.max(sbSnapStep() / 2, Math.abs(y - ay)));
             sbTemplates.push({ ...base, type: "circle", x: ax - rx, y: ay - ry, w: rx * 2, h: ry * 2 });
           } else if (sbTool === "arc") {
-            // 中心=ドラッグ始点、半径=距離、開始角=離した方向(5°刻み)、掃引90°で作成→ハンドルで調整
+            // 中心=ドラッグ始点、半径=距離、開始角=離した方向(5°刻み)、掃引90°で作成→ハンドルで調整。
             const r = round(Math.max(sbSnapStep(), Math.hypot(x - ax, y - ay)));
             let a0 = Math.atan2(rawY - ay, rawX - ax) * 180 / Math.PI;
             a0 = ((Math.round(a0 / 5) * 5) % 360 + 360) % 360;
@@ -19880,7 +20044,7 @@
         };
         sbSvg.addEventListener("pointerup", sbFinishDrag);
         sbSvg.addEventListener("pointerleave", event => { if (sbDrag && sbDrag.mode === "draw") sbFinishDrag(event); });
-        // Deleteキーで選択プリミティブを削除(入力欄フォーカス中は無効)
+        // Deleteキーで選択プリミティブを削除(入力欄フォーカス中は無効)。
         qs("#dialogBody").addEventListener("keydown", event => {
           if (event.key !== "Delete" && event.key !== "Backspace") return;
           const tag = document.activeElement?.tagName;
@@ -19892,7 +20056,7 @@
             sbSyncScript();
           }
         });
-        // 「文字内容」欄: 文字プリミティブ選択中は内容をその場で書き換えられる
+        // 「文字内容」欄: 文字プリミティブ選択中は内容をその場で書き換えられる。
         qs("#sbTextContent").addEventListener("input", () => {
           const target = sbSel >= 0 ? sbTemplates[sbSel] : null;
           if (target && target.type === "text") {
@@ -19904,7 +20068,7 @@
           const target = sbSel >= 0 ? sbTemplates[sbSel] : null;
           if (target && target.type === "text") sbSyncScript();
         });
-        // スクリプト手編集→キャンバス反映
+        // スクリプト手編集→キャンバス反映。
         qs("#sbScript").addEventListener("input", () => {
           const parsed = parseSymbolScript(qs("#sbScript").value);
           if (!parsed.errors.length) {
@@ -20346,6 +20510,7 @@
         }, 0);
       }
 
+      // 要素間の移動履歴を前後へたどる(delta=-1で戻る、+1で進む)。クロス参照ジャンプの戻り先に使う。
       function navigateElementHistory(delta) {
         const next = navigationIndex + delta;
         if (next < 0 || next >= navigationHistory.length) { setStatus("移動履歴がありません。"); return; }
@@ -20556,9 +20721,10 @@
               issues.push({ level: "注意", page: only.page.name, pageId: only.page.id, elementId: only.element.id, message: "同じラベルの信号矢印が他にありません（相手先の作り忘れの可能性）。", target: label });
               return;
             }
-            // 発信(source)/受信(destination)を使い分けている組で、片方の役割が欠けている場合も指摘
+            // 発信(source)/受信(destination)を使い分けている組で、片方の役割が欠けている場合も指摘。
             const roles = list.map(item => item.element.signalRole || "reference");
-            if (roles.some(role => role === "reference")) return; // 汎用参照が混ざる組は判定しない
+            // 汎用参照が混ざる組は判定しない。
+            if (roles.some(role => role === "reference")) return;
             const hasSource = roles.includes("source");
             const hasDestination = roles.includes("destination");
             if (hasSource && !hasDestination) {
@@ -21963,7 +22129,7 @@
           paletteFilterText = event.target.value || "";
           renderPalette();
         });
-        // 検索ボックスで Enter → 最初の候補を即配置モードに(キーボードだけで配置まで進める)
+        // 検索ボックスで Enter → 最初の候補を即配置モードに(キーボードだけで配置まで進める)。
         qs("#paletteFilter").addEventListener("keydown", event => {
           if (event.key === "Enter") {
             const first = qs("#paletteGrid .palette-item");
@@ -22192,7 +22358,7 @@
         });
         qs("#zoomRange").addEventListener("input", event => setZoom(event.target.value, false));
         qs("#zoomRange").addEventListener("change", () => commitHistory("ズームを変更しました。"));
-        // 高倍率域では1クリックの変化量を大きくする(比例ステップ)
+        // 高倍率域では1クリックの変化量を大きくする(比例ステップ)。
         qs("#zoomOutBtn").addEventListener("click", () => setZoom(state.settings.zoom / 1.25, true));
         qs("#zoomInBtn").addEventListener("click", () => setZoom(state.settings.zoom * 1.25, true));
         qs("#actualSizeBtn").addEventListener("click", () => setZoom(3.78, true));
@@ -22276,7 +22442,7 @@
         updatePageField("pageSideNote", (page, value) => { page.title.sideNote = value; });
 
         attachCanvasListeners(qs("#canvas"));
-        // メニュー外のクリック/スクロール/リサイズで右クリックメニューを閉じる
+        // メニュー外のクリック/スクロール/リサイズで右クリックメニューを閉じる。
         document.addEventListener("pointerdown", event => {
           if (!event.target.closest("#contextMenu")) hideContextMenu();
         });
@@ -22327,7 +22493,8 @@
         if (event.pointerType !== "touch") return false;
         touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (touchPoints.size === 2) {
-          dragState = null; // 進行中の作図/移動はピンチ開始で中断
+          // 進行中の作図/移動はピンチ開始で中断。
+          dragState = null;
           const pts = [...touchPoints.values()];
           pinchState = {
             startDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
@@ -22371,7 +22538,8 @@
         touchPoints.delete(event.pointerId);
         if (pinchState && touchPoints.size < 2) {
           pinchState = null;
-          return true; // ピンチ終了。既存のpointerup処理(作図確定等)へは流さない
+          // ピンチ終了。既存のpointerup処理(作図確定等)へは流さない。
+          return true;
         }
         return !!pinchState;
       }
@@ -22380,7 +22548,7 @@
       function onCanvasWheel(event) {
         if (!event.ctrlKey && !event.metaKey) return;
         event.preventDefault();
-        // 高倍率でも一定の体感になるよう比例ステップでズームする
+        // 高倍率でも一定の体感になるよう比例ステップでズームする。
         const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
         setZoom(state.settings.zoom * factor, false);
       }
@@ -22388,8 +22556,10 @@
       // キャンバス押下の入口。優先順: 点編集ハンドル → リサイズハンドル → 作図ツール(配線/直線等の開始) →
       // 部品配置 → 要素選択(移動開始) → 空白(範囲選択開始)。選択はevent.targetのdata-id基準。
       function onCanvasPointerDown(event) {
-        if (handleTouchDown(event)) return; // 2本指=ピンチ開始(通常操作へ流さない)
-        activatePageFromEvent(event); // 並べて表示: クリックしたページを編集対象へ
+        // 2本指=ピンチ開始(通常操作へ流さない)。
+        if (handleTouchDown(event)) return;
+        // 並べて表示: クリックしたページを編集対象へ。
+        activatePageFromEvent(event);
         const svg = qs("#canvas");
         const connectionChoice = event.target.closest("[data-connection-x][data-connection-y]");
         const point = connectionChoice
@@ -22561,6 +22731,8 @@
         return endpoint;
       }
 
+      // 図面監査で見つかった問題を、該当要素の枠として画面へ重ねて描画する(印刷・出力には出ない)。
+      // 同じ要素に複数の指摘があっても枠は1つだけ描く。
       function drawAuditOverlay(svg, page) {
         const seen = new Set();
         auditProject().filter(issue => issue.pageId === page.id && issue.elementId).forEach(issue => {
@@ -22579,6 +22751,7 @@
         });
       }
 
+      // 作図ドラッグ中に、現在の終点が吸着している位置を画面へ表示する(画面表示のみ)。
       function drawSnapFeedback(svg) {
         if (!dragState?.lastPoint || dragState.mode !== "draw") return;
         const element = selectedElement();
@@ -22592,6 +22765,7 @@
         svg.appendChild(textEl(`${round(length)} mm / ${round(angle)}°`, end[0] + 2.2, end[1] - 2.2, { fontSize: 2.3, fill: "#075f55" }));
       }
 
+      // 作図ドラッグ中に、現在の長さと角度を数値で確認・修正するダイアログを開く。
       function showDrawingVectorDialog() {
         const drawing = selectedElement();
         if (!dragState || dragState.mode !== "draw" || !drawing?.points?.length) return;
@@ -22607,6 +22781,8 @@
         };
       }
 
+      // 作図中に打ち込んだ数値(drawNumericBuffer)を、作図中の線の長さとして確定する。
+      // 「長さ<角度」の書式なら角度も同時に指定できる。数値が無ければ何もしない。
       function applyDirectDrawingInput() {
         const drawing = selectedElement();
         if (!dragState || dragState.mode !== "draw" || !drawing?.points?.length) return;
@@ -22637,8 +22813,12 @@
         render();
       }
 
+      // キャンバスのドラッグ中の処理。dragState.modeで分岐する
+      // (draw=作図中の終点更新、point=端点移動、resize=寸法変更、move=選択移動、marquee=範囲選択)。
+      // 描画はrender({ light: true })で軽量更新し、履歴はpointerup側でまとめて記録する。
       function onCanvasPointerMove(event) {
-        if (handleTouchMove(event)) return; // ピンチ中はズーム/パンのみ
+        // ピンチ中はズーム/パンのみ。
+        if (handleTouchMove(event)) return;
         if (!dragState) return;
         const page = currentPage();
         const activeDragElement = page?.elements.find(item => item.id === dragState.elementId);
@@ -22673,7 +22853,7 @@
         if (!element) return;
         if (dragState.mode === "draw") {
           if (element.type === "wire") {
-            // 配線: Shift=折れ向き反転、スペース=L字/コの字(Z)巡回(onKeyDown側でbendCycle更新)
+            // 配線: Shift=折れ向き反転、スペース=L字/コの字(Z)巡回(onKeyDown側でbendCycle更新)。
             const rawPoint = canvasPoint(event, { raw: true });
             dragState.rawHistory = [...(dragState.rawHistory || []), rawPoint].slice(-80);
             dragState.initialAxis = dragPreferredAxis(element.points[0], dragState.rawHistory);
@@ -22704,7 +22884,7 @@
             // 掴んだ要素の第1接続ピンを「絶対位置で」グリッドへ乗せ直す。
             // 移動量だけを丸めると、複製・貼付や矢印キーでグリッドから外れたピンは
             // 平行移動のままズレを保持し続け、他シンボルの接続点の高さ・列に永久に合わない。
-            // (パレット配置は配置点そのものへピンを合わせるため、そちらとの挙動差の原因でもあった)
+            // (パレット配置は配置点そのものへピンを合わせるため、そちらとの挙動差の原因でもあった)。
             const grabbed = originals.find(item => item.id === dragState.elementId);
             const pin = elementFirstPin(grabbed) || originals.map(item => elementFirstPin(item)).find(Boolean) || null;
             if (pin) {
@@ -22815,7 +22995,8 @@
           const anchors = [];
           page.elements.forEach(el => {
             if (movedIds.has(el.id) || !isElementVisible(el)) return;
-            if (el.points || el.type === "text") return; // 基準は部品ピンのみ(配線・文字は除外)
+            // 基準は部品ピンのみ(配線・文字は除外)。
+            if (el.points || el.type === "text") return;
             (componentConnectionAnchors(el) || []).forEach(a => anchors.push({ x: round(a.x), y: round(a.y) }));
           });
           dragState.alignCache = anchors;
@@ -22981,7 +23162,8 @@
         element.x = Number(element.x || 0) + dx;
         element.y = Number(element.y || 0) + dy;
         if (element.type === "junction") return [{ x: element.x || 0, y: element.y || 0 }];
-        if (element.type === "arc") return arcEndpoints(element); // 弧は両端点を吸着基準にする
+        // 弧は両端点を吸着基準にする。
+        if (element.type === "arc") return arcEndpoints(element);
         if (element.type === "terminalStrip" || element.type === "connector") {
           const geo = terminalStripGeometry(element);
           return Array.from({ length: geo.nodes || geo.count }, (_, index) => terminalStripNodeGlobal(element, index));
@@ -23016,7 +23198,8 @@
 
       // ドラッグ確定。mode別に履歴記録し、marqueeなら範囲内要素を選択。
       function onCanvasPointerUp(event) {
-        if (handleTouchUp(event)) return; // ピンチ終了処理(作図確定へ流さない)
+        // ピンチ終了処理(作図確定へ流さない)。
+        if (handleTouchUp(event)) return;
         if (!dragState) return;
         const finishedDrag = dragState;
         try {
@@ -23040,7 +23223,7 @@
         }
         const element = selectedElement();
         // 配線を重ねただけでは黒丸を生成しない。分岐点は接続点ツールまたは自動処理で明示する。
-        // ゼロ長の線・配線は破棄(多角形は始点≠終点が前提のため対象外)
+        // ゼロ長の線・配線は破棄(多角形は始点≠終点が前提のため対象外)。
         if (element && element.points && element.type !== "polygon") {
           const a = element.points[0];
           const b = element.points[element.points.length - 1];
@@ -23127,7 +23310,9 @@
       // ===== その場編集(ダブルクリック: 文字=本文、配線=線番、他=ラベル) =====
       // 図面上にフローティング入力を重ねて直接編集する。Enter=確定 / Esc=取消 /
       // Tab・Shift+Tab=確定して同種の次(前)要素へ移動(線番・タグの連続入力用)。
-      let inlineEdit = null; // { input, element, field, cleanup }
+      // キャンバス上の直接文字編集の状態({ input, element, field, cleanup })。
+      // nullは編集していない状態。確定・取消時はcleanup()を呼んでからnullへ戻す。
+      let inlineEdit = null;
 
       // 要素種別→編集対象フィールドと表示名。
       function inlineEditFieldFor(element) {
@@ -23214,7 +23399,7 @@
         fitWidth();
         input.style.left = Math.round(Math.min(Math.max(cx, 8), window.innerWidth - 120)) + "px";
         input.style.top = Math.round(Math.min(Math.max(cy - fontPx * .9, 8), window.innerHeight - 48)) + "px";
-        // スクロール・ズーム・リサイズで位置がずれるため、その時点の値で確定して閉じる
+        // スクロール・ズーム・リサイズで位置がずれるため、その時点の値で確定して閉じる。
         const onViewChange = () => closeInlineEdit(true);
         const scrollHost = qs(".workspace") || window;
         scrollHost.addEventListener("scroll", onViewChange, { passive: true });
@@ -23230,7 +23415,7 @@
         input.focus();
         input.select();
         input.addEventListener("input", fitWidth);
-        // 入力中のキーはアプリ側ショートカット(Ctrl+Z等)へ流さない
+        // 入力中のキーはアプリ側ショートカット(Ctrl+Z等)へ流さない。
         input.addEventListener("keydown", ev => {
           ev.stopPropagation();
           if (ev.key === "Enter") {
@@ -23368,7 +23553,7 @@
           showCommandPalette();
           return;
         }
-        // Esc: メニュー → ダイアログ → (入力欄は既定動作) → ドラッグ取消 → 配置終了 → 選択解除
+        // Esc: メニュー → ダイアログ → (入力欄は既定動作) → ドラッグ取消 → 配置終了 → 選択解除。
         if (event.key === "Escape") {
           if (attributeBrush) {
             attributeBrush = null;
@@ -23449,7 +23634,7 @@
           restoreHistory(historyIndex + 1);
           return;
         }
-        // 配線ドラッグ中のスペース: L字⇔コの字(Z)の折れ形状を巡回
+        // 配線ドラッグ中のスペース: L字⇔コの字(Z)の折れ形状を巡回。
         if (event.key === " " && dragState && dragState.mode === "draw") {
           const drawing = selectedElement();
           if (drawing && drawing.type === "wire") {
@@ -23508,7 +23693,7 @@
             setActiveTool(tool);
             return;
           }
-          // ズーム: + / - / 0(全体表示)
+          // ズーム: + / - / 0(全体表示)。
           if (event.key === "+" || event.key === "=") {
             event.preventDefault();
             setZoom(state.settings.zoom * 1.25, true);
