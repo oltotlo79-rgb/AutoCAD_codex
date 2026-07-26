@@ -2606,7 +2606,7 @@ test("接触器主接点・トライアック・JISブザー・交流電源の�
   for (const item of result) {
     expect(item.primCount, `${item.type}の形状`).toBeGreaterThan(2);
     expect(item.anchorCount, `${item.type}の接続点`).toBe(2);
-    expect(item.span, `${item.type}のピン間隔`).toBe(10);
+    expect(item.span, `${item.type}のピン間隔`).toBeCloseTo(item.type === "buzzer" ? 3.8 : 10, 5);
   }
 });
 
@@ -3472,9 +3472,9 @@ test("ブザー系はJIS C 0617準拠(半円/半円+線/直角三角形)で枠�
       bell: infoOf("bell")
     };
   });
-  // ブザー(08-10-10): 半円のみ=上向きドーム(180→360)、垂直線(striker)なし
+  // ブザー(08-10-10): 上向きドーム(180→360)の下に配線用端子線2本
   expect(result.jis.arcs).toEqual([[180, 360]]);
-  expect(result.jis.vlines).toBe(0);
+  expect(result.jis.vlines).toBe(2);
   // 音響信号一般(08-10-06): 半円+線=ドーム+短い垂直線1本
   expect(result.general.arcs).toEqual([[180, 360]]);
   expect(result.general.vlines).toBe(1);
@@ -3902,4 +3902,63 @@ test("選択済み配線へ曲がり角を追加しハンドルと座標で編�
 
   await page.locator("#miniToolbar").getByRole("button", { name: "曲がり角＋" }).click();
   expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements[0].points.length)).toBe(4);
+});
+
+test("直線両端を配線接続部として選択できる", async ({ page }) => {
+  const anchors = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const drawingPage = api.createPage({ name: "直線接続" });
+    const line = { ...api.defaultElement("line", 20, 30), id: "line-connect", points: [[20, 30], [60, 45]] };
+    drawingPage.elements = [line];
+    api.installProjectData({ ...api.state, pages: [drawingPage], activePageId: drawingPage.id });
+    api.setActiveTool("wire");
+    return api.elementConnectionAnchors(line);
+  });
+
+  expect(anchors).toEqual([{ x: 20, y: 30 }, { x: 60, y: 45 }]);
+  await expect(page.locator('[data-connection-element="line-connect"]')).toHaveCount(2);
+});
+
+test("円弧ラベルを画面とDXFに出力する", async ({ page }) => {
+  const dxf = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const drawingPage = api.createPage({ name: "円弧ラベル" });
+    const arc = {
+      ...api.defaultElement("arc", 30, 40),
+      id: "arc-label",
+      label: "ARC-01",
+      labelDx: 2,
+      labelDy: 1,
+      labelFontSize: 3
+    };
+    drawingPage.elements = [arc];
+    api.installProjectData({ ...api.state, pages: [drawingPage], activePageId: drawingPage.id });
+    return api.buildDxf(drawingPage);
+  });
+
+  await expect(page.locator('[data-id="arc-label"] text')).toHaveText("ARC-01");
+  await expect(page.locator('[data-id="arc-label"] text')).toHaveAttribute("font-size", "3");
+  expect(dxf).toContain("ARC-01");
+});
+
+test("JISブザーは半球下の2本の端子線を接続点にする", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const buzzer = { ...api.defaultElement("buzzer", 40, 50), id: "buzzer-jis", buzzerVariant: "jis" };
+    const drawingPage = api.createPage({ name: "JISブザー" });
+    drawingPage.elements = [buzzer];
+    api.installProjectData({ ...api.state, pages: [drawingPage], activePageId: drawingPage.id });
+    return {
+      anchors: api.elementConnectionAnchors(buzzer),
+      lines: Array.from(document.querySelectorAll('[data-id="buzzer-jis"] line')).map(line => ({
+        x1: Number(line.getAttribute("x1")), y1: Number(line.getAttribute("y1")),
+        x2: Number(line.getAttribute("x2")), y2: Number(line.getAttribute("y2"))
+      }))
+    };
+  });
+
+  expect(result.anchors).toHaveLength(2);
+  expect(result.anchors[0].y).toBe(result.anchors[1].y);
+  expect(result.anchors[0].y).toBeGreaterThan(50);
+  expect(result.lines.filter(line => line.x1 === line.x2 && line.y2 > line.y1)).toHaveLength(2);
 });

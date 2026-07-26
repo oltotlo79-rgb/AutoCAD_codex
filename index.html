@@ -4323,7 +4323,8 @@
           ? (page?.elements || []).filter(element => element.id === wireConnectionSourceId)
           : (page?.elements || []);
         candidates.forEach(element => {
-          if (!isElementVisible(element) || element.type === "wire" || element.points) return;
+          if (!isElementVisible(element) || element.type === "wire"
+            || (element.points && !["line", "mechanicalLink"].includes(element.type))) return;
           // 端子台も端子記号込みの接続点(componentConnectionAnchors)を使う。
           const anchors = componentConnectionAnchors(element);
           anchors.forEach(anchor => {
@@ -4746,6 +4747,14 @@
           stroke,
           fill: "none"
         }));
+        if (element.label) {
+          g.appendChild(textEl(
+            element.label,
+            w / 2 + Number(element.labelDx || 0),
+            h / 2 - Number(element.labelDy || 0),
+            { fontSize: Number(element.labelFontSize || 2.6), anchor: "middle" }
+          ));
+        }
       }
 
       // 円弧・楕円弧の両端点(絶対座標)。移動スナップの基準・吸着先の両方で使う。
@@ -8223,16 +8232,16 @@
             { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // ブザー(JIS C 0617-8, 08-10-10「半円」): 半円(かまぼこ形・弦を配線上、ドームが上∩)のみ。
-        // 音響信号一般(半円+線)やサイレン(直角三角形)とは、線・三角の有無で区別する。
+        // ブザー(JIS C 0617-8, 08-10-10): 上向き半球の下に2本の端子線を設け、
+        // その下端を配線接続点にする。音響信号一般(半円+線)やサイレン(直角三角形)とは別形状。
         buzzerJis: {
-          w: 10, h: 4.4,
-          anchors: [[0, 3], [10, 3]],
+          w: 10, h: 6,
+          anchors: [[3.1, 6], [6.9, 6]],
           prims: [
-            { t: "line", p: [0, 3, 3.1, 3] },
-            { t: "line", p: [6.9, 3, 10, 3] },
             { t: "line", p: [3.1, 3, 6.9, 3] },
             { t: "arc", p: [5, 3, 1.9, 180, 360] },
+            { t: "line", p: [3.1, 3, 3.1, 6] },
+            { t: "line", p: [6.9, 3, 6.9, 6] },
             { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -11441,6 +11450,13 @@
 
       // 要素種別ごとの接続点(配線が刺さる点)一覧。geoシンボルはgeoAnchors()を使用。
       function elementConnectionAnchors(element) {
+        if (["line", "mechanicalLink"].includes(element.type) && (element.points || []).length >= 2) {
+          const points = element.points;
+          return [
+            { x: Number(points[0][0]), y: Number(points[0][1]) },
+            { x: Number(points[points.length - 1][0]), y: Number(points[points.length - 1][1]) }
+          ];
+        }
         const fromGeo = geoAnchors(element);
         if (fromGeo) return fromGeo;
         const anchors = [];
@@ -21254,6 +21270,15 @@
           } else {
             dxfEllipseArcApproxLocal(out, page, "GEOMETRY", element, w / 2, h / 2, w / 2, h / 2, a0, a1);
           }
+          if (element.label) {
+            dxfTextLocal(
+              out, page, "TEXT", element,
+              w / 2 + Number(element.labelDx || 0),
+              h / 2 - Number(element.labelDy || 0),
+              Number(element.labelFontSize || 2.6),
+              element.label
+            );
+          }
           return;
         }
         if (element.type === "cloud") {
@@ -23159,6 +23184,9 @@
       // 移動追従で使う要素の接続点一覧(配線を除く)。
       function componentConnectionAnchors(element) {
         if (!element) return [];
+        if (["line", "mechanicalLink"].includes(element.type) && (element.points || []).length >= 2) {
+          return elementConnectionAnchors(element);
+        }
         if (element.type === "polygon" && (element.points || []).length >= 2) {
           // 多角形は頂点+各辺中央から配線を開始できる。
           const points = element.points;
