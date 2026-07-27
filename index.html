@@ -1498,6 +1498,22 @@
         { key: "date", label: "日付" }
       ];
 
+      // 右パネルで直接編集できる表題欄フィールド(入力欄のid → page.titleのキーと表示名)。
+      // ページ追加時の引き継ぎと、変更を他ページへ反映するかの確認に使う。
+      // 頁番号(page)・総頁数(total)はsyncPageTotals()が自動採番するため含めない。
+      const PAGE_TITLE_FIELDS = [
+        { id: "drawingTitle", key: "title", label: "図名" },
+        { id: "drawingNo", key: "drawingNo", label: "図番" },
+        { id: "revision", key: "revision", label: "改訂" },
+        { id: "designer", key: "designer", label: "作成" },
+        { id: "drawDate", key: "date", label: "日付" },
+        { id: "pageInstallation", key: "installation", label: "設備コード" },
+        { id: "pageLocation", key: "location", label: "場所コード" },
+        { id: "pageSideNote", key: "sideNote", label: "側注記" }
+      ];
+      // 上記に加えてページ追加時に引き継ぐキー(右パネルには無いが表題欄に出る値)。
+      const PAGE_TITLE_INHERIT_EXTRA = ["facility"];
+
       // 表題欄マッピングの参照元候補(手入力/プロジェクト値/ページ名/頁番号など)。
       const TITLE_SOURCE_OPTIONS = [
         { value: "project.title", label: "プロジェクト: 図名" },
@@ -2912,6 +2928,7 @@
             facility: options.facility || "",
             installation: options.installation || "",
             location: options.location || "",
+            sideNote: options.sideNote || "",
             page: String(index),
             total: "1"
           },
@@ -2967,6 +2984,30 @@
         syncPageTotals();
         resetHistory();
         render();
+      }
+
+      // 基準ページの表題欄から、新しいページへ引き継ぐ値をcreatePage()のオプション形式で返す。
+      // 引き継ぐのは PAGE_TITLE_FIELDS + facility。頁番号・総頁数は syncPageTotals() が振り直すので含めない。
+      // 図名(title)は引数で上書きできる(テンプレートページが自分の図名を持てるようにするため)。
+      function inheritedTitleOptions(basePage) {
+        const source = basePage?.title;
+        if (!isPlainObject(source)) return {};
+        const options = {};
+        PAGE_TITLE_FIELDS.forEach(field => {
+          const value = source[field.key];
+          if (typeof value === "string" && value !== "") options[field.key] = value;
+        });
+        PAGE_TITLE_INHERIT_EXTRA.forEach(key => {
+          const value = source[key];
+          if (typeof value === "string" && value !== "") options[key] = value;
+        });
+        return options;
+      }
+
+      // 現在ページの表題欄を引き継いで新しいページを作る。テンプレート/一括生成ページ用。
+      // optionsを後ろに展開するので、図名などを明示指定したページはその値が優先される。
+      function createPageInheritingTitle(options = {}) {
+        return createPage({ ...inheritedTitleOptions(currentPage()), ...options });
       }
 
       // 全ページの表題欄の頁番号/総頁数を振り直す(ページ追加・削除・並替後に呼ぶ)。
@@ -3685,24 +3726,41 @@
       // 上部ページタブを再構築(クリック=切替、ダブルクリック=ページ名変更、+ページ=追加)。
       function renderTabs() {
         const tabbar = qs("#tabbar");
+        // ページの並びと名前が同じなら、既存のタブ要素をそのまま使ってアクティブ表示だけ塗り替える。
+        // 毎回作り直すと、入力欄からタブへマウスで移ったときに blur→change→render でボタンが
+        // 差し替わり、mousedownしたボタンが消えてclickが成立せず、ページが切り替わらない。
+        const signature = state.pages.map(page => page.id + "" + (page.name || "")).join("");
+        if (tabbar.dataset.tabSignature === signature) {
+          const buttons = tabbar.querySelectorAll("button");
+          state.pages.forEach((page, index) => {
+            buttons[index]?.classList.toggle("active", page.id === state.activePageId);
+          });
+          return;
+        }
+        tabbar.dataset.tabSignature = signature;
         tabbar.innerHTML = "";
         state.pages.forEach((page, index) => {
+          // 要素そのものではなくidを閉じ込める。Undo等でstate.pagesのオブジェクトが差し替わっても
+          // 古いオブジェクトを書き換えてしまわないようにするため。
+          const pageId = page.id;
           const tab = document.createElement("button");
           tab.type = "button";
           tab.className = "page-tab" + (page.id === state.activePageId ? " active" : "");
           tab.textContent = page.name || "P" + (index + 1);
           tab.title = "ページ " + (index + 1) + "（ダブルクリックで名前変更）";
           tab.addEventListener("click", () => {
-            state.activePageId = page.id;
+            state.activePageId = pageId;
             setSelection([]);
             render();
             // 並べて表示中はタブクリックで該当ページへスクロール。
-            if (isMultiPageView()) pageSvgPool.get(page.id)?.slot.scrollIntoView({ block: "start", behavior: "smooth" });
+            if (isMultiPageView()) pageSvgPool.get(pageId)?.slot.scrollIntoView({ block: "start", behavior: "smooth" });
           });
           tab.addEventListener("dblclick", () => {
-            const name = prompt("ページ名", page.name || "");
+            const target = state.pages.find(item => item.id === pageId);
+            if (!target) return;
+            const name = prompt("ページ名", target.name || "");
             if (name === null) return;
-            page.name = name.trim() || page.name;
+            target.name = name.trim() || target.name;
             commitHistory("ページ名を変更しました。");
             render();
           });
@@ -12712,7 +12770,10 @@
       // 空ページを追加してアクティブ化。
       function addPage() {
         const base = currentPage();
+        // 表題欄(図名・図番・改訂・作成・日付・設備/場所・側注記)は現在ページから引き継ぐ。
+        // 同じ図面の続きを描くことがほとんどで、毎回入れ直すのは手間になるため。
         const page = createPage({
+          ...inheritedTitleOptions(base),
           name: "P" + (state.pages.length + 1),
           size: base?.size || "A4",
           orientation: base?.orientation || "portrait",
@@ -12841,7 +12902,7 @@
 
       // 端子接続図ページ(端子配線セット入り)をテンプレートとして追加。
       function addSampleTerminalPage() {
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "端子接続図" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
@@ -13063,7 +13124,7 @@
           const chunk = rows.slice(offset, offset + perPage);
           const pageNo = Math.floor(offset / perPage) + 1;
           const totalPages = Math.ceil(rows.length / perPage);
-          const page = createPage({
+          const page = createPageInheritingTitle({
             name: "端子接続図",
             size: "A4",
             orientation: "portrait",
@@ -13131,7 +13192,7 @@
           const chunk = rows.slice(offset, offset + perPage);
           const pageNo = Math.floor(offset / perPage) + 1;
           const totalPages = Math.ceil(rows.length / perPage);
-          const page = createPage({
+          const page = createPageInheritingTitle({
             name: "制御盤",
             size: "A4",
             orientation: "portrait",
@@ -13197,7 +13258,7 @@
       // 図枠は基本(compact)にする: index図枠は自前の空目次グリッドを持つため、
       // 表要素と二重になり罫線と文字が重なってしまう。
       function addIndexPage() {
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "目次" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
@@ -13228,7 +13289,7 @@
 
       // 汎用ラダーページ(左右母線+ラング)をテンプレートとして追加。
       function addLadderPage() {
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "ラダー" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
@@ -13600,7 +13661,7 @@
 
       // 機器配置図ページ(盤外形枠つき)をテンプレートとして追加。
       function addLayoutPage() {
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "配置" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
@@ -13674,7 +13735,7 @@
         const rails = String(qs("#ladRails")?.value || "P1").split(",").map(s => s.trim()).filter(Boolean);
         const rightName = String(qs("#ladRight")?.value || "N1").trim() || "N1";
         const note = String(qs("#ladNote")?.value || "").trim();
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "リレー回路" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
@@ -13776,7 +13837,7 @@
       // PLC出力回路ページを生成(ユニット列左置き→端子→線番付き配線→コイル→右レール)。
       function addPlcOutputCircuitPage(unitName, addresses) {
         const count = addresses.length;
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "制御盤",
           size: "A4",
           orientation: "portrait",
@@ -13838,7 +13899,7 @@
           addPlcOutputCircuitPage(unitName, addresses);
           return;
         }
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "制御盤",
           size: "A4",
           orientation: "portrait",
@@ -13918,7 +13979,7 @@
           setStatus("インターロック信号は送り・受け合計10本以下にしてください。");
           return;
         }
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "インターロック",
           size: "A4",
           orientation: "portrait",
@@ -14650,7 +14711,7 @@
         const brakePrefix = qs("#acBrakePrefix")?.value || "MSB";
         const withTwisted = (qs("#acTwisted")?.value || "on") === "on";
         const twLabels = String(qs("#acTwLabels")?.value || "DA,DB,DG,SLD").split(",").map(s => s.trim()).filter(Boolean);
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "AC電源回路",
           size: "A4",
           orientation: "portrait",
@@ -14859,7 +14920,7 @@
         const withSc1 = (qs("#acSc1")?.value || "on") === "on";
         const withSc2 = (qs("#acSc2")?.value || "on") === "on";
         const withGot = (qs("#acGot")?.value || "on") === "on";
-        const page = createPage({ name: "AC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "AC電源回路" });
+        const page = createPageInheritingTitle({ name: "AC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "AC電源回路" });
         const els = page.elements;
         const phaseXs = [35, 40, 45].slice(0, phaseCount);
         // 各2線回路を10mm間隔にし、上下とも2.5mm方眼へ載せる。
@@ -15055,7 +15116,7 @@
         const m2Name = qs("#acMotor2Name")?.value || "モータ2";
         const brTag = qs("#acBrakeRelay")?.value || "CRMBR";
         const posUnit = qs("#acPosUnit")?.value || "QD77MS2";
-        const page = createPage({ name: "AC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "AC電源回路（モータ）" });
+        const page = createPageInheritingTitle({ name: "AC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "AC電源回路（モータ）" });
         const els = page.elements;
         const railXs = [35, 40, 45];
         const railAll = groundName ? [[groundName, 30], [rails[0], 35], [rails[1], 40], [rails[2], 45]] : rails.map((n, i) => [n, railXs[i]]);
@@ -15205,7 +15266,7 @@
         const recModel = qs("#dcRecModel")?.value || "";
         const withBrake = (qs("#dcBrake")?.value || "on") === "on";
         const withGout = (qs("#dcGoutArrow")?.value || "on") === "on";
-        const page = createPage({ name: "DC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "DC電源回路" });
+        const page = createPageInheritingTitle({ name: "DC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "DC電源回路" });
         const els = page.elements;
         const railAll = groundName ? [[groundName, 30], [rails[0], 35], [rails[1], 40]] : [[rails[0], 35], [rails[1], 40]];
         railAll.forEach(([name, x]) => {
@@ -15317,7 +15378,7 @@
           setStatus("PLC電源回路の接点タグは12文字以内で入力してください。");
           return;
         }
-        const page = createPage({ name: "PLC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "PLC電源回路" });
+        const page = createPageInheritingTitle({ name: "PLC電源回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "PLC電源回路" });
         const els = page.elements;
         [["G", 30], ["N1", 35], ["P0", 40]].forEach(([name, x]) => {
           els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, TEMPLATE_RAIL_BOTTOM]], wireNo: "", hideWireNo: true, ladderRail: name, wireType: state.settings.currentWireType });
@@ -15418,7 +15479,7 @@
         const monTag = qs("#sfMonTag")?.value || "CR11";
         const pb1Name = qs("#sfPb1")?.value || "非常停止PB1";
         const pb2Name = qs("#sfPb2")?.value || "非常停止PB2";
-        const page = createPage({ name: "リレー回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "リレー回路_非常停止" });
+        const page = createPageInheritingTitle({ name: "リレー回路", size: "A4", orientation: "portrait", frameVariant: "compact", title: "リレー回路_非常停止" });
         const els = page.elements;
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
@@ -15631,7 +15692,7 @@
       function generateIndexPage() {
         const rowsData = state.pages.map((p, i) =>
           [String(i + 1), p.title?.drawingNo || "", p.title?.title || p.name || "", p.name || ""].join("\t"));
-        const page = createPage({
+        const page = createPageInheritingTitle({
           name: "目次" + (state.pages.length + 1),
           size: "A4",
           orientation: "portrait",
@@ -18573,7 +18634,7 @@
         const baseIndex = state.pages.length + 1;
         const splitImages = await rotatedA3TwoUpImages(dataUrl);
         const pages = splitImages.map((item, index) => {
-          const page = createPage({
+          const page = createPageInheritingTitle({
             name: "P" + (baseIndex + index) + "-" + item.suffix,
             size: "A4",
             orientation: "portrait",
@@ -19928,6 +19989,9 @@
               <li><b>複製</b>はオフセット指定つき: 例 オフセット16×2枚 → X060の頁からX070・X080を量産（線番・タグ・ピン文字・頁名を自動加算）</li>
               <li>機能メニュー「<b>行挿入/行削除</b>」: 設備標準の行番号基準で、指定行から下を一括で下げ/詰め（縦レールは自動伸縮）</li>
               <li>図枠は右パネルで変更（既定は<b>基本: 右下表題欄</b>。行番号つきの設備標準図枠も選択可）。基本/詳細表題欄は機能メニュー「表題欄レイアウト編集」で自社様式化可</li>
+              <li><b>表題欄は引き継がれます</b>: ページ追加・複製・テンプレートからのページ追加のいずれでも、現在ページの<b>図名・図番・改訂・作成・日付・設備/場所コード・側注記</b>を引き継ぎます（頁番号・総頁数は自動採番）</li>
+              <li><b>他ページへの反映</b>: 表題欄を1ページで変更すると<b>「他のページへ反映しますか？」</b>と確認が出ます。<b>全ページへ反映</b>を選ぶと同じ値が他の全ページへ入り、Ctrl+Zで戻せます。<b>「以後このセッションでは確認せず、選んだほうを繰り返す」</b>にチェックすると次回から確認なしで同じ扱いになります（ページが1枚だけのときは確認しません）</li>
+              <li>表題欄の入力は<b>Enterを押さなくても確定</b>します。別のページタブや部品をクリックして入力欄から抜けた時点で、<b>編集していたページ</b>へ確実に書き込まれます（切替先のページには書き込まれません）</li>
             </ul>`)}
 
           ${section("シンボルデザイン（JIS/IEC切替）", `
@@ -22737,14 +22801,107 @@
       }
 
       // ページ設定入力(用紙/向き/図枠/図名等)の変更をstateへ反映する共通ハンドラ。
-      function updatePageField(id, apply) {
-        qs("#" + id).addEventListener("change", event => {
-          const page = currentPage();
+      function updatePageField(id, apply, options = {}) {
+        const input = qs("#" + id);
+        if (!input) return;
+        // 入力欄は「編集を始めた時点のページ」へ束縛する。changeはEnterだけでなくblur時にも発火し、
+        // 別のページタブや要素をクリックして抜けた場合はページが切り替わった後に届くことがある。
+        // そこでcurrentPage()を使うと、切り替え先のページの表題欄を書き換えてしまう。
+        let boundPageId = null;
+        const bind = () => { boundPageId = currentPage()?.id || null; };
+        input.addEventListener("focus", bind);
+        input.addEventListener("pointerdown", bind);
+        input.addEventListener("change", event => {
+          const page = state.pages.find(item => item.id === boundPageId) || currentPage();
           if (!page) return;
-          apply(page, event.target.value);
+          const value = event.target.value;
+          apply(page, value);
           commitHistory("ページ設定を更新しました。");
           render();
+          if (options.titleField) {
+            const field = options.titleField;
+            runAfterPendingClick(() => askTitlePropagation(field, page, value));
+          }
         });
+      }
+
+      // 進行中のクリック操作が終わってからfnを実行する。
+      // 入力欄のchangeはEnterだけでなくblur時にも発火するため、ページタブやボタンを押して抜けた瞬間に
+      // ダイアログを開くと、背面(dialog-backdrop)が同じクリックのmouseupを受け取ってしまい、
+      // 押したはずのタブ・ボタンが動かない。clickが流れ終わるのを待ってから開く。
+      // キーボード(Tab)で抜けた場合はclickが来ないので、短いタイマーで必ず実行する。
+      function runAfterPendingClick(fn) {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          document.removeEventListener("click", onClick);
+          clearTimeout(timer);
+          fn();
+        };
+        const onClick = () => setTimeout(finish, 0);
+        document.addEventListener("click", onClick);
+        const timer = setTimeout(finish, 120);
+      }
+
+      // 表題欄の変更を他ページへ反映するかの選択(セッション中のみ保持)。
+      // null=毎回たずねる / "page"=このページだけ / "all"=全ページへ反映
+      let titlePropagationChoice = null;
+
+      // 表題欄の1項目を、変更元以外の全ページへ書き込む。値が同じページは数えない。
+      function applyTitleFieldToOtherPages(field, sourcePage, value) {
+        let changed = 0;
+        state.pages.forEach(page => {
+          if (page.id === sourcePage.id) return;
+          if (!isPlainObject(page.title)) page.title = {};
+          if (page.title[field.key] === value) return;
+          page.title[field.key] = value;
+          changed += 1;
+        });
+        if (!changed) {
+          setStatus("他のページはすでに同じ「" + field.label + "」でした。");
+          return;
+        }
+        commitHistory("表題欄の「" + field.label + "」を他の" + changed + "ページへ反映しました。");
+        render();
+      }
+
+      // 表題欄を1ページで変更したとき、同じ値を他のページへも入れるか確認する。
+      // 変更したページ自身への反映は確認前に確定済みなので、ここで閉じても編集が失われることはない。
+      function askTitlePropagation(field, sourcePage, value) {
+        const others = state.pages.filter(page => page.id !== sourcePage.id);
+        if (!others.length) return;
+        if (titlePropagationChoice === "page") return;
+        if (titlePropagationChoice === "all") {
+          applyTitleFieldToOtherPages(field, sourcePage, value);
+          return;
+        }
+        const shown = value === "" ? "（空欄）" : value;
+        openDialog("表題欄の変更を他のページへ反映しますか？", `
+          <p>「<b>${escapeHtml(field.label)}</b>」を <b>${escapeHtml(shown)}</b> に変更しました。
+          同じ値を他の <b>${others.length}</b> ページの表題欄にも反映しますか？</p>
+          <p class="muted">「このページだけ」を選んでも、いま変更したページの値はそのまま残ります。
+          反映した場合は Ctrl+Z で元に戻せます。</p>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px">
+            <input type="checkbox" id="titlePropRemember" style="width:auto;min-height:auto">
+            以後このセッションでは確認せず、選んだほうを繰り返す
+          </label>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="titlePropOnlyBtn">このページだけ</button>
+            <button type="button" id="titlePropAllBtn" class="primary">全ページへ反映</button>
+          </div>`);
+        const remember = choice => {
+          if (qs("#titlePropRemember")?.checked) titlePropagationChoice = choice;
+        };
+        qs("#titlePropOnlyBtn").onclick = () => {
+          remember("page");
+          closeDialog();
+        };
+        qs("#titlePropAllBtn").onclick = () => {
+          remember("all");
+          closeDialog();
+          applyTitleFieldToOtherPages(field, sourcePage, value);
+        };
       }
 
       // 全UIイベントの一括登録(起動時に1回)。上部ツールバー、左パネル(パレット/表示/機能メニュー)、
@@ -23068,14 +23225,13 @@
         updatePageField("paperSize", (page, value) => { page.size = value; });
         updatePageField("paperOrientation", (page, value) => { page.orientation = value; });
         updatePageField("frameVariant", (page, value) => { page.frameVariant = value; });
-        updatePageField("drawingNo", (page, value) => { page.title.drawingNo = value; });
-        updatePageField("revision", (page, value) => { page.title.revision = value; });
-        updatePageField("drawingTitle", (page, value) => { page.title.title = value; });
-        updatePageField("designer", (page, value) => { page.title.designer = value; });
-        updatePageField("drawDate", (page, value) => { page.title.date = value; });
-        updatePageField("pageInstallation", (page, value) => { page.title.installation = value; });
-        updatePageField("pageLocation", (page, value) => { page.title.location = value; });
-        updatePageField("pageSideNote", (page, value) => { page.title.sideNote = value; });
+        // 表題欄の各欄は共通配線。変更後に「他のページへも反映するか」を確認する(askTitlePropagation)。
+        PAGE_TITLE_FIELDS.forEach(field => {
+          updatePageField(field.id, (page, value) => {
+            if (!isPlainObject(page.title)) page.title = {};
+            page.title[field.key] = value;
+          }, { titleField: field });
+        });
 
         attachCanvasListeners(qs("#canvas"));
         // メニュー外のクリック/スクロール/リサイズで右クリックメニューを閉じる。

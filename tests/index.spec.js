@@ -4271,3 +4271,141 @@ test("位置スイッチ07-08-01/02の三角形は可動線に密着した30-60-
   // b接点の三角形は止めの縦線(x=6.1)より左に収まり交差しない
   expect(Math.max(...result.nc.pts.map(point => point[0]))).toBeLessThan(6.1);
 });
+
+test("ページ追加・複製は表題欄の内容を引き継ぐ", async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const api = window.__edsTest;
+    const setField = (id, value) => {
+      const input = document.querySelector("#" + id);
+      input.focus();
+      input.value = value;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    // 1ページ目の表題欄を埋める(この時点では他ページが無いので確認ダイアログは出ない)
+    setField("drawingTitle", "3号機 制御盤");
+    setField("drawingNo", "A-100");
+    setField("revision", "2");
+    setField("designer", "yuya");
+    setField("pageInstallation", "F1");
+    setField("pageLocation", "L2");
+    setField("pageSideNote", "1号機盤");
+    const dialogAfterFirstPageEdit = !document.querySelector("#dialogBackdrop").classList.contains("hidden");
+
+    // ページ追加
+    document.querySelector("#addPageBtn").click();
+    // ページ複製(ダイアログの既定値で実行)
+    document.querySelector("#duplicatePageBtn").click();
+    document.querySelector("#dupRunBtn").click();
+
+    const pick = page => ({
+      title: page.title.title, drawingNo: page.title.drawingNo, revision: page.title.revision,
+      designer: page.title.designer, installation: page.title.installation,
+      location: page.title.location, sideNote: page.title.sideNote,
+      pageNo: page.title.page
+    });
+    return {
+      dialogAfterFirstPageEdit,
+      count: api.state.pages.length,
+      pages: api.state.pages.map(pick)
+    };
+  });
+
+  // 1ページしか無い間は反映確認を出さない
+  expect(result.dialogAfterFirstPageEdit).toBe(false);
+  expect(result.count).toBeGreaterThanOrEqual(3);
+  const [first, added, duplicated] = result.pages;
+  // 追加ページ・複製ページとも表題欄を引き継ぐ
+  for (const [name, target] of [["追加", added], ["複製", duplicated]]) {
+    expect(target.title, name).toBe(first.title);
+    expect(target.drawingNo, name).toBe("A-100");
+    expect(target.revision, name).toBe("2");
+    expect(target.designer, name).toBe("yuya");
+    expect(target.installation, name).toBe("F1");
+    expect(target.location, name).toBe("L2");
+    expect(target.sideNote, name).toBe("1号機盤");
+  }
+  // 頁番号だけは引き継がず自動採番される
+  expect(result.pages.map(item => item.pageNo)).toEqual(["1", "2", "3"]);
+});
+
+test("表題欄の変更は他ページへ反映するか確認し、選んだとおりに動く", async ({ page }) => {
+  const openPrompt = async () => page.waitForFunction(() =>
+    !document.querySelector("#dialogBackdrop").classList.contains("hidden")
+    && document.querySelector("#dialogTitle").textContent.includes("他のページへ反映"));
+
+  await page.evaluate(() => {
+    document.querySelector("#addPageBtn").click();
+    document.querySelector("#addPageBtn").click();
+  });
+  const setField = (id, value) => page.evaluate(([id, value]) => {
+    const input = document.querySelector("#" + id);
+    input.focus();
+    input.value = value;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, [id, value]);
+
+  // 全ページへ反映
+  await setField("drawingNo", "B-200");
+  await openPrompt();
+  expect(await page.evaluate(() => window.__edsTest.state.pages.map(item => item.title.drawingNo)))
+    .toEqual(["", "", "B-200"]);
+  await page.click("#titlePropAllBtn");
+  expect(await page.evaluate(() => window.__edsTest.state.pages.map(item => item.title.drawingNo)))
+    .toEqual(["B-200", "B-200", "B-200"]);
+
+  // このページだけ
+  await setField("revision", "1");
+  await openPrompt();
+  await page.click("#titlePropOnlyBtn");
+  expect(await page.evaluate(() => window.__edsTest.state.pages.map(item => item.title.revision)))
+    .toEqual(["", "", "1"]);
+
+  // 反映はUndo1回で戻せる(変更したページの値は残る)
+  await setField("designer", "sato");
+  await openPrompt();
+  await page.click("#titlePropAllBtn");
+  await page.evaluate(() => window.__edsTest.restoreHistory(window.__edsTest.historyDiagnostics().index - 1));
+  expect(await page.evaluate(() => window.__edsTest.state.pages.map(item => item.title.designer)))
+    .toEqual(["", "", "sato"]);
+
+  // 「以後確認しない」で選択を繰り返す
+  await setField("pageSideNote", "共通側注");
+  await openPrompt();
+  await page.check("#titlePropRemember");
+  await page.click("#titlePropAllBtn");
+  await setField("pageLocation", "L9");
+  await page.waitForTimeout(200);
+  const after = await page.evaluate(() => ({
+    dialogHidden: document.querySelector("#dialogBackdrop").classList.contains("hidden"),
+    sideNotes: window.__edsTest.state.pages.map(item => item.title.sideNote),
+    locations: window.__edsTest.state.pages.map(item => item.title.location)
+  }));
+  expect(after.dialogHidden).toBe(true);
+  expect(after.sideNotes).toEqual(["共通側注", "共通側注", "共通側注"]);
+  expect(after.locations).toEqual(["L9", "L9", "L9"]);
+});
+
+test("表題欄はEnterを押さなくても、別ページタブへ移った時点で編集していたページへ確定する", async ({ page }) => {
+  await page.evaluate(() => {
+    document.querySelector("#addPageBtn").click();
+    document.querySelector("#addPageBtn").click();
+  });
+  // 3ページ目がアクティブ。Enterを押さずにタイプし、1ページ目のタブをクリックする
+  await page.locator("#drawingTitle").click();
+  await page.locator("#drawingTitle").fill("");
+  await page.locator("#drawingTitle").pressSequentially("三号機 制御盤");
+  const before = await page.evaluate(() => window.__edsTest.state.pages.map(item => item.title.title));
+  await page.locator("#tabbar button").first().click();
+  const after = await page.evaluate(() => ({
+    titles: window.__edsTest.state.pages.map(item => item.title.title),
+    activeIsFirst: window.__edsTest.state.activePageId === window.__edsTest.state.pages[0].id
+  }));
+
+  // タイプしただけでは確定しない
+  expect(before[2]).not.toBe("三号機 制御盤");
+  // 値は「編集していた3ページ目」へ入る(切替先の1ページ目ではない)
+  expect(after.titles[2]).toBe("三号機 制御盤");
+  expect(after.titles[0]).not.toBe("三号機 制御盤");
+  // 表題欄を編集した直後でも、そのクリックでページが切り替わる
+  expect(after.activeIsFirst).toBe(true);
+});
