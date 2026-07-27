@@ -2606,7 +2606,7 @@ test("接触器主接点・トライアック・JISブザー・交流電源の�
   for (const item of result) {
     expect(item.primCount, `${item.type}の形状`).toBeGreaterThan(2);
     expect(item.anchorCount, `${item.type}の接続点`).toBe(2);
-    expect(item.span, `${item.type}のピン間隔`).toBeCloseTo(item.type === "buzzer" ? 3.8 : 10, 5);
+    expect(item.span, `${item.type}のピン間隔`).toBeCloseTo(item.type === "buzzer" ? 2.4 : 10, 5);
   }
 });
 
@@ -3960,5 +3960,9 @@ test("JISブザーは半球下の2本の端子線を接続点にする", async (
   expect(result.anchors).toHaveLength(2);
   expect(result.anchors[0].y).toBe(result.anchors[1].y);
   expect(result.anchors[0].y).toBeGreaterThan(50);
-  expect(result.lines.filter(line => line.x1 === line.x2 && line.y2 > line.y1)).toHaveLength(2);
+  const terminalLines = result.lines.filter(line => line.x1 === line.x2 && line.y2 > line.y1);
+  const domeBase = result.lines.find(line => line.y1 === line.y2 && line.x2 > line.x1);
+  expect(terminalLines).toHaveLength(2);
+  expect(terminalLines[0].x1).toBeGreaterThan(domeBase.x1);
+  expect(terminalLines[1].x1).toBeLessThan(domeBase.x2);
 });
