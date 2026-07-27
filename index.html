@@ -1267,7 +1267,14 @@
         <label for="pageName">ページ名</label>
         <input id="pageName" type="text">
         <label><input id="showPageNameToggle" type="checkbox" style="width:auto;min-height:auto"> 図面上部にページ名を表示</label>
-        <label title="ONの間にパレットから配置するシンボルを1.5倍で置きます。既存の要素は変わりません。"><input id="symbolScaleToggle" type="checkbox" style="width:auto;min-height:auto"> シンボル拡大（新規配置を1.5倍）</label>
+        <label for="symbolScaleSelect" title="選んだ倍率で、以後パレットから配置するシンボルを拡大して置きます。既存の要素は変わりません。">シンボル拡大（新規配置の倍率）</label>
+        <select id="symbolScaleSelect">
+          <option value="1">なし（等倍）</option>
+          <option value="1.5">1.5倍</option>
+          <option value="2">2倍</option>
+          <option value="2.5">2.5倍</option>
+          <option value="3">3倍</option>
+        </select>
         <div class="row">
           <div>
             <label for="paperSize">用紙</label>
@@ -1548,7 +1555,6 @@
         { type: "terminalStrip", label: "端子台", icon: "strip" },
         { type: "terminalSheet", label: "端子配線セット", icon: "sheet" },
         { type: "contactNO", label: "a接点", icon: "contactNO" },
-        { type: "contactor3p", label: "電磁接触器 主接点3極", icon: "contactor3p" },
         { type: "contactNC", label: "b接点", icon: "contactNC" },
         { type: "timerContactNO", label: "限時a接点", icon: "contactNO" },
         { type: "timerContactNC", label: "限時b接点", icon: "contactNC" },
@@ -1563,8 +1569,6 @@
         { type: "lamp", label: "ランプ", icon: "lamp" },
         { type: "buzzer", label: "ブザー", icon: "buzzer" },
         { type: "meter", label: "計器(V/A)", icon: "coil" },
-        { type: "bell", label: "ベル", icon: "buzzer" },
-        { type: "beacon", label: "回転灯", icon: "lamp" },
         { type: "solenoidValve", label: "ソレノイド弁", icon: "solenoidValve" },
         { type: "sensor", label: "センサ", icon: "sensor" },
         { type: "photoelectricSwitch", label: "光電スイッチ", icon: "sensor" },
@@ -1646,7 +1650,6 @@
         footSwitch: "FTS",
         logicGate: "",
         photocoupler: "PC",
-        bell: "BL",
         battery: "BT",
         rectifierBox: "REC",
         currentTransformer: "CT",
@@ -1655,7 +1658,6 @@
         ground: "E",
         motor: "M",
         generator: "G",
-        contactor3p: "MC",
         fan: "FAN",
         resistor: "R",
         capacitor: "C",
@@ -1663,7 +1665,6 @@
         thermalRelay: "THR",
         disconnector: "DS",
         outlet: "SC",
-        beacon: "SL",
         thermalElement: "OL",
         pressureSwitch: "PS",
         deviceBox: "DEV",
@@ -1696,7 +1697,7 @@
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
         arc: "basic", ellipse: "basic", ellipseArc: "basic", polygon: "basic",
         contactNO: "contact", contactNC: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact", flowSwitch: "contact", footSwitch: "contact", photoelectricSwitch: "contact", matSwitch: "contact", reedSwitch: "contact", lightCurtain: "contact",
-        coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil", bell: "coil", beacon: "coil",
+        coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil",
         disconnector: "power", outlet: "power",
         powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power", inductor: "power", heater: "power", battery: "power", rectifierBox: "power", arrester: "power", currentTransformer: "power",
         fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect", transistor: "protect", logicGate: "protect", photocoupler: "protect",
@@ -1704,7 +1705,7 @@
         deviceBox: "device", plcBlock: "device", installationBox: "device", locationBox: "device", table: "device",
         arrow: "annotation", positionMark: "annotation", polarityMark: "annotation", cloud: "annotation", revisionMark: "annotation",
         qualifierMark: "annotation", operatorMark: "annotation",
-        contactor3p: "contact", generator: "power"
+        generator: "power"
       };
 
       // 開いているパレットカテゴリのid集合(セッション内で開閉状態を保持)。
@@ -1824,7 +1825,7 @@
       // 読み込むときはMIGRATIONSで1段ずつ現行版へ引き上げる。versionは人間向けの表示文字列で、
       // 互換判定にはschemaVersionのみを使う。
       // 将来データ構造を変えるとき: SCHEMA_VERSIONを+1し、MIGRATIONSへ「旧版数: 変換関数」を1件追加する。
-      const SCHEMA_VERSION = 5;
+      const SCHEMA_VERSION = 6;
 
       // schema v3公開後に変圧器3デザインの上タップを主ピンの1行上へ移したため、
       // 旧v3図面に残る上タップ配線だけを新アンカーへ追従させる。スキーマ構造は変わらないので
@@ -2368,6 +2369,109 @@
               });
               element.buzzerVariant = old.next;
             });
+            if (!moves.length) return;
+            elements.forEach(element => {
+              if (!isPlainObject(element)) return;
+              if (["wire", "line", "arrow", "mechanicalLink"].includes(element.type) && Array.isArray(element.points)) {
+                element.points.forEach(point => {
+                  const move = moves.find(item => near(item[0], point[0]) && near(item[1], point[1]));
+                  if (move) { point[0] = round(move[2]); point[1] = round(move[3]); }
+                });
+              } else if (element.type === "junction") {
+                const move = moves.find(item => near(item[0], Number(element.x || 0)) && near(item[1], Number(element.y || 0)));
+                if (move) { element.x = round(move[2]); element.y = round(move[3]); }
+              }
+            });
+          });
+          return data;
+        },
+        // 5→6: 回転灯(beacon)・ベル(bell)・電磁接触器主接点3極(contactor3p)を廃止する。
+        // 既存図面が空白にならないよう、最も近い現行種別へ置き換える。
+        //   beacon → lamp(表示灯)      : どちらも左右ピンの横並びで、接続点の位置が変わらない
+        //   bell   → buzzer(08-10-06)  : 接続点が左右→下向き2本へ移るため配線・接続点を追従させる
+        //   contactor3p → 単極のa接点3個 : 極ごとに切り離し、各極の接続点をそのまま保つ
+        // シンボル拡大の設定も、旧真偽値(true=1.5倍)からこの版で倍率の数値へ統一する。
+        5: data => {
+          const near = (a, b) => Math.abs(Number(a) - Number(b)) < .02;
+          (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+            if (!isPlainObject(page)) return;
+            if (page.symbolScale === true) page.symbolScale = 1.5;
+            else if (page.symbolScale === false) page.symbolScale = 1;
+          });
+          const elementLists = [];
+          (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+            if (isPlainObject(page) && Array.isArray(page.elements)) elementLists.push(page.elements);
+          });
+          const collectCustomSymbolTemplates = symbols => {
+            (Array.isArray(symbols) ? symbols : []).forEach(symbol => {
+              if (!isPlainObject(symbol)) return;
+              if (Array.isArray(symbol.templates)) elementLists.push(symbol.templates);
+              else if (isPlainObject(symbol.template)) elementLists.push([symbol.template]);
+            });
+          };
+          collectCustomSymbolTemplates(data.customSymbols);
+          (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach(pack => {
+            if (isPlainObject(pack)) collectCustomSymbolTemplates(pack.customSymbols);
+          });
+          elementLists.forEach(elements => {
+            const moves = [];
+            const added = [];
+            elements.forEach(element => {
+              if (!isPlainObject(element)) return;
+              const angle = Number(element.rotation || 0) * Math.PI / 180;
+              const cos = Math.cos(angle), sin = Math.sin(angle);
+              const originX = Number(element.x || 0), originY = Number(element.y || 0);
+              const globalAt = (localX, localY) => [
+                originX + localX * cos - localY * sin,
+                originY + localX * sin + localY * cos
+              ];
+              if (element.type === "beacon") {
+                // 旧beaconはw10/h6・接続点のローカルYが4.4。lampはw10/h4.4で接続点のローカルYが2.2。
+                // 差の2.2mmだけ要素原点を下げると、接続点の絶対位置が変わらず配線を動かさずに済む。
+                element.type = "lamp";
+                element.x = round(originX - 2.2 * sin);
+                element.y = round(originY + 2.2 * cos);
+                element.w = 10;
+                element.h = 4.4;
+                if (!element.lampVariant) element.lampVariant = "pilot";
+                return;
+              }
+              if (element.type === "bell") {
+                const before = [globalAt(0, 3), globalAt(10, 3)];
+                element.type = "buzzer";
+                element.buzzerVariant = "jis0806";
+                element.w = 12;
+                element.h = 6;
+                const after = [globalAt(4.75, 6), globalAt(7.25, 6)];
+                before.forEach((point, index) => {
+                  if (!near(point[0], after[index][0]) || !near(point[1], after[index][1])) {
+                    moves.push([point[0], point[1], after[index][0], after[index][1]]);
+                  }
+                });
+                return;
+              }
+              if (element.type === "contactor3p") {
+                // 3極を単極のa接点(縦向き)3個へ分解する。各極の接続点は元の位置のままなので配線は動かない。
+                element.type = "contactNO";
+                element.orientation = "vertical";
+                element.w = 4.4;
+                element.h = 10;
+                const base = globalAt(5 - 2.2, 0);
+                element.x = round(base[0]);
+                element.y = round(base[1]);
+                [15, 25].forEach((poleX, index) => {
+                  const origin = globalAt(poleX - 2.2, 0);
+                  added.push({
+                    ...deepClone(element),
+                    id: String(element.id || "mc") + "-pole" + (index + 2),
+                    x: round(origin[0]),
+                    y: round(origin[1])
+                  });
+                });
+                return;
+              }
+            });
+            added.forEach(element => elements.push(element));
             if (!moves.length) return;
             elements.forEach(element => {
               if (!isPlainObject(element)) return;
@@ -3563,7 +3667,6 @@
           polarityMark: `<svg ${common}><circle cx="40" cy="22" r="11" ${stroke}/><path ${thin} d="M32 22h16M40 14v16"/></svg>`,
           qualifierMark: `<svg ${common}><path ${stroke} d="M14 16h52"/><path ${stroke} stroke-dasharray="8 6" d="M14 30h52"/></svg>`,
           operatorMark: `<svg ${common}><path ${stroke} d="M20 20v-8h40v8M40 12v30"/></svg>`,
-          contactor3p: `<svg ${common}><path ${stroke} d="M16 4v12M16 30v12M16 16l8 10M40 4v12M40 30v12M40 16l8 10M64 4v12M64 30v12M64 16l8 10"/><path ${thin} stroke-dasharray="5 4" d="M24 26h48"/></svg>`,
           generator: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/><text x="40" y="29" text-anchor="middle" font-size="17" fill="currentColor">G</text><path ${stroke} d="M8 22h17M55 22h17"/></svg>`,
           box: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M8 18h10M8 28h10M62 18h10M62 28h10"/></svg>`,
           plc: `<svg ${common}><rect x="16" y="8" width="48" height="30" ${stroke}/><path ${thin} d="M24 8v30M16 16h48M16 24h48M16 32h48"/></svg>`,
@@ -5755,11 +5858,29 @@
       }
 
       // 端子箱のindex番目(0始まり)の箱の中心Y。区画を等分した中央に置く。
-      function terminalBoxPinY(element, index) {
-        const h = Number(element.h || 18);
+      // 端子箱の1区画(=端子1個)の高さ。boxCellHeightを入れるとその値、空欄なら従来どおり全高の等分。
+      function terminalBoxCellHeight(element) {
+        const explicit = Number(element.boxCellHeight);
+        if (Number.isFinite(explicit) && explicit > 0) return explicit;
         const rows = Math.max(1, Number(element.rows || 3));
+        return Number(element.h || 18) / rows;
+      }
+
+      // 端子箱の外形高さ。1区画の高さが指定されていれば 区画高×箱数 が正。
+      function terminalBoxHeight(element) {
+        const rows = Math.max(1, Number(element.rows || 3));
+        return round(terminalBoxCellHeight(element) * rows);
+      }
+
+      // 端子箱の引き出し線の長さ(mm)。既定6mm。
+      function terminalBoxStubLength(element) {
+        const value = Number(element.boxStubLength);
+        return Number.isFinite(value) && value >= 0 ? value : 6;
+      }
+
+      function terminalBoxPinY(element, index) {
         // 箱の区画中央へ正確に置く。2.5mm丸めすると拡大縮小後に区画線と引き出し線がズレるため丸めない。
-        return round(h * (index + .5) / rows);
+        return round(terminalBoxCellHeight(element) * (index + .5));
       }
 
       // 端子箱の箱ごとの引き出し線(左右)の表示判定。既定は表示。
@@ -5897,18 +6018,20 @@
       // 端子箱(箱+端子行)の描画。引き出し線は箱ごと・左右ごとに表示切替できる。
       function drawTerminalBox(g, element, stroke) {
         const w = Number(element.w || 22);
-        const h = Number(element.h || 18);
         const rows = Math.max(1, Number(element.rows || 3));
+        const cell = terminalBoxCellHeight(element);
+        const h = terminalBoxHeight(element);
+        const stub = terminalBoxStubLength(element);
         g.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, class: "symbol-fill", stroke }));
         for (let i = 1; i < rows; i++) {
-          g.appendChild(svgEl("line", { x1: 0, y1: h * i / rows, x2: w, y2: h * i / rows, class: "symbol-line", stroke }));
+          g.appendChild(svgEl("line", { x1: 0, y1: round(cell * i), x2: w, y2: round(cell * i), class: "symbol-line", stroke }));
         }
         const boxLabels = String(element.boxLabels || "").split(/\r?\n/);
         const boxLabelSize = Math.max(1, Number(element.boxLabelFontSize || 2.2));
         for (let i = 0; i < rows; i++) {
           const y = terminalBoxPinY(element, i);
-          if (terminalBoxStubVisible(element, "left", i)) g.appendChild(svgEl("line", { x1: -6, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
-          if (terminalBoxStubVisible(element, "right", i)) g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + 6, y2: y, class: "symbol-line", stroke }));
+          if (stub > 0 && terminalBoxStubVisible(element, "left", i)) g.appendChild(svgEl("line", { x1: -stub, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
+          if (stub > 0 && terminalBoxStubVisible(element, "right", i)) g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + stub, y2: y, class: "symbol-line", stroke }));
           if (boxLabels[i]) g.appendChild(textEl(boxLabels[i], w / 2, y, { fontSize: boxLabelSize, anchor: "middle" }));
         }
         // ラベルはシンボル上側で統一(DXF出力の-2.2と同じ側)。
@@ -6893,6 +7016,39 @@
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // 位置スイッチ・メーク接点(JIS C 0617-7, 07-08-01): 線だけのa接点(IEC形)に、
+        // 可動線の中点から下ろした操作軸と、その先の三角形(操作子)を付ける。
+        // 操作軸は固定接点の線が切れている区間(x=3.9〜6.1)を通るため、他の線と交差しない。
+        limitSwitchJisNO: {
+          w: 10, h: 6,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.9, 2.2] },
+            { t: "line", p: [6.1, 2.2, 10, 2.2] },
+            { t: "line", p: [3.9, 2.2, 6.4, 0.6] },
+            { t: "line", p: [5.15, 1.4, 5.15, 3.2] },
+            { t: "pline", pts: [[5.15, 3.2], [4.35, 4.6], [5.95, 4.6], [5.15, 3.2]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 5.8], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // 位置スイッチ・ブレーク接点(JIS C 0617-7, 07-08-02): 線だけのb接点(IEC形)+操作軸+三角形。
+        limitSwitchJisNC: {
+          w: 10, h: 6,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.9, 2.2] },
+            { t: "line", p: [6.1, 2.2, 10, 2.2] },
+            { t: "line", p: [6.1, 0.7, 6.1, 2.2] },
+            { t: "line", p: [3.9, 2.2, 6.6, 0.5] },
+            { t: "line", p: [5.25, 1.35, 5.25, 3.2] },
+            { t: "pline", pts: [[5.25, 3.2], [4.45, 4.6], [6.05, 4.6], [5.25, 3.2]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 5.8], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
         pressureSwitch: {
           w: 10, h: 6,
           anchors: [[0, 2.2], [10, 2.2]],
@@ -7288,7 +7444,7 @@
             { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // ダイオード(ツェナー): バー両端に折り返し。
+        // ダイオード(ツェナー): カソードバーの片側だけを折り返す(JIS C 0617-5, 05-03-06)。
         diodeZener: {
           w: 10, h: 4.4,
           anchors: [[0, 2.2], [10, 2.2]],
@@ -7297,8 +7453,8 @@
             { t: "line", p: [6.0, 2.2, 10, 2.2] },
             { t: "pline", pts: [[3.4, 0.9], [3.4, 3.5], [6.0, 2.2], [3.4, 0.9]] },
             { t: "line", p: [6.0, 0.9, 6.0, 3.5] },
+            // JIS C 0617-5 05-03-06: 折れるのはカソードバーの片側だけ(両側を折るとZ形になり規格外)。
             { t: "line", p: [6.0, 0.9, 5.55, 0.9] },
-            { t: "line", p: [6.0, 3.5, 6.45, 3.5] },
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -7841,20 +7997,6 @@
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 回転灯: 台座+ドーム+光線。
-        beacon: {
-          w: 10, h: 6,
-          anchors: [[0, 4.4], [10, 4.4]],
-          prims: [
-            { t: "line", p: [0, 4.4, 3.4, 4.4] },
-            { t: "line", p: [6.6, 4.4, 10, 4.4] },
-            { t: "rect", p: [3.4, 3.6, 3.2, 1.6], fill: "white" },
-            { t: "arc", p: [5, 3.6, 1.6, 180, 360] },
-            { t: "line", p: [2.9, 1.1, 3.7, 1.9] },
-            { t: "line", p: [7.1, 1.1, 6.3, 1.9] },
-            { t: "text", p: [5, -0.8], size: 2, anchor: "middle", field: "label" }
-          ]
-        },
         // サーマルリレー(箱形): 箱+内部の⊓素子。ピンピッチ10mm(2.5mmグリッド整合)。
         thermalRelayBox: {
           w: 10, h: 4,
@@ -8139,7 +8281,8 @@
         // サイリスタ: ダイオード+ゲート線。
         diodeThyristor: {
           w: 10, h: 4.4,
-          anchors: [[0, 2.2], [10, 2.2]],
+          // 第3の接続点はゲート線の先端。ここへ配線を落とせないとゲート回路が描けない。
+          anchors: [[0, 2.2], [10, 2.2], [7.6, 4.4]],
           prims: [
             { t: "line", p: [0, 2.2, 3.4, 2.2] },
             { t: "line", p: [6.0, 2.2, 10, 2.2] },
@@ -8152,7 +8295,8 @@
         // トライアック(双方向サイリスタ): 逆並列三角2個+両側バー+ゲート線。
         diodeTriac: {
           w: 10, h: 4.7,
-          anchors: [[0, 2.2], [10, 2.2]],
+          // サイリスタと同じく、ゲート線の先端を第3の接続点にする。
+          anchors: [[0, 2.2], [10, 2.2], [7.8, 4.6]],
           prims: [
             { t: "line", p: [0, 2.2, 3.8, 2.2] },
             { t: "line", p: [6.2, 2.2, 10, 2.2] },
@@ -8200,6 +8344,36 @@
           anchors: [[0, 3], [10, 0.5], [10, 5.5]],
           prims: [
             { t: "circle", p: [5.2, 3, 2.9] },
+            { t: "line", p: [0, 3, 3.4, 3] },
+            { t: "line", p: [3.4, 1.5, 3.4, 4.5] },
+            { t: "line", p: [3.4, 2.3, 6.6, 0.5] },
+            { t: "line", p: [6.6, 0.5, 10, 0.5] },
+            { t: "line", p: [3.4, 3.7, 6.6, 5.5] },
+            { t: "line", p: [6.6, 5.5, 10, 5.5] },
+            { t: "pline", pts: [[4.9, 5.15], [4.25, 4.15], [5.4, 4.25] ] },
+            { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // トランジスタ(NPN・外囲みなし): 封止を表す円を省いた形。寸法・接続点は円ありと共通。
+        transistorNpnPlain: {
+          w: 10, h: 6,
+          anchors: [[0, 3], [10, 0.5], [10, 5.5]],
+          prims: [
+            { t: "line", p: [0, 3, 3.4, 3] },
+            { t: "line", p: [3.4, 1.5, 3.4, 4.5] },
+            { t: "line", p: [3.4, 2.3, 6.6, 0.5] },
+            { t: "line", p: [6.6, 0.5, 10, 0.5] },
+            { t: "line", p: [3.4, 3.7, 6.6, 5.5] },
+            { t: "line", p: [6.6, 5.5, 10, 5.5] },
+            { t: "pline", pts: [[5.35, 4.15], [6.0, 5.15], [4.85, 5.05]] },
+            { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // トランジスタ(PNP・外囲みなし): 矢印がベース向き。
+        transistorPnpPlain: {
+          w: 10, h: 6,
+          anchors: [[0, 3], [10, 0.5], [10, 5.5]],
+          prims: [
             { t: "line", p: [0, 3, 3.4, 3] },
             { t: "line", p: [3.4, 1.5, 3.4, 4.5] },
             { t: "line", p: [3.4, 2.3, 6.6, 0.5] },
@@ -8313,19 +8487,6 @@
             { t: "line", p: [2.8, 2.8, 7.2, 2.8] },
             { t: "text", p: [7.6, 4.2], size: 1.7, anchor: "start", value: "t°" },
             { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" }
-          ]
-        },
-        // ベル: ドーム+底線(配線上に載る)。
-        bell: {
-          w: 10, h: 5.4,
-          anchors: [[0, 3], [10, 3]],
-          prims: [
-            { t: "line", p: [0, 3, 3.1, 3] },
-            { t: "line", p: [6.9, 3, 10, 3] },
-            { t: "arc", p: [5, 3, 1.9, 180, 360] },
-            { t: "line", p: [3.1, 3, 6.9, 3] },
-            { t: "line", p: [5, 3, 5, 4.1] },
-            { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
         // ブザー(JIS C 0617-8, 08-10-06): 弦を下にした半円(上ふくらみ)。弦の両端より少し内側から
@@ -8647,6 +8808,28 @@
         reedSwitchNC: {
           w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
             { t: "line", p: [0, 7, 5, 7] }, { t: "line", p: [20, 7, 25, 7] }, { t: "rect", p: [5, 3, 15, 8], rx: 4, fill: "white" }, { t: "line", p: [7, 7, 18, 7] },
+            { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // リードa接点(縦バー形): 箱の中に設備標準の縦バー2本のa接点を入れる。
+        // 縦バーは箱の高さ内に収め、リード線は箱の内側で切って重ならないようにする。
+        reedSwitchBarNO: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 5, 7] }, { t: "line", p: [20, 7, 25, 7] }, { t: "rect", p: [5, 3, 15, 8], rx: 4, fill: "white" },
+            { t: "line", p: [7, 7, 10.6, 7] }, { t: "line", p: [14.4, 7, 18, 7] },
+            { t: "rect", p: [10.6, 4.2, 0.6, 5.6], fill: "white" },
+            { t: "rect", p: [13.8, 4.2, 0.6, 5.6], fill: "white" },
+            { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // リードb接点(縦バー形): 縦バー2本へ斜線を重ねる。斜線は箱の内側に収める。
+        reedSwitchBarNC: {
+          w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
+            { t: "line", p: [0, 7, 5, 7] }, { t: "line", p: [20, 7, 25, 7] }, { t: "rect", p: [5, 3, 15, 8], rx: 4, fill: "white" },
+            { t: "line", p: [7, 7, 10.6, 7] }, { t: "line", p: [14.4, 7, 18, 7] },
+            { t: "rect", p: [10.6, 4.2, 0.6, 5.6], fill: "white" },
+            { t: "rect", p: [13.8, 4.2, 0.6, 5.6], fill: "white" },
+            { t: "line", p: [10.0, 10.2, 15.0, 3.8] },
             { t: "text", p: [12.5, -1], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8988,31 +9171,6 @@
           ]
         },
 
-        // ---- JIS C 0617-7 電磁接触器 主接点(3極) ----
-        // 縦向きのa接点(斜め可動線+接触器機能記号の半円)を10mmピッチで3極並べ、
-        // 可動線の先端どうしを破線(機械連動)で結ぶ。破線 y=6.4 は半円の頂点 y=6.6 より上を通るため
-        // 半円とは交差せず、両端の極では可動線の先端に正確に接する。
-        contactor3p: {
-          w: 30, h: 10,
-          anchors: [[5, 0], [5, 10], [15, 0], [15, 10], [25, 0], [25, 10]],
-          prims: [
-            { t: "line", p: [5, 0, 5, 3.9] },
-            { t: "line", p: [5, 7.3, 5, 10] },
-            { t: "line", p: [5, 3.9, 6.6, 6.4] },
-            { t: "arc", p: [5, 6.6, 0.7, 0, 180] },
-            { t: "line", p: [15, 0, 15, 3.9] },
-            { t: "line", p: [15, 7.3, 15, 10] },
-            { t: "line", p: [15, 3.9, 16.6, 6.4] },
-            { t: "arc", p: [15, 6.6, 0.7, 0, 180] },
-            { t: "line", p: [25, 0, 25, 3.9] },
-            { t: "line", p: [25, 7.3, 25, 10] },
-            { t: "line", p: [25, 3.9, 26.6, 6.4] },
-            { t: "arc", p: [25, 6.6, 0.7, 0, 180] },
-            { t: "line", p: [6.6, 6.4, 26.6, 6.4], dash: "1.4 1.2" },
-            { t: "text", p: [15, -1.5], size: 2.2, anchor: "middle", field: "label" }
-          ]
-        },
-
         // ---- JIS C 0617-6 発電機 ----
         // 円の中に"G"。電動機(motor)と対になる記号。左右にリードを出しピンピッチ10mm。
         generator: {
@@ -9092,7 +9250,6 @@
             if (variant === "plugPin3") return "outletPlugPin3";
             return "outlet";
           }
-          case "beacon": return "beacon";
           case "thermalElement": return "thermalElement";
           case "breaker": {
             if (variant === "elb") return "breakerElb";
@@ -9128,7 +9285,7 @@
             if (variant === "photo") return "diodePhoto";
             return "diode";
           }
-          case "transistor": return variant === "pnp" ? "transistorPnp" : "transistorNpn";
+          case "transistor": return ({ pnp: "transistorPnp", npnPlain: "transistorNpnPlain", pnpPlain: "transistorPnpPlain" })[variant] || "transistorNpn";
           case "capacitor": return variant === "polarized" ? "capacitorPolarized" : (variant === "variable" ? "capacitorVariable" : "capacitor");
           case "pushButton":
             if ((element.pbStyle || "momentary") === "emergency") {
@@ -9181,7 +9338,7 @@
           }
           case "photoelectricSwitch": return ({ transmitter: "photoSwitchTransmitter", receiver: "photoSwitchReceiver", throughBeam: "photoSwitchThroughBeam", retro: "photoSwitchRetro", diffuse: "photoSwitchDiffuse", fiber: "photoSwitchFiber", fork: "photoSwitchFork", general: "photoSwitchGeneral", convergent: "photoSwitchConvergent", colorMark: "photoSwitchColorMark" })[variant] || "photoSwitchThroughBeam";
           case "matSwitch": return ({ standard: "matSwitchStandard", no: "matSwitchNO", nc: "matSwitchNC", safety: "matSwitchSafety" })[variant] || "matSwitchStandard";
-          case "reedSwitch": return ({ no: "reedSwitchNO", nc: "reedSwitchNC", changeover: "reedSwitchChangeover", magnet: "reedSwitchMagnet", cylinder: "reedSwitchCylinder" })[variant] || "reedSwitchNO";
+          case "reedSwitch": return ({ no: "reedSwitchNO", nc: "reedSwitchNC", barNo: "reedSwitchBarNO", barNc: "reedSwitchBarNC", changeover: "reedSwitchChangeover", magnet: "reedSwitchMagnet", cylinder: "reedSwitchCylinder" })[variant] || "reedSwitchNO";
           case "lightCurtain": return ({ pair: "lightCurtainPair", emitter: "lightCurtainEmitter", receiver: "lightCurtainReceiver", safety: "lightCurtainSafety", tube: "lightCurtainTube" })[variant] || "lightCurtainPair";
           case "solenoidValve": return variant === "double" ? "solenoidValveDouble" : null;
           case "powerSupply": {
@@ -9195,6 +9352,8 @@
             if (variant === "roller") return "limitSwitchRoller";
             if (variant === "rollerNc") return "limitSwitchRollerNC";
             if (variant === "nc") return "limitSwitchNC";
+            if (variant === "jisNo") return "limitSwitchJisNO";
+            if (variant === "jisNc") return "limitSwitchJisNC";
             return "limitSwitch";
           }
           case "pressureSwitch": return variant === "nc" ? "pressureSwitchNC" : "pressureSwitch";
@@ -9247,7 +9406,6 @@
           case "fuse": return variant === "blank" ? "fuseBlank" : (variant === "wave" ? "fuseWave" : "fuse");
           case "floatSwitch": return variant === "nc" ? "floatSwitchNC" : "floatSwitch";
           case "thermoSwitch": return variant === "nc" ? "thermoSwitchNC" : "thermoSwitch";
-          case "bell": return "bell";
           case "buzzer": return ({ jis0806: "buzzerJis0806", jis0810: "buzzerJis0810", siren: "buzzerSiren", sound: "buzzerSound", piezo: "buzzerPiezo" })[element.buzzerVariant] || null;
           case "battery": return variant === "single" ? "batterySingle" : "battery";
           case "rectifierBox": return "rectifierBox";
@@ -9264,7 +9422,6 @@
             key: "operatorKey", roller: "operatorRoller", foot: "operatorFoot", emergency: "operatorEmergency",
             electromagnetic: "operatorElectromagnetic", thermal: "operatorThermal"
           })[variant] || "operatorManual";
-          case "contactor3p": return "contactor3p";
           case "generator": return "generator";
           default: return null;
         }
@@ -9889,7 +10046,7 @@
         setValue("drawingStandard", state.settings.standard || "general");
         setValue("pageName", page.name);
         qs("#showPageNameToggle").checked = state.settings.showPageName === true;
-        qs("#symbolScaleToggle").checked = page.symbolScale === true;
+        setValue("symbolScaleSelect", String(pageSymbolScale(page)));
         setValue("pageOrder", state.pages.findIndex(item => item.id === page.id) + 1);
         setValue("paperSize", page.size);
         setValue("paperOrientation", page.orientation);
@@ -10418,7 +10575,7 @@
         fuse: [["standard", "箱＋貫通線（設備標準）"], ["blank", "箱のみ（IEC）"], ["wave", "S字（旧JIS）"]],
         breaker: [["standard", "実測形（円＋アーク＋トリップ）"], ["arc", "円＋アーク（トリップなし）"], ["mccb", "配線用遮断器（箱形）"], ["elb", "漏電（E表示つき）"], ["iec", "×＋開き線（IEC）"]],
         pushButton: [["standard", "押しa接点（設備標準）"], ["nc", "押しb接点（NC）"], ["jis", "押しa接点（JIS C 0617）"], ["jisNc", "押しb接点（JIS C 0617）"], ["illuminated", "照光式（ランプ内蔵）"], ["palm", "パーム（キノコ・a接点）"], ["pull", "引きボタン"], ["twist", "ひねりボタン"]],
-        transistor: [["npn", "NPN"], ["pnp", "PNP"]],
+        transistor: [["npn", "NPN（外囲みの円あり）"], ["pnp", "PNP（外囲みの円あり）"], ["npnPlain", "NPN（円なし）"], ["pnpPlain", "PNP（円なし）"]],
         meter: [["standard", "円形"], ["box", "角形"], ["double", "二重円（積算計）"], ["needle", "円＋針（アナログ）"]],
         motor: [["standard", "円（設備標準）"], ["double", "二重円（発電機等）"]],
         thermalRelay: [["standard", "○✕○"], ["box", "箱形（内部⊓）"], ["iecNc", "b接点＋熱動素子（JIS C 0617）"], ["iecNo", "a接点＋熱動素子（JIS C 0617）"], ["jisNc", "円端子b接点＋熱動素子"], ["jisNo", "円端子a接点＋熱動素子"], ["barNc", "縦バーb接点＋熱動素子"], ["barNo", "縦バーa接点＋熱動素子"], ["changeover", "切替接点（1c・1入2出）"], ["xOnly", "✕のみ（簡易形）"]],
@@ -10426,7 +10583,7 @@
         currentTransformer: [["standard", "円（CT）"], ["zct", "二重円（ZCT）"], ["coil", "貫通線＋コブ2（旧JIS）"]],
         selectorSwitch: [["standard", "2位置（設備標準）"], ["onOff", "入・切表示付き（見本形）"], ["jis", "2位置（JIS C 0617）"], ["three", "3位置"], ["key", "鍵付き"]],
         logicGate: [["and", "AND（&）"], ["or", "OR（≥1）"], ["not", "NOT（1＋否定丸）"], ["nand", "NAND（&＋否定丸）"], ["nor", "NOR（≥1＋否定丸）"], ["xor", "XOR（=1）"]],
-        limitSwitch: [["standard", "箱形アクチュエータ（NO）"], ["nc", "箱形・下側（NC/オーバーラン）"], ["roller", "ローラーレバー（NO）"], ["rollerNc", "ローラーレバー（NC）"]],
+        limitSwitch: [["standard", "箱形アクチュエータ（NO）"], ["nc", "箱形・下側（NC/オーバーラン）"], ["jisNo", "位置スイッチa接点（JIS C 0617 07-08-01）"], ["jisNc", "位置スイッチb接点（JIS C 0617 07-08-02）"], ["roller", "ローラーレバー（NO）"], ["rollerNc", "ローラーレバー（NC）"]],
         transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "二巻線円形（JIS）"], ["circlesCore", "二巻線円形＋鉄心（JIS）"]],
         heater: [["standard", "箱＋斜線（設備標準）"], ["plain", "箱のみ（JIS抵抗器形）"]],
         arrester: [["standard", "箱＋矢印（設備標準）"], ["gap", "ギャップ形（対向三角）"]],
@@ -10443,7 +10600,7 @@
         sensor: [["standard", "汎用センサ"], ["inductive", "誘導形近接センサ"], ["photo", "光電センサ"], ["capacitive", "静電容量形近接センサ"], ["magnetic", "磁気・リードセンサ"], ["ultrasonic", "超音波センサ"], ["laser", "レーザセンサ"], ["hall", "ホールセンサ"]],
         photoelectricSwitch: [["throughBeam", "透過形（投光・受光対向）"], ["transmitter", "投光器単体"], ["receiver", "受光器単体"], ["retro", "回帰反射形"], ["diffuse", "拡散反射形"], ["convergent", "距離設定形（BGS・焦点収束）"], ["fiber", "ファイバ式"], ["fork", "溝形・フォーク式"], ["colorMark", "マーク・カラー検出形"], ["general", "一般形（箱＋入射光）"]],
         matSwitch: [["standard", "感圧マット一般形"], ["no", "a接点付感圧マット"], ["nc", "b接点付感圧マット"], ["safety", "安全マット2チャンネル"]],
-        reedSwitch: [["no", "リードa接点（NO）"], ["nc", "リードb接点（NC）"], ["changeover", "リード切替接点"], ["magnet", "磁石併記形"], ["cylinder", "シリンダ取付形"]],
+        reedSwitch: [["no", "リードa接点（線のみ）"], ["nc", "リードb接点（線のみ）"], ["barNo", "リードa接点（縦バー2本）"], ["barNc", "リードb接点（縦バー2本＋斜線）"], ["changeover", "リード切替接点"], ["magnet", "磁石併記形"], ["cylinder", "シリンダ取付形"]],
         lightCurtain: [["pair", "投光・受光一体表現"], ["emitter", "投光器単体"], ["receiver", "受光器単体"], ["safety", "安全ライトカーテン（OSSD）"], ["tube", "光電管・多光軸形"]],
         solenoidValve: [["standard", "単ソレノイド弁"], ["double", "両ソレノイド方向切替弁"]],
         powerSupply: [["standard", "直流電源（＋／－）"], ["acdc", "AC/DC変換器"], ["dcac", "DC/AC変換器（インバータ）"], ["dcdc", "DC/DC変換器"], ["ac", "交流電源（円＋〜）"]]
@@ -11063,6 +11220,19 @@
           return `
             <label>箱の数</label>
             <input data-bind="rows" data-kind="number" type="number" min="1" step="1" value="${rows}">
+            <div class="row">
+              <div>
+                <label>1箱の高さ mm（空欄=全高を等分）</label>
+                <input data-bind="boxCellHeight" data-kind="number" type="number" min="0.5" step="0.5" value="${element.boxCellHeight === undefined || element.boxCellHeight === "" ? "" : round(element.boxCellHeight)}" placeholder="${round(terminalBoxCellHeight(element))}">
+              </div>
+              <div>
+                <label>箱の幅 mm</label>
+                <input data-bind="w" data-kind="number" type="number" min="1" step="0.5" value="${round(element.w || 22.5)}">
+              </div>
+            </div>
+            <label>引き出し線の長さ mm（0=線なし）</label>
+            <input data-bind="boxStubLength" data-kind="number" type="number" min="0" step="0.5" value="${round(terminalBoxStubLength(element))}">
+            <p class="muted">1箱の高さを入れると、外形の高さは「1箱の高さ×箱の数＝${round(terminalBoxHeight(element))}mm」に追従します。</p>
             <label>箱内文字（1行=1箱）</label>
             <textarea data-bind="boxLabels">${escapeHtml(element.boxLabels || "")}</textarea>
             <label>箱内文字サイズ mm</label>
@@ -11272,7 +11442,7 @@
         const pointMatch = key.match(/^p(\d+)(x|y)$/);
         // 形状・向き・デザイン等の切替で要素寸法が変わる可能性のあるキー。
         // 切替の前後で第1接続ピンの絶対位置を保存し、寸法変更によるピンのズレを常に打ち消す。
-        const GEOMETRY_KEYS = ["orientation", "pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "buzzerVariant", "terminalShape", "connStyle", "blockContact", "symbolVariant", "contactGap", "count", "stripStyle", "levels", "plcStyle", "rows", "pins"];
+        const GEOMETRY_KEYS = ["orientation", "pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "buzzerVariant", "terminalShape", "connStyle", "blockContact", "symbolVariant", "contactGap", "count", "stripStyle", "levels", "plcStyle", "rows", "pins", "boxCellHeight"];
         const pinBefore = !pointMatch && GEOMETRY_KEYS.includes(key) ? elementFirstPin(element) : null;
         if (key === "rows" && element.type === "plcBlock" && (element.plcStyle || "grid") === "unit"
           && Number(element.pitch || 9.5) >= TEMPLATE_CIRCUIT_PITCH) {
@@ -11296,6 +11466,10 @@
           if (element.type === "deviceBox" && ["pins", "pinPitch", "pinMargin"].includes(key)) {
             const layout = deviceBoxPinLayout(element);
             if (layout.explicit) element.h = layout.h;
+          }
+          // 端子箱の1箱の高さ/箱の数を変えたら、外形高さを 1箱の高さ×箱の数 へ同期する。
+          if (element.type === "terminalBox" && ["rows", "boxCellHeight"].includes(key)) {
+            element.h = terminalBoxHeight(element);
           }
           if (key === "tag" && supportsElectricalAttributes(element) && !element.label) element.label = value;
           if (key === "tag" && value) {
@@ -11486,7 +11660,6 @@
           footSwitch: { ...base, w: 10, h: 6.5, label: "FTS", orientation: "horizontal" },
           logicGate: { ...base, w: 10, h: 10, label: "" },
           photocoupler: { ...base, w: 10, h: 8, label: "PC" },
-          bell: { ...base, w: 10, h: 5.4, label: "BL" },
           battery: { ...base, w: 10, h: 4.4, label: "BT" },
           rectifierBox: { ...base, w: 10, h: 6, label: "REC" },
           currentTransformer: { ...base, w: 10, h: 4.4, label: "CT" },
@@ -11494,7 +11667,6 @@
           transistor: { ...base, w: 10, h: 6, label: "TR" },
           disconnector: { ...base, w: 10, h: 5, label: "DS", orientation: "horizontal" },
           outlet: { ...base, w: 10, h: 6, label: "SC" },
-          beacon: { ...base, w: 10, h: 6, label: "SL" },
           ground: { ...base, w: 4, h: 5, label: "E" },
           motor: { ...base, w: 16, h: 16, label: "M" },
           fan: { ...base, w: 15, h: 15, r: 5, label: "FAN" },
@@ -11507,7 +11679,6 @@
           polarityMark: { ...base, w: 2.6, h: 2.6, label: "", sign: "+" },
           qualifierMark: { ...base, w: 8, h: 6, label: "", symbolVariant: "dc" },
           operatorMark: { ...base, w: 8, h: 8, label: "", symbolVariant: "manual" },
-          contactor3p: { ...base, w: 30, h: 10, label: "MC" },
           generator: { ...base, w: 10, h: 10, label: "G" },
           deviceBox: { ...base, w: 30, h: 25, label: "機器", pins: 4, pinText: "1\n2\n3\n4", rightPinText: "" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
@@ -11820,7 +11991,7 @@
           add(w / 2, h);
           return anchors;
         }
-        if (["coil", "fuse", "breaker", "lamp", "buzzer", "meter", "inductor", "heater", "bell", "battery", "rectifierBox", "currentTransformer", "arrester", "disconnector", "beacon", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
+        if (["coil", "fuse", "breaker", "lamp", "buzzer", "meter", "inductor", "heater", "battery", "rectifierBox", "currentTransformer", "arrester", "disconnector", "solenoidValve", "sensor", "powerSupply", "transformer", "motor", "fan", "resistor", "capacitor", "diode", "thermalRelay", "cableMarker", "cableBundle"].includes(element.type)) {
           add(0, h / 2);
           add(w, h / 2);
           return anchors;
@@ -11846,13 +12017,14 @@
         }
         if (element.type === "terminalBox") {
           const rows = Math.max(1, Number(element.rows || 3));
+          const stub = terminalBoxStubLength(element);
           for (let i = 0; i < rows; i++) {
             const y = terminalBoxPinY(element, i);
             // 引き出し線がある箱は線の先端が主接続点。箱の辺中央も残す(引き出し線自体が導体であり、
             // 辺へ直接つないだ既存図面の配線を未接続扱いにしないため)。線がない箱は辺中央のみ。
-            if (terminalBoxStubVisible(element, "left", i)) add(-6, y);
+            if (stub > 0 && terminalBoxStubVisible(element, "left", i)) add(-stub, y);
             add(0, y);
-            if (terminalBoxStubVisible(element, "right", i)) add(w + 6, y);
+            if (stub > 0 && terminalBoxStubVisible(element, "right", i)) add(w + stub, y);
             add(w, y);
           }
           return anchors;
@@ -11940,6 +12112,16 @@
         return Number.isFinite(s) && s > 0 ? s : 1;
       }
 
+      // ページ設定「シンボル拡大」の倍率(1=拡大なし)。
+      // 旧データは真偽値で保存されていたため、true は 1.5倍として読む。
+      const SYMBOL_SCALE_CHOICES = [1, 1.5, 2, 2.5, 3];
+      function pageSymbolScale(page) {
+        const raw = page?.symbolScale;
+        if (raw === true) return 1.5;
+        const value = Number(raw);
+        return SYMBOL_SCALE_CHOICES.includes(value) ? value : 1;
+      }
+
       // 要素ローカル座標(x,y)を絶対座標へ変換する。表示倍率→回転の順で適用し、
       // 要素のx,yを足す。SVG描画のtransformと同じ規約なので、接続点は必ず見た目と一致する。
       function localAnchor(element, x, y) {
@@ -11958,7 +12140,6 @@
         return new Set([
           "terminal",
           "generator",
-          "contactor3p",
           "contactNO",
           "contactNC",
           "timerContactNO",
@@ -11970,7 +12151,6 @@
           "thermoSwitch",
           "flowSwitch",
           "footSwitch",
-          "bell",
           "battery",
           "rectifierBox",
           "currentTransformer",
@@ -11978,7 +12158,6 @@
           "transistor",
           "disconnector",
           "outlet",
-          "beacon",
           "logicGate",
           "photocoupler",
           "photoelectricSwitch",
@@ -12040,7 +12219,6 @@
           "selectorSwitch",
           "limitSwitch",
           "coil",
-          "bell",
           "battery",
           "rectifierBox",
           "currentTransformer",
@@ -12057,7 +12235,6 @@
           "inductor",
           "heater",
           "disconnector",
-          "beacon",
           "motor",
           "fan"
         ]);
@@ -12068,9 +12245,10 @@
         const element = defaultElement(type, x, y);
         // パレットから新規配置するシンボルは識別文字を強制せず、必要な場合だけ利用者が入力する。
         if (supportsElectricalAttributes(element)) element.label = "";
-        // ページ設定「シンボル拡大」ON時は、新規配置分のみ1.5倍で置く(既存要素は変えない)。
+        // ページ設定「シンボル拡大」が等倍以外なら、新規配置分のみその倍率で置く(既存要素は変えない)。
         // 以降のピン合わせ・接続点・DXFはelementScale経由で倍率込みの座標を使う。
-        if (currentPage()?.symbolScale && !element.points && element.type !== "junction") element.scale = 1.5;
+        const placementScale = pageSymbolScale(currentPage());
+        if (placementScale !== 1 && !element.points && element.type !== "junction") element.scale = placementScale;
         // 別名種別(非常停止ボタン等)は生成後のelement.typeで配置方法を判定する。
         const kind = element.type;
         autoOrientElementForPlacement(element, x, y);
@@ -19649,8 +19827,8 @@
               <li><b>最近使用</b>: パレット先頭に直近6件が自動で並ぶ。タイル右上の<b>☆</b>クリックで<b>お気に入り（先頭固定）</b>へ追加/解除</li>
               <li>配置時は<b>接続ピンがグリッド・行に自動で一致</b>。配線上に置くと線が自動分割されて割り込む</li>
               <li><b>移動（ドラッグ）でも接続ピンがグリッドへ乗り直します</b>。ズレた部品は動かすだけで揃い、近くに他の接続点があれば<b>外接矩形の角より接続点を優先</b>して吸着します。<b>複製（Ctrl+D）・貼り付け（Ctrl+V）は5mm</b>（グリッドの倍数）ずらすので、コピーした部品もグリッド上に残ります</li>
-              <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大</b>をONにすると、以後パレットから配置する部品が<b>1.5倍</b>で置かれます（既存の部品は変わりません。接続ピン・DXF出力も倍率に追従）</li>
-              <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
+              <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大</b>で<b>1.5／2／2.5／3倍</b>を選ぶと、以後パレットから配置する部品がその倍率で置かれます（既存の部品は変わりません。接続ピン・DXF出力も倍率に追従）</li>
+              <li><b>端子箱</b>: 右パネルで<b>箱の数</b>・<b>1箱の高さ mm</b>・<b>箱の幅 mm</b>・<b>引き出し線の長さ mm</b>・<b>箱内文字（1行=1箱、サイズ変更可）</b>・<b>箱ごとの引き出し線（左右別々）</b>を設定できます。1箱の高さを入れると外形の高さが「1箱の高さ×箱の数」へ追従し、引き出し線の長さを0にすると線が消えて箱の横辺だけが接続点になります。引き出し線がある箱は<b>線の先端</b>、ない箱は<b>箱の横辺中央</b>へ配線が吸着</li>
               <li><b>端子台・PLCユニット列の端子記号</b>: 本体の辺上に<b>機器箱と同じ白抜き小円の端子</b>を表示し、その<b>端子だけが配線接続点</b>になります。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
               <li><b>端子台・PLCユニット列のカード種別</b>: 本体は<b>長方形</b>（上下も直線）。右パネルの「カード種別」で<b>入力カード（円＋デバイス名）／出力カード（a接点＋上にデバイス名）</b>を切替できます。出力カードは<b>0Vポート</b>（既定=左・表示/非表示切替可）も付きます</li>
               <li><b>COM/0Vポート</b>: パレットの端子台は<b>最下段にCOMポートを標準装備</b>（位置は他の端子の逆側が自動既定、なし/自動/左/右を切替可）。右パネルの<b>「COM/0Vポートの表示名」で COM/0V ⇔ COM＋/COM− を切替</b>できます。PLC入出力回路テンプレートは<b>入力=円モード・COM右→N1／出力=a接点モード・COM左→P1・0V右→N1</b>へ自動配線し、各行・COM・0Vともレール接続部に接続点(黒丸)を打ちます</li>
@@ -19703,8 +19881,8 @@
             接地4種、ヒューズ3種、ダイオード7種（トライアック・フォトダイオード含む）、変圧器3種＋テンプレート専用10mm形、論理ゲート3種、押しボタンa/b接点（設備標準・JIS C 0617）、
             リミットスイッチ箱形NO/NC・ローラーNO/NC、圧力/フロート/温度/フロー/フットスイッチのa/b接点、
             切替接点（c接点）、接触器主接点（半円・JIS C 0617）、サーマルリレー10種（熱動素子付きa/b接点ほか）、照光式/パーム押しボタン、切替スイッチJIS形、ブリッジ整流◇、避雷器2種、
-            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント9種（箱形2口・丸形・接地極付き・雄側プラグ3種・プラグ対ほか）、蛍光灯、針付き計器、ブザー7形状（JIS C 0617 08-10-06 半円／08-10-10 反転半円／08-10-09 サイレン・直角三角形／ホーン／スピーカーほか）、交流電源（円＋〜）、ポテンショメータ3端子、AC/DC・DC/AC（インバータ）・DC/DC変換器箱、光電スイッチ10種（透過/回帰反射/拡散/距離設定BGS/ファイバ/溝形/マーク・カラー/一般形ほか）、マットスイッチ・リードスイッチなど100種類以上。
-            さらに <b>JIS C 0617 の限定図記号</b>として、電流種別4種（直流／交流／交直流／三相交流）と操作機構10種（手動一般・押し・引き・回転・キー・ローラ・足踏・非常・電磁・熱）、<b>電磁接触器 主接点3極</b>（10mmピッチ＋機械連動破線）、<b>発電機</b>（円＋G）を追加。
+            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント9種（箱形2口・丸形・接地極付き・雄側プラグ3種・プラグ対ほか）、蛍光灯、針付き計器、ブザー7形状（JIS C 0617 08-10-06 半円／08-10-10 反転半円／08-10-09 サイレン・直角三角形／ホーン／スピーカーほか）、交流電源（円＋〜）、ポテンショメータ3端子、AC/DC・DC/AC（インバータ）・DC/DC変換器箱、光電スイッチ10種（透過/回帰反射/拡散/距離設定BGS/ファイバ/溝形/マーク・カラー/一般形ほか）、マットスイッチ・リードスイッチ（線のみのa/b接点に加え<b>縦バー2本のa接点・縦バー＋斜線のb接点</b>）など100種類以上。
+            さらに <b>JIS C 0617 の限定図記号</b>として、電流種別4種（直流／交流／交直流／三相交流）と操作機構10種（手動一般・押し・引き・回転・キー・ローラ・足踏・非常・電磁・熱）、<b>発電機</b>（円＋G）、<b>位置スイッチ</b>（07-08-01 a接点／07-08-02 b接点＝線のみの接点＋三角の操作子）、<b>トランジスタの外囲みの円なし版</b>（NPN／PNP）を追加。ツェナーダイオード（05-03-06）はカソードバーの折れを片側だけに是正し、<b>サイリスタ・トライアックはゲート線の先端が配線接続点</b>になりました。
             光電・マット・リードスイッチは他の接点部品と揃うサイズ（幅15mm前後）で配置されます。
             光電/マット/リード/ライトカーテン/センサ/ソレノイド弁/電源も、選択して右パネルの「シンボルデザイン」から様式を切り替えられます。
             切替時は<b>第1接続ピンの位置を保持</b>するため、そのピンへ接続した配線はずれません。ピン構成が共通のデザインではほかの接続点も維持され、
@@ -22206,16 +22384,17 @@
       // 端子箱のDXF出力。引き出し線の表示・長さはSVG描画(drawTerminalBox)と同一。
       function dxfTerminalBoxLocal(out, page, element) {
         const w = Number(element.w || 22);
-        const h = Number(element.h || 18);
         const rows = Math.max(1, Number(element.rows || 3));
-        dxfRectLocal(out, page, "SYMBOL", element, 0, 0, w, h);
-        for (let i = 1; i < rows; i++) dxfLineLocal(out, page, "SYMBOL", element, 0, h * i / rows, w, h * i / rows);
+        const cell = terminalBoxCellHeight(element);
+        const stub = terminalBoxStubLength(element);
+        dxfRectLocal(out, page, "SYMBOL", element, 0, 0, w, terminalBoxHeight(element));
+        for (let i = 1; i < rows; i++) dxfLineLocal(out, page, "SYMBOL", element, 0, round(cell * i), w, round(cell * i));
         const boxLabels = String(element.boxLabels || "").split(/\r?\n/);
         const boxLabelSize = Math.max(1, Number(element.boxLabelFontSize || 2.2));
         for (let i = 0; i < rows; i++) {
           const y = terminalBoxPinY(element, i);
-          if (terminalBoxStubVisible(element, "left", i)) dxfLineLocal(out, page, "SYMBOL", element, -6, y, 0, y);
-          if (terminalBoxStubVisible(element, "right", i)) dxfLineLocal(out, page, "SYMBOL", element, w, y, w + 6, y);
+          if (stub > 0 && terminalBoxStubVisible(element, "left", i)) dxfLineLocal(out, page, "SYMBOL", element, -stub, y, 0, y);
+          if (stub > 0 && terminalBoxStubVisible(element, "right", i)) dxfLineLocal(out, page, "SYMBOL", element, w, y, w + stub, y);
           if (boxLabels[i]) dxfTextLocal(out, page, "TEXT", element, w / 2 - boxLabels[i].length * boxLabelSize * .3, y + boxLabelSize * .35, boxLabelSize, boxLabels[i]);
         }
         if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2 - String(element.label).length * .65, -2.2, 1.9, element.label);
@@ -22745,11 +22924,14 @@
           inspectorTabChoice = { tab: "component", key: inspectorSelectionKey() };
           applyInspectorTab();
         });
-        qs("#symbolScaleToggle").addEventListener("change", event => {
+        qs("#symbolScaleSelect").addEventListener("change", event => {
           const page = currentPage();
           if (!page) return;
-          page.symbolScale = event.target.checked;
-          commitHistory(page.symbolScale ? "シンボル拡大を有効にしました(新規配置が1.5倍になります)。" : "シンボル拡大を無効にしました。");
+          const value = Number(event.target.value);
+          page.symbolScale = SYMBOL_SCALE_CHOICES.includes(value) ? value : 1;
+          commitHistory(page.symbolScale === 1
+            ? "シンボル拡大を等倍に戻しました。"
+            : "シンボル拡大を" + page.symbolScale + "倍にしました(以後の新規配置に適用)。");
           render();
         });
         qsa("[data-tool]").forEach(button => {
