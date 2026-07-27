@@ -7016,9 +7016,10 @@
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 位置スイッチ・メーク接点(JIS C 0617-7, 07-08-01): 線だけのa接点(IEC形)に、
-        // 可動線の中点から下ろした操作軸と、その先の三角形(操作子)を付ける。
-        // 操作軸は固定接点の線が切れている区間(x=3.9〜6.1)を通るため、他の線と交差しない。
+        // 位置スイッチ・メーク接点(JIS C 0617-7, 07-08-01): 線だけのa接点(IEC形)の可動線へ、
+        // 位置スイッチの限定図記号(07-01-06)である30-60-90の直角三角形を直接密着させる。
+        // 三角形の一辺(A→B)は可動線上に完全に載り、30度の頂点Aが接点の根元(左下)を向く。
+        // Aで30度・Bで直角・Cで60度。Cは可動線の上側。辺ABの長さ1.3mm、BCは1.3*tan30=0.7506mm。
         limitSwitchJisNO: {
           w: 10, h: 6,
           anchors: [[0, 2.2], [10, 2.2]],
@@ -7026,14 +7027,15 @@
             { t: "line", p: [0, 2.2, 3.9, 2.2] },
             { t: "line", p: [6.1, 2.2, 10, 2.2] },
             { t: "line", p: [3.9, 2.2, 6.4, 0.6] },
-            { t: "line", p: [5.15, 1.4, 5.15, 3.2] },
-            { t: "pline", pts: [[5.15, 3.2], [4.35, 4.6], [5.95, 4.6], [5.15, 3.2]] },
+            { t: "pline", pts: [[4.4, 1.88], [5.495, 1.179], [5.09, 0.547], [4.4, 1.88]] },
             { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [5, 5.8], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
-        // 位置スイッチ・ブレーク接点(JIS C 0617-7, 07-08-02): 線だけのb接点(IEC形)+操作軸+三角形。
+        // 位置スイッチ・ブレーク接点(JIS C 0617-7, 07-08-02): 線だけのb接点(IEC形)の可動線へ、
+        // 同じ直角三角形を可動線の下側に密着させる。30度の頂点Aはやはり接点の根元を向く。
+        // 三角形の最大x=5.9は止めの縦線(x=6.1)より左なので、止めとは交差しない。
         limitSwitchJisNC: {
           w: 10, h: 6,
           anchors: [[0, 2.2], [10, 2.2]],
@@ -7042,8 +7044,7 @@
             { t: "line", p: [6.1, 2.2, 10, 2.2] },
             { t: "line", p: [6.1, 0.7, 6.1, 2.2] },
             { t: "line", p: [3.9, 2.2, 6.6, 0.5] },
-            { t: "line", p: [5.25, 1.35, 5.25, 3.2] },
-            { t: "pline", pts: [[5.25, 3.2], [4.45, 4.6], [6.05, 4.6], [5.25, 3.2]] },
+            { t: "pline", pts: [[4.4, 1.885], [5.5, 1.193], [5.9, 1.828], [4.4, 1.885]] },
             { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [5, 5.8], size: 1.7, anchor: "middle", field: "refNo" }
@@ -7444,7 +7445,8 @@
             { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // ダイオード(ツェナー): カソードバーの片側だけを折り返す(JIS C 0617-5, 05-03-06)。
+        // 一方向性降伏ダイオード(JIS C 0617-5, 05-03-07): いわゆるツェナーダイオード。
+        // カソードバーの折り返しは片側だけ。両側を折るのは双方向性(05-03-06)で別記号。
         diodeZener: {
           w: 10, h: 4.4,
           anchors: [[0, 2.2], [10, 2.2]],
@@ -7453,8 +7455,22 @@
             { t: "line", p: [6.0, 2.2, 10, 2.2] },
             { t: "pline", pts: [[3.4, 0.9], [3.4, 3.5], [6.0, 2.2], [3.4, 0.9]] },
             { t: "line", p: [6.0, 0.9, 6.0, 3.5] },
-            // JIS C 0617-5 05-03-06: 折れるのはカソードバーの片側だけ(両側を折るとZ形になり規格外)。
             { t: "line", p: [6.0, 0.9, 5.55, 0.9] },
+            { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 双方向性降伏ダイオード(JIS C 0617-5, 05-03-06): カソードバーの両端を逆向きに折る。
+        // 一方向性(05-03-07)との違いは折り返しが片側か両側かだけ。
+        diodeZenerBi: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.4, 2.2] },
+            { t: "line", p: [6.0, 2.2, 10, 2.2] },
+            { t: "pline", pts: [[3.4, 0.9], [3.4, 3.5], [6.0, 2.2], [3.4, 0.9]] },
+            { t: "line", p: [6.0, 0.9, 6.0, 3.5] },
+            { t: "line", p: [6.0, 0.9, 5.55, 0.9] },
+            { t: "line", p: [6.0, 3.5, 6.45, 3.5] },
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -7871,6 +7887,22 @@
             { t: "circle", p: [6.6, 3, 0.6], fill: "white" },
             { t: "line", p: [3.91, 2.69, 6.6, 1.1] },
             { t: "line", p: [6.6, 0.7, 6.6, 2.4] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 負荷開閉器(JIS C 0617-7, 07-13-08): 断路器と同じ開閉部に、負荷開閉装置の限定図記号
+        // (07-01-04 = 固定接点側の半円)を重ねる。半円は固定接点の円の外周へ接するように置く。
+        disconnectorLoadBreak: {
+          w: 10, h: 5,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 2.8, 3] },
+            { t: "line", p: [7.2, 3, 10, 3] },
+            { t: "circle", p: [3.4, 3, 0.6], fill: "white" },
+            { t: "circle", p: [6.6, 3, 0.6], fill: "white" },
+            { t: "line", p: [3.91, 2.69, 6.6, 1.1] },
+            { t: "line", p: [6.6, 0.7, 6.6, 2.4] },
+            { t: "arc", p: [6.6, 3.6, 0.9, 180, 360] },
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8351,6 +8383,27 @@
             { t: "line", p: [3.4, 3.7, 6.6, 5.5] },
             { t: "line", p: [6.6, 5.5, 10, 5.5] },
             { t: "pline", pts: [[4.9, 5.15], [4.25, 4.15], [5.4, 4.25] ] },
+            { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // フォトトランジスタ(JIS C 0617-5, 05-06-04): NPNトランジスタへ受光を表す矢印2本。
+        // 矢印はフォトダイオード(diodePhoto)と同じ向き・同じ寸法で、記号本体へ向かって入る。
+        transistorPhoto: {
+          w: 10, h: 6,
+          anchors: [[0, 3], [10, 0.5], [10, 5.5]],
+          prims: [
+            { t: "circle", p: [5.2, 3, 2.9] },
+            { t: "line", p: [0, 3, 3.4, 3] },
+            { t: "line", p: [3.4, 1.5, 3.4, 4.5] },
+            { t: "line", p: [3.4, 2.3, 6.6, 0.5] },
+            { t: "line", p: [6.6, 0.5, 10, 0.5] },
+            { t: "line", p: [3.4, 3.7, 6.6, 5.5] },
+            { t: "line", p: [6.6, 5.5, 10, 5.5] },
+            { t: "pline", pts: [[5.35, 4.15], [6.0, 5.15], [4.85, 5.05]] },
+            { t: "line", p: [1.5, 0.15, 2.35, 1.0] },
+            { t: "pline", pts: [[2.35, 0.65], [2.35, 1.0], [2.0, 1.0]] },
+            { t: "line", p: [0.6, 0.75, 1.45, 1.6] },
+            { t: "pline", pts: [[1.45, 1.25], [1.45, 1.6], [1.1, 1.6]] },
             { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -9237,7 +9290,7 @@
             if (variant === "changeover") return "contactChangeover";
             return "thermalRelay";
           }
-          case "disconnector": return "disconnector";
+          case "disconnector": return variant === "loadBreak" ? "disconnectorLoadBreak" : "disconnector";
           case "outlet": {
             // boxGrid10は10mmピッチ統合によりboxと同一形状(旧図面互換の別名として受け付ける)。
             if (variant === "box" || variant === "boxGrid10") return "outletBox";
@@ -9277,6 +9330,7 @@
             return null;
           }
           case "diode": {
+            if (variant === "zenerBi") return "diodeZenerBi";
             if (variant === "led") return "diodeLed";
             if (variant === "zener") return "diodeZener";
             if (variant === "thyristor") return "diodeThyristor";
@@ -9285,7 +9339,7 @@
             if (variant === "photo") return "diodePhoto";
             return "diode";
           }
-          case "transistor": return ({ pnp: "transistorPnp", npnPlain: "transistorNpnPlain", pnpPlain: "transistorPnpPlain" })[variant] || "transistorNpn";
+          case "transistor": return ({ pnp: "transistorPnp", npnPlain: "transistorNpnPlain", pnpPlain: "transistorPnpPlain", photo: "transistorPhoto" })[variant] || "transistorNpn";
           case "capacitor": return variant === "polarized" ? "capacitorPolarized" : (variant === "variable" ? "capacitorVariable" : "capacitor");
           case "pushButton":
             if ((element.pbStyle || "momentary") === "emergency") {
@@ -10570,12 +10624,13 @@
         timerContactNC: [["standard", "オンディレー（∩・縦バー）"], ["off", "オフディレー（∪・縦バー）"], ["iec", "オンディレー（∩・IEC斜線）"], ["iecOff", "オフディレー（∪・IEC斜線）"]],
         coil: [["standard", "円（設備標準）"], ["box", "箱形"], ["ac", "交流（円＋〜）"], ["latch", "ラッチ（箱＋斜線）"], ["timer", "限時（円＋T）"], ["counter", "カウンタ（円＋C）"], ["flicker", "フリッカ（円＋F）"], ["interface", "盤間中継（小四角2連）"]],
         ground: [["standard", "斜線ハッチ（設備標準）"], ["bars", "横棒3本"], ["circle", "清浄接地（円囲み）"], ["chassis", "シャーシ接地（櫛形）"]],
-        diode: [["standard", "標準"], ["led", "LED（矢印つき）"], ["photo", "フォトダイオード（受光矢印）"], ["zener", "ツェナー"], ["thyristor", "サイリスタ（ゲート線）"], ["bridge", "ブリッジ整流（◇4端子）"], ["triac", "トライアック（双方向サイリスタ）"]],
+        diode: [["standard", "半導体ダイオード（JIS 05-03-01）"], ["led", "発光ダイオードLED（JIS 05-03-02）"], ["photo", "フォトダイオード（JIS 05-06-02）"], ["zener", "一方向性降伏・ツェナー（JIS 05-03-07）"], ["zenerBi", "双方向性降伏（JIS 05-03-06）"], ["thyristor", "サイリスタ（JIS 05-04-06・ゲート線）"], ["bridge", "ブリッジ整流（JIS 06-14-04・◇4端子）"], ["triac", "トライアック（JIS 05-04-11）"]],
         capacitor: [["standard", "標準（平行板）"], ["polarized", "有極（＋と曲板）"], ["variable", "可変（貫通矢印）"]],
         fuse: [["standard", "箱＋貫通線（設備標準）"], ["blank", "箱のみ（IEC）"], ["wave", "S字（旧JIS）"]],
+        disconnector: [["standard", "断路器（JIS 07-13-06）"], ["loadBreak", "負荷開閉器（JIS 07-13-08）"]],
         breaker: [["standard", "実測形（円＋アーク＋トリップ）"], ["arc", "円＋アーク（トリップなし）"], ["mccb", "配線用遮断器（箱形）"], ["elb", "漏電（E表示つき）"], ["iec", "×＋開き線（IEC）"]],
         pushButton: [["standard", "押しa接点（設備標準）"], ["nc", "押しb接点（NC）"], ["jis", "押しa接点（JIS C 0617）"], ["jisNc", "押しb接点（JIS C 0617）"], ["illuminated", "照光式（ランプ内蔵）"], ["palm", "パーム（キノコ・a接点）"], ["pull", "引きボタン"], ["twist", "ひねりボタン"]],
-        transistor: [["npn", "NPN（外囲みの円あり）"], ["pnp", "PNP（外囲みの円あり）"], ["npnPlain", "NPN（円なし）"], ["pnpPlain", "PNP（円なし）"]],
+        transistor: [["npn", "NPN（JIS 05-05-02・外囲みの円あり）"], ["pnp", "PNP（JIS 05-05-01・外囲みの円あり）"], ["npnPlain", "NPN（円なし）"], ["pnpPlain", "PNP（円なし）"], ["photo", "フォトトランジスタ（JIS 05-06-04）"]],
         meter: [["standard", "円形"], ["box", "角形"], ["double", "二重円（積算計）"], ["needle", "円＋針（アナログ）"]],
         motor: [["standard", "円（設備標準）"], ["double", "二重円（発電機等）"]],
         thermalRelay: [["standard", "○✕○"], ["box", "箱形（内部⊓）"], ["iecNc", "b接点＋熱動素子（JIS C 0617）"], ["iecNo", "a接点＋熱動素子（JIS C 0617）"], ["jisNc", "円端子b接点＋熱動素子"], ["jisNo", "円端子a接点＋熱動素子"], ["barNc", "縦バーb接点＋熱動素子"], ["barNo", "縦バーa接点＋熱動素子"], ["changeover", "切替接点（1c・1入2出）"], ["xOnly", "✕のみ（簡易形）"]],
@@ -10588,7 +10643,7 @@
         heater: [["standard", "箱＋斜線（設備標準）"], ["plain", "箱のみ（JIS抵抗器形）"]],
         arrester: [["standard", "箱＋矢印（設備標準）"], ["gap", "ギャップ形（対向三角）"]],
         qualifierMark: [["dc", "直流（実線＋破線）"], ["ac", "交流（正弦波）"], ["acdc", "交直流（正弦波＋実線・破線）"], ["threePhase", "三相交流（3＋正弦波）"]],
-        operatorMark: [["manual", "手動操作（一般）"], ["push", "押し操作"], ["pull", "引き操作"], ["rotate", "回転操作"], ["key", "キー操作"], ["roller", "ローラ操作"], ["foot", "足踏操作"], ["emergency", "非常操作（キノコ）"], ["electromagnetic", "電磁操作"], ["thermal", "熱操作（⊓）"]],
+        operatorMark: [["manual", "手動操作・一般（JIS 02-13-01）"], ["push", "押し動作（JIS 02-13-05）"], ["pull", "引き動作（JIS 02-13-03）"], ["rotate", "回転操作（JIS 02-13-04）"], ["key", "キー操作"], ["roller", "ローラ操作"], ["foot", "足踏み操作（JIS 02-13-10）"], ["emergency", "非常停止（JIS 02-13-08）"], ["electromagnetic", "電磁効果による操作（JIS 02-13-23）"], ["thermal", "熱操作（⊓）"]],
         outlet: [["standard", "半円＋差込口"], ["box", "箱形（スロット2＋接地）"], ["boxDouble", "箱形2口"], ["round", "丸形（円＋差込口2本）"], ["earthed", "半円＋差込口（接地極付き）"], ["plug", "プラグ（雄側・縦バー）"], ["plugPin", "プラグ（2本刃）"], ["plugPin3", "プラグ（2本刃＋接地ピン）"], ["plugSocket", "プラグ・ソケット対（挿抜表現）"]],
         pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "キノコ＋b接点（JIS C 0617）"], ["multi2", "縦連結2接点（連動）"], ["multi3", "縦連結3接点（連動）"], ["jisMulti2", "JIS縦連結2接点（連動）"], ["jisMulti3", "JIS縦連結3接点（連動）"], ["facility", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]],
         pressureSwitch: [["standard", "ダイヤフラム形（設備標準）"], ["nc", "b接点（閉じ線＋止め）"]],
@@ -10947,7 +11002,7 @@
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
           `;
         }
-        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor", "inductor", "logicGate", "pressureSwitch", "floatSwitch", "thermoSwitch", "flowSwitch", "footSwitch", "battery", "heater", "arrester", "outlet", "sensor", "photoelectricSwitch", "matSwitch", "reedSwitch", "lightCurtain", "solenoidValve", "powerSupply", "qualifierMark", "operatorMark"].includes(element.type)) {
+        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor", "inductor", "logicGate", "pressureSwitch", "floatSwitch", "thermoSwitch", "flowSwitch", "footSwitch", "battery", "heater", "arrester", "outlet", "sensor", "photoelectricSwitch", "matSwitch", "reedSwitch", "lightCurtain", "solenoidValve", "powerSupply", "qualifierMark", "operatorMark", "disconnector"].includes(element.type)) {
           return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
@@ -11054,8 +11109,8 @@
           return `
             <label>ブザー形状</label>
             <select data-bind="buzzerVariant">
-              <option value="jis0806"${variant === "jis0806" ? " selected" : ""}>ブザー・半円（JIS C 0617 08-10-06）</option>
-              <option value="jis0810"${variant === "jis0810" ? " selected" : ""}>ブザー・半円反転（JIS C 0617 08-10-10）</option>
+              <option value="jis0806"${variant === "jis0806" ? " selected" : ""}>音響信号装置・一般（JIS C 0617 08-10-06）</option>
+              <option value="jis0810"${variant === "jis0810" ? " selected" : ""}>ブザー（JIS C 0617 08-10-10）</option>
               <option value="siren"${variant === "siren" ? " selected" : ""}>サイレン・直角三角形（JIS C 0617 08-10-09）</option>
               <option value="horn"${variant === "horn" ? " selected" : ""}>ホーン（ラッパ形・略画）</option>
               <option value="speaker"${variant === "speaker" ? " selected" : ""}>スピーカー（略画）</option>

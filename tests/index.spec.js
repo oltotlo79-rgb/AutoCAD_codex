@@ -4098,7 +4098,7 @@ test("JIS C 0617 追加記号(限定図記号・操作機構・発電機・位�
       ["limitSwitch", ["jisNo", "jisNc"]],
       ["reedSwitch", ["barNo", "barNc"]],
       ["transistor", ["npnPlain", "pnpPlain"]],
-      ["diode", ["zener", "thyristor", "triac"]]
+      ["diode", ["zener", "zenerBi", "thyristor", "triac"]]
     ];
     const rows = [];
     cases.forEach(([type, variants]) => {
@@ -4159,8 +4159,9 @@ test("JIS C 0617 追加記号(限定図記号・操作機構・発電機・位�
   for (const variant of ["npnPlain", "pnpPlain"]) {
     expect(find("transistor", variant).anchors, variant).toEqual([[0, 3], [10, 0.5], [10, 5.5]]);
   }
-  // ツェナーはカソードバーの折れが片側だけ(JIS C 0617 05-03-06)
+  // 一方向性降伏(05-03-07)はカソードバーの折れが片側だけ、双方向性(05-03-06)は両側
   expect(find("diode", "zener").primCount).toBe(6);
+  expect(find("diode", "zenerBi").primCount).toBe(7);
   // サイリスタ・トライアックはゲート線の先端が3点目の接続点
   expect(find("diode", "thyristor").anchors).toHaveLength(3);
   expect(find("diode", "triac").anchors).toHaveLength(3);
@@ -4217,4 +4218,56 @@ test("端子箱は1箱の高さ・幅・引き出し線長を数値指定でき�
   // 引き出し線0mmで線が消え、接続点も箱の辺だけになる
   expect(result.afterNoStub.stubLines).toBe(0);
   expect(result.afterNoStub.anchors.every(anchor => anchor[0] >= 0)).toBe(true);
+});
+
+test("位置スイッチ07-08-01/02の三角形は可動線に密着した30-60-90の直角三角形になる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const probe = variant => {
+      const element = api.defaultElement("limitSwitch", 20, 20);
+      element.symbolVariant = variant;
+      const prims = api.geoPrims(element);
+      // 可動線=斜めの線分(水平でも垂直でもない線)。三角形はplineで1つだけ。
+      const blade = prims.find(prim => prim.t === "line" && prim.p[0] !== prim.p[2] && prim.p[1] !== prim.p[3]);
+      const triangle = prims.find(prim => prim.t === "pline");
+      return { blade: blade.p, pts: triangle.pts };
+    };
+    return { no: probe("jisNo"), nc: probe("jisNc") };
+  });
+
+  const angleAt = (vertex, a, b) => {
+    const v1 = [a[0] - vertex[0], a[1] - vertex[1]];
+    const v2 = [b[0] - vertex[0], b[1] - vertex[1]];
+    const dot = v1[0] * v2[0] + v1[1] * v2[1];
+    const len = Math.hypot(...v1) * Math.hypot(...v2);
+    return Math.acos(dot / len) * 180 / Math.PI;
+  };
+  // 点が線分の直線上に載っているか(外積≒0)
+  const onLine = (point, seg) => {
+    const dx = seg[2] - seg[0], dy = seg[3] - seg[1];
+    return Math.abs((point[0] - seg[0]) * dy - (point[1] - seg[1]) * dx) / Math.hypot(dx, dy);
+  };
+
+  for (const [name, data] of Object.entries(result)) {
+    // plineは閉じているので先頭3点が頂点A(30度)・B(直角)・C(60度)
+    const [A, B, C] = data.pts;
+    expect(data.pts).toHaveLength(4);
+    expect(data.pts[3]).toEqual(A);
+    // 辺A-Bは可動線の上に完全に載る(密着している)
+    expect(onLine(A, data.blade), `${name} A`).toBeLessThan(0.01);
+    expect(onLine(B, data.blade), `${name} B`).toBeLessThan(0.01);
+    // 30-60-90の直角三角形
+    expect(angleAt(A, B, C), `${name} 30度`).toBeCloseTo(30, 0);
+    expect(angleAt(B, A, C), `${name} 直角`).toBeCloseTo(90, 0);
+    expect(angleAt(C, A, B), `${name} 60度`).toBeCloseTo(60, 0);
+    // 30度の頂点Aが接点の根元(可動線の始点)側にある
+    const rootDistanceA = Math.hypot(A[0] - data.blade[0], A[1] - data.blade[1]);
+    const rootDistanceB = Math.hypot(B[0] - data.blade[0], B[1] - data.blade[1]);
+    expect(rootDistanceA, `${name} 30度側が根元向き`).toBeLessThan(rootDistanceB);
+  }
+  // a接点は可動線の上側(Cのyが辺ABより小さい)、b接点は下側
+  expect(result.no.pts[2][1]).toBeLessThan(result.no.pts[1][1]);
+  expect(result.nc.pts[2][1]).toBeGreaterThan(result.nc.pts[1][1]);
+  // b接点の三角形は止めの縦線(x=6.1)より左に収まり交差しない
+  expect(Math.max(...result.nc.pts.map(point => point[0]))).toBeLessThan(6.1);
 });
