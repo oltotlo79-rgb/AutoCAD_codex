@@ -1548,6 +1548,7 @@
         { type: "terminalStrip", label: "端子台", icon: "strip" },
         { type: "terminalSheet", label: "端子配線セット", icon: "sheet" },
         { type: "contactNO", label: "a接点", icon: "contactNO" },
+        { type: "contactor3p", label: "電磁接触器 主接点3極", icon: "contactor3p" },
         { type: "contactNC", label: "b接点", icon: "contactNC" },
         { type: "timerContactNO", label: "限時a接点", icon: "contactNO" },
         { type: "timerContactNC", label: "限時b接点", icon: "contactNC" },
@@ -1574,6 +1575,7 @@
         { type: "transformer", label: "トランス", icon: "transformer" },
         { type: "ground", label: "接地", icon: "ground" },
         { type: "motor", label: "モータ", icon: "motor" },
+        { type: "generator", label: "発電機", icon: "generator" },
         { type: "fan", label: "ファン", icon: "fan" },
         { type: "inductor", label: "リアクトル", icon: "coil" },
         { type: "heater", label: "ヒータ", icon: "resistor" },
@@ -1607,6 +1609,8 @@
         { type: "dimension", label: "寸法", icon: "dimension" },
         { type: "positionMark", label: "ポジション表示", icon: "positionMark" },
         { type: "polarityMark", label: "極性マーク", icon: "polarityMark" },
+        { type: "qualifierMark", label: "電流種別（JIS 限定図記号）", icon: "qualifierMark" },
+        { type: "operatorMark", label: "操作機構（JIS 限定図記号）", icon: "operatorMark" },
         { type: "junction", label: "接続点", icon: "dot" }
       ];
 
@@ -1650,6 +1654,8 @@
         transistor: "TR",
         ground: "E",
         motor: "M",
+        generator: "G",
+        contactor3p: "MC",
         fan: "FAN",
         resistor: "R",
         capacitor: "C",
@@ -1696,7 +1702,9 @@
         fuse: "protect", breaker: "protect", thermalRelay: "protect", thermalElement: "protect", resistor: "protect", capacitor: "protect", diode: "protect", transistor: "protect", logicGate: "protect", photocoupler: "protect",
         terminal: "terminal", terminalStrip: "terminal", terminalSheet: "terminal", connector: "terminal", junction: "terminal", cableMarker: "terminal", cableBundle: "terminal", terminalBox: "terminal",
         deviceBox: "device", plcBlock: "device", installationBox: "device", locationBox: "device", table: "device",
-        arrow: "annotation", positionMark: "annotation", polarityMark: "annotation", cloud: "annotation", revisionMark: "annotation"
+        arrow: "annotation", positionMark: "annotation", polarityMark: "annotation", cloud: "annotation", revisionMark: "annotation",
+        qualifierMark: "annotation", operatorMark: "annotation",
+        contactor3p: "contact", generator: "power"
       };
 
       // 開いているパレットカテゴリのid集合(セッション内で開閉状態を保持)。
@@ -1816,7 +1824,7 @@
       // 読み込むときはMIGRATIONSで1段ずつ現行版へ引き上げる。versionは人間向けの表示文字列で、
       // 互換判定にはschemaVersionのみを使う。
       // 将来データ構造を変えるとき: SCHEMA_VERSIONを+1し、MIGRATIONSへ「旧版数: 変換関数」を1件追加する。
-      const SCHEMA_VERSION = 4;
+      const SCHEMA_VERSION = 5;
 
       // schema v3公開後に変圧器3デザインの上タップを主ピンの1行上へ移したため、
       // 旧v3図面に残る上タップ配線だけを新アンカーへ追従させる。スキーマ構造は変わらないので
@@ -2289,6 +2297,90 @@
                 if (removeTerminals.has(elements[index])) elements.splice(index, 1);
               }
             }
+          });
+          return data;
+        },
+        // 4→5: ブザー系のJIS記号を規格どおりに整理する。
+        //  - 旧 jis(08-10-10と称していた上ふくらみ半円) → 正しくは 08-10-06。variantキーを jis0806 へ改称。
+        //  - 旧 general(半円+弦+短い線・左右水平リード)は規格の重複表記だったため廃止し、jis0806 へ統合。
+        //  - siren(08-10-09)は横向き三角形から「直角部を上にした直角二等辺三角形+下向き端子線」へ作図し直し。
+        //  - 3種とも端子線ピッチを2.5mm(グリッド整合)に揃えたため、旧ピンへ接続していた配線・接続点を新ピンへ移す。
+        // 新設の jis0810(08-10-06の半円を上下反転した形)は既存データに存在しないため移行対象外。
+        4: data => {
+          const near = (a, b) => Math.abs(Number(a) - Number(b)) < .02;
+          // 旧バリアントのgeo寸法と接続点(geoローカル座標)。新形は3種とも w10/h6・[3.75,6],[6.25,6]。
+          const legacy = {
+            jis: { w: 10, h: 6, anchors: [[3.8, 6], [6.2, 6]], next: "jis0806" },
+            general: { w: 10, h: 4.4, anchors: [[0, 3], [10, 3]], next: "jis0806" },
+            siren: { w: 10, h: 5, anchors: [[0, 3.5], [10, 3.5]], next: "siren" }
+          };
+          const NEXT_GEO = { w: 10, h: 6, anchors: [[3.75, 6], [6.25, 6]] };
+          // geoMapPoint と同じ規則(縦向きは90度回転、要素枠が本体より大きい場合は中央寄せ、
+          // mirrorXは要素枠の左右中心で折り返し)でgeoローカル座標→要素ローカル座標へ写す。
+          const toLocal = (geo, element, x, y) => {
+            const vertical = element.orientation === "vertical";
+            const bw = vertical ? geo.h : geo.w;
+            const bh = vertical ? geo.w : geo.h;
+            const ox = (Number(element.w || bw) - bw) / 2;
+            const oy = (Number(element.h || bh) - bh) / 2;
+            const point = vertical ? [geo.h - y + ox, x + oy] : [x + ox, y + oy];
+            if (element.mirrorX) point[0] = Number(element.w || bw) - point[0];
+            return point;
+          };
+          const elementLists = [];
+          (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+            if (isPlainObject(page) && Array.isArray(page.elements)) elementLists.push(page.elements);
+          });
+          const collectCustomSymbolTemplates = symbols => {
+            (Array.isArray(symbols) ? symbols : []).forEach(symbol => {
+              if (!isPlainObject(symbol)) return;
+              if (Array.isArray(symbol.templates)) elementLists.push(symbol.templates);
+              else if (isPlainObject(symbol.template)) elementLists.push([symbol.template]);
+            });
+          };
+          collectCustomSymbolTemplates(data.customSymbols);
+          (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach(pack => {
+            if (isPlainObject(pack)) collectCustomSymbolTemplates(pack.customSymbols);
+          });
+          elementLists.forEach(elements => {
+            const moves = [];
+            elements.forEach(element => {
+              if (!isPlainObject(element) || element.type !== "buzzer") return;
+              const old = legacy[element.buzzerVariant];
+              if (!old) return;
+              const angle = Number(element.rotation || 0) * Math.PI / 180;
+              const cos = Math.cos(angle), sin = Math.sin(angle);
+              const originX = Number(element.x || 0), originY = Number(element.y || 0);
+              const globalAt = ([localX, localY]) => [
+                originX + localX * cos - localY * sin,
+                originY + localX * sin + localY * cos
+              ];
+              // 旧ピンは寸法を書き換える前の element.w/h で計算し、新ピンは新寸法(12x6)で計算する。
+              const before = old.anchors.map(anchor => globalAt(toLocal(old, element, anchor[0], anchor[1])));
+              element.w = 12;
+              element.h = 6;
+              const after = NEXT_GEO.anchors.map(anchor => globalAt(toLocal(NEXT_GEO, element, anchor[0], anchor[1])));
+              before.forEach((point, index) => {
+                const target = after[index];
+                if (!near(point[0], target[0]) || !near(point[1], target[1])) {
+                  moves.push([point[0], point[1], target[0], target[1]]);
+                }
+              });
+              element.buzzerVariant = old.next;
+            });
+            if (!moves.length) return;
+            elements.forEach(element => {
+              if (!isPlainObject(element)) return;
+              if (["wire", "line", "arrow", "mechanicalLink"].includes(element.type) && Array.isArray(element.points)) {
+                element.points.forEach(point => {
+                  const move = moves.find(item => near(item[0], point[0]) && near(item[1], point[1]));
+                  if (move) { point[0] = round(move[2]); point[1] = round(move[3]); }
+                });
+              } else if (element.type === "junction") {
+                const move = moves.find(item => near(item[0], Number(element.x || 0)) && near(item[1], Number(element.y || 0)));
+                if (move) { element.x = round(move[2]); element.y = round(move[3]); }
+              }
+            });
           });
           return data;
         }
@@ -3469,6 +3561,10 @@
           thermalElement: `<svg ${common}><path ${stroke} d="M8 30h16V14h32v16h16"/></svg>`,
           positionMark: `<svg ${common}><path ${stroke} d="M8 22h64M40 6v32"/><rect x="34" y="16" width="12" height="12" ${thin}/></svg>`,
           polarityMark: `<svg ${common}><circle cx="40" cy="22" r="11" ${stroke}/><path ${thin} d="M32 22h16M40 14v16"/></svg>`,
+          qualifierMark: `<svg ${common}><path ${stroke} d="M14 16h52"/><path ${stroke} stroke-dasharray="8 6" d="M14 30h52"/></svg>`,
+          operatorMark: `<svg ${common}><path ${stroke} d="M20 20v-8h40v8M40 12v30"/></svg>`,
+          contactor3p: `<svg ${common}><path ${stroke} d="M16 4v12M16 30v12M16 16l8 10M40 4v12M40 30v12M40 16l8 10M64 4v12M64 30v12M64 16l8 10"/><path ${thin} stroke-dasharray="5 4" d="M24 26h48"/></svg>`,
+          generator: `<svg ${common}><circle cx="40" cy="22" r="15" ${stroke}/><text x="40" y="29" text-anchor="middle" font-size="17" fill="currentColor">G</text><path ${stroke} d="M8 22h17M55 22h17"/></svg>`,
           box: `<svg ${common}><rect x="18" y="10" width="44" height="26" ${stroke}/><path ${thin} d="M8 18h10M8 28h10M62 18h10M62 28h10"/></svg>`,
           plc: `<svg ${common}><rect x="16" y="8" width="48" height="30" ${stroke}/><path ${thin} d="M24 8v30M16 16h48M16 24h48M16 32h48"/></svg>`,
           connector: `<svg ${common}><path ${stroke} d="M10 22h60"/><circle cx="22" cy="22" r="5" ${thin}/><circle cx="40" cy="22" r="5" ${thin}/><circle cx="58" cy="22" r="5" ${thin}/></svg>`,
@@ -8232,40 +8328,45 @@
             { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // ブザー(JIS C 0617-8, 08-10-10): 上向き半球の両端より少し内側に2本の端子線を設け、
-        // その下端を配線接続点にする。音響信号一般(半円+線)やサイレン(直角三角形)とは別形状。
-        buzzerJis: {
+        // ブザー(JIS C 0617-8, 08-10-06): 弦を下にした半円(上ふくらみ)。弦の両端より少し内側から
+        // 2本の端子線を下ろし、その下端(y=6)を配線接続点にする。端子線ピッチは2.5mm(グリッド整合)。
+        buzzerJis0806: {
           w: 10, h: 6,
-          anchors: [[3.8, 6], [6.2, 6]],
+          anchors: [[3.75, 6], [6.25, 6]],
           prims: [
             { t: "line", p: [3.1, 3, 6.9, 3] },
             { t: "arc", p: [5, 3, 1.9, 180, 360] },
-            { t: "line", p: [3.8, 3, 3.8, 6] },
-            { t: "line", p: [6.2, 3, 6.2, 6] },
+            { t: "line", p: [3.75, 3, 3.75, 6] },
+            { t: "line", p: [6.25, 3, 6.25, 6] },
             { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 音響信号一般(JIS C 0617-8, 08-10-06「半円、線」): 半円+弦+短い線。ホーン・ベル等の一般記号。
-        buzzerGeneral: {
-          w: 10, h: 4.4,
-          anchors: [[0, 3], [10, 3]],
+        // ブザー(JIS C 0617-8, 08-10-10): 08-10-06の半円を上下反転した形(弦が上・弧が下ふくらみ)。
+        // 端子線は弧の上から下ろす(弦から下ろすと弧と交差するため)。ピッチ2.5mm・接続点は下端(y=6)。
+        // 端子線の上端 y=4.43 は弧 (中心[5,3]・半径1.9) 上の点 3+√(1.9²−1.25²)=4.4309 に一致させ、
+        // 線の切れも突き抜けも生じないようにしている。
+        buzzerJis0810: {
+          w: 10, h: 6,
+          anchors: [[3.75, 6], [6.25, 6]],
           prims: [
-            { t: "line", p: [0, 3, 3.1, 3] },
-            { t: "line", p: [6.9, 3, 10, 3] },
             { t: "line", p: [3.1, 3, 6.9, 3] },
-            { t: "arc", p: [5, 3, 1.9, 180, 360] },
-            { t: "line", p: [5, 3, 5, 4.1] },
+            { t: "arc", p: [5, 3, 1.9, 0, 180] },
+            { t: "line", p: [3.75, 4.43, 3.75, 6] },
+            { t: "line", p: [6.25, 4.43, 6.25, 6] },
             { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // サイレン(JIS C 0617-8, 08-10-09「直角三角形」): 配線上に直角三角形。
+        // サイレン(JIS C 0617-8, 08-10-09): 直角部を上にした直角二等辺三角形。
+        // 頂点(5,0.5)から底辺(2.5,3)-(7.5,3)までの2辺は長さが等しく、頂点で直角に交わる
+        // (ベクトル(-2.5,2.5)と(2.5,2.5)の内積=0)。底辺の両端より少し内側から端子線を下ろし、
+        // その下端(y=6)を配線接続点にする。ピッチ2.5mm。
         buzzerSiren: {
-          w: 10, h: 5,
-          anchors: [[0, 3.5], [10, 3.5]],
+          w: 10, h: 6,
+          anchors: [[3.75, 6], [6.25, 6]],
           prims: [
-            { t: "line", p: [0, 3.5, 3, 3.5] },
-            { t: "line", p: [7, 3.5, 10, 3.5] },
-            { t: "pline", pts: [[3, 3.5], [7, 3.5], [3, 0.5], [3, 3.5]] },
+            { t: "pline", pts: [[5, 0.5], [2.5, 3], [7.5, 3], [5, 0.5]] },
+            { t: "line", p: [3.75, 3, 3.75, 6] },
+            { t: "line", p: [6.25, 3, 6.25, 6] },
             { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8733,6 +8834,197 @@
             { t: "line", p: [0.55, 1.3, 2.05, 1.3] },
             { t: "text", p: [1.3, -1.4], size: 2.2, anchor: "middle", field: "label" }
           ]
+        },
+
+        // ---- JIS C 0617-2 限定図記号(電流種別) ----
+        // 図記号へ添えて電流の種別を示す注釈記号。配線接続点は下端中央の1点だけ持つ。
+        // 直流: 実線1本の下に破線1本。
+        qualifierDc: {
+          w: 8, h: 6,
+          anchors: [[4, 6]],
+          prims: [
+            { t: "line", p: [1.5, 2.3, 6.5, 2.3] },
+            { t: "line", p: [1.5, 3.7, 6.5, 3.7], dash: "1.2 0.8" },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 交流: 正弦波1周期(上ふくらみ→下ふくらみ)。2つの弧はx=4で連続する。
+        qualifierAc: {
+          w: 8, h: 6,
+          anchors: [[4, 6]],
+          prims: [
+            { t: "arc", p: [3, 3, 1, 180, 360] },
+            { t: "arc", p: [5, 3, 1, 0, 180] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 交直流: 交流の正弦波の下に直流(実線+破線)を重ねる。
+        qualifierAcDc: {
+          w: 8, h: 6,
+          anchors: [[4, 6]],
+          prims: [
+            { t: "arc", p: [3.1, 1.8, 0.9, 180, 360] },
+            { t: "arc", p: [4.9, 1.8, 0.9, 0, 180] },
+            { t: "line", p: [2.2, 3.6, 5.8, 3.6] },
+            { t: "line", p: [2.2, 4.8, 5.8, 4.8], dash: "1.2 0.8" },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 三相交流: 相数"3"を正弦波の前に添える。
+        qualifierThreePhase: {
+          w: 8, h: 6,
+          anchors: [[4, 6]],
+          prims: [
+            { t: "text", p: [1.5, 3.8], size: 2.4, anchor: "middle", value: "3" },
+            { t: "arc", p: [4.0, 3, 0.9, 180, 360] },
+            { t: "arc", p: [5.8, 3, 0.9, 0, 180] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+
+        // ---- JIS C 0617-2 操作機構の限定図記号 ----
+        // 接点の操作方法を示す記号。操作軸(縦線)の下端を接続点にし、接点記号の上へ重ねて使う。
+        // 手動操作(一般): 下向きに折れた両端を持つ横棒。
+        operatorManual: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "pline", pts: [[1.5, 2.6], [1.5, 1.4], [6.5, 1.4], [6.5, 2.6]] },
+            { t: "line", p: [4, 1.4, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 押し操作: 横棒+操作軸。
+        operatorPush: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "line", p: [1.5, 1.4, 6.5, 1.4] },
+            { t: "line", p: [4, 1.4, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 引き操作: 手動操作の両端を上向きに折る。
+        operatorPull: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "pline", pts: [[1.5, 0.2], [1.5, 1.4], [6.5, 1.4], [6.5, 0.2]] },
+            { t: "line", p: [4, 1.4, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 回転操作: 横棒の上に半円(回転を表す)。
+        operatorRotate: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "line", p: [1.5, 1.4, 6.5, 1.4] },
+            { t: "arc", p: [4, 1.4, 1.4, 180, 360] },
+            { t: "line", p: [4, 1.4, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // キー操作: 横棒の端に円(キー)。円と横棒は x=2.8 で接する。
+        operatorKey: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "circle", p: [1.9, 1.4, 0.9] },
+            { t: "line", p: [2.8, 1.4, 6.5, 1.4] },
+            { t: "line", p: [4, 1.4, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // ローラ操作: 操作軸の先端に円(ローラ)。円の下端 y=2.1 から軸が始まる。
+        operatorRoller: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "circle", p: [4, 1.1, 1.1] },
+            { t: "line", p: [4, 2.2, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 足踏操作: ペダルを表すL形。
+        operatorFoot: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "pline", pts: [[1.6, 0.7], [1.6, 2.0], [6.4, 2.0]] },
+            { t: "line", p: [4, 2.0, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 非常操作: キノコ形操作部(上ふくらみ半円+弦)。
+        operatorEmergency: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "arc", p: [4, 2.0, 1.8, 180, 360] },
+            { t: "line", p: [2.2, 2.0, 5.8, 2.0] },
+            { t: "line", p: [4, 2.0, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 電磁操作: 操作コイルを表す長方形。
+        operatorElectromagnetic: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "rect", p: [1.5, 0.6, 5, 2.2], fill: "white" },
+            { t: "line", p: [4, 2.8, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 熱操作: 熱動素子の⊓形。操作軸は⊓の内側を通るため他の線と交差しない。
+        operatorThermal: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "pline", pts: [[1.5, 2.6], [3.2, 2.6], [3.2, 1.2], [4.8, 1.2], [4.8, 2.6], [6.5, 2.6]] },
+            { t: "line", p: [4, 1.2, 4, 8] },
+            { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+
+        // ---- JIS C 0617-7 電磁接触器 主接点(3極) ----
+        // 縦向きのa接点(斜め可動線+接触器機能記号の半円)を10mmピッチで3極並べ、
+        // 可動線の先端どうしを破線(機械連動)で結ぶ。破線 y=6.4 は半円の頂点 y=6.6 より上を通るため
+        // 半円とは交差せず、両端の極では可動線の先端に正確に接する。
+        contactor3p: {
+          w: 30, h: 10,
+          anchors: [[5, 0], [5, 10], [15, 0], [15, 10], [25, 0], [25, 10]],
+          prims: [
+            { t: "line", p: [5, 0, 5, 3.9] },
+            { t: "line", p: [5, 7.3, 5, 10] },
+            { t: "line", p: [5, 3.9, 6.6, 6.4] },
+            { t: "arc", p: [5, 6.6, 0.7, 0, 180] },
+            { t: "line", p: [15, 0, 15, 3.9] },
+            { t: "line", p: [15, 7.3, 15, 10] },
+            { t: "line", p: [15, 3.9, 16.6, 6.4] },
+            { t: "arc", p: [15, 6.6, 0.7, 0, 180] },
+            { t: "line", p: [25, 0, 25, 3.9] },
+            { t: "line", p: [25, 7.3, 25, 10] },
+            { t: "line", p: [25, 3.9, 26.6, 6.4] },
+            { t: "arc", p: [25, 6.6, 0.7, 0, 180] },
+            { t: "line", p: [6.6, 6.4, 26.6, 6.4], dash: "1.4 1.2" },
+            { t: "text", p: [15, -1.5], size: 2.2, anchor: "middle", field: "label" }
+          ]
+        },
+
+        // ---- JIS C 0617-6 発電機 ----
+        // 円の中に"G"。電動機(motor)と対になる記号。左右にリードを出しピンピッチ10mm。
+        generator: {
+          w: 10, h: 10,
+          anchors: [[0, 5], [10, 5]],
+          prims: [
+            { t: "circle", p: [5, 5, 4], fill: "white" },
+            { t: "line", p: [0, 5, 1, 5] },
+            { t: "line", p: [9, 5, 10, 5] },
+            { t: "text", p: [5, 5.9], size: 3.2, anchor: "middle", value: "G" },
+            { t: "text", p: [5, -1.4], size: 2.2, anchor: "middle", field: "label" }
+          ]
         }
       };
 
@@ -8956,7 +9248,7 @@
           case "floatSwitch": return variant === "nc" ? "floatSwitchNC" : "floatSwitch";
           case "thermoSwitch": return variant === "nc" ? "thermoSwitchNC" : "thermoSwitch";
           case "bell": return "bell";
-          case "buzzer": return ({ jis: "buzzerJis", general: "buzzerGeneral", siren: "buzzerSiren", sound: "buzzerSound", piezo: "buzzerPiezo" })[element.buzzerVariant] || null;
+          case "buzzer": return ({ jis0806: "buzzerJis0806", jis0810: "buzzerJis0810", siren: "buzzerSiren", sound: "buzzerSound", piezo: "buzzerPiezo" })[element.buzzerVariant] || null;
           case "battery": return variant === "single" ? "batterySingle" : "battery";
           case "rectifierBox": return "rectifierBox";
           case "currentTransformer": return variant === "zct" ? "currentTransformerZct" : (variant === "coil" ? "currentTransformerCoil" : "currentTransformer");
@@ -8966,6 +9258,14 @@
           case "positionMark": return (element.markStyle || "box") === "box" ? "positionMarkBox" : "positionMarkLine";
           case "revisionMark": return "revisionMark";
           case "polarityMark": return (element.sign || "+") === "-" ? "polarityMarkMinus" : "polarityMarkPlus";
+          case "qualifierMark": return ({ dc: "qualifierDc", ac: "qualifierAc", acdc: "qualifierAcDc", threePhase: "qualifierThreePhase" })[variant] || "qualifierDc";
+          case "operatorMark": return ({
+            manual: "operatorManual", push: "operatorPush", pull: "operatorPull", rotate: "operatorRotate",
+            key: "operatorKey", roller: "operatorRoller", foot: "operatorFoot", emergency: "operatorEmergency",
+            electromagnetic: "operatorElectromagnetic", thermal: "operatorThermal"
+          })[variant] || "operatorManual";
+          case "contactor3p": return "contactor3p";
+          case "generator": return "generator";
           default: return null;
         }
       }
@@ -10130,6 +10430,8 @@
         transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "二巻線円形（JIS）"], ["circlesCore", "二巻線円形＋鉄心（JIS）"]],
         heater: [["standard", "箱＋斜線（設備標準）"], ["plain", "箱のみ（JIS抵抗器形）"]],
         arrester: [["standard", "箱＋矢印（設備標準）"], ["gap", "ギャップ形（対向三角）"]],
+        qualifierMark: [["dc", "直流（実線＋破線）"], ["ac", "交流（正弦波）"], ["acdc", "交直流（正弦波＋実線・破線）"], ["threePhase", "三相交流（3＋正弦波）"]],
+        operatorMark: [["manual", "手動操作（一般）"], ["push", "押し操作"], ["pull", "引き操作"], ["rotate", "回転操作"], ["key", "キー操作"], ["roller", "ローラ操作"], ["foot", "足踏操作"], ["emergency", "非常操作（キノコ）"], ["electromagnetic", "電磁操作"], ["thermal", "熱操作（⊓）"]],
         outlet: [["standard", "半円＋差込口"], ["box", "箱形（スロット2＋接地）"], ["boxDouble", "箱形2口"], ["round", "丸形（円＋差込口2本）"], ["earthed", "半円＋差込口（接地極付き）"], ["plug", "プラグ（雄側・縦バー）"], ["plugPin", "プラグ（2本刃）"], ["plugPin3", "プラグ（2本刃＋接地ピン）"], ["plugSocket", "プラグ・ソケット対（挿抜表現）"]],
         pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "キノコ＋b接点（JIS C 0617）"], ["multi2", "縦連結2接点（連動）"], ["multi3", "縦連結3接点（連動）"], ["jisMulti2", "JIS縦連結2接点（連動）"], ["jisMulti3", "JIS縦連結3接点（連動）"], ["facility", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]],
         pressureSwitch: [["standard", "ダイヤフラム形（設備標準）"], ["nc", "b接点（閉じ線＋止め）"]],
@@ -10488,7 +10790,7 @@
             <input data-bind="refNo" type="text" value="${escapeAttr(element.refNo || "")}">`}
           `;
         }
-        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor", "inductor", "logicGate", "pressureSwitch", "floatSwitch", "thermoSwitch", "flowSwitch", "footSwitch", "battery", "heater", "arrester", "outlet", "sensor", "photoelectricSwitch", "matSwitch", "reedSwitch", "lightCurtain", "solenoidValve", "powerSupply"].includes(element.type)) {
+        if (["coil", "ground", "diode", "capacitor", "selectorSwitch", "limitSwitch", "timerContactNO", "timerContactNC", "transformer", "meter", "currentTransformer", "transistor", "motor", "inductor", "logicGate", "pressureSwitch", "floatSwitch", "thermoSwitch", "flowSwitch", "footSwitch", "battery", "heater", "arrester", "outlet", "sensor", "photoelectricSwitch", "matSwitch", "reedSwitch", "lightCurtain", "solenoidValve", "powerSupply", "qualifierMark", "operatorMark"].includes(element.type)) {
           return symbolVariantSelectHtml(element);
         }
         if (element.type === "thermalRelay") {
@@ -10595,9 +10897,9 @@
           return `
             <label>ブザー形状</label>
             <select data-bind="buzzerVariant">
-              <option value="jis"${variant === "jis" ? " selected" : ""}>ブザー・半円（JIS C 0617 08-10-10）</option>
-              <option value="general"${variant === "general" ? " selected" : ""}>音響信号一般・半円＋線（JIS 08-10-06）</option>
-              <option value="siren"${variant === "siren" ? " selected" : ""}>サイレン・直角三角形（JIS 08-10-09）</option>
+              <option value="jis0806"${variant === "jis0806" ? " selected" : ""}>ブザー・半円（JIS C 0617 08-10-06）</option>
+              <option value="jis0810"${variant === "jis0810" ? " selected" : ""}>ブザー・半円反転（JIS C 0617 08-10-10）</option>
+              <option value="siren"${variant === "siren" ? " selected" : ""}>サイレン・直角三角形（JIS C 0617 08-10-09）</option>
               <option value="horn"${variant === "horn" ? " selected" : ""}>ホーン（ラッパ形・略画）</option>
               <option value="speaker"${variant === "speaker" ? " selected" : ""}>スピーカー（略画）</option>
               <option value="sound"${variant === "sound" ? " selected" : ""}>半円＋音波（略画）</option>
@@ -11203,6 +11505,10 @@
           thermalElement: { ...base, w: 10, h: 3, label: "OL", orientation: "horizontal" },
           positionMark: { ...base, w: 4, h: 6, label: "入", markStyle: "box" },
           polarityMark: { ...base, w: 2.6, h: 2.6, label: "", sign: "+" },
+          qualifierMark: { ...base, w: 8, h: 6, label: "", symbolVariant: "dc" },
+          operatorMark: { ...base, w: 8, h: 8, label: "", symbolVariant: "manual" },
+          contactor3p: { ...base, w: 30, h: 10, label: "MC" },
+          generator: { ...base, w: 10, h: 10, label: "G" },
           deviceBox: { ...base, w: 30, h: 25, label: "機器", pins: 4, pinText: "1\n2\n3\n4", rightPinText: "" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
           connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
@@ -11651,6 +11957,8 @@
       function centerPlacedTypes() {
         return new Set([
           "terminal",
+          "generator",
+          "contactor3p",
           "contactNO",
           "contactNC",
           "timerContactNO",
@@ -11711,6 +12019,7 @@
       // 既存配線上へ置いた時に配線を自動分割する種別集合。
       function wireBreakingTypes() {
         return new Set([
+          "generator",
           "contactNO",
           "contactNC",
           "timerContactNO",
@@ -19394,7 +19703,8 @@
             接地4種、ヒューズ3種、ダイオード7種（トライアック・フォトダイオード含む）、変圧器3種＋テンプレート専用10mm形、論理ゲート3種、押しボタンa/b接点（設備標準・JIS C 0617）、
             リミットスイッチ箱形NO/NC・ローラーNO/NC、圧力/フロート/温度/フロー/フットスイッチのa/b接点、
             切替接点（c接点）、接触器主接点（半円・JIS C 0617）、サーマルリレー10種（熱動素子付きa/b接点ほか）、照光式/パーム押しボタン、切替スイッチJIS形、ブリッジ整流◇、避雷器2種、
-            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント9種（箱形2口・丸形・接地極付き・雄側プラグ3種・プラグ対ほか）、蛍光灯、針付き計器、ブザー7形状（JIS半円/音響信号一般・半円＋線/サイレン・直角三角形/ホーン/スピーカーほか）、交流電源（円＋〜）、ポテンショメータ3端子、AC/DC・DC/AC（インバータ）・DC/DC変換器箱、光電スイッチ10種（透過/回帰反射/拡散/距離設定BGS/ファイバ/溝形/マーク・カラー/一般形ほか）、マットスイッチ・リードスイッチなど100種類以上。
+            コンデンサ3種、リアクトル3種、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント9種（箱形2口・丸形・接地極付き・雄側プラグ3種・プラグ対ほか）、蛍光灯、針付き計器、ブザー7形状（JIS C 0617 08-10-06 半円／08-10-10 反転半円／08-10-09 サイレン・直角三角形／ホーン／スピーカーほか）、交流電源（円＋〜）、ポテンショメータ3端子、AC/DC・DC/AC（インバータ）・DC/DC変換器箱、光電スイッチ10種（透過/回帰反射/拡散/距離設定BGS/ファイバ/溝形/マーク・カラー/一般形ほか）、マットスイッチ・リードスイッチなど100種類以上。
+            さらに <b>JIS C 0617 の限定図記号</b>として、電流種別4種（直流／交流／交直流／三相交流）と操作機構10種（手動一般・押し・引き・回転・キー・ローラ・足踏・非常・電磁・熱）、<b>電磁接触器 主接点3極</b>（10mmピッチ＋機械連動破線）、<b>発電機</b>（円＋G）を追加。
             光電・マット・リードスイッチは他の接点部品と揃うサイズ（幅15mm前後）で配置されます。
             光電/マット/リード/ライトカーテン/センサ/ソレノイド弁/電源も、選択して右パネルの「シンボルデザイン」から様式を切り替えられます。
             切替時は<b>第1接続ピンの位置を保持</b>するため、そのピンへ接続した配線はずれません。ピン構成が共通のデザインではほかの接続点も維持され、

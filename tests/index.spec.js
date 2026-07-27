@@ -485,7 +485,7 @@ test("破損JSON・空ページ・将来版を拒否して現在図面を保持�
     },
     {
       name: "future.json",
-      body: { schemaVersion: 5, pages: [{ id: "p1", title: {}, elements: [] }] },
+      body: { schemaVersion: 6, pages: [{ id: "p1", title: {}, elements: [] }] },
       expected: "新しい形式"
     },
     {
@@ -553,7 +553,7 @@ test("部分JSONは現在図面を継承せず既定値で補完し、staleな�
   const legacy = await page.evaluate(() => window.__edsTest.normalizeProjectData({
     pages: [{ id: "legacy-page" }]
   }));
-  expect(legacy.schemaVersion).toBe(4);
+  expect(legacy.schemaVersion).toBe(5);
   expect(legacy.pages[0].title).toBeTruthy();
   expect(legacy.pages[0].elements).toEqual([]);
 });
@@ -596,7 +596,7 @@ test("schema v2の回転部品と機器箱・端子箱を配線ごと現行版�
   }));
 
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(4);
+  expect(migrated.schemaVersion).toBe(5);
   expect(elements.contact).toMatchObject({ x: 50, y: 49, w: 10, rotation: 90 });
   expect(elements["wire-left"].points[1][0]).toBeCloseTo(47.8, 6);
   expect(elements["wire-left"].points[1][1]).toBeCloseTo(49, 6);
@@ -618,7 +618,7 @@ test("schema v2の回転部品と機器箱・端子箱を配線ごと現行版�
   expect(migrated.standardPacks[0].customSymbols[0].templates[1].points[0][0]).toBe(39);
 });
 
-test("schema v3のCPとユニット列を接続を保ってv4へ移行し再適用しても変化しない", async ({ page }) => {
+test("schema v3のCPとユニット列を接続を保って現行版へ移行し再適用しても変化しない", async ({ page }) => {
   const result = await page.evaluate(() => {
     const blankTerminal = (id, x, y) => ({
       id,
@@ -693,7 +693,7 @@ test("schema v3のCPとユニット列を接続を保ってv4へ移行し再適�
 
   const migrated = result.migrated;
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(4);
+  expect(migrated.schemaVersion).toBe(5);
   expect(result.idempotent).toBe(true);
 
   expect(elements["cp-horizontal"]).toMatchObject({ w: 12.5, h: 5, cpLinked: true });
@@ -724,6 +724,74 @@ test("schema v3のCPとユニット列を接続を保ってv4へ移行し再適�
   expect(migrated.customSymbols[0].templates[1].points[0]).toEqual([12.5, 3]);
   expect(migrated.customSymbols[1].template).toMatchObject({ x: 35, w: 10 });
   expect(migrated.standardPacks[0].customSymbols[0].templates[0]).toMatchObject({ x: 55, w: 10 });
+});
+
+test("schema v4のブザーを配線ごとJIS記号の新ピンへ移行し再適用しても変化しない", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const buzzer = (id, variant, x, y, extra = {}) =>
+      ({ id, type: "buzzer", x, y, w: 12, h: 6, buzzerVariant: variant, label: "BZ", ...extra });
+    const source = {
+      schemaVersion: 4,
+      activePageId: "p1",
+      pages: [{
+        id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+        elements: [
+          // 旧jis(称: 08-10-10)は下向き端子線[3.8,6]/[6.2,6] → 新08-10-06の[3.75,6]/[6.25,6]
+          buzzer("bz-jis", "jis", 20, 20),
+          { id: "w-jis-l", type: "wire", points: [[24.8, 26], [24.8, 40]] },
+          { id: "w-jis-r", type: "wire", points: [[27.2, 26], [27.2, 40]] },
+          // 旧general(称: 08-10-06)は左右水平リード → 廃止しjis0806へ統合、配線は下ピンへ
+          buzzer("bz-general", "general", 50, 20),
+          { id: "w-gen-l", type: "wire", points: [[51, 23.8], [40, 23.8]] },
+          { id: "j-gen-r", type: "junction", x: 61, y: 23.8 },
+          // 旧siren(横向き三角形)は左右水平リード → 直角二等辺三角形+下向き端子線
+          buzzer("bz-siren", "siren", 80, 20),
+          { id: "w-siren-l", type: "wire", points: [[81, 24], [70, 24]] },
+          { id: "w-siren-r", type: "wire", points: [[91, 24], [100, 24]] },
+          // 略画(horn)は規格外のため移行対象外
+          buzzer("bz-horn", "horn", 110, 20)
+        ]
+      }]
+    };
+    const migrated = window.__edsTest.migrateProjectData(source);
+    const again = window.__edsTest.migrateProjectData(JSON.parse(JSON.stringify(migrated)));
+    const pins = id => {
+      const element = migrated.pages[0].elements.find(item => item.id === id);
+      return window.__edsTest.elementConnectionAnchors(element).map(anchor => [anchor.x, anchor.y]);
+    };
+    return {
+      migrated,
+      idempotent: JSON.stringify(migrated) === JSON.stringify(again),
+      pins: { jis: pins("bz-jis"), general: pins("bz-general"), siren: pins("bz-siren") }
+    };
+  });
+
+  const elements = Object.fromEntries(result.migrated.pages[0].elements.map(element => [element.id, element]));
+  expect(result.migrated.schemaVersion).toBe(5);
+  expect(result.idempotent).toBe(true);
+
+  // 旧jis/generalはjis0806へ、sirenはキーを保つ。略画hornは無変更。
+  expect(elements["bz-jis"].buzzerVariant).toBe("jis0806");
+  expect(elements["bz-general"].buzzerVariant).toBe("jis0806");
+  expect(elements["bz-siren"].buzzerVariant).toBe("siren");
+  expect(elements["bz-horn"].buzzerVariant).toBe("horn");
+
+  // 3種とも下向き端子線・ピッチ2.5mmの接続点になる
+  for (const [name, pair] of Object.entries(result.pins)) {
+    expect(pair[1][0] - pair[0][0], name).toBeCloseTo(2.5, 6);
+    expect(pair[0][1], name).toBe(pair[1][1]);
+  }
+  expect(result.pins.jis).toEqual([[24.75, 26], [27.25, 26]]);
+  expect(result.pins.general).toEqual([[54.75, 26], [57.25, 26]]);
+  expect(result.pins.siren).toEqual([[84.75, 26], [87.25, 26]]);
+
+  // 旧ピンへ接続していた配線・接続点が新ピンへ追従する(反対側の端点は動かさない)
+  expect(elements["w-jis-l"].points).toEqual([[24.75, 26], [24.8, 40]]);
+  expect(elements["w-jis-r"].points).toEqual([[27.25, 26], [27.2, 40]]);
+  expect(elements["w-gen-l"].points).toEqual([[54.75, 26], [40, 23.8]]);
+  expect(elements["j-gen-r"]).toMatchObject({ x: 57.25, y: 26 });
+  expect(elements["w-siren-l"].points).toEqual([[84.75, 26], [70, 24]]);
+  expect(elements["w-siren-r"].points).toEqual([[87.25, 26], [100, 24]]);
 });
 
 test("不正な表題欄レイアウトを拒否してダイアログと履歴を壊さない", async ({ page }) => {
@@ -2592,7 +2660,7 @@ test("接触器主接点・トライアック・JISブザー・交流電源の�
     const cases = [
       ["contactNO", { symbolVariant: "contactor" }],
       ["diode", { symbolVariant: "triac" }],
-      ["buzzer", { buzzerVariant: "jis" }],
+      ["buzzer", { buzzerVariant: "jis0806" }],
       ["powerSupply", { symbolVariant: "ac" }]
     ];
     return cases.map(([type, props]) => {
@@ -2606,7 +2674,7 @@ test("接触器主接点・トライアック・JISブザー・交流電源の�
   for (const item of result) {
     expect(item.primCount, `${item.type}の形状`).toBeGreaterThan(2);
     expect(item.anchorCount, `${item.type}の接続点`).toBe(2);
-    expect(item.span, `${item.type}のピン間隔`).toBeCloseTo(item.type === "buzzer" ? 2.4 : 10, 5);
+    expect(item.span, `${item.type}のピン間隔`).toBeCloseTo(item.type === "buzzer" ? 2.5 : 10, 5);
   }
 });
 
@@ -3445,7 +3513,7 @@ test("COM/0Vポートの表示名をCOM＋/COM−へ切り替えられる", asyn
   expect(result.dxfPm).toBe(true);
 });
 
-test("ブザー系はJIS C 0617準拠(半円/半円+線/直角三角形)で枠内に収まる", async ({ page }) => {
+test("ブザー系はJIS C 0617準拠(08-10-06半円/08-10-10反転半円/08-10-09直角三角形)で枠内に収まる", async ({ page }) => {
   const result = await page.evaluate(() => {
     const infoOf = (type, variant) => {
       const el = window.__edsTest.defaultElement(type, 20, 20);
@@ -3466,25 +3534,26 @@ test("ブザー系はJIS C 0617準拠(半円/半円+線/直角三角形)で枠�
       return { arcs, plines, vlines, w: el.w, h: el.h, minX: Math.round(minX * 10) / 10, maxX: Math.round(maxX * 10) / 10, maxY: Math.round(maxY * 10) / 10, anchorCount: window.__edsTest.elementConnectionAnchors(el).length };
     };
     return {
-      jis: infoOf("buzzer", "jis"),
-      general: infoOf("buzzer", "general"),
+      jis0806: infoOf("buzzer", "jis0806"),
+      jis0810: infoOf("buzzer", "jis0810"),
       siren: infoOf("buzzer", "siren"),
       bell: infoOf("bell")
     };
   });
   // ブザー(08-10-10): 上向きドーム(180→360)の下に配線用端子線2本
-  expect(result.jis.arcs).toEqual([[180, 360]]);
-  expect(result.jis.vlines).toBe(2);
-  // 音響信号一般(08-10-06): 半円+線=ドーム+短い垂直線1本
-  expect(result.general.arcs).toEqual([[180, 360]]);
-  expect(result.general.vlines).toBe(1);
-  // サイレン(08-10-09): 直角三角形(pline)、弧なし
+  expect(result.jis0806.arcs).toEqual([[180, 360]]);
+  expect(result.jis0806.vlines).toBe(2);
+  // ブザー(08-10-10): 08-10-06の半円を上下反転(0→180の下ふくらみ)+端子線2本
+  expect(result.jis0810.arcs).toEqual([[0, 180]]);
+  expect(result.jis0810.vlines).toBe(2);
+  // サイレン(08-10-09): 直角三角形(pline)+端子線2本、弧なし
   expect(result.siren.arcs).toEqual([]);
   expect(result.siren.plines).toBe(1);
+  expect(result.siren.vlines).toBe(2);
   // ベルも半円+線(上向きドーム)
   expect(result.bell.arcs).toEqual([[180, 360]]);
   // いずれも枠内(横0..w、縦h以内)、接続点2点
-  [result.jis, result.general, result.siren].forEach(r => {
+  [result.jis0806, result.jis0810, result.siren].forEach(r => {
     expect(r.anchorCount).toBe(2);
     expect(r.minX).toBeGreaterThanOrEqual(0);
     expect(r.maxX).toBeLessThanOrEqual(r.w);
@@ -3503,7 +3572,7 @@ test("全パレット部品が配置でき、ブザー等の全バリアント�
     });
     // buzzerVariant/lampVariant/resistorStyle の各値が右パネルのセレクトに存在するか
     const cfgs = [
-      ["buzzer", "buzzerVariant", ["jis", "general", "siren", "horn", "speaker", "sound", "piezo"]],
+      ["buzzer", "buzzerVariant", ["jis0806", "jis0810", "siren", "horn", "speaker", "sound", "piezo"]],
       ["lamp", "lampVariant", ["pilot", "cross", "cylinder", "fluor"]],
       ["resistor", "resistorStyle", ["box", "varistor", "variable", "thermistor", "zigzag", "potentiometer"]]
     ];
@@ -3941,28 +4010,150 @@ test("円弧ラベルを画面とDXFに出力する", async ({ page }) => {
   expect(dxf).toContain("ARC-01");
 });
 
-test("JISブザーは半球下の2本の端子線を接続点にする", async ({ page }) => {
+test("JISブザー08-10-06/08-10-10は弦の内側から下ろした端子線をピッチ2.5mmの接続点にする", async ({ page }) => {
   const result = await page.evaluate(() => {
     const api = window.__edsTest;
-    const buzzer = { ...api.defaultElement("buzzer", 40, 50), id: "buzzer-jis", buzzerVariant: "jis" };
-    const drawingPage = api.createPage({ name: "JISブザー" });
-    drawingPage.elements = [buzzer];
+    const probe = variant => {
+      const buzzer = { ...api.defaultElement("buzzer", 40, 50), id: "bz-" + variant, buzzerVariant: variant };
+      const drawingPage = api.createPage({ name: "JISブザー" });
+      drawingPage.elements = [buzzer];
+      api.installProjectData({ ...api.state, pages: [drawingPage], activePageId: drawingPage.id });
+      const prims = api.geoPrims(buzzer);
+      return {
+        // anchorsはページ座標、prims/SVG属性は要素ローカル座標。比較用に要素原点も返す。
+        origin: [buzzer.x, buzzer.y],
+        anchors: api.elementConnectionAnchors(buzzer).map(anchor => [anchor.x, anchor.y]),
+        arc: prims.find(prim => prim.t === "arc").p,
+        lines: Array.from(document.querySelectorAll('[data-id="bz-' + variant + '"] line')).map(line => ({
+          x1: Number(line.getAttribute("x1")), y1: Number(line.getAttribute("y1")),
+          x2: Number(line.getAttribute("x2")), y2: Number(line.getAttribute("y2"))
+        }))
+      };
+    };
+    return { a: probe("jis0806"), b: probe("jis0810") };
+  });
+
+  for (const [name, r] of Object.entries(result)) {
+    expect(r.anchors, name).toHaveLength(2);
+    // 2点は同じ高さ・ピッチ2.5mm(グリッド整合)で、記号本体より下にある
+    expect(r.anchors[0][1], name).toBe(r.anchors[1][1]);
+    expect(Math.abs(r.anchors[1][0] - r.anchors[0][0]), name).toBeCloseTo(2.5, 6);
+    expect(r.anchors[0][1], name).toBeGreaterThan(50);
+    const terminalLines = r.lines.filter(line => line.x1 === line.x2 && line.y2 > line.y1);
+    const chord = r.lines.find(line => line.y1 === line.y2 && line.x2 > line.x1);
+    // 端子線は2本、いずれも弦の両端より内側から出る
+    expect(terminalLines, name).toHaveLength(2);
+    expect(terminalLines[0].x1, name).toBeGreaterThan(chord.x1);
+    expect(terminalLines[1].x1, name).toBeLessThan(chord.x2);
+    // 端子線の下端は接続点と一致する(線の切れがない)
+    terminalLines.forEach(line => expect(line.y2 + r.origin[1], name).toBeCloseTo(r.anchors[0][1], 6));
+    terminalLines.forEach((line, index) => expect(line.x1 + r.origin[0], name).toBeCloseTo(r.anchors[index][0], 6));
+  }
+  // 08-10-06は上ふくらみ(180→360)で端子線は弦から、08-10-10は下ふくらみ(0→180)で端子線は弧から下ろす
+  expect(result.a.arc.slice(3)).toEqual([180, 360]);
+  expect(result.b.arc.slice(3)).toEqual([0, 180]);
+  const [cx, cy, radius] = result.b.arc;
+  result.b.lines.filter(line => line.x1 === line.x2 && line.y2 > line.y1).forEach(line => {
+    // 端子線の上端が弧の上に載っていること(隙間も突き抜けもない): 中心からの距離=半径
+    const distance = Math.hypot(line.x1 - cx, line.y1 - cy);
+    expect(Math.abs(distance - radius)).toBeLessThan(0.01);
+  });
+});
+
+test("JIS C 0617 追加記号(限定図記号・操作機構・電磁接触器3極・発電機)を枠内に作画しDXFへ出す", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const cases = [
+      ["qualifierMark", ["dc", "ac", "acdc", "threePhase"]],
+      ["operatorMark", ["manual", "push", "pull", "rotate", "key", "roller", "foot", "emergency", "electromagnetic", "thermal"]],
+      ["contactor3p", [null]],
+      ["generator", [null]]
+    ];
+    const rows = [];
+    cases.forEach(([type, variants]) => {
+      variants.forEach(variant => {
+        const element = api.defaultElement(type, 20, 20);
+        if (variant) element.symbolVariant = variant;
+        const prims = api.geoPrims(element);
+        // 文字以外の図形の外接矩形を集計し、要素枠[0..w]x[0..h]へ収まるか確認する
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        prims.forEach(prim => {
+          if (prim.t === "text") return;
+          let xs, ys;
+          if (prim.pts) { xs = prim.pts.map(point => point[0]); ys = prim.pts.map(point => point[1]); }
+          else if (prim.t === "circle" || prim.t === "arc") {
+            xs = [prim.p[0] - prim.p[2], prim.p[0] + prim.p[2]];
+            ys = [prim.p[1] - prim.p[2], prim.p[1] + prim.p[2]];
+          } else if (prim.t === "rect") {
+            xs = [prim.p[0], prim.p[0] + prim.p[2]]; ys = [prim.p[1], prim.p[1] + prim.p[3]];
+          } else { xs = [prim.p[0], prim.p[2]]; ys = [prim.p[1], prim.p[3]]; }
+          minX = Math.min(minX, ...xs); maxX = Math.max(maxX, ...xs);
+          minY = Math.min(minY, ...ys); maxY = Math.max(maxY, ...ys);
+        });
+        rows.push({
+          type, variant, w: element.w, h: element.h, primCount: prims.length,
+          box: [minX, minY, maxX, maxY],
+          // 接続点はページ座標で返るので、要素原点(20,20)を引いて要素ローカル座標で比較する
+          anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20])
+        });
+      });
+    });
+
+    // 電磁接触器3極を実配置し、SVG属性とDXFを確認する
+    const contactor = { ...api.defaultElement("contactor3p", 30, 40), id: "mc", label: "MC1" };
+    const drawingPage = api.createPage({ name: "MC" });
+    drawingPage.elements = [contactor];
     api.installProjectData({ ...api.state, pages: [drawingPage], activePageId: drawingPage.id });
+    const svgLines = Array.from(document.querySelectorAll('[data-id="mc"] line')).map(line => ({
+      x1: Number(line.getAttribute("x1")), y1: Number(line.getAttribute("y1")),
+      x2: Number(line.getAttribute("x2")), y2: Number(line.getAttribute("y2")),
+      dash: line.getAttribute("stroke-dasharray")
+    }));
+    const dxf = api.buildDxf(drawingPage);
     return {
-      anchors: api.elementConnectionAnchors(buzzer),
-      lines: Array.from(document.querySelectorAll('[data-id="buzzer-jis"] line')).map(line => ({
-        x1: Number(line.getAttribute("x1")), y1: Number(line.getAttribute("y1")),
-        x2: Number(line.getAttribute("x2")), y2: Number(line.getAttribute("y2"))
-      }))
+      rows,
+      svgLines,
+      arcPaths: Array.from(document.querySelectorAll('[data-id="mc"] path')).map(node => node.getAttribute("d")),
+      dxfArcs: (dxf.match(/\nARC\n/g) || []).length,
+      dxfHasDashed: /DASHED/.test(dxf)
     };
   });
 
-  expect(result.anchors).toHaveLength(2);
-  expect(result.anchors[0].y).toBe(result.anchors[1].y);
-  expect(result.anchors[0].y).toBeGreaterThan(50);
-  const terminalLines = result.lines.filter(line => line.x1 === line.x2 && line.y2 > line.y1);
-  const domeBase = result.lines.find(line => line.y1 === line.y2 && line.x2 > line.x1);
-  expect(terminalLines).toHaveLength(2);
-  expect(terminalLines[0].x1).toBeGreaterThan(domeBase.x1);
-  expect(terminalLines[1].x1).toBeLessThan(domeBase.x2);
+  // 全記号: プリミティブがあり、図形は要素枠からはみ出さない
+  for (const row of result.rows) {
+    const label = `${row.type}/${row.variant}`;
+    expect(row.primCount, label).toBeGreaterThan(1);
+    expect(row.box[0], label).toBeGreaterThanOrEqual(-0.01);
+    expect(row.box[1], label).toBeGreaterThanOrEqual(-0.01);
+    expect(row.box[2], label).toBeLessThanOrEqual(row.w + 0.01);
+    expect(row.box[3], label).toBeLessThanOrEqual(row.h + 0.01);
+    expect(row.anchors.length, label).toBeGreaterThan(0);
+  }
+
+  // 限定図記号・操作機構は下端中央の1点、発電機は左右2点、接触器は3極×2=6点
+  const find = (type, variant) => result.rows.find(row => row.type === type && row.variant === variant);
+  expect(find("qualifierMark", "dc").anchors).toEqual([[4, 6]]);
+  expect(find("operatorMark", "manual").anchors).toEqual([[4, 8]]);
+  expect(find("generator", null).anchors).toEqual([[0, 5], [10, 5]]);
+  const mcAnchors = find("contactor3p", null).anchors;
+  expect(mcAnchors).toEqual([[5, 0], [5, 10], [15, 0], [15, 10], [25, 0], [25, 10]]);
+  // 主接点3極のピンピッチは10mm(2.5mmグリッドの倍数)
+  expect(mcAnchors[2][0] - mcAnchors[0][0]).toBe(10);
+  expect(mcAnchors[4][0] - mcAnchors[2][0]).toBe(10);
+
+  // 機械連動線は破線で、左右両端の極の可動線先端に一致する
+  const linkLine = result.svgLines.find(line => line.dash);
+  expect(linkLine).toBeTruthy();
+  expect(linkLine.y1).toBe(linkLine.y2);
+  const bladeTips = result.svgLines.filter(line => line.x1 !== line.x2 && !line.dash).map(line => [line.x2, line.y2]);
+  expect(bladeTips).toHaveLength(3);
+  expect([linkLine.x1, linkLine.y1]).toEqual(bladeTips[0]);
+  expect([linkLine.x2, linkLine.y2]).toEqual(bladeTips[2]);
+  // 破線は半円(中心y=6.6・半径0.7)の頂上より上を通り、半円と交差しない
+  expect(linkLine.y1).toBeLessThan(6.6);
+
+  // 接触器機能記号は3極とも下ふくらみの半円、DXFにも弧と破線種が出る
+  expect(result.arcPaths).toHaveLength(3);
+  expect(result.dxfArcs).toBe(3);
+  expect(result.dxfHasDashed).toBe(true);
 });
