@@ -6425,16 +6425,17 @@
             { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
-        // a接点デザイン: 接触器主接点(JIS C 0617)。斜め可動線+固定側の半円(接触器機能記号、
-        // 開口は可動接点側)。寸法・接続点は縦バー版と共通。
+        // 電磁接触器の主メーク接点(JIS C 0617-7, 07-13-02): メーク接点(07-02-01)の固定接点へ
+        // 接触器機能の限定図記号(半円)を重ねる。半円は固定側リードの先端から内側へ載り、弦が
+        // リードと重なって膨らみが可動接点の開く側を向く。寸法・接続点は縦バー版と共通。
         contactNOContactor: {
           w: 10, h: 4.4,
           anchors: [[0, 2.2], [10, 2.2]],
           prims: [
             { t: "line", p: [0, 2.2, 3.9, 2.2] },
-            { t: "line", p: [7.3, 2.2, 10, 2.2] },
+            { t: "line", p: [6.1, 2.2, 10, 2.2] },
             { t: "line", p: [3.9, 2.2, 6.4, 0.6] },
-            { t: "arc", p: [6.6, 2.2, 0.7, 270, 450] },
+            { t: "arc", p: [6.8, 2.2, 0.7, 180, 360] },
             { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
@@ -8507,16 +8508,18 @@
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 遮断器(IEC): ×接点+開き線。
+        // 遮断器(JIS C 0617-7, 07-13-05): メーク接点(07-02-01)の固定接点へ遮断機能の限定図記号
+        // (07-01-02 = ×)を重ねる。×の中心は「可動線のちょうつがいと反対側」にある固定接点の先端で、
+        // 固定側リードはその中心で終わる(規格図では×の腕が固定リードの先へはみ出す)。
         breakerIec: {
           w: 12.5, h: 5,
           anchors: [[0, 3], [12.5, 3]],
           prims: [
-            { t: "line", p: [0, 3, 3.2, 3] },
-            { t: "line", p: [2.5, 2.3, 3.9, 3.7] },
-            { t: "line", p: [2.5, 3.7, 3.9, 2.3] },
+            { t: "line", p: [0, 3, 3.9, 3] },
             { t: "line", p: [3.9, 3, 8.4, 1.0] },
-            { t: "line", p: [8.6, 3, 12.5, 3] },
+            { t: "line", p: [8.75, 3, 12.5, 3] },
+            { t: "line", p: [8.05, 2.3, 9.45, 3.7] },
+            { t: "line", p: [8.05, 3.7, 9.45, 2.3] },
             { t: "text", p: [6, -1.2], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [6, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
@@ -10796,41 +10799,54 @@
       }
 
       // シンボルデザインの選択肢。同一種別の別デザインで、寸法・接続点(アンカー)は共通に揃える。
+      //
+      // ★デザイン名の付け方(統一基準)★  「名称（出典・形の特徴）」
+      //  1. 括弧は全角（）、括弧内の区切りは中黒・。半角()やスラッシュは使わない。
+      //  2. 出典は次のいずれか。JIS C 0617に番号がある記号は「JIS NN-NN-NN」と番号で書く
+      //     (規格名"C 0617"はこのアプリ全体の前提なので冗長。書かない)。
+      //       JIS NN-NN-NN … JIS C 0617の図記号番号
+      //       設備標準      … 見本PDFの設備様式(実測形)
+      //       見本形        … 見本PDF由来だが設備標準の主形ではないもの
+      //       旧JIS         … JIS C 0301時代の表記
+      //       IEC           … IEC由来だがJIS番号を特定していないもの
+      //       実務形        … 規格外の慣用略画
+      //  3. 出典と特徴が両方あるときは「出典・特徴」の順。出典が自明なら特徴だけでよい。
+      //  4. JIS番号は規格図と目視照合したものだけ書く。未照合のものは番号を書かない。
       const SYMBOL_VARIANT_OPTIONS = {
-        contactNO: [["standard", "縦バー（設備標準）"], ["jis", "円端子＋開き線"], ["iec", "斜め線のみ（IEC）"], ["changeover", "切替接点（c接点・1入2出）"], ["contactor", "接触器主接点（半円・JIS C 0617）"]],
-        contactNC: [["standard", "縦バー＋斜線（設備標準）"], ["jis", "円端子＋閉じ線"], ["iec", "斜め線＋止め（IEC）"]],
-        timerContactNO: [["standard", "オンディレー（∩・縦バー）"], ["off", "オフディレー（∪・縦バー）"], ["iec", "オンディレー（∩・IEC斜線）"], ["iecOff", "オフディレー（∪・IEC斜線）"]],
-        timerContactNC: [["standard", "オンディレー（∩・縦バー）"], ["off", "オフディレー（∪・縦バー）"], ["iec", "オンディレー（∩・IEC斜線）"], ["iecOff", "オフディレー（∪・IEC斜線）"]],
-        coil: [["standard", "円（設備標準）"], ["box", "箱形"], ["ac", "交流（円＋〜）"], ["latch", "ラッチ（箱＋斜線）"], ["timer", "限時（円＋T）"], ["counter", "カウンタ（円＋C）"], ["flicker", "フリッカ（円＋F）"], ["interface", "盤間中継（小四角2連）"]],
-        ground: [["standard", "斜線ハッチ（設備標準）"], ["bars", "接地・一般（JIS 02-15-01・横棒3本）"], ["circle", "保護接地（JIS 02-15-03・円囲み）"], ["functional", "機能接地（JIS 02-15-06・弧囲み）"], ["chassis", "シャーシ接地（櫛形）"]],
-        diode: [["standard", "半導体ダイオード（JIS 05-03-01）"], ["led", "発光ダイオードLED（JIS 05-03-02）"], ["photo", "フォトダイオード（JIS 05-06-02）"], ["zener", "一方向性降伏・ツェナー（JIS 05-03-07）"], ["zenerBi", "双方向性降伏（JIS 05-03-06）"], ["thyristor", "サイリスタ（JIS 05-04-06・ゲート線）"], ["bridge", "ブリッジ整流（JIS 06-14-04・◇4端子）"], ["triac", "トライアック（JIS 05-04-11）"]],
-        capacitor: [["standard", "標準（平行板）"], ["polarized", "有極（＋と曲板）"], ["variable", "可変（貫通矢印）"]],
-        fuse: [["standard", "箱＋貫通線（設備標準）"], ["blank", "箱のみ（IEC）"], ["wave", "S字（旧JIS）"]],
-        disconnector: [["standard", "断路器（JIS 07-13-06）"], ["loadBreak", "負荷開閉器（JIS 07-13-08）"]],
-        breaker: [["standard", "実測形（円＋アーク＋トリップ）"], ["arc", "円＋アーク（トリップなし）"], ["mccb", "配線用遮断器（箱形）"], ["elb", "漏電（E表示つき）"], ["iec", "×＋開き線（IEC）"]],
-        pushButton: [["standard", "押しa接点（設備標準）"], ["nc", "押しb接点（NC）"], ["jis", "押しa接点（JIS C 0617）"], ["jisNc", "押しb接点（JIS C 0617）"], ["illuminated", "照光式（ランプ内蔵）"], ["palm", "パーム（キノコ・a接点）"], ["pull", "引きボタン"], ["twist", "ひねりボタン"]],
-        transistor: [["npn", "NPN（JIS 05-05-02・外囲みの円あり）"], ["pnp", "PNP（JIS 05-05-01・外囲みの円あり）"], ["npnPlain", "NPN（円なし）"], ["pnpPlain", "PNP（円なし）"], ["photo", "フォトトランジスタ（JIS 05-06-04）"]],
-        meter: [["standard", "円形"], ["box", "角形"], ["double", "二重円（積算計）"], ["needle", "円＋針（アナログ）"]],
-        motor: [["standard", "円（設備標準）"], ["double", "二重円（発電機等）"]],
-        thermalRelay: [["standard", "○✕○"], ["box", "箱形（内部⊓）"], ["iecNc", "b接点＋熱動素子（JIS C 0617）"], ["iecNo", "a接点＋熱動素子（JIS C 0617）"], ["jisNc", "円端子b接点＋熱動素子"], ["jisNo", "円端子a接点＋熱動素子"], ["barNc", "縦バーb接点＋熱動素子"], ["barNo", "縦バーa接点＋熱動素子"], ["changeover", "切替接点（1c・1入2出）"], ["xOnly", "✕のみ（簡易形）"]],
-        inductor: [["standard", "コイル（JIS 04-03-01・コブ3個）"], ["core", "磁心入り（JIS 04-03-03・磁心線1本）"], ["coreOld", "鉄心入り（旧JIS・2本線）"], ["box", "箱形（IEC）"]],
-        currentTransformer: [["standard", "円（CT）"], ["zct", "二重円（ZCT）"], ["coil", "貫通線＋コブ2（旧JIS）"]],
-        selectorSwitch: [["standard", "2位置（設備標準）"], ["onOff", "入・切表示付き（見本形）"], ["jis", "2位置（JIS C 0617）"], ["three", "3位置"], ["key", "鍵付き"]],
+        contactNO: [["standard", "縦バー（設備標準）"], ["jis", "円端子＋開き線（見本形）"], ["iec", "メーク接点（JIS 07-02-01・斜め線のみ）"], ["changeover", "切替接点（c接点・1入2出）"], ["contactor", "電磁接触器の主メーク接点（JIS 07-13-02・半円）"]],
+        contactNC: [["standard", "縦バー＋斜線（設備標準）"], ["jis", "円端子＋閉じ線（見本形）"], ["iec", "ブレーク接点（JIS 07-02-03・斜め線＋止め）"]],
+        timerContactNO: [["standard", "オンディレー（設備標準・∩＋縦バー）"], ["off", "オフディレー（設備標準・∪＋縦バー）"], ["iec", "メーク接点・限時閉路（JIS 07-05-01・∩＋斜め線）"], ["iecOff", "メーク接点・限時開路（JIS 07-05-02・∪＋斜め線）"]],
+        timerContactNC: [["standard", "オンディレー（設備標準・∩＋縦バー）"], ["off", "オフディレー（設備標準・∪＋縦バー）"], ["iec", "ブレーク接点・限時開路（JIS 07-05-03・∩＋斜め線）"], ["iecOff", "ブレーク接点・限時閉路（JIS 07-05-04・∪＋斜め線）"]],
+        coil: [["standard", "円（設備標準）"], ["box", "作動装置・継電器コイル（JIS 07-15-01・箱形）"], ["ac", "交流コイル（円＋〜）"], ["latch", "ラッチコイル（箱＋斜線）"], ["timer", "限時コイル（円＋T）"], ["counter", "カウンタコイル（円＋C）"], ["flicker", "フリッカコイル（円＋F）"], ["interface", "盤間中継（見本形・小四角2連）"]],
+        ground: [["standard", "斜線ハッチ（設備標準）"], ["bars", "接地・一般（JIS 02-15-01・横棒3本）"], ["circle", "保護接地（JIS 02-15-03・円囲み）"], ["functional", "機能接地（JIS 02-15-06・弧囲み）"], ["chassis", "シャーシ接地（実務形・櫛形）"]],
+        diode: [["standard", "半導体ダイオード（JIS 05-03-01・三角＋バー）"], ["led", "発光ダイオード（JIS 05-03-02・LED）"], ["photo", "フォトダイオード（JIS 05-06-02）"], ["zener", "一方向性降伏ダイオード（JIS 05-03-07・ツェナー）"], ["zenerBi", "双方向性降伏ダイオード（JIS 05-03-06）"], ["thyristor", "逆阻止3端子サイリスタ（JIS 05-04-06・ゲート線）"], ["bridge", "ブリッジ接続の整流器（JIS 06-14-04・◇4端子）"], ["triac", "双方向性3端子サイリスタ（JIS 05-04-11・トライアック）"]],
+        capacitor: [["standard", "コンデンサ（平行板）"], ["polarized", "有極コンデンサ（＋と曲板）"], ["variable", "可変コンデンサ（貫通矢印）"]],
+        fuse: [["standard", "ヒューズ（JIS 07-21-01・箱＋貫通線）"], ["blank", "ヒューズ（IEC・箱のみ）"], ["wave", "ヒューズ（旧JIS・S字）"]],
+        disconnector: [["standard", "断路器（JIS 07-13-06・止め棒＋斜め線）"], ["loadBreak", "負荷開閉器（JIS 07-13-08・小円）"]],
+        breaker: [["standard", "遮断器（設備標準・円＋アーク＋トリップ）"], ["arc", "遮断器（設備標準・円＋アーク）"], ["mccb", "配線用遮断器（実務形・箱形）"], ["elb", "漏電遮断器（実務形・E表示）"], ["iec", "遮断器（JIS 07-13-05・✕＋斜め線）"]],
+        pushButton: [["standard", "押しa接点（設備標準）"], ["nc", "押しb接点（設備標準）"], ["jis", "押しボタン・a接点（JIS 07-07-02）"], ["jisNc", "押しボタン・b接点（JIS 07-07-02系）"], ["illuminated", "照光式押しボタン（実務形・ランプ内蔵）"], ["palm", "パーム押しボタン（実務形・大形キノコ）"], ["pull", "引きボタン（実務形）"], ["twist", "ひねりボタン（実務形）"]],
+        transistor: [["npn", "NPNトランジスタ（JIS 05-05-02・外囲みの円あり）"], ["pnp", "PNPトランジスタ（JIS 05-05-01・外囲みの円あり）"], ["npnPlain", "NPNトランジスタ（円なし）"], ["pnpPlain", "PNPトランジスタ（円なし）"], ["photo", "フォトトランジスタ（JIS 05-06-04）"]],
+        meter: [["standard", "指示計（JIS 08-01-01・円）"], ["box", "指示計（角形）"], ["double", "積算計（二重円）"], ["needle", "指示計（実務形・円＋目盛弧＋針）"]],
+        motor: [["standard", "回転機（JIS 06-04-01・円）"], ["double", "回転機（二重円・発電機等）"]],
+        thermalRelay: [["standard", "○✕○（見本形）"], ["box", "箱形（見本形・内部⊓）"], ["iecNc", "b接点＋熱動素子（JIS 07-02-03・斜め線）"], ["iecNo", "a接点＋熱動素子（JIS 07-02-01・斜め線）"], ["jisNc", "b接点＋熱動素子（見本形・円端子）"], ["jisNo", "a接点＋熱動素子（見本形・円端子）"], ["barNc", "b接点＋熱動素子（縦バー）"], ["barNo", "a接点＋熱動素子（縦バー）"], ["changeover", "切替接点（1c・1入2出）"], ["xOnly", "✕のみ（簡易形）"]],
+        inductor: [["standard", "コイル（JIS 04-03-01・コブ3個）"], ["core", "磁心入りインダクタ（JIS 04-03-03・磁心線1本）"], ["coreOld", "鉄心入りリアクトル（旧JIS・2本線）"], ["box", "リアクトル（IEC・箱形）"]],
+        currentTransformer: [["standard", "変流器（JIS 06-09-10・円）"], ["zct", "零相変流器（実務形・二重円）"], ["coil", "変流器（旧JIS・貫通線＋コブ2）"]],
+        selectorSwitch: [["standard", "2位置（設備標準）"], ["onOff", "2位置・入切表示付き（見本形）"], ["jis", "2位置（JIS 02-13-04・回転操作）"], ["three", "3位置（設備標準）"], ["key", "鍵付き（実務形）"]],
         logicGate: [["and", "AND（&）"], ["or", "OR（≥1）"], ["not", "NOT（1＋否定丸）"], ["nand", "NAND（&＋否定丸）"], ["nor", "NOR（≥1＋否定丸）"], ["xor", "XOR（=1）"]],
-        limitSwitch: [["standard", "箱形アクチュエータ（NO）"], ["nc", "箱形・下側（NC/オーバーラン）"], ["jisNo", "位置スイッチa接点（JIS C 0617 07-08-01）"], ["jisNc", "位置スイッチb接点（JIS C 0617 07-08-02）"], ["roller", "ローラーレバー（NO）"], ["rollerNc", "ローラーレバー（NC）"]],
+        limitSwitch: [["standard", "箱形アクチュエータ・a接点（設備標準）"], ["nc", "箱形アクチュエータ・b接点（設備標準・下側）"], ["jisNo", "位置スイッチ・メーク接点（JIS 07-08-01）"], ["jisNc", "位置スイッチ・ブレーク接点（JIS 07-08-02）"], ["roller", "ローラーレバー・a接点（実務形）"], ["rollerNc", "ローラーレバー・b接点（実務形）"]],
         transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "2巻き変圧器・円形（JIS 06-09-01）"], ["circlesCore", "2巻き変圧器・円形＋磁心（JIS 06-09-01）"], ["coils", "2巻き変圧器・巻線形（JIS 06-09-02）"], ["coilsCore", "2巻き変圧器・巻線形＋磁心（JIS 06-09-02）"], ["circles3", "3巻き変圧器・円形（JIS 06-09-04）"], ["coils3", "3巻き変圧器・巻線形（JIS 06-09-05）"]],
-        heater: [["standard", "箱＋斜線（設備標準）"], ["plain", "箱のみ（JIS抵抗器形）"]],
-        arrester: [["standard", "箱＋矢印（設備標準）"], ["gap", "ギャップ形（対向三角）"]],
+        heater: [["standard", "ヒータ（設備標準・箱＋斜線）"], ["plain", "ヒータ（JIS 04-01-01・抵抗器形の箱）"]],
+        arrester: [["standard", "避雷器（設備標準・箱＋矢印）"], ["gap", "避雷器（実務形・ギャップ＝対向三角）"]],
         qualifierMark: [["dc", "直流（実線＋破線）"], ["ac", "交流（正弦波）"], ["acdc", "交直流（正弦波＋実線・破線）"], ["threePhase", "三相交流（3＋正弦波）"]],
-        operatorMark: [["manual", "手動操作・一般（JIS 02-13-01）"], ["push", "押し動作（JIS 02-13-05）"], ["pull", "引き動作（JIS 02-13-03）"], ["rotate", "回転操作（JIS 02-13-04）"], ["key", "キー操作"], ["roller", "ローラ操作"], ["foot", "足踏み操作（JIS 02-13-10）"], ["emergency", "非常停止（JIS 02-13-08）"], ["electromagnetic", "電磁効果による操作（JIS 02-13-23）"], ["thermal", "熱操作（⊓）"]],
+        operatorMark: [["manual", "手動操作・一般（JIS 02-13-01）"], ["push", "押し動作（JIS 02-13-05）"], ["pull", "引き動作（JIS 02-13-03）"], ["rotate", "回転操作（JIS 02-13-04）"], ["key", "キー操作（実務形）"], ["roller", "ローラ操作（実務形）"], ["foot", "足踏み操作（JIS 02-13-10）"], ["emergency", "非常停止（JIS 02-13-08）"], ["electromagnetic", "電磁効果による操作（JIS 02-13-23）"], ["thermal", "熱操作（実務形・⊓）"]],
         outlet: [["standard", "半円＋差込口"], ["box", "箱形（スロット2＋接地）"], ["boxDouble", "箱形2口"], ["round", "丸形（円＋差込口2本）"], ["earthed", "半円＋差込口（接地極付き）"], ["plug", "プラグ（雄側・縦バー）"], ["plugPin", "プラグ（2本刃）"], ["plugPin3", "プラグ（2本刃＋接地ピン）"], ["plugSocket", "プラグ・ソケット対（挿抜表現）"]],
-        pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "キノコ＋b接点（JIS C 0617）"], ["multi2", "縦連結2接点（連動）"], ["multi3", "縦連結3接点（連動）"], ["jisMulti2", "JIS縦連結2接点（連動）"], ["jisMulti3", "JIS縦連結3接点（連動）"], ["facility", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式"]],
-        pressureSwitch: [["standard", "ダイヤフラム形（設備標準）"], ["nc", "b接点（閉じ線＋止め）"]],
-        floatSwitch: [["standard", "a接点＋フロート"], ["nc", "b接点＋フロート"]],
-        thermoSwitch: [["standard", "a接点（t°）"], ["nc", "b接点（t°）"]],
-        flowSwitch: [["standard", "a接点＋流路パドル"], ["nc", "b接点＋流路パドル"]],
-        footSwitch: [["standard", "a接点＋踏板"], ["nc", "b接点＋踏板"]],
-        battery: [["standard", "2セル（長短2組）"], ["single", "単セル（長短1組）"]],
+        pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "非常停止スイッチ（JIS 07-07-06・キノコ＋b接点）"], ["multi2", "縦連結2接点（実務形・連動）"], ["multi3", "縦連結3接点（実務形・連動）"], ["jisMulti2", "縦連結2接点（JIS 07-07-06系・連動）"], ["jisMulti3", "縦連結3接点（JIS 07-07-06系・連動）"], ["facility", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式（実務形）"]],
+        pressureSwitch: [["standard", "a接点＋ダイヤフラム（設備標準）"], ["nc", "b接点＋ダイヤフラム（設備標準）"]],
+        floatSwitch: [["standard", "a接点＋フロート（実務形）"], ["nc", "b接点＋フロート（実務形）"]],
+        thermoSwitch: [["standard", "a接点（実務形・t°）"], ["nc", "b接点（実務形・t°）"]],
+        flowSwitch: [["standard", "a接点＋流路パドル（実務形）"], ["nc", "b接点＋流路パドル（実務形）"]],
+        footSwitch: [["standard", "a接点＋踏板（JIS 02-13-10・足踏み操作）"], ["nc", "b接点＋踏板（JIS 02-13-10・足踏み操作）"]],
+        battery: [["standard", "電池（2セル・長短2組）"], ["single", "電池（単セル・長短1組）"]],
         sensor: [["standard", "汎用センサ"], ["inductive", "誘導形近接センサ"], ["photo", "光電センサ"], ["capacitive", "静電容量形近接センサ"], ["magnetic", "磁気・リードセンサ"], ["ultrasonic", "超音波センサ"], ["laser", "レーザセンサ"], ["hall", "ホールセンサ"]],
         photoelectricSwitch: [["throughBeam", "透過形（投光・受光対向）"], ["transmitter", "投光器単体"], ["receiver", "受光器単体"], ["retro", "回帰反射形"], ["diffuse", "拡散反射形"], ["convergent", "距離設定形（BGS・焦点収束）"], ["fiber", "ファイバ式"], ["fork", "溝形・フォーク式"], ["colorMark", "マーク・カラー検出形"], ["general", "一般形（箱＋入射光）"]],
         matSwitch: [["standard", "感圧マット一般形"], ["no", "a接点付感圧マット"], ["nc", "b接点付感圧マット"], ["safety", "安全マット2チャンネル"]],
@@ -11235,12 +11251,12 @@
           return `
             <label>抵抗形状</label>
             <select data-bind="resistorStyle">
-              <option value="box"${style === "box" ? " selected" : ""}>標準(枠)</option>
-              <option value="varistor"${style === "varistor" ? " selected" : ""}>バリスタ(斜線)</option>
-              <option value="variable"${style === "variable" ? " selected" : ""}>可変(矢印)</option>
-              <option value="thermistor"${style === "thermistor" ? " selected" : ""}>サーミスタ(t°)</option>
-              <option value="zigzag"${style === "zigzag" ? " selected" : ""}>ジグザグ(旧JIS)</option>
-              <option value="potentiometer"${style === "potentiometer" ? " selected" : ""}>ポテンショメータ(3端子)</option>
+              <option value="box"${style === "box" ? " selected" : ""}>抵抗器（JIS 04-01-01・箱）</option>
+              <option value="varistor"${style === "varistor" ? " selected" : ""}>バリスタ（斜線）</option>
+              <option value="variable"${style === "variable" ? " selected" : ""}>可変抵抗器（JIS 04-01-03・貫通矢印）</option>
+              <option value="thermistor"${style === "thermistor" ? " selected" : ""}>サーミスタ（t°）</option>
+              <option value="zigzag"${style === "zigzag" ? " selected" : ""}>抵抗器（旧JIS・ジグザグ）</option>
+              <option value="potentiometer"${style === "potentiometer" ? " selected" : ""}>ポテンショメータ（3端子）</option>
             </select>
             <label>方向</label>
             <select data-bind="orientation">
@@ -11275,9 +11291,9 @@
             <label>ランプ形状</label>
             <select data-bind="lampVariant">
               <option value="pilot"${variant === "pilot" ? " selected" : ""}>丸形パイロット（設備標準）</option>
-              <option value="cross"${variant === "cross" ? " selected" : ""}>円＋✕（IEC）</option>
-              <option value="cylinder"${variant === "cylinder" ? " selected" : ""}>筒形表示灯</option>
-              <option value="fluor"${variant === "fluor" ? " selected" : ""}>蛍光灯／盤内照明（箱形）</option>
+              <option value="cross"${variant === "cross" ? " selected" : ""}>ランプ（JIS 08-10-01・円＋✕）</option>
+              <option value="cylinder"${variant === "cylinder" ? " selected" : ""}>筒形表示灯（実務形）</option>
+              <option value="fluor"${variant === "fluor" ? " selected" : ""}>蛍光灯・盤内照明（見本形・箱形）</option>
             </select>
             <label>ランプ色文字(W/R/G等)</label>
             <input data-bind="lampColor" type="text" value="${escapeAttr(element.lampColor || "")}" placeholder="W">
@@ -11288,13 +11304,13 @@
           return `
             <label>ブザー形状</label>
             <select data-bind="buzzerVariant">
-              <option value="jis0806"${variant === "jis0806" ? " selected" : ""}>音響信号装置・一般（JIS C 0617 08-10-06）</option>
-              <option value="jis0810"${variant === "jis0810" ? " selected" : ""}>ブザー（JIS C 0617 08-10-10）</option>
-              <option value="siren"${variant === "siren" ? " selected" : ""}>サイレン・直角三角形（JIS C 0617 08-10-09）</option>
-              <option value="horn"${variant === "horn" ? " selected" : ""}>ホーン（ラッパ形・略画）</option>
-              <option value="speaker"${variant === "speaker" ? " selected" : ""}>スピーカー（略画）</option>
-              <option value="sound"${variant === "sound" ? " selected" : ""}>半円＋音波（略画）</option>
-              <option value="piezo"${variant === "piezo" ? " selected" : ""}>電子ブザー・箱＋半円（略画）</option>
+              <option value="jis0806"${variant === "jis0806" ? " selected" : ""}>音響信号装置・一般（JIS 08-10-06・半円）</option>
+              <option value="jis0810"${variant === "jis0810" ? " selected" : ""}>ブザー（JIS 08-10-10・反転半円）</option>
+              <option value="siren"${variant === "siren" ? " selected" : ""}>サイレン（JIS 08-10-09・三角形）</option>
+              <option value="horn"${variant === "horn" ? " selected" : ""}>ホーン（実務形・ラッパ形）</option>
+              <option value="speaker"${variant === "speaker" ? " selected" : ""}>スピーカー（実務形）</option>
+              <option value="sound"${variant === "sound" ? " selected" : ""}>発音強調（実務形・半円＋音波）</option>
+              <option value="piezo"${variant === "piezo" ? " selected" : ""}>電子ブザー（実務形・箱＋半円）</option>
             </select>
           `;
         }
@@ -20128,8 +20144,13 @@
             磁心線は JIS のとおり<b>1本の実線</b>へ是正しています（従来の2本線はリアクトルの「旧JIS」デザインに残しました）。
             円で囲む接地は名称が<b>「保護接地」（02-15-03）</b>が正しいため表示を改め、<b>機能接地（02-15-06・弧囲み）</b>を追加。
             <b>負荷開閉器（07-13-08）</b>の限定図記号は半円ではなく<b>小円</b>で、断路の止め棒は付かない形へ是正しました。
+            <b>遮断器（07-13-05）</b>の✕は可動線のちょうつがい側ではなく<b>反対側の固定接点の先端</b>が正しい位置なので直し、
+            <b>電磁接触器の主メーク接点（07-13-02）</b>の半円も固定側リードに載せて膨らみが接点の開く側を向く形にしました。
             光電・マット・リードスイッチは他の接点部品と揃うサイズ（幅15mm前後）で配置されます。
             光電/マット/リード/ライトカーテン/センサ/ソレノイド弁/電源も、選択して右パネルの「シンボルデザイン」から様式を切り替えられます。
+            デザイン名は<b>「名称（出典・形の特徴）」</b>で統一しています。出典は<b>JIS番号</b>（例: JIS 07-13-05）、
+            <b>設備標準</b>（見本PDFの実測形）、<b>見本形</b>、<b>旧JIS</b>、<b>IEC</b>、<b>実務形</b>（規格外の慣用略画）のいずれかで、
+            <b>JIS番号は規格図と1点ずつ目視照合したものだけ</b>を表示しています（番号が無い選択肢は未照合または規格外です）。
             切替時は<b>第1接続ピンの位置を保持</b>するため、そのピンへ接続した配線はずれません。ピン構成が共通のデザインではほかの接続点も維持され、
             縦連結接点や切替接点などでは必要な接続ピンが追加されます。複数選択+「同種を全選択」からの<b>一括切替</b>も可能です。
             接続ピンは原則<b>2.5mmグリッドの倍数</b>です。手動配置用の縦連結非常停止・変圧器の上下段・箱形コンセントは<b>設備行ピッチ9.5mm</b>を保持し、
