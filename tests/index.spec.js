@@ -485,7 +485,7 @@ test("破損JSON・空ページ・将来版を拒否して現在図面を保持�
     },
     {
       name: "future.json",
-      body: { schemaVersion: 7, pages: [{ id: "p1", title: {}, elements: [] }] },
+      body: { schemaVersion: 8, pages: [{ id: "p1", title: {}, elements: [] }] },
       expected: "新しい形式"
     },
     {
@@ -553,7 +553,7 @@ test("部分JSONは現在図面を継承せず既定値で補完し、staleな�
   const legacy = await page.evaluate(() => window.__edsTest.normalizeProjectData({
     pages: [{ id: "legacy-page" }]
   }));
-  expect(legacy.schemaVersion).toBe(6);
+  expect(legacy.schemaVersion).toBe(7);
   expect(legacy.pages[0].title).toBeTruthy();
   expect(legacy.pages[0].elements).toEqual([]);
 });
@@ -596,7 +596,7 @@ test("schema v2の回転部品と機器箱・端子箱を配線ごと現行版�
   }));
 
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(6);
+  expect(migrated.schemaVersion).toBe(7);
   expect(elements.contact).toMatchObject({ x: 50, y: 49, w: 10, rotation: 90 });
   expect(elements["wire-left"].points[1][0]).toBeCloseTo(47.8, 6);
   expect(elements["wire-left"].points[1][1]).toBeCloseTo(49, 6);
@@ -693,7 +693,7 @@ test("schema v3のCPとユニット列を接続を保って現行版へ移行し
 
   const migrated = result.migrated;
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(6);
+  expect(migrated.schemaVersion).toBe(7);
   expect(result.idempotent).toBe(true);
 
   expect(elements["cp-horizontal"]).toMatchObject({ w: 12.5, h: 5, cpLinked: true });
@@ -767,7 +767,7 @@ test("schema v4のブザーを配線ごとJIS記号の新ピンへ移行し再�
   });
 
   const elements = Object.fromEntries(result.migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(result.migrated.schemaVersion).toBe(6);
+  expect(result.migrated.schemaVersion).toBe(7);
   expect(result.idempotent).toBe(true);
 
   // 旧jis/generalはjis0806へ、sirenはキーを保つ。略画hornは無変更。
@@ -1243,126 +1243,40 @@ test("全テンプレートの接続点・配線・主要枠は2.5mmグリッド
   }
 });
 
-test("CP・切替スイッチ・入切表示は見本PDFの実測形状を共有定義で再現する", async ({ page }) => {
-  const geometry = await page.evaluate(() => {
-    const cp = window.__edsTest.SYMBOL_GEO.breakerCp;
-    const selector = window.__edsTest.SYMBOL_GEO.selectorSwitch;
-    const positionBox = window.__edsTest.SYMBOL_GEO.positionMarkBox;
-    const cpElement = {
-      ...window.__edsTest.defaultElement("breaker", 0, 0),
-      symbolVariant: "cp",
-      w: 12.5,
-      h: 5
-    };
-    return {
-      cp: { w: cp.w, anchors: cp.anchors, prims: cp.prims },
-      selector: { anchors: selector.anchors, prims: selector.prims },
-      positionBox: positionBox.prims,
-      singleCpStemCount: window.__edsTest.geoPrims(cpElement).filter(prim => prim.when === "cpLinked").length,
-      linkedCpStemCount: window.__edsTest.geoPrims({ ...cpElement, cpLinked: true }).filter(prim => prim.when === "cpLinked").length
-    };
-  });
-
-  expect(geometry.cp.w).toBe(12.5);
-  expect(geometry.cp.anchors).toEqual([[0, 3], [12.5, 3]]);
-  expect(geometry.cp.prims).toEqual(expect.arrayContaining([
-    expect.objectContaining({ t: "circle", p: [2.4, 3, 0.6] }),
-    expect.objectContaining({ t: "circle", p: [7.1, 3, 0.6] }),
-    expect.objectContaining({ t: "arc", p: [4.75, 3, 2.35, 180, 360] }),
-    expect.objectContaining({ t: "line", p: [4.75, 0.65, 4.75, 4.2], when: "cpLinked" }),
-    expect.objectContaining({ t: "pline", pts: expect.arrayContaining([[8.4, 2.3], [9.7, 3.7], [12.5, 3]]) })
-  ]));
-
-  const selectorCircles = geometry.selector.prims.filter(prim => prim.t === "circle").map(prim => prim.p);
-  const selectorArms = geometry.selector.prims.filter(prim => prim.t === "pline").map(prim => prim.pts);
-  expect(geometry.selector.anchors).toEqual([[0, 3.2], [10, 3.2]]);
-  expect(selectorCircles).toEqual([[3, 3.2, 0.6], [6.45, 3.2, 0.6]]);
-  expect(selectorArms).toEqual([
-    [[3.6, 3.2], [4.2, 3.2], [4.2, 1.95]],
-    [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]]
-  ]);
-  expect(geometry.positionBox[0]).toEqual({ t: "rect", p: [1, 1.9, 2, 2.2] });
-  expect(geometry.positionBox[1]).toEqual({ t: "line", p: [2, 0, 2, 6] });
-  expect(geometry.singleCpStemCount).toBe(0);
-  expect(geometry.linkedCpStemCount).toBe(1);
-});
-
-test("切替スイッチは入・切表示付き見本形を単体で作図できる", async ({ page }) => {
+test("JIS遮断器と切替スイッチは設備標準・見本専用の選択肢を表示しない", async ({ page }) => {
   await page.evaluate(() => window.__edsTest.installProjectData({
-    schemaVersion: 4,
+    schemaVersion: 7,
     activePageId: "p1",
     pages: [{
       id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
-      elements: [{
-        ...window.__edsTest.defaultElement("selectorSwitch", 30, 30),
-        id: "selector-onoff",
-        symbolVariant: "onOff",
-        w: 30,
-        h: 8,
-        label: "SS1"
-      }]
-    }]
-  }));
-  await page.evaluate(() => window.__edsTest.selectElement("selector-onoff"));
-
-  const variantSelect = page.locator('[data-bind="symbolVariant"]');
-  await expect(variantSelect.locator('option[value="onOff"]')).toHaveCount(1);
-  await expect(page.locator('[data-id="selector-onoff"] text').filter({ hasText: "切" })).toHaveCount(1);
-  await expect(page.locator('[data-id="selector-onoff"] text').filter({ hasText: "入" })).toHaveCount(1);
-
-  const result = await page.evaluate(() => {
-    const geo = window.__edsTest.SYMBOL_GEO.selectorSwitchOnOff;
-    const dxf = window.__edsTest.buildDxf(window.__edsTest.state.pages[0]);
-    return {
-      size: [geo.w, geo.h],
-      anchors: geo.anchors,
-      fixedLabels: geo.prims.filter(prim => prim.t === "text" && prim.value).map(prim => prim.value),
-      dxfHasOn: dxf.includes("入"),
-      dxfHasOff: dxf.includes("切")
-    };
-  });
-  expect(result).toEqual({
-    size: [30, 8],
-    anchors: [[0, 3.2], [10, 3.2]],
-    fixedLabels: ["切", "入"],
-    dxfHasOn: true,
-    dxfHasOff: true
-  });
-});
-
-test("遮断器バリエーションは重複を整理し端子円を線より前面に描く", async ({ page }) => {
-  await page.evaluate(() => window.__edsTest.installProjectData({
-    schemaVersion: 4,
-    activePageId: "p1",
-    pages: [{
-      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
-      elements: [{ ...window.__edsTest.defaultElement("breaker", 30, 30), id: "breaker1", label: "CB1" }]
+      elements: [
+        { ...window.__edsTest.defaultElement("breaker", 30, 30), id: "breaker1", label: "CB1" },
+        { ...window.__edsTest.defaultElement("selectorSwitch", 60, 30), id: "selector1", label: "SS1" }
+      ]
     }]
   }));
   await page.evaluate(() => window.__edsTest.selectElement("breaker1"));
 
   const variantSelect = page.locator('[data-bind="symbolVariant"]');
-  await expect(variantSelect.locator('option[value="arc"]')).toHaveCount(1);
-  await expect(variantSelect.locator('option[value="mccb"]')).toHaveCount(1);
+  await expect(variantSelect.locator('option[value="iec"]')).toHaveCount(1);
+  await expect(variantSelect.locator('option[value="arc"]')).toHaveCount(0);
+  await expect(variantSelect.locator('option[value="mccb"]')).toHaveCount(0);
   await expect(variantSelect.locator('option[value="cp"]')).toHaveCount(0);
 
   const geometry = await page.evaluate(() => {
-    const geo = window.__edsTest.SYMBOL_GEO;
-    const shape = key => geo[key].prims.filter(prim => prim.t !== "text");
+    const breaker = window.__edsTest.SYMBOL_GEO.breakerIec;
+    const movableLine = breaker.prims.find(prim => prim.t === "line" && prim.p[0] === 3.9);
+    window.__edsTest.selectElement("selector1");
     return {
-      arc: shape("breakerArc"),
-      mccb: shape("breakerMccb"),
-      cpTypes: shape("breakerCp").map(prim => prim.t),
-      standard: JSON.stringify(shape("breaker")),
-      arcSignature: JSON.stringify(shape("breakerArc")),
-      mccbSignature: JSON.stringify(shape("breakerMccb"))
+      anchors: breaker.anchors,
+      movableLine: movableLine?.p,
+      selectorOptions: Array.from(document.querySelectorAll('[data-bind="symbolVariant"] option')).map(option => option.value)
     };
   });
-
-  expect(new Set([geometry.standard, geometry.arcSignature, geometry.mccbSignature]).size).toBe(3);
-  expect(geometry.arc.some(prim => prim.t === "pline")).toBe(false);
-  expect(geometry.mccb.some(prim => prim.t === "rect")).toBe(true);
-  expect(geometry.cpTypes.indexOf("arc")).toBeLessThan(geometry.cpTypes.indexOf("circle"));
+  expect(geometry.anchors).toEqual([[0, 3], [12.5, 3]]);
+  expect(geometry.movableLine).toEqual([3.9, 3, 8.4, 5]);
+  expect(geometry.selectorOptions).toEqual(expect.arrayContaining(["jis", "three", "key"]));
+  expect(geometry.selectorOptions).not.toContain("onOff");
 });
 
 test("端子台・PLCユニット列はSVG・吸着点・DXFで同じ端子円中心を使う", async ({ page }) => {
@@ -1477,17 +1391,17 @@ test("端子台・PLCユニット列はSVG・吸着点・DXFで同じ端子円�
   })).toEqual({ rows: 19, h: 190, bottom: 222.5 });
 });
 
-test("テンプレート形状と非常停止の10mm接点間隔を属性パネルで正しく保持する", async ({ page }) => {
+test("テンプレートは現行の変圧器・雄プラグと非常停止の接点間隔を保持する", async ({ page }) => {
   await page.locator("#templateMenu").selectOption("acPower");
   await page.locator("#acBuildBtn").click();
   const acSymbols = await page.evaluate(() => {
     const current = window.__edsTest.state.pages.find(item => item.id === window.__edsTest.state.activePageId);
-    return ["Tr1", "SC1", "SC2"].map(tag => {
+    return ["Tr1", "PLG1", "PLG2"].map(tag => {
       const element = current.elements.find(item => item.tag === tag);
       return { id: element.id, variant: element.symbolVariant };
     });
   });
-  expect(acSymbols.map(item => item.variant)).toEqual(["grid10", "box", "box"]);
+  expect(acSymbols.map(item => item.variant)).toEqual(["coils", "plugPin", "plugPin"]);
   for (const symbol of acSymbols) {
     await page.evaluate(id => window.__edsTest.selectElement(id), symbol.id);
     await expect(page.locator('#selectionPanel select[data-bind="symbolVariant"]')).toHaveValue(symbol.variant);
@@ -1495,8 +1409,8 @@ test("テンプレート形状と非常停止の10mm接点間隔を属性パネ�
   expect(await page.evaluate(() => {
     const normalized = window.__edsTest.normalizeProjectData(window.__edsTest.state);
     const current = normalized.pages.find(item => item.id === normalized.activePageId);
-    return ["Tr1", "SC1", "SC2"].map(tag => current.elements.find(item => item.tag === tag)?.symbolVariant);
-  })).toEqual(["grid10", "box", "box"]);
+    return ["Tr1", "PLG1", "PLG2"].map(tag => current.elements.find(item => item.tag === tag)?.symbolVariant);
+  })).toEqual(["coils", "plugPin", "plugPin"]);
 
   await page.goto(appUrl, { waitUntil: "load" });
   await page.locator("#templateMenu").selectOption("safetyRelay");
@@ -1611,7 +1525,7 @@ test("非常停止チェーン4局とセーフティ回路は重複配線・文�
   expect(safetyGap).toEqual([[45, 65]]);
 });
 
-test("AC受電テンプレートはSS0・線番円・切→入表示を見本順で接続する", async ({ page }) => {
+test("AC受電テンプレートはSS0・線番端子・JIS遮断器を接続する", async ({ page }) => {
   await page.locator("#templateMenu").selectOption("acPower");
   await page.locator("#acBuildBtn").click();
   const result = await page.evaluate(() => {
@@ -1627,13 +1541,13 @@ test("AC受電テンプレートはSS0・線番円・切→入表示を見本順
       anchor: window.__edsTest.elementConnectionAnchors(element)[0]
     }));
     const standalonePositionText = current.elements.filter(element => element.type === "text" && ["切", "入"].includes(element.text));
-    const cp = current.elements.filter(element => element.type === "breaker" && element.symbolVariant === "cp");
+    const breakers = current.elements.filter(element => element.type === "breaker" && element.symbolVariant === "iec");
     return {
       selectorAnchors: window.__edsTest.elementConnectionAnchors(selector),
       marks,
       numberedTerminals,
       standalonePositionText: standalonePositionText.length,
-      cpWidths: [...new Set(cp.map(element => element.orientation === "vertical" ? element.h : element.w))]
+      breakerWidths: [...new Set(breakers.map(element => element.orientation === "vertical" ? element.h : element.w))]
     };
   });
 
@@ -1648,7 +1562,7 @@ test("AC受電テンプレートはSS0・線番円・切→入表示を見本順
     { label: "202", anchor: { x: 75, y: 95 } }
   ]));
   expect(result.standalonePositionText).toBe(0);
-  expect(result.cpWidths).toEqual([12.5]);
+  expect(result.breakerWidths).toEqual([12.5]);
 });
 
 test("針付き計器は標準計器ではなく目盛弧と針を描画する", async ({ page }) => {
@@ -1670,7 +1584,7 @@ test("針付き計器は標準計器ではなく目盛弧と針を描画する",
   expect(anchors.needle.map(point => [point.x - 20, point.y])).toEqual(anchors.standard.map(point => [point.x, point.y]));
 });
 
-test("既存schema v3の変圧器上タップ配線を新しい行位置へ冪等に追従させる", async ({ page }) => {
+test("既存schema v3の変圧器上タップ配線を巻線形の上側端子へ冪等に追従させる", async ({ page }) => {
   const result = await page.evaluate(() => {
     const source = {
       schemaVersion: 3,
@@ -1696,10 +1610,10 @@ test("既存schema v3の変圧器上タップ配線を新しい行位置へ冪�
       anchors: window.__edsTest.elementConnectionAnchors(byId.tr)
     };
   });
-  expect(result.left[1]).toEqual([105, 96]);
-  expect(result.right[0]).toEqual([110, 96]);
-  expect(result.junction).toEqual([105, 96]);
-  expect(result.anchors).toEqual(expect.arrayContaining([{ x: 105, y: 96 }, { x: 110, y: 96 }]));
+  expect(result.left[1]).toEqual([result.anchors[0].x, result.anchors[0].y]);
+  expect(result.right[0]).toEqual([result.anchors[1].x, result.anchors[1].y]);
+  expect(result.junction).toEqual([result.anchors[0].x, result.anchors[0].y]);
+  expect(result.anchors).toHaveLength(4);
 });
 
 test("DC電源のN1・P0・P24・N24・G送り矢印は配線ネットへ接続される", async ({ page }) => {
@@ -2873,13 +2787,11 @@ test("直線を選択クリックしただけでは接続点へ吸着しない",
   expect(after.points).toEqual([[40.3, 30.7], [70.3, 50.7]]);
 });
 
-test("コンセントを9デザインへ拡張し、箱形は10mmピッチへ統合する", async ({ page }) => {
+test("雄プラグは2極と接地付き3極の独立端子を持ち旧コンセントを移行する", async ({ page }) => {
   const result = await page.evaluate(() => {
-    const values = ["standard", "box", "boxDouble", "round", "earthed", "plugSocket", "plug", "plugPin", "plugPin3"];
+    const values = ["plugPin", "plugPin3"];
     const geoKeyByVariant = {
-      standard: "outlet", box: "outletBox", boxDouble: "outletBoxDouble",
-      round: "outletRound", earthed: "outletEarthed", plugSocket: "outletPlugSocket",
-      plug: "outletPlug", plugPin: "outletPlugPin", plugPin3: "outletPlugPin3"
+      plugPin: "outletPlugPin", plugPin3: "outletPlugPin3"
     };
     const signatures = values.map(symbolVariant => {
       const element = window.__edsTest.defaultElement("outlet", 20, 20);
@@ -2905,15 +2817,17 @@ test("コンセントを9デザインへ拡張し、箱形は10mmピッチへ統
     const byId = id => migrated.pages[0].elements.find(item => item.id === id);
     return {
       unique: new Set(signatures.map(item => item.signature)).size,
-      boxAnchors: signatures[1].anchors,
+      plugAnchors: signatures[0].anchors,
+      plug3Anchors: signatures[1].anchors,
       wireEnd: byId("w1").points[1],
       renamed: byId("sc2").symbolVariant
     };
   });
-  expect(result.unique).toBe(9);
-  expect(result.boxAnchors).toEqual([[0, 2], [0, 12]]);
-  expect(result.wireEnd).toEqual([100, 62]);
-  expect(result.renamed).toBe("box");
+  expect(result.unique).toBe(2);
+  expect(result.plugAnchors).toEqual([[0, 1.25], [0, 6.25]]);
+  expect(result.plug3Anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
+  expect(result.wireEnd).toEqual([100, 57]);
+  expect(result.renamed).toBe("plugPin");
 });
 
 test("端子台・ユニット列の端子記号と機器箱の端子文字サイズ", async ({ page }) => {
@@ -4161,7 +4075,7 @@ test("JIS C 0617 追加記号(限定図記号・操作機構・発電機・位�
   }
   // 一方向性降伏(05-03-07)はカソードバーの折れが片側だけ、双方向性(05-03-06)は両側
   expect(find("diode", "zener").primCount).toBe(6);
-  expect(find("diode", "zenerBi").primCount).toBe(7);
+  expect(find("diode", "zenerBi").primCount).toBe(8);
   // サイリスタ・トライアックはゲート線の先端が3点目の接続点
   expect(find("diode", "thyristor").anchors).toHaveLength(3);
   expect(find("diode", "triac").anchors).toHaveLength(3);
@@ -4408,4 +4322,34 @@ test("表題欄はEnterを押さなくても、別ページタブへ移った時
   expect(after.titles[0]).not.toBe("三号機 制御盤");
   // 表題欄を編集した直後でも、そのクリックでページが切り替わる
   expect(after.activeIsFirst).toBe(true);
+});
+
+test("rotating a symbol keeps its visible center inside the selection bounds", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const breaker = { ...api.defaultElement("breaker", 20, 30), id: "cb", symbolVariant: "iec" };
+    api.installProjectData({
+      schemaVersion: 7,
+      activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [breaker] }]
+    });
+    api.setSelectionForTest(["cb"]);
+    const before = api.elementBounds(api.state.pages[0].elements[0]);
+    api.rotateSelected(90);
+    const after = api.elementBounds(api.state.pages[0].elements[0]);
+    const anchors = api.elementConnectionAnchors(api.state.pages[0].elements[0]);
+    return {
+      beforeCenter: [before.x + before.w / 2, before.y + before.h / 2],
+      afterCenter: [after.x + after.w / 2, after.y + after.h / 2],
+      beforeSize: [before.w, before.h],
+      afterSize: [after.w, after.h],
+      anchors
+    };
+  });
+  expect(result.afterCenter[0]).toBeCloseTo(result.beforeCenter[0], 6);
+  expect(result.afterCenter[1]).toBeCloseTo(result.beforeCenter[1], 6);
+  expect(result.beforeSize).toEqual([12.5, 5]);
+  expect(result.afterSize[0]).toBeCloseTo(5, 6);
+  expect(result.afterSize[1]).toBeCloseTo(12.5, 6);
+  expect(result.anchors[0].x).toBeCloseTo(result.anchors[1].x, 6);
 });

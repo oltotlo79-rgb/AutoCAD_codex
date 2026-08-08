@@ -1600,7 +1600,6 @@
         { type: "inductor", label: "リアクトル", icon: "coil" },
         { type: "heater", label: "ヒータ", icon: "resistor" },
         { type: "battery", label: "バッテリ", icon: "power" },
-        { type: "rectifierBox", label: "整流器", icon: "diode" },
         { type: "arrester", label: "避雷器", icon: "diode" },
         { type: "transistor", label: "トランジスタ", icon: "diode" },
         { type: "logicGate", label: "論理ゲート", icon: "contactBlock" },
@@ -1841,7 +1840,7 @@
       // 読み込むときはMIGRATIONSで1段ずつ現行版へ引き上げる。versionは人間向けの表示文字列で、
       // 互換判定にはschemaVersionのみを使う。
       // 将来データ構造を変えるとき: SCHEMA_VERSIONを+1し、MIGRATIONSへ「旧版数: 変換関数」を1件追加する。
-      const SCHEMA_VERSION = 6;
+      const SCHEMA_VERSION = 7;
 
       // schema v3公開後に変圧器3デザインの上タップを主ピンの1行上へ移したため、
       // 旧v3図面に残る上タップ配線だけを新アンカーへ追従させる。スキーマ構造は変わらないので
@@ -2488,6 +2487,132 @@
               }
             });
             added.forEach(element => elements.push(element));
+            if (!moves.length) return;
+            elements.forEach(element => {
+              if (!isPlainObject(element)) return;
+              if (["wire", "line", "arrow", "mechanicalLink"].includes(element.type) && Array.isArray(element.points)) {
+                element.points.forEach(point => {
+                  const move = moves.find(item => near(item[0], point[0]) && near(item[1], point[1]));
+                  if (move) { point[0] = round(move[2]); point[1] = round(move[3]); }
+                });
+              } else if (element.type === "junction") {
+                const move = moves.find(item => near(item[0], Number(element.x || 0)) && near(item[1], Number(element.y || 0)));
+                if (move) { element.x = round(move[2]); element.y = round(move[3]); }
+              }
+            });
+          });
+          return data;
+        },
+        // 6→7: 設備標準・テンプレート専用形を JIS C 0617 または一般形へ統合する。
+        // 旧図面の既存配線端点は、対応する新アンカーへ厳密に移す。
+        6: data => {
+          const near = (a, b) => Math.abs(Number(a) - Number(b)) < .02;
+          const elementLists = [];
+          (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+            if (isPlainObject(page) && Array.isArray(page.elements)) elementLists.push(page.elements);
+          });
+          const collectCustomSymbolTemplates = symbols => {
+            (Array.isArray(symbols) ? symbols : []).forEach(symbol => {
+              if (!isPlainObject(symbol)) return;
+              if (Array.isArray(symbol.templates)) elementLists.push(symbol.templates);
+              else if (isPlainObject(symbol.template)) elementLists.push([symbol.template]);
+            });
+          };
+          collectCustomSymbolTemplates(data.customSymbols);
+          (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach(pack => {
+            if (isPlainObject(pack)) collectCustomSymbolTemplates(pack.customSymbols);
+          });
+          elementLists.forEach(elements => {
+            const moves = [];
+            const globalAt = (element, local) => {
+              const scale = Number(element.scale || 1) || 1;
+              const angle = Number(element.rotation || 0) * Math.PI / 180;
+              return [
+                Number(element.x || 0) + local[0] * scale * Math.cos(angle) - local[1] * scale * Math.sin(angle),
+                Number(element.y || 0) + local[0] * scale * Math.sin(angle) + local[1] * scale * Math.cos(angle)
+              ];
+            };
+            // 第1端子を固定してから、残る旧端子に接続した配線を対応する新端子へ移す。
+            const replaceWithAnchors = (element, props, oldAnchors, newAnchors) => {
+              const before = oldAnchors.map(anchor => globalAt(element, anchor));
+              Object.assign(element, props);
+              const firstAfter = globalAt(element, newAnchors[0]);
+              element.x = round(Number(element.x || 0) + before[0][0] - firstAfter[0]);
+              element.y = round(Number(element.y || 0) + before[0][1] - firstAfter[1]);
+              before.forEach((point, index) => {
+                const target = globalAt(element, newAnchors[Math.min(index, newAnchors.length - 1)]);
+                if (!near(point[0], target[0]) || !near(point[1], target[1])) moves.push([point[0], point[1], target[0], target[1]]);
+              });
+            };
+            elements.forEach(element => {
+              if (!isPlainObject(element)) return;
+              const variant = element.symbolVariant || "standard";
+              if (element.type === "ground" && variant === "standard") {
+                element.symbolVariant = "bars";
+                return;
+              }
+              if (element.type === "currentTransformer" && (variant === "standard" || variant === "coil") && Math.abs(Number(element.h || 0) - 4.4) < .02) {
+                replaceWithAnchors(element, { symbolVariant: variant, w: 10, h: 10 }, [[0, 2.2], [10, 2.2]], [[0, 5], [10, 5]]);
+                return;
+              }
+              if (element.type === "breaker") {
+                if (variant !== "iec") element.symbolVariant = "iec";
+                const vertical = element.orientation === "vertical";
+                element.w = vertical ? 5 : 12.5;
+                element.h = vertical ? 12.5 : 5;
+                return;
+              }
+              if (element.type === "transformer" && (variant === "standard" || variant === "grid10")) {
+                const oldAnchors = variant === "grid10"
+                  ? [[0, 5.5], [15, 5.5], [0, 15.5], [15, 15.5], [5, -4.5], [10, -4.5], [5, .5], [10, .5]]
+                  : [[0, 5.5], [15, 5.5], [0, 15], [15, 15], [5, -4], [10, -4], [5, .5], [10, .5]];
+                // 旧バー形の上タップには「タップを上へ移した中間版」(y=.5) もある。
+                // 4端子の巻線形へ統合する際は、左右の上側巻線端子へ対応付ける。
+                replaceWithAnchors(element, { symbolVariant: "coils", w: 15, h: 10 }, oldAnchors,
+                  [[2.5, 0], [12.5, 0], [2.5, 10], [12.5, 10], [2.5, 0], [12.5, 0], [2.5, 0], [12.5, 0]]);
+                return;
+              }
+              if (element.type === "motor" && variant === "double") {
+                element.symbolVariant = "standard";
+                return;
+              }
+              if (element.type === "selectorSwitch" && (variant === "standard" || variant === "onOff")) {
+                const y = variant === "onOff" ? 3.2 : 2.5;
+                replaceWithAnchors(element, { symbolVariant: "jis", w: 10, h: 5 }, [[0, y], [10, y]], [[0, 2.5], [10, 2.5]]);
+                return;
+              }
+              if ((element.type === "pushButton" || element.type === "pushButtonEmergency") && (element.pbStyle === "emergency" || element.type === "pushButtonEmergency") && variant === "facility") {
+                element.type = "pushButton";
+                element.pbStyle = "emergency";
+                element.symbolVariant = "standard";
+                element.w = 10;
+                element.h = 7;
+                return;
+              }
+              if (element.type === "rectifierBox") {
+                replaceWithAnchors(element, { type: "powerSupply", symbolVariant: "acdc", w: 35, h: 25 }, [[0, 3], [10, 3]], [[0, 12.5], [35, 12.5]]);
+                return;
+              }
+              if (element.type !== "outlet") return;
+              const oldAnchors = {
+                box: [[0, 2], [0, 12]], boxGrid10: [[0, 2], [0, 12]], boxDouble: [[0, 2], [0, 12]],
+                round: [[0, 3]], earthed: [[0, 3]], plugSocket: [[0, 3], [10, 3]],
+                plug: [[0, 3]], plugPin: [[0, 3]], plugPin3: [[0, 3]], standard: [[0, 3]]
+              }[variant] || [[0, 3]];
+              if (variant === "plugSocket") {
+                replaceWithAnchors(element, { type: "connector", connStyle: "pair", w: 6, h: 3 }, oldAnchors, [[0, 1.5], [6, 1.5]]);
+              } else {
+                const earthed = variant === "earthed" || variant === "plugPin3";
+                replaceWithAnchors(element, { symbolVariant: earthed ? "plugPin3" : "plugPin", w: 10, h: 7.5 }, oldAnchors, earthed ? [[0, 1.25], [0, 3.75], [0, 6.25]] : [[0, 1.25], [0, 6.25]]);
+                // v6以前の箱形2極は第2端子が 11.5mm の版も存在する。先に第1端子を
+                // 固定した後のローカル 10.75mm が旧第2端子に相当するので、両版の配線を救済する。
+                if (["box", "boxGrid10", "boxDouble"].includes(variant) && !earthed) {
+                  const legacySecond = globalAt(element, [0, 10.75]);
+                  const newSecond = globalAt(element, [0, 6.25]);
+                  moves.push([legacySecond[0], legacySecond[1], newSecond[0], newSecond[1]]);
+                }
+              }
+            });
             if (!moves.length) return;
             elements.forEach(element => {
               if (!isPlainObject(element)) return;
@@ -7285,6 +7410,34 @@
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // 気隙入り鉄心インダクタ（JIS C 0617-4, 04-03-04）。磁心線は中央で明確に切る。
+        inductorGapCore: {
+          w: 10, h: 5,
+          anchors: [[0, 3], [10, 3]],
+          prims: [
+            { t: "line", p: [0, 3, 2.6, 3] },
+            { t: "arc", p: [3.3, 3, 0.7, 180, 360] },
+            { t: "arc", p: [4.7, 3, 0.7, 180, 360] },
+            { t: "arc", p: [6.1, 3, 0.7, 180, 360] },
+            { t: "line", p: [6.8, 3, 10, 3] },
+            { t: "line", p: [2.5, 4.3, 4.6, 4.3] },
+            { t: "line", p: [5.4, 4.3, 7.5, 4.3] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // リアクトル（JIS C 0617-6, 06-09-08）。巻線部を円で表す単線図形。
+        inductorReactor: {
+          w: 10, h: 10,
+          anchors: [[0, 5], [10, 5]],
+          prims: [
+            { t: "line", p: [0, 5, 1.8, 5] },
+            { t: "line", p: [8.2, 5, 10, 5] },
+            { t: "circle", p: [5, 5, 3.2], fill: "white" },
+            { t: "arc", p: [4.3, 5, 0.7, 180, 360] },
+            { t: "arc", p: [5.7, 5, 0.7, 180, 360] },
+            { t: "text", p: [5, -1.1], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         // ヒータ: 箱+斜線2本。
         heater: {
           w: 10, h: 4.4,
@@ -7362,8 +7515,10 @@
             { t: "line", p: [0, 1.3, 2.5, 1.3] },
             { t: "line", p: [7.5, 1.3, 10, 1.3] },
             { t: "rect", p: [2.5, 0, 5, 2.6], fill: "white" },
-            { t: "line", p: [2.5, 2.6, 7.5, 0] },
-            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+            { t: "line", p: [2.0, 3.3, 6.4, -0.7] },
+            { t: "line", p: [2.0, 3.3, 0.8, 3.3] },
+            { t: "text", p: [6.8, -0.9], size: 1.6, anchor: "start", value: "U" },
+            { t: "text", p: [5, -2.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
         // a接点デザイン3: 斜め可動線のみ(IEC)。
@@ -7519,6 +7674,22 @@
             { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // 光起電力素子（JIS C 0617-5, 05-06-03）。光を受けて出力する素子を、外向きの2矢印で区別する。
+        diodePhotovoltaic: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.4, 2.2] },
+            { t: "line", p: [6.0, 2.2, 10, 2.2] },
+            { t: "pline", pts: [[3.4, 0.9], [3.4, 3.5], [6.0, 2.2], [3.4, 0.9]] },
+            { t: "line", p: [6.0, 0.9, 6.0, 3.5] },
+            { t: "line", p: [5.0, 0.7, 5.9, -0.2] },
+            { t: "pline", pts: [[5.55, -0.2], [5.9, -0.2], [5.9, 0.15]] },
+            { t: "line", p: [5.9, 1.3, 6.8, 0.4] },
+            { t: "pline", pts: [[6.45, 0.4], [6.8, 0.4], [6.8, 0.75]] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         // 一方向性降伏ダイオード(JIS C 0617-5, 05-03-07): いわゆるツェナーダイオード。
         // カソードバーの折り返しは片側だけ。両側を折るのは双方向性(05-03-06)で別記号。
         diodeZener: {
@@ -7539,12 +7710,13 @@
           w: 10, h: 4.4,
           anchors: [[0, 2.2], [10, 2.2]],
           prims: [
-            { t: "line", p: [0, 2.2, 3.4, 2.2] },
-            { t: "line", p: [6.0, 2.2, 10, 2.2] },
-            { t: "pline", pts: [[3.4, 0.9], [3.4, 3.5], [6.0, 2.2], [3.4, 0.9]] },
-            { t: "line", p: [6.0, 0.9, 6.0, 3.5] },
-            { t: "line", p: [6.0, 0.9, 5.55, 0.9] },
-            { t: "line", p: [6.0, 3.5, 6.45, 3.5] },
+            { t: "line", p: [0, 2.2, 2.8, 2.2] },
+            { t: "line", p: [7.2, 2.2, 10, 2.2] },
+            { t: "pline", pts: [[2.8, 0.9], [2.8, 3.5], [5, 2.2], [2.8, 0.9]] },
+            { t: "pline", pts: [[7.2, 0.9], [7.2, 3.5], [5, 2.2], [7.2, 0.9]] },
+            { t: "line", p: [5, 0.9, 5, 3.5] },
+            { t: "line", p: [5, 0.9, 4.55, 0.9] },
+            { t: "line", p: [5, 3.5, 5.45, 3.5] },
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -7797,14 +7969,29 @@
             { t: "line", p: [7.5, 1.3, 10, 1.3] },
             { t: "rect", p: [2.5, 0, 5, 2.6], fill: "white" },
             { t: "line", p: [2.0, 3.3, 6.4, -0.7] },
-            { t: "line", p: [2.0, 3.3, 3.2, 3.3] },
-            { t: "text", p: [6.8, -0.9], size: 1.6, anchor: "start", value: "t°" },
+            { t: "line", p: [2.0, 3.3, 0.8, 3.3] },
+            { t: "text", p: [6.8, -0.9], size: 1.6, anchor: "start", value: "θ" },
             { t: "text", p: [5, -2.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
         // 変圧器(JIS C 0617-6, 06-09-01 2巻き変圧器・一般用図記号): 縦に重なる2つの円で、
         // 上の円の上へ1本・下の円の下へ1本だけ線を出す規格どおりの形(接続点は上下の2点だけ)。
         // 円は半径3.4mm・中心間4.0mmで直径の約4割が重なる。ピン間隔17.5mm(2.5mm格子)。
+        // 光導電抵抗器（JIS C 0617-5, 05-06-01）。外部から素子へ向く2本の受光矢印。
+        resistorPhoto: {
+          w: 10, h: 5,
+          anchors: [[0, 3.1], [10, 3.1]],
+          prims: [
+            { t: "line", p: [0, 3.1, 2.5, 3.1] },
+            { t: "line", p: [7.5, 3.1, 10, 3.1] },
+            { t: "rect", p: [2.5, 1.8, 5, 2.6], fill: "white" },
+            { t: "line", p: [6.8, 0.0, 5.8, 1.0] },
+            { t: "pline", pts: [[5.8, 0.65], [5.8, 1.0], [6.15, 1.0]] },
+            { t: "line", p: [7.7, 0.6, 6.7, 1.6] },
+            { t: "pline", pts: [[6.7, 1.25], [6.7, 1.6], [7.05, 1.6]] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         transformerCircles: {
           w: 15, h: 17.5,
           anchors: [[7.5, 0], [7.5, 17.5]],
@@ -8138,37 +8325,43 @@
         },
         // プラグ単体(雄側・JIS C 0617系): リード+縦バー(ソケット対の雄半分)。
         outletPlug: {
-          w: 10, h: 6,
-          anchors: [[0, 3]],
+          w: 10, h: 7.5,
+          anchors: [[0, 1.25], [0, 6.25]],
           prims: [
-            { t: "line", p: [0, 3, 5.2, 3] },
-            { t: "line", p: [5.2, 1.6, 5.2, 4.4] },
-            { t: "text", p: [7.4, 3], size: 1.8, anchor: "start", field: "label" }
+            { t: "line", p: [0, 1.25, 4.2, 1.25] },
+            { t: "line", p: [0, 6.25, 4.2, 6.25] },
+            { t: "rect", p: [4.2, 0.5, 1.5, 6.5], fill: "white" },
+            { t: "line", p: [5.7, 1.25, 7.6, 1.25] },
+            { t: "line", p: [5.7, 6.25, 7.6, 6.25] },
+            { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
-        // プラグ(2本刃の絵記号): リード+胴バー+平行刃2本。
+        // 一般形の雄プラグ（2極）。L/N は別アンカーへ接続する。
         outletPlugPin: {
-          w: 10, h: 6,
-          anchors: [[0, 3]],
+          w: 10, h: 7.5,
+          anchors: [[0, 1.25], [0, 6.25]],
           prims: [
-            { t: "line", p: [0, 3, 4.6, 3] },
-            { t: "line", p: [4.6, 1.8, 4.6, 4.2] },
-            { t: "line", p: [4.6, 2.2, 7.2, 2.2] },
-            { t: "line", p: [4.6, 3.8, 7.2, 3.8] },
-            { t: "text", p: [8.0, 3], size: 1.8, anchor: "start", field: "label" }
+            { t: "line", p: [0, 1.25, 4.2, 1.25] },
+            { t: "line", p: [0, 6.25, 4.2, 6.25] },
+            { t: "rect", p: [4.2, 0.5, 1.5, 6.5], fill: "white" },
+            { t: "line", p: [5.7, 1.25, 7.6, 1.25] },
+            { t: "line", p: [5.7, 6.25, 7.6, 6.25] },
+            { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
-        // プラグ(2本刃+接地ピン): 刃2本の中間に短い接地ピンを持つ接地2P形。
+        // 一般形の雄プラグ（2極+保護接地）。L/N/PE はそれぞれ独立したアンカー。
         outletPlugPin3: {
-          w: 10, h: 6,
-          anchors: [[0, 3]],
+          w: 10, h: 7.5,
+          anchors: [[0, 1.25], [0, 3.75], [0, 6.25]],
           prims: [
-            { t: "line", p: [0, 3, 4.6, 3] },
-            { t: "line", p: [4.6, 1.8, 4.6, 4.2] },
-            { t: "line", p: [4.6, 2.2, 7.2, 2.2] },
-            { t: "line", p: [4.6, 3.8, 7.2, 3.8] },
-            { t: "line", p: [4.6, 3, 6.2, 3] },
-            { t: "text", p: [8.0, 3], size: 1.8, anchor: "start", field: "label" }
+            { t: "line", p: [0, 1.25, 4.2, 1.25] },
+            { t: "line", p: [0, 3.75, 4.2, 3.75] },
+            { t: "line", p: [0, 6.25, 4.2, 6.25] },
+            { t: "rect", p: [4.2, 0.5, 1.5, 6.5], fill: "white" },
+            { t: "line", p: [5.7, 1.25, 7.6, 1.25] },
+            { t: "line", p: [5.7, 3.75, 6.7, 3.75] },
+            { t: "line", p: [5.7, 6.25, 7.6, 6.25] },
+            { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
         // コンセント(プラグ・ソケット対): 挿抜表現(JIS C 0617のコネクタ対と同系)。ピンピッチ10mm。
@@ -8437,6 +8630,7 @@
             { t: "line", p: [6.4, 2.7, 6.4, 5.3] },
             { t: "line", p: [6.4, 3.4, 7.5, 1.5] },
             { t: "line", p: [6.4, 4.6, 7.5, 6.5] },
+            { t: "pline", pts: [[6.55, 5.0], [7.5, 6.5], [6.1, 5.9]] },
             { t: "text", p: [5, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8454,14 +8648,18 @@
         },
         // 変流器(旧JIS): 貫通導体+2次巻線コブ2個。寸法・接続点は円版と共通。
         currentTransformerCoil: {
-          w: 10, h: 4.4,
-          anchors: [[0, 2.2], [10, 2.2]],
+          w: 10, h: 10,
+          anchors: [[0, 5], [10, 5], [5, 0], [5, 10]],
           prims: [
-            { t: "line", p: [0, 2.2, 10, 2.2] },
-            { t: "arc", p: [4.3, 2.2, 0.7, 0, 180] },
-            { t: "arc", p: [5.7, 2.2, 0.7, 0, 180] },
+            { t: "line", p: [0, 5, 2.4, 5] },
+            { t: "line", p: [7.6, 5, 10, 5] },
+            { t: "circle", p: [5, 5, 2.6] },
+            { t: "line", p: [5, 0, 5, 2.4] },
+            { t: "arc", p: [4.3, 5, 0.7, 0, 180] },
+            { t: "arc", p: [5.7, 5, 0.7, 0, 180] },
+            { t: "line", p: [5, 7.6, 5, 10] },
             { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, 5.6], size: 1.7, anchor: "middle", field: "rating" }
+            { t: "text", p: [5, 12.2], size: 1.7, anchor: "middle", field: "rating" }
           ]
         },
         // ブリッジ整流(◇4端子): 左右=AC入力、上=+、下=−。ピンはすべて2.5mmグリッド整合。
@@ -8474,6 +8672,8 @@
             { t: "line", p: [5, 0, 5, 1.5] },
             { t: "line", p: [5, 8.5, 5, 10] },
             { t: "pline", pts: [[5, 1.5], [8.5, 5], [5, 8.5], [1.5, 5], [5, 1.5]] },
+            { t: "pline", pts: [[3.7, 3.7], [6.3, 3.7], [5, 6.3], [3.7, 3.7]] },
+            { t: "line", p: [3.7, 6.7, 6.3, 6.7] },
             { t: "text", p: [6.3, 1.6], size: 1.8, anchor: "start", value: "+" },
             { t: "text", p: [6.3, 9.7], size: 1.8, anchor: "start", value: "-" },
             { t: "text", p: [10.6, 5.7], size: 2, anchor: "start", field: "label" }
@@ -8481,15 +8681,15 @@
         },
         // サイリスタ: ダイオード+ゲート線。
         diodeThyristor: {
-          w: 10, h: 4.4,
+          w: 10, h: 4.7,
           // 第3の接続点はゲート線の先端。ここへ配線を落とせないとゲート回路が描けない。
-          anchors: [[0, 2.2], [10, 2.2], [7.6, 4.4]],
+          anchors: [[0, 2.2], [10, 2.2], [7.5, 4.7]],
           prims: [
             { t: "line", p: [0, 2.2, 3.4, 2.2] },
             { t: "line", p: [6.0, 2.2, 10, 2.2] },
             { t: "pline", pts: [[3.4, 0.9], [3.4, 3.5], [6.0, 2.2], [3.4, 0.9]] },
             { t: "line", p: [6.0, 0.9, 6.0, 3.5] },
-            { t: "line", p: [6.0, 3.0, 7.6, 4.4] },
+            { t: "line", p: [6.0, 3.0, 7.5, 4.7] },
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8497,7 +8697,7 @@
         diodeTriac: {
           w: 10, h: 4.7,
           // サイリスタと同じく、ゲート線の先端を第3の接続点にする。
-          anchors: [[0, 2.2], [10, 2.2], [7.8, 4.6]],
+          anchors: [[0, 2.2], [10, 2.2], [7.5, 4.7]],
           prims: [
             { t: "line", p: [0, 2.2, 3.8, 2.2] },
             { t: "line", p: [6.2, 2.2, 10, 2.2] },
@@ -8505,7 +8705,7 @@
             { t: "line", p: [6.2, 0.5, 6.2, 3.9] },
             { t: "pline", pts: [[6.2, 0.5], [6.2, 2.1], [3.8, 1.3], [6.2, 0.5]] },
             { t: "pline", pts: [[3.8, 2.3], [3.8, 3.9], [6.2, 3.1], [3.8, 2.3]] },
-            { t: "line", p: [6.2, 3.2, 7.8, 4.6] },
+            { t: "line", p: [6.2, 3.2, 7.5, 4.7] },
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8517,7 +8717,7 @@
           anchors: [[0, 3], [12.5, 3]],
           prims: [
             { t: "line", p: [0, 3, 3.9, 3] },
-            { t: "line", p: [3.9, 3, 8.4, 1.0] },
+            { t: "line", p: [3.9, 3, 8.4, 5.0] },
             { t: "line", p: [8.75, 3, 12.5, 3] },
             { t: "line", p: [8.05, 2.3, 9.45, 3.7] },
             { t: "line", p: [8.05, 3.7, 9.45, 2.3] },
@@ -8835,13 +9035,18 @@
         },
         // 変流器(CT): 貫通導体+円。
         currentTransformer: {
-          w: 10, h: 4.4,
-          anchors: [[0, 2.2], [10, 2.2]],
+          w: 10, h: 10,
+          anchors: [[0, 5], [10, 5], [5, 0], [5, 10]],
           prims: [
-            { t: "line", p: [0, 2.2, 10, 2.2] },
-            { t: "circle", p: [5, 2.2, 1.9] },
+            { t: "line", p: [0, 5, 2.4, 5] },
+            { t: "line", p: [7.6, 5, 10, 5] },
+            { t: "circle", p: [5, 5, 2.6] },
+            { t: "line", p: [5, 0, 5, 2.4] },
+            { t: "line", p: [3.7, 3.8, 4.6, 4.7] },
+            { t: "line", p: [5.4, 5.3, 6.3, 6.2] },
+            { t: "line", p: [5, 7.6, 5, 10] },
             { t: "text", p: [5, -1.6], size: 2, anchor: "middle", field: "label" },
-            { t: "text", p: [5, 5.6], size: 1.7, anchor: "middle", field: "rating" }
+            { t: "text", p: [5, 12.2], size: 1.7, anchor: "middle", field: "rating" }
           ]
         },
         // 避雷器: 箱+下向き矢印。
@@ -9172,7 +9377,7 @@
           anchors: [[0, 1.5], [6, 1.5]],
           prims: [
             { t: "line", p: [0, 1.5, 2.3, 1.5] },
-            { t: "line", p: [2.3, 0.3, 2.3, 2.7] },
+            { t: "rect", p: [1.9, 0.3, 0.8, 2.4], fill: "solid" },
             { t: "arc", p: [3.9, 1.5, 1.2, 270, 450] },
             { t: "line", p: [5.1, 1.5, 6, 1.5] },
             { t: "text", p: [3, -1.4], size: 1.8, anchor: "middle", field: "label" }
@@ -9381,6 +9586,8 @@
           anchors: [[4, 8]],
           prims: [
             { t: "rect", p: [1.5, 0.6, 5, 2.2], fill: "white" },
+            { t: "line", p: [0, 1.7, 1.5, 1.7] },
+            { t: "line", p: [6.5, 1.7, 8, 1.7] },
             { t: "line", p: [4, 2.8, 4, 8] },
             { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
@@ -9414,6 +9621,50 @@
       // 光電スイッチ/マットスイッチ/リードスイッチは元定義が幅25mmと大きく、他の接点系(幅10〜15mm)から
       // 突出していた。共通の縮小率で幅15mm前後へ縮め、サイズ感を揃える。接続ピン間隔も0.6倍=15mm
       // (2.5mmグリッドの倍数)で整合する。定義を1箇所で縮小し、SVG/DXF/接続点/既定寸法へ一律反映する。
+      // 変換器はJISの20mm正方形本体とベクトル記号で統一する。フォント依存の波形/直流字形を
+      // 使わないため、SVG・DXF・アイコンで同じ記号になる。
+      const CONVERTER_MARKS = {
+        ac: [
+          { t: "arc", p: [10.7, 8, 1.05, 180, 360] },
+          { t: "arc", p: [12.8, 8, 1.05, 0, 180] }
+        ],
+        dc: [
+          { t: "line", p: [20.6, 16.4, 24.4, 16.4] },
+          { t: "line", p: [20.6, 18.2, 24.4, 18.2], dash: "0.8 0.6" }
+        ]
+      };
+      function configurePowerConverter(key, input, output) {
+        const geo = SYMBOL_GEO[key];
+        geo.prims = [
+          { t: "line", p: [0, 12.5, 7.5, 12.5] },
+          { t: "line", p: [27.5, 12.5, 35, 12.5] },
+          { t: "rect", p: [7.5, 2.5, 20, 20], fill: "white" },
+          { t: "line", p: [7.5, 22.5, 27.5, 2.5] },
+          ...CONVERTER_MARKS[input].map(deepClone),
+          ...CONVERTER_MARKS[output].map(prim => {
+            const moved = deepClone(prim);
+            if (moved.t === "arc") moved.p[0] += 13.8;
+            else moved.p = [moved.p[0] + 3.8, moved.p[1] + 1.2, moved.p[2] + 3.8, moved.p[3] + 1.2];
+            return moved;
+          }),
+          { t: "text", p: [17.5, -1], size: 2, anchor: "middle", field: "label" }
+        ];
+      }
+      configurePowerConverter("powerSupplyAcDc", "ac", "dc");
+      configurePowerConverter("powerSupplyDcDc", "dc", "dc");
+      configurePowerConverter("powerSupplyDcAc", "dc", "ac");
+
+      // 遮蔽変圧器は同じ巻線形へ破線の磁心を重ねる（JIS C 0617-6, 06-10-01/02）。
+      function shieldedTransformerGeo(sourceKey) {
+        const geo = deepClone(SYMBOL_GEO[sourceKey]);
+        geo.prims.forEach(prim => {
+          if (prim.t === "line" && ((prim.p[1] === 5 && prim.p[3] === 5) || (prim.p[1] === 8.75 && prim.p[3] === 8.75))) prim.dash = "1.2 1.0";
+        });
+        return geo;
+      }
+      SYMBOL_GEO.transformerCirclesShielded = shieldedTransformerGeo("transformerCirclesCore");
+      SYMBOL_GEO.transformerCoilsShielded = shieldedTransformerGeo("transformerCoilsCore");
+
       const COMPACT_SWITCH_SCALE = 0.6;
       // geo定義を一律k倍へ縮小した新しい定義を返す(元のgeoは変更しない)。
       // 寸法・接続点・プリミティブを同じ倍率で潰すので、SVG・DXF・接続点の一致が保たれる。
@@ -9465,24 +9716,13 @@
           case "disconnector": return variant === "loadBreak" ? "disconnectorLoadBreak" : "disconnector";
           case "outlet": {
             // boxGrid10は10mmピッチ統合によりboxと同一形状(旧図面互換の別名として受け付ける)。
-            if (variant === "box" || variant === "boxGrid10") return "outletBox";
-            if (variant === "boxDouble") return "outletBoxDouble";
-            if (variant === "round") return "outletRound";
-            if (variant === "earthed") return "outletEarthed";
-            if (variant === "plugSocket") return "outletPlugSocket";
             if (variant === "plug") return "outletPlug";
-            if (variant === "plugPin") return "outletPlugPin";
-            if (variant === "plugPin3") return "outletPlugPin3";
-            return "outlet";
+            if (variant === "plug3" || variant === "plugPin3") return "outletPlugPin3";
+            return "outletPlugPin";
           }
           case "thermalElement": return "thermalElement";
           case "breaker": {
-            if (variant === "elb") return "breakerElb";
-            if (variant === "iec") return "breakerIec";
-            if (variant === "arc") return "breakerArc";
-            if (variant === "mccb") return "breakerMccb";
-            if (variant === "cp") return "breakerCp";
-            return "breaker";
+            return "breakerIec";
           }
           case "coil": {
             if (variant === "box") return "coilBox";
@@ -9509,6 +9749,7 @@
             if (variant === "bridge") return "diodeBridge";
             if (variant === "triac") return "diodeTriac";
             if (variant === "photo") return "diodePhoto";
+            if (variant === "photovoltaic") return "diodePhotovoltaic";
             return "diode";
           }
           case "transistor": return ({ pnp: "transistorPnp", npnPlain: "transistorNpnPlain", pnpPlain: "transistorPnpPlain", photo: "transistorPhoto" })[variant] || "transistorNpn";
@@ -9535,7 +9776,6 @@
             if (variant === "palm") return "pushButtonPalm";
             return "pushButton";
           case "selectorSwitch": {
-            if (variant === "onOff") return "selectorSwitchOnOff";
             if (variant === "three") return "selectorSwitch3";
             if (variant === "key") return "selectorSwitchKey";
             if (variant === "jis") return "selectorSwitchJis";
@@ -9583,16 +9823,18 @@
             return "limitSwitch";
           }
           case "pressureSwitch": return variant === "nc" ? "pressureSwitchNC" : "pressureSwitch";
-          case "motor": return variant === "double" ? "motorDouble" : "motor";
+          case "motor": return "motor";
           case "transformer": {
-            if (variant === "grid10") return "transformerGrid10";
             if (variant === "circles") return "transformerCircles";
             if (variant === "circlesCore") return "transformerCirclesCore";
+            if (variant === "circlesShielded") return "transformerCirclesShielded";
             if (variant === "coils") return "transformerCoils";
             if (variant === "coilsCore") return "transformerCoilsCore";
+            if (variant === "coilsShielded") return "transformerCoilsShielded";
+            if (variant === "instrument") return "transformerCircles";
             if (variant === "circles3") return "transformerCircles3";
             if (variant === "coils3") return "transformerCoils3";
-            return "transformer";
+            return "transformerCoils";
           }
           case "meter": {
             if (variant === "box") return "meterBox";
@@ -9604,6 +9846,8 @@
             if (variant === "core") return "inductorCore";
             if (variant === "coreOld") return "inductorCoreOld";
             if (variant === "box") return "inductorBox";
+            if (variant === "gapCore") return "inductorGapCore";
+            if (variant === "reactor") return "inductorReactor";
             return "inductor";
           }
           case "heater": return variant === "plain" ? "heaterPlain" : "heater";
@@ -9612,7 +9856,7 @@
             if (variant === "circle") return "groundClean";
             if (variant === "functional") return "groundFunctional";
             if (variant === "chassis") return "groundChassis";
-            return "ground";
+            return "groundBars";
           }
           case "terminal": {
             const shape = element.terminalShape || "circle";
@@ -9624,7 +9868,8 @@
             const rs = element.resistorStyle || "box";
             if (rs === "varistor") return "varistor";
             if (rs === "variable") return "resistorVariable";
-            if (rs === "thermistor") return "resistorThermistor";
+              if (rs === "thermistor") return "resistorThermistor";
+              if (rs === "photo") return "resistorPhoto";
             if (rs === "zigzag") return "resistorZigzag";
             if (rs === "potentiometer") return "resistorPotentiometer";
             return "resistor";
@@ -9789,7 +10034,8 @@
           } else if (prim.t === "pline") {
             g.appendChild(svgEl("path", { d: prim.pts.map((pt, i) => (i ? "L " : "M ") + pt[0] + " " + pt[1]).join(" "), class: "symbol-line", stroke, "stroke-dasharray": prim.dash || null }));
           } else if (prim.t === "rect") {
-            g.appendChild(svgEl("rect", { x: prim.p[0], y: prim.p[1], width: prim.p[2], height: prim.p[3], class: prim.fill === "white" ? "symbol-fill" : "symbol-line", stroke, fill: prim.fill === "white" ? "#fff" : "none", "stroke-dasharray": prim.dash || null }));
+            const solid = prim.fill === "solid";
+            g.appendChild(svgEl("rect", { x: prim.p[0], y: prim.p[1], width: prim.p[2], height: prim.p[3], class: prim.fill === "white" ? "symbol-fill" : "symbol-line", stroke, fill: prim.fill === "white" ? "#fff" : (solid ? stroke : "none"), "stroke-dasharray": prim.dash || null }));
           } else if (prim.t === "circle") {
             if (prim.fill === "solid") g.appendChild(svgEl("circle", { cx: prim.p[0], cy: prim.p[1], r: prim.p[2], fill: stroke }));
             else g.appendChild(svgEl("circle", { cx: prim.p[0], cy: prim.p[1], r: prim.p[2], class: prim.fill === "white" ? "terminal-dot" : "symbol-line", stroke, fill: prim.fill === "white" ? "#fff" : "none" }));
@@ -10165,6 +10411,23 @@
         return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
       }
 
+      // SVG の translate→rotate→scale と同じ原点規約で、回転済み矩形の軸平行外接矩形を返す。
+      // 選択枠・範囲選択・スナップ候補がシンボル本体からずれないよう、描画とは別の近似値を使わない。
+      function rotatedRectBounds(x, y, w, h, rotation = 0) {
+        const rad = Number(rotation || 0) * Math.PI / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const corners = [[0, 0], [w, 0], [w, h], [0, h]].map(([px, py]) => ({
+          x: Number(x || 0) + px * cos - py * sin,
+          y: Number(y || 0) + px * sin + py * cos
+        }));
+        const xs = corners.map(point => point.x);
+        const ys = corners.map(point => point.y);
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        return { x: minX, y: minY, w: Math.max(0, Math.max(...xs) - minX), h: Math.max(0, Math.max(...ys) - minY) };
+      }
+
       // 要素の外接矩形(mm)。points系は点列から、その他はx/y/w/h(既定値で補完)。
       function elementBounds(element) {
         if (element.type === "wire" || element.type === "arrow" || element.type === "line" || element.type === "mechanicalLink" || element.type === "dimension" || element.type === "polygon") {
@@ -10184,7 +10447,7 @@
         // 機器箱で端子ピッチ指定時は、外形高さを端子レイアウトに合わせる。
         const rawH = element.type === "deviceBox" ? deviceBoxHeight(element) : Number(element.h || defaultElement(element.type).h || 10);
         const h = rawH * s;
-        return { x: Number(element.x || 0), y: Number(element.y || 0), w, h };
+        return rotatedRectBounds(element.x, element.y, w, h, element.rotation);
       }
 
       // 選択IDリストを更新(先頭が主選択selectedId)。
@@ -10815,35 +11078,35 @@
       //  3. 出典と特徴が両方あるときは「出典・特徴」の順。出典が自明なら特徴だけでよい。
       //  4. JIS番号は規格図と目視照合したものだけ書く。未照合のものは番号を書かない。
       const SYMBOL_VARIANT_OPTIONS = {
-        contactNO: [["standard", "縦バー（設備標準）"], ["jis", "円端子＋開き線（見本形）"], ["iec", "メーク接点（JIS 07-02-01・斜め線のみ）"], ["changeover", "切替接点（c接点・1入2出）"], ["contactor", "電磁接触器の主メーク接点（JIS 07-13-02・半円）"]],
-        contactNC: [["standard", "縦バー＋斜線（設備標準）"], ["jis", "円端子＋閉じ線（見本形）"], ["iec", "ブレーク接点（JIS 07-02-03・斜め線＋止め）"]],
-        timerContactNO: [["standard", "オンディレー（設備標準・∩＋縦バー）"], ["off", "オフディレー（設備標準・∪＋縦バー）"], ["iec", "メーク接点・限時閉路（JIS 07-05-01・∩＋斜め線）"], ["iecOff", "メーク接点・限時開路（JIS 07-05-02・∪＋斜め線）"]],
-        timerContactNC: [["standard", "オンディレー（設備標準・∩＋縦バー）"], ["off", "オフディレー（設備標準・∪＋縦バー）"], ["iec", "ブレーク接点・限時開路（JIS 07-05-03・∩＋斜め線）"], ["iecOff", "ブレーク接点・限時閉路（JIS 07-05-04・∪＋斜め線）"]],
-        coil: [["standard", "円（設備標準）"], ["box", "作動装置・継電器コイル（JIS 07-15-01・箱形）"], ["ac", "交流コイル（円＋〜）"], ["latch", "ラッチコイル（箱＋斜線）"], ["timer", "限時コイル（円＋T）"], ["counter", "カウンタコイル（円＋C）"], ["flicker", "フリッカコイル（円＋F）"], ["interface", "盤間中継（見本形・小四角2連）"]],
-        ground: [["standard", "斜線ハッチ（設備標準）"], ["bars", "接地・一般（JIS 02-15-01・横棒3本）"], ["circle", "保護接地（JIS 02-15-03・円囲み）"], ["functional", "機能接地（JIS 02-15-06・弧囲み）"], ["chassis", "シャーシ接地（実務形・櫛形）"]],
-        diode: [["standard", "半導体ダイオード（JIS 05-03-01・三角＋バー）"], ["led", "発光ダイオード（JIS 05-03-02・LED）"], ["photo", "フォトダイオード（JIS 05-06-02）"], ["zener", "一方向性降伏ダイオード（JIS 05-03-07・ツェナー）"], ["zenerBi", "双方向性降伏ダイオード（JIS 05-03-06）"], ["thyristor", "逆阻止3端子サイリスタ（JIS 05-04-06・ゲート線）"], ["bridge", "ブリッジ接続の整流器（JIS 06-14-04・◇4端子）"], ["triac", "双方向性3端子サイリスタ（JIS 05-04-11・トライアック）"]],
+        contactNO: [["standard", "縦バー（旧JIS・一般形）"], ["jis", "円端子＋開き線（旧JIS・一般形）"], ["iec", "メーク接点（JIS 07-02-01・斜め線のみ）"], ["changeover", "切替接点（c接点・1入2出）"], ["contactor", "電磁接触器の主メーク接点（JIS 07-13-02・半円）"]],
+        contactNC: [["standard", "縦バー＋斜線（旧JIS・一般形）"], ["jis", "円端子＋閉じ線（旧JIS・一般形）"], ["iec", "ブレーク接点（JIS 07-02-03・斜め線＋止め）"]],
+        timerContactNO: [["standard", "オンディレー（旧JIS・∩＋縦バー）"], ["off", "オフディレー（旧JIS・∪＋縦バー）"], ["iec", "メーク接点・限時閉路（JIS 07-05-01・∩＋斜め線）"], ["iecOff", "メーク接点・限時開路（JIS 07-05-02・∪＋斜め線）"]],
+        timerContactNC: [["standard", "オンディレー（旧JIS・∩＋縦バー）"], ["off", "オフディレー（旧JIS・∪＋縦バー）"], ["iec", "ブレーク接点・限時開路（JIS 07-05-03・∩＋斜め線）"], ["iecOff", "ブレーク接点・限時閉路（JIS 07-05-04・∪＋斜め線）"]],
+        coil: [["standard", "円（旧JIS・一般形）"], ["box", "作動装置・継電器コイル（JIS 07-15-01・箱形）"], ["ac", "交流コイル（円＋〜）"], ["latch", "ラッチコイル（箱＋斜線）"], ["timer", "限時コイル（円＋T）"], ["counter", "カウンタコイル（円＋C）"], ["flicker", "フリッカコイル（円＋F）"], ["interface", "盤間中継（一般形・小四角2連）"]],
+        ground: [["bars", "接地・一般（JIS 02-15-01・横棒3本）"], ["circle", "保護接地（JIS 02-15-03・円囲み）"], ["functional", "機能接地（JIS 02-15-06・弧囲み）"], ["chassis", "機能等電位接続（JIS 02-15-07・櫛形）"]],
+        diode: [["standard", "半導体ダイオード（JIS 05-03-01・三角＋バー）"], ["led", "発光ダイオード（JIS 05-03-02・LED）"], ["photo", "フォトダイオード（JIS 05-06-02）"], ["photovoltaic", "光起電力素子（JIS 05-06-03）"], ["zener", "一方向性降伏ダイオード（JIS 05-03-07・ツェナー）"], ["zenerBi", "双方向性降伏ダイオード（JIS 05-03-06）"], ["thyristor", "逆阻止3端子サイリスタ（JIS 05-04-06・ゲート線）"], ["bridge", "ブリッジ接続の整流器（JIS 06-14-04・◇4端子）"], ["triac", "双方向性3端子サイリスタ（JIS 05-04-11・トライアック）"]],
         capacitor: [["standard", "コンデンサ（平行板）"], ["polarized", "有極コンデンサ（＋と曲板）"], ["variable", "可変コンデンサ（貫通矢印）"]],
         fuse: [["standard", "ヒューズ（JIS 07-21-01・箱＋貫通線）"], ["blank", "ヒューズ（IEC・箱のみ）"], ["wave", "ヒューズ（旧JIS・S字）"]],
         disconnector: [["standard", "断路器（JIS 07-13-06・止め棒＋斜め線）"], ["loadBreak", "負荷開閉器（JIS 07-13-08・小円）"]],
-        breaker: [["standard", "遮断器（設備標準・円＋アーク＋トリップ）"], ["arc", "遮断器（設備標準・円＋アーク）"], ["mccb", "配線用遮断器（実務形・箱形）"], ["elb", "漏電遮断器（実務形・E表示）"], ["iec", "遮断器（JIS 07-13-05・✕＋斜め線）"]],
-        pushButton: [["standard", "押しa接点（設備標準）"], ["nc", "押しb接点（設備標準）"], ["jis", "押しボタン・a接点（JIS 07-07-02）"], ["jisNc", "押しボタン・b接点（JIS 07-07-02系）"], ["illuminated", "照光式押しボタン（実務形・ランプ内蔵）"], ["palm", "パーム押しボタン（実務形・大形キノコ）"], ["pull", "引きボタン（実務形）"], ["twist", "ひねりボタン（実務形）"]],
+        breaker: [["iec", "遮断器（JIS 07-13-05・✕＋下開き斜め線）"]],
+        pushButton: [["standard", "押しa接点（旧JIS・一般形）"], ["nc", "押しb接点（旧JIS・一般形）"], ["jis", "押しボタン・a接点（JIS 07-07-02）"], ["jisNc", "押しボタン・b接点（JIS 07-07-02系）"], ["illuminated", "照光式押しボタン（一般形・ランプ内蔵）"], ["palm", "パーム押しボタン（一般形・大形キノコ）"], ["pull", "引きボタン（一般形）"], ["twist", "ひねりボタン（一般形）"]],
         transistor: [["npn", "NPNトランジスタ（JIS 05-05-02・外囲みの円あり）"], ["pnp", "PNPトランジスタ（JIS 05-05-01・外囲みの円あり）"], ["npnPlain", "NPNトランジスタ（円なし）"], ["pnpPlain", "PNPトランジスタ（円なし）"], ["photo", "フォトトランジスタ（JIS 05-06-04）"]],
         meter: [["standard", "指示計（JIS 08-01-01・円）"], ["box", "指示計（角形）"], ["double", "積算計（二重円）"], ["needle", "指示計（実務形・円＋目盛弧＋針）"]],
-        motor: [["standard", "回転機（JIS 06-04-01・円）"], ["double", "回転機（二重円・発電機等）"]],
-        thermalRelay: [["standard", "○✕○（見本形）"], ["box", "箱形（見本形・内部⊓）"], ["iecNc", "b接点＋熱動素子（JIS 07-02-03・斜め線）"], ["iecNo", "a接点＋熱動素子（JIS 07-02-01・斜め線）"], ["jisNc", "b接点＋熱動素子（見本形・円端子）"], ["jisNo", "a接点＋熱動素子（見本形・円端子）"], ["barNc", "b接点＋熱動素子（縦バー）"], ["barNo", "a接点＋熱動素子（縦バー）"], ["changeover", "切替接点（1c・1入2出）"], ["xOnly", "✕のみ（簡易形）"]],
-        inductor: [["standard", "コイル（JIS 04-03-01・コブ3個）"], ["core", "磁心入りインダクタ（JIS 04-03-03・磁心線1本）"], ["coreOld", "鉄心入りリアクトル（旧JIS・2本線）"], ["box", "リアクトル（IEC・箱形）"]],
+        motor: [["standard", "回転機（JIS 06-04-01・円）"]],
+        thermalRelay: [["standard", "○✕○（旧JIS・一般形）"], ["box", "箱形（一般形・内部⊓）"], ["iecNc", "b接点＋熱動素子（JIS 07-02-03・斜め線）"], ["iecNo", "a接点＋熱動素子（JIS 07-02-01・斜め線）"], ["jisNc", "b接点＋熱動素子（旧JIS・円端子）"], ["jisNo", "a接点＋熱動素子（旧JIS・円端子）"], ["barNc", "b接点＋熱動素子（旧JIS・縦バー）"], ["barNo", "a接点＋熱動素子（旧JIS・縦バー）"], ["changeover", "切替接点（1c・1入2出）"], ["xOnly", "✕のみ（一般形）"]],
+        inductor: [["standard", "コイル（JIS 04-03-01・コブ3個）"], ["core", "磁心入りインダクタ（JIS 04-03-03・磁心線1本）"], ["gapCore", "気隙入りインダクタ（JIS 04-03-04）"], ["reactor", "リアクトル（JIS 06-09-08・円形）"], ["coreOld", "鉄心入りリアクトル（旧JIS・2本線）"], ["box", "リアクトル（IEC・箱形）"]],
         currentTransformer: [["standard", "変流器（JIS 06-09-10・円）"], ["zct", "零相変流器（実務形・二重円）"], ["coil", "変流器（旧JIS・貫通線＋コブ2）"]],
-        selectorSwitch: [["standard", "2位置（設備標準）"], ["onOff", "2位置・入切表示付き（見本形）"], ["jis", "2位置（JIS 02-13-04・回転操作）"], ["three", "3位置（設備標準）"], ["key", "鍵付き（実務形）"]],
+        selectorSwitch: [["jis", "2位置（JIS 02-13-04・回転操作）"], ["three", "3位置（一般形）"], ["key", "鍵付き（一般形）"]],
         logicGate: [["and", "AND（&）"], ["or", "OR（≥1）"], ["not", "NOT（1＋否定丸）"], ["nand", "NAND（&＋否定丸）"], ["nor", "NOR（≥1＋否定丸）"], ["xor", "XOR（=1）"]],
-        limitSwitch: [["standard", "箱形アクチュエータ・a接点（設備標準）"], ["nc", "箱形アクチュエータ・b接点（設備標準・下側）"], ["jisNo", "位置スイッチ・メーク接点（JIS 07-08-01）"], ["jisNc", "位置スイッチ・ブレーク接点（JIS 07-08-02）"], ["roller", "ローラーレバー・a接点（実務形）"], ["rollerNc", "ローラーレバー・b接点（実務形）"]],
-        transformer: [["standard", "巻線バー＋タップ（設備標準）"], ["circles", "2巻き変圧器・円形（JIS 06-09-01）"], ["circlesCore", "2巻き変圧器・円形＋磁心（JIS 06-09-01）"], ["coils", "2巻き変圧器・巻線形（JIS 06-09-02）"], ["coilsCore", "2巻き変圧器・巻線形＋磁心（JIS 06-09-02）"], ["circles3", "3巻き変圧器・円形（JIS 06-09-04）"], ["coils3", "3巻き変圧器・巻線形（JIS 06-09-05）"]],
-        heater: [["standard", "ヒータ（設備標準・箱＋斜線）"], ["plain", "ヒータ（JIS 04-01-01・抵抗器形の箱）"]],
-        arrester: [["standard", "避雷器（設備標準・箱＋矢印）"], ["gap", "避雷器（実務形・ギャップ＝対向三角）"]],
+        limitSwitch: [["standard", "箱形アクチュエータ・a接点（一般形）"], ["nc", "箱形アクチュエータ・b接点（一般形・下側）"], ["jisNo", "位置スイッチ・メーク接点（JIS 07-08-01）"], ["jisNc", "位置スイッチ・ブレーク接点（JIS 07-08-02）"], ["roller", "ローラーレバー・a接点（一般形）"], ["rollerNc", "ローラーレバー・b接点（一般形）"]],
+        transformer: [["circles", "2巻き変圧器・円形（JIS 06-09-01）"], ["circlesCore", "2巻き変圧器・円形＋磁心（JIS 06-09-01）"], ["circlesShielded", "遮蔽変圧器・円形（JIS 06-10-01）"], ["coils", "2巻き変圧器・巻線形（JIS 06-09-02）"], ["coilsCore", "2巻き変圧器・巻線形＋磁心（JIS 06-09-02）"], ["coilsShielded", "遮蔽変圧器・巻線形（JIS 06-10-02）"], ["circles3", "3巻き変圧器・円形（JIS 06-09-04）"], ["coils3", "3巻き変圧器・巻線形（JIS 06-09-05）"], ["instrument", "計器用変圧器（JIS 06-13-01・円形）"]],
+        heater: [["standard", "ヒータ（一般形・箱＋斜線）"], ["plain", "ヒータ（JIS 04-01-01・抵抗器形の箱）"]],
+        arrester: [["standard", "避雷器（一般形・箱＋矢印）"], ["gap", "避雷器（一般形・ギャップ＝対向三角）"]],
         qualifierMark: [["dc", "直流（実線＋破線）"], ["ac", "交流（正弦波）"], ["acdc", "交直流（正弦波＋実線・破線）"], ["threePhase", "三相交流（3＋正弦波）"]],
         operatorMark: [["manual", "手動操作・一般（JIS 02-13-01）"], ["push", "押し動作（JIS 02-13-05）"], ["pull", "引き動作（JIS 02-13-03）"], ["rotate", "回転操作（JIS 02-13-04）"], ["key", "キー操作（実務形）"], ["roller", "ローラ操作（実務形）"], ["foot", "足踏み操作（JIS 02-13-10）"], ["emergency", "非常停止（JIS 02-13-08）"], ["electromagnetic", "電磁効果による操作（JIS 02-13-23）"], ["thermal", "熱操作（実務形・⊓）"]],
-        outlet: [["standard", "半円＋差込口"], ["box", "箱形（スロット2＋接地）"], ["boxDouble", "箱形2口"], ["round", "丸形（円＋差込口2本）"], ["earthed", "半円＋差込口（接地極付き）"], ["plug", "プラグ（雄側・縦バー）"], ["plugPin", "プラグ（2本刃）"], ["plugPin3", "プラグ（2本刃＋接地ピン）"], ["plugSocket", "プラグ・ソケット対（挿抜表現）"]],
-        pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "非常停止スイッチ（JIS 07-07-06・キノコ＋b接点）"], ["multi2", "縦連結2接点（実務形・連動）"], ["multi3", "縦連結3接点（実務形・連動）"], ["jisMulti2", "縦連結2接点（JIS 07-07-06系・連動）"], ["jisMulti3", "縦連結3接点（JIS 07-07-06系・連動）"], ["facility", "キノコ＋ひねり解除環（設備標準）"], ["bar", "バー押込式（実務形）"]],
-        pressureSwitch: [["standard", "a接点＋ダイヤフラム（設備標準）"], ["nc", "b接点＋ダイヤフラム（設備標準）"]],
+        outlet: [["plugPin", "雄プラグ・2極（一般形・L/N別接続）"], ["plugPin3", "雄プラグ・2極＋保護接地（一般形・L/N/PE別接続）"]],
+        pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "非常停止スイッチ（JIS 07-07-06・キノコ＋b接点）"], ["multi2", "縦連結2接点（一般形・連動）"], ["multi3", "縦連結3接点（一般形・連動）"], ["jisMulti2", "縦連結2接点（JIS 07-07-06系・連動）"], ["jisMulti3", "縦連結3接点（JIS 07-07-06系・連動）"], ["bar", "バー押込式（一般形）"]],
+        pressureSwitch: [["standard", "a接点＋ダイヤフラム（一般形）"], ["nc", "b接点＋ダイヤフラム（一般形）"]],
         floatSwitch: [["standard", "a接点＋フロート（実務形）"], ["nc", "b接点＋フロート（実務形）"]],
         thermoSwitch: [["standard", "a接点（実務形・t°）"], ["nc", "b接点（実務形・t°）"]],
         flowSwitch: [["standard", "a接点＋流路パドル（実務形）"], ["nc", "b接点＋流路パドル（実務形）"]],
@@ -11058,9 +11321,7 @@
         if (!baseOptions) return "";
         // 自動生成した10mm形状を別形状と取り違えず、変更後も選び直せるよう専用候補を明示する。
         // コンセントの旧「箱形(テンプレート専用10mm)」はboxへ統合済み(選択肢からも廃止)。
-        const templateVariantOptions = {
-          transformer: ["grid10", "巻線バー＋タップ（テンプレート専用10mm）"]
-        };
+        const templateVariantOptions = {};
         const templateOption = templateVariantOptions[key];
         let options = templateOption && !baseOptions.some(([value]) => value === templateOption[0])
           ? [...baseOptions, templateOption]
@@ -11257,6 +11518,7 @@
               <option value="varistor"${style === "varistor" ? " selected" : ""}>バリスタ（斜線）</option>
               <option value="variable"${style === "variable" ? " selected" : ""}>可変抵抗器（JIS 04-01-03・貫通矢印）</option>
               <option value="thermistor"${style === "thermistor" ? " selected" : ""}>サーミスタ（t°）</option>
+              <option value="photo"${style === "photo" ? " selected" : ""}>光導電抵抗器（JIS 05-06-01）</option>
               <option value="zigzag"${style === "zigzag" ? " selected" : ""}>抵抗器（旧JIS・ジグザグ）</option>
               <option value="potentiometer"${style === "potentiometer" ? " selected" : ""}>ポテンショメータ（3端子）</option>
             </select>
@@ -11885,12 +12147,12 @@
           contactNC: { ...base, w: 10, h: 4.4, label: "NC", orientation: "horizontal", refNo: "" },
           contactBlock: { ...base, w: 15, h: 8, label: "CR", orientation: "horizontal", blockContact: "NO", blockFrame: "solid", refNo: "" },
           pushButton: { ...base, w: 10, h: 5, label: "PB", orientation: "horizontal", pbStyle: "momentary" },
-          selectorSwitch: { ...base, w: 10, h: 5, label: "SS", orientation: "horizontal" },
+          selectorSwitch: { ...base, w: 10, h: 5, label: "SS", orientation: "horizontal", symbolVariant: "jis" },
           limitSwitch: { ...base, w: 10, h: 4.6, label: "LS", orientation: "horizontal" },
           pressureSwitch: { ...base, w: 10, h: 6, label: "PS", orientation: "horizontal" },
           coil: { ...base, w: 10, h: 4.4, label: "CR" },
           fuse: { ...base, w: 10, h: 4.4, label: "F", orientation: "horizontal" },
-          breaker: { ...base, w: 12.5, h: 5, label: "CB", orientation: "horizontal", refNo: "" },
+          breaker: { ...base, w: 12.5, h: 5, label: "CB", orientation: "horizontal", symbolVariant: "iec", refNo: "" },
           lamp: { ...base, w: 10, h: 4.4, label: "PL", lampVariant: "pilot", lampColor: "W" },
           buzzer: { ...base, w: 12, h: 6, label: "BZ", buzzerVariant: "horn" },
           solenoidValve: { ...base, w: 25, h: 16, label: "SOL" },
@@ -11900,7 +12162,7 @@
           reedSwitch: { ...base, w: 15, h: 8.4, label: "", symbolVariant: "no" },
           lightCurtain: { ...base, w: 25, h: 22, label: "", symbolVariant: "pair" },
           powerSupply: { ...base, w: 35, h: 25, label: "PS" },
-          transformer: { ...base, w: 15, h: 17, label: "Tr1" },
+          transformer: { ...base, w: 15, h: 10, label: "Tr1", symbolVariant: "coils" },
           meter: { ...base, w: 10, h: 4.4, label: "V" },
           inductor: { ...base, w: 10, h: 3, label: "L" },
           heater: { ...base, w: 10, h: 4.4, label: "H" },
@@ -11914,12 +12176,12 @@
           photocoupler: { ...base, w: 10, h: 8, label: "PC" },
           battery: { ...base, w: 10, h: 4.4, label: "BT" },
           rectifierBox: { ...base, w: 10, h: 6, label: "REC" },
-          currentTransformer: { ...base, w: 10, h: 4.4, label: "CT" },
+          currentTransformer: { ...base, w: 10, h: 10, label: "CT" },
           arrester: { ...base, w: 10, h: 6, label: "AR" },
           transistor: { ...base, w: 10, h: 6, label: "TR" },
           disconnector: { ...base, w: 10, h: 5, label: "DS", orientation: "horizontal" },
-          outlet: { ...base, w: 10, h: 6, label: "SC" },
-          ground: { ...base, w: 4, h: 5, label: "E" },
+          outlet: { ...base, w: 10, h: 7.5, label: "PLG", symbolVariant: "plugPin" },
+          ground: { ...base, w: 4, h: 5, label: "E", symbolVariant: "bars" },
           motor: { ...base, w: 16, h: 16, label: "M" },
           fan: { ...base, w: 15, h: 15, r: 5, label: "FAN" },
           resistor: { ...base, w: 10, h: 2.6, label: "R", orientation: "horizontal", resistorStyle: "box" },
@@ -15089,7 +15351,7 @@
           els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork" });
           els.push(textElement(round(x - name.length * 0.62), 22.6, name, 2.2, 0, 12));
           els.push(textElement(round(x - outNames[i].length * 0.62), 222.4, outNames[i], 2.2, 0, 12));
-          els.push({ ...defaultElement("breaker", x - 2, yElbTop), w: 5, h: 12.5, symbolVariant: "cp", orientation: "vertical", cpLinked: true, label: i === phaseCount - 1 ? elbTag : "", refNo: "" });
+          els.push({ ...defaultElement("breaker", x - 2, yElbTop), w: 5, h: 12.5, symbolVariant: "iec", orientation: "vertical", cpLinked: true, label: i === phaseCount - 1 ? elbTag : "", refNo: "" });
           els.push(textElement(x + 1, 66.4, outNames[i], 1.8, 0, 10));
         });
         if (phaseCount > 1) {
@@ -15104,8 +15366,8 @@
           els.push({ ...defaultElement("wire", phaseXs[0], yA), points: [[phaseXs[0], yA], [x, yA]] });
           els.push(defaultElement("junction", phaseXs[1], yB));
           els.push({ ...defaultElement("wire", phaseXs[1], yB), points: [[phaseXs[1], yB], [x, yB]] });
-          els.push({ ...defaultElement("breaker", x, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: tag, refNo: rating });
-          els.push({ ...defaultElement("breaker", x, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: "", refNo: "" });
+          els.push({ ...defaultElement("breaker", x, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: tag, refNo: rating });
+          els.push({ ...defaultElement("breaker", x, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
           const linkX = round(x + 4.75);
           els.push({ ...defaultElement("mechanicalLink", linkX, 0), points: [[linkX, round(yA - 2.35)], [linkX, round(yB - 2.35)]] });
         };
@@ -15164,25 +15426,25 @@
           if (trVA !== "off") {
             els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "207", wireNoAlign: "start" });
             els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]], wireNo: "208", wireNoAlign: "start" });
-            els.push({ ...defaultElement("transformer", 105, round(yA - 5.5)), w: 15, h: 17.5, symbolVariant: "grid10", label: "Tr1", tag: "Tr1", rating: trVA === "500VA" ? "500VA" : "100VA TRH100-21S" });
+            els.push({ ...defaultElement("transformer", 105, round(yA - 2.5)), w: 10, h: 15, orientation: "vertical", symbolVariant: "coils", label: "Tr1", tag: "Tr1", rating: trVA === "500VA" ? "500VA" : "100VA TRH100-21S" });
             els.push(textElement(97.5, round(yA - 1.2), "200V", 1.6, 0, 8));
             els.push(textElement(97.5, round(yB - 1.2), "0V", 1.6, 0, 8));
             els.push(textElement(121.5, round(yA + 3.2), "100V", 1.6, 0, 8));
             els.push(textElement(121.5, round(yB + 3.2), "0V", 1.6, 0, 8));
             if (withSc1) {
-              els.push({ ...defaultElement("wire", 120, yA), points: [[120, yA], [130, yA]], wireNo: "R100", wireNoAlign: "start" });
-              els.push({ ...defaultElement("wire", 120, yB), points: [[120, yB], [130, yB]], wireNo: "S100", wireNoAlign: "start" });
+              els.push({ ...defaultElement("wire", 115, yA), points: [[115, yA], [130, yA]], wireNo: "R100", wireNoAlign: "start" });
+              els.push({ ...defaultElement("wire", 115, yB), points: [[115, yB], [130, yB]], wireNo: "S100", wireNoAlign: "start" });
               cpX = 130;
             }
           }
           if (withSc1) {
-            els.push({ ...defaultElement("breaker", cpX, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: "CP3", refNo: "1A" });
-            els.push({ ...defaultElement("breaker", cpX, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: "", refNo: "" });
+            els.push({ ...defaultElement("breaker", cpX, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP3", refNo: "1A" });
+            els.push({ ...defaultElement("breaker", cpX, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
             const cpLinkX = round(cpX + 4.75);
             els.push({ ...defaultElement("mechanicalLink", cpLinkX, 0), points: [[cpLinkX, round(yA - 2.35)], [cpLinkX, round(yB - 2.35)]] });
             els.push({ ...defaultElement("wire", cpX + 12.5, yA), points: [[round(cpX + 12.5), yA], [147.5, yA]], wireNo: "101", wireNoAlign: "start" });
-            els.push({ ...defaultElement("wire", cpX + 12.5, yB), points: [[round(cpX + 12.5), yB], [147.5, yB]], wireNo: "102", wireNoAlign: "start" });
-            els.push({ ...defaultElement("outlet", 147.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "box", label: "SC1", tag: "SC1" });
+            els.push({ ...defaultElement("wire", cpX + 12.5, yB), points: [[round(cpX + 12.5), yB], [142.5, yB], [142.5, round(yA + 5)], [147.5, round(yA + 5)]], wireNo: "102", wireNoAlign: "start" });
+            els.push({ ...defaultElement("outlet", 147.5, round(yA - 1.25)), w: 10, h: 7.5, symbolVariant: "plugPin", label: "PLG1", tag: "PLG1" });
             els.push(textElement(160, round(yA + 1.4), "制御盤内", 1.8, 0, 12));
             els.push(textElement(160, round(yA + 4.4), "コンセント", 1.8, 0, 12));
           }
@@ -15193,12 +15455,12 @@
           pushCp2("CP4", "2A", yA, yB);
           els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "105", wireNoAlign: "start" });
           els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]], wireNo: "106", wireNoAlign: "start" });
-          els.push({ ...defaultElement("breaker", 105, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: "CP11", refNo: "1A" });
-          els.push({ ...defaultElement("breaker", 105, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: "", refNo: "" });
+          els.push({ ...defaultElement("breaker", 105, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP11", refNo: "1A" });
+          els.push({ ...defaultElement("breaker", 105, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
           els.push({ ...defaultElement("mechanicalLink", 109.75, 0), points: [[109.75, round(yA - 2.35)], [109.75, round(yB - 2.35)]] });
           els.push({ ...defaultElement("wire", 117.5, yA), points: [[117.5, yA], [122.5, yA]], wireNo: "107", wireNoAlign: "start" });
-          els.push({ ...defaultElement("wire", 117.5, yB), points: [[117.5, yB], [122.5, yB]], wireNo: "108", wireNoAlign: "start" });
-          els.push({ ...defaultElement("outlet", 122.5, round(yA - 2)), w: 10, h: 14, symbolVariant: "box", label: "SC2", tag: "SC2" });
+          els.push({ ...defaultElement("wire", 117.5, yB), points: [[117.5, yB], [120, yB], [120, round(yA + 5)], [122.5, round(yA + 5)]], wireNo: "108", wireNoAlign: "start" });
+          els.push({ ...defaultElement("outlet", 122.5, round(yA - 1.25)), w: 10, h: 7.5, symbolVariant: "plugPin", label: "PLG2", tag: "PLG2" });
           els.push(textElement(135, round(yA + 1.4), "操作盤", 1.8, 0, 12));
           els.push(textElement(135, round(yA + 4.4), "コンセント", 1.8, 0, 12));
         }
@@ -15273,7 +15535,7 @@
         yP.forEach((y, i) => {
           els.push(defaultElement("junction", railXs[i], y));
           els.push({ ...defaultElement("wire", railXs[i], y), points: [[railXs[i], y], [55, y]] });
-          els.push({ ...defaultElement("breaker", 55, round(y - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: i === 0 ? cbTag : "", refNo: i === 0 ? "10A" : "" });
+          els.push({ ...defaultElement("breaker", 55, round(y - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: i === 0 ? cbTag : "", refNo: i === 0 ? "10A" : "" });
           els.push({ ...defaultElement("wire", 67.5, y), points: [[67.5, y], [85, y]], wireNo: ["R2", "S2", "T2"][i], wireNoAlign: "end" });
           els.push({ ...defaultElement("contactNO", 85, round(y - 2.2)), label: i === 0 ? mcTag : "", tag: mcTag });
           els.push({ ...defaultElement("wire", 95, y), points: [[95, y], [boxL, y]], wireNo: ["R3", "S3", "T3"][i], wireNoAlign: "start" });
@@ -15424,8 +15686,8 @@
         els.push({ ...defaultElement("wire", 35, yA), points: [[35, yA], [55, yA]] });
         els.push(defaultElement("junction", 40, yB));
         els.push({ ...defaultElement("wire", 40, yB), points: [[40, yB], [55, yB]] });
-        els.push({ ...defaultElement("breaker", 55, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: "CP1", refNo: "3A" });
-        els.push({ ...defaultElement("breaker", 55, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: "", refNo: "" });
+        els.push({ ...defaultElement("breaker", 55, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP1", refNo: "3A" });
+        els.push({ ...defaultElement("breaker", 55, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
         els.push({ ...defaultElement("mechanicalLink", 59.75, 0), points: [[59.75, round(yA - 2.35)], [59.75, round(yB - 2.35)]] });
         els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "201", wireNoAlign: "start" });
         els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]], wireNo: "202", wireNoAlign: "start" });
@@ -15455,8 +15717,8 @@
           els.push({ ...defaultElement("wire", 140, yP0), points: [[140, yP0], [140, yC], [145, yC]] });
           els.push(defaultElement("junction", 135, yA));
           els.push({ ...defaultElement("wire", 135, yA), points: [[135, yA], [135, yD], [145, yD]] });
-          els.push({ ...defaultElement("breaker", 145, round(yC - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: "CP8", refNo: "1A" });
-          els.push({ ...defaultElement("breaker", 145, round(yD - 3)), w: 12.5, h: 5, symbolVariant: "cp", cpLinked: true, label: "", refNo: "" });
+          els.push({ ...defaultElement("breaker", 145, round(yC - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP8", refNo: "1A" });
+          els.push({ ...defaultElement("breaker", 145, round(yD - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
           els.push({ ...defaultElement("mechanicalLink", 149.75, 0), points: [[149.75, round(yC - 2.35)], [149.75, round(yD - 2.35)]] });
           els.push({ ...defaultElement("wire", 157.5, yC), points: [[157.5, yC], [160, yC]] });
           els.push({ ...defaultElement("arrow", 160, yC), points: [[160, yC], [172.5, yC]], label: "P24", arrowStyle: "open", signalRole: "source" });
@@ -15531,7 +15793,7 @@
         const yIn = 102.5, yN = 107.5, yG = 112.5;
         els.push(defaultElement("junction", 40, yIn));
         els.push({ ...defaultElement("wire", 40, yIn), points: [[40, yIn], [55, yIn]] });
-        els.push({ ...defaultElement("breaker", 55, round(yIn - 3)), w: 12.5, h: 5, symbolVariant: "cp", label: "CP4", refNo: "2A" });
+        els.push({ ...defaultElement("breaker", 55, round(yIn - 3)), w: 12.5, h: 5, symbolVariant: "iec", label: "CP4", refNo: "2A" });
         els.push({ ...defaultElement("wire", 67.5, yIn), points: [[67.5, yIn], [75, yIn]], wireNo: "P0A", wireNoAlign: "start" });
         els.push(defaultElement("junction", 35, yN));
         els.push({ ...defaultElement("wire", 35, yN), points: [[35, yN], [75, yN]] });
@@ -15564,7 +15826,7 @@
           let sx = 40;
           if (cpTag) {
             els.push({ ...defaultElement("wire", 40, y), points: [[40, y], [55, y]] });
-            els.push({ ...defaultElement("breaker", 55, round(y - 3)), w: 12.5, h: 5, symbolVariant: "cp", label: cpTag, refNo: rating });
+            els.push({ ...defaultElement("breaker", 55, round(y - 3)), w: 12.5, h: 5, symbolVariant: "iec", label: cpTag, refNo: rating });
             sx = 67.5;
           }
           let cx = 75;
@@ -24707,6 +24969,8 @@
       // 自動テスト用の内部フック(通常操作では使用しない)。接続点・移行・履歴の回帰検証に使う。
       window.__edsTest = {
         defaultElementAtPlacement,
+        elementBounds,
+        rotateSelected,
         elementConnectionAnchors,
         primaryConnectionPoint,
         elementFirstPin,
