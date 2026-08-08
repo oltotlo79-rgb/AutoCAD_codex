@@ -2787,12 +2787,12 @@ test("直線を選択クリックしただけでは接続点へ吸着しない",
   expect(after.points).toEqual([[40.3, 30.7], [70.3, 50.7]]);
 });
 
-test("雄プラグと雌コンセントは2極・接地付き3極の独立端子を持ち旧コンセントを移行する", async ({ page }) => {
+test("JISの雄・雌接点は独立端子を持ち、雌側は半円と導体線だけで描く", async ({ page }) => {
   const result = await page.evaluate(() => {
-    const values = ["plugPin", "plugPin3", "socketPin", "socketPin3"];
+    const values = ["plugPin", "plugPin3", "socketPin", "socketPin3", "plugSocket"];
     const geoKeyByVariant = {
       plugPin: "outletPlugPin", plugPin3: "outletPlugPin3",
-      socketPin: "outletSocketPin", socketPin3: "outletSocketPin3"
+      socketPin: "outletSocketPin", socketPin3: "outletSocketPin3", plugSocket: "outletPlugSocket"
     };
     const signatures = values.map(symbolVariant => {
       const element = window.__edsTest.defaultElement("outlet", 20, 20);
@@ -2804,7 +2804,7 @@ test("雄プラグと雌コンセントは2極・接地付き3極の独立端子
       const prims = window.__edsTest.geoPrims(element);
       if (!prims.length) throw new Error(`outlet/${symbolVariant} has no geometry`);
       const anchors = window.__edsTest.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]);
-      return { signature: JSON.stringify(prims), anchors };
+      return { signature: JSON.stringify(prims), anchors, kinds: prims.map(prim => prim.t) };
     });
     const migrated = window.__edsTest.migrateProjectData({
       schemaVersion: 4,
@@ -2822,15 +2822,21 @@ test("雄プラグと雌コンセントは2極・接地付き3極の独立端子
       plug3Anchors: signatures[1].anchors,
       socketAnchors: signatures[2].anchors,
       socket3Anchors: signatures[3].anchors,
+      socketKinds: signatures[2].kinds,
+      socket3Kinds: signatures[3].kinds,
+      pairAnchors: signatures[4].anchors,
       wireEnd: byId("w1").points[1],
       renamed: byId("sc2").symbolVariant
     };
   });
-  expect(result.unique).toBe(4);
+  expect(result.unique).toBe(5);
   expect(result.plugAnchors).toEqual([[0, 1.25], [0, 6.25]]);
   expect(result.plug3Anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
   expect(result.socketAnchors).toEqual([[0, 1.25], [0, 6.25]]);
   expect(result.socket3Anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
+  expect(result.socketKinds).toEqual(["line", "line", "arc", "arc", "text"]);
+  expect(result.socket3Kinds).toEqual(["line", "line", "line", "arc", "arc", "arc", "text"]);
+  expect(result.pairAnchors).toEqual([[0, 3], [10, 3]]);
   expect(result.wireEnd).toEqual([100, 57]);
   expect(result.renamed).toBe("plugPin");
 });

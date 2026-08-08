@@ -8364,36 +8364,36 @@
             { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
-        // 一般形の雌コンセント（2極）。L/N はそれぞれ独立した配線接続点を持つ。
-        // 右側の半円弧は雄刃を受ける雌側の開口を表す。
+        // JIS C 0617-3 03-03-01（S00031）: めす形接点（ソケット）。
+        // 複線表示として2個を並べ、L/N はそれぞれ独立した配線接続点を持つ。
+        // めす形接点は導体線の先の半円だけで表し、雄側を示す長方形は描かない。
         outletSocketPin: {
           w: 10, h: 7.5,
           anchors: [[0, 1.25], [0, 6.25]],
           prims: [
-            { t: "line", p: [0, 1.25, 4.2, 1.25] },
-            { t: "line", p: [0, 6.25, 4.2, 6.25] },
-            { t: "rect", p: [4.2, 0.5, 1.5, 6.5], fill: "white" },
+            { t: "line", p: [0, 1.25, 5.9, 1.25] },
+            { t: "line", p: [0, 6.25, 5.9, 6.25] },
             { t: "arc", p: [6.8, 1.25, 0.9, 270, 450] },
             { t: "arc", p: [6.8, 6.25, 0.9, 270, 450] },
             { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
-        // 一般形の雌コンセント（2極+保護接地）。L/N/PE は独立した配線接続点を持つ。
+        // JIS C 0617-3 03-03-01（S00031）の複線3極表示。L/N/PE は独立した接続点。
         outletSocketPin3: {
           w: 10, h: 7.5,
           anchors: [[0, 1.25], [0, 3.75], [0, 6.25]],
           prims: [
-            { t: "line", p: [0, 1.25, 4.2, 1.25] },
-            { t: "line", p: [0, 3.75, 4.2, 3.75] },
-            { t: "line", p: [0, 6.25, 4.2, 6.25] },
-            { t: "rect", p: [4.2, 0.5, 1.5, 6.5], fill: "white" },
+            { t: "line", p: [0, 1.25, 5.9, 1.25] },
+            { t: "line", p: [0, 3.75, 5.9, 3.75] },
+            { t: "line", p: [0, 6.25, 5.9, 6.25] },
             { t: "arc", p: [6.8, 1.25, 0.9, 270, 450] },
             { t: "arc", p: [6.8, 3.75, 0.9, 270, 450] },
             { t: "arc", p: [6.8, 6.25, 0.9, 270, 450] },
             { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
-        // コンセント(プラグ・ソケット対): 挿抜表現(JIS C 0617のコネクタ対と同系)。ピンピッチ10mm。
+        // JIS C 0617-3 03-03-05（S00033）: プラグ及びソケット。
+        // 左の縦線がおす形接点、右の半円がめす形接点。独立した単極の接続対を表す。
         outletPlugSocket: {
           w: 10, h: 6,
           anchors: [[0, 3], [10, 3]],
@@ -9749,6 +9749,7 @@
             if (variant === "plug3" || variant === "plugPin3") return "outletPlugPin3";
             if (variant === "socket" || variant === "socketPin") return "outletSocketPin";
             if (variant === "socket3" || variant === "socketPin3") return "outletSocketPin3";
+            if (variant === "plugSocket") return "outletPlugSocket";
             return "outletPlugPin";
           }
           case "thermalElement": return "thermalElement";
@@ -11135,7 +11136,7 @@
         arrester: [["standard", "避雷器（一般形・箱＋矢印）"], ["gap", "避雷器（一般形・ギャップ＝対向三角）"]],
         qualifierMark: [["dc", "直流（実線＋破線）"], ["ac", "交流（正弦波）"], ["acdc", "交直流（正弦波＋実線・破線）"], ["threePhase", "三相交流（3＋正弦波）"]],
         operatorMark: [["manual", "手動操作・一般（JIS 02-13-01）"], ["push", "押し動作（JIS 02-13-05）"], ["pull", "引き動作（JIS 02-13-03）"], ["rotate", "回転操作（JIS 02-13-04）"], ["key", "キー操作（実務形）"], ["roller", "ローラ操作（実務形）"], ["foot", "足踏み操作（JIS 02-13-10）"], ["emergency", "非常停止（JIS 02-13-08）"], ["electromagnetic", "電磁効果による操作（JIS 02-13-23）"], ["thermal", "熱操作（実務形・⊓）"]],
-        outlet: [["plugPin", "雄プラグ・2極（一般形・L/N別接続）"], ["plugPin3", "雄プラグ・2極＋保護接地（一般形・L/N/PE別接続）"], ["socketPin", "雌コンセント・2極（一般形・L/N別接続）"], ["socketPin3", "雌コンセント・2極＋保護接地（一般形・L/N/PE別接続）"]],
+        outlet: [["plugPin", "雄プラグ・2極（JIS 03-03-02の複線表示・L/N別接続）"], ["plugPin3", "雄プラグ・2極＋保護接地（JIS 03-03-02の複線表示・L/N/PE別接続）"], ["socketPin", "雌接点（ソケット）・2極（JIS 03-03-01の複線表示・L/N別接続）"], ["socketPin3", "雌接点（ソケット）・2極＋保護接地（JIS 03-03-01の複線表示・L/N/PE別接続）"], ["plugSocket", "プラグ及びソケット（JIS 03-03-05）"]],
         pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "非常停止スイッチ（JIS 07-07-06・キノコ＋b接点）"], ["multi2", "縦連結2接点（一般形・連動）"], ["multi3", "縦連結3接点（一般形・連動）"], ["jisMulti2", "縦連結2接点（JIS 07-07-06系・連動）"], ["jisMulti3", "縦連結3接点（JIS 07-07-06系・連動）"], ["bar", "バー押込式（一般形）"]],
         pressureSwitch: [["standard", "a接点＋ダイヤフラム（一般形）"], ["nc", "b接点＋ダイヤフラム（一般形）"]],
         floatSwitch: [["standard", "a接点＋フロート（実務形）"], ["nc", "b接点＋フロート（実務形）"]],
