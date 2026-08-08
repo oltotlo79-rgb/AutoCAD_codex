@@ -2787,11 +2787,12 @@ test("直線を選択クリックしただけでは接続点へ吸着しない",
   expect(after.points).toEqual([[40.3, 30.7], [70.3, 50.7]]);
 });
 
-test("一般コンセントとJIS電力用コンセントを接点記号から区別して描く", async ({ page }) => {
+test("壁付・天井コンセントとJIS電力用コンセントを用途別の記号で描く", async ({ page }) => {
   const result = await page.evaluate(() => {
-    const values = ["standard", "powerJis", "powerEarthJis", "plugPin", "plugPin3", "socketPin", "socketPin3", "plugSocket"];
+    const values = ["standard", "wall", "ceiling", "powerJis", "powerEarthJis", "plugPin", "plugPin3", "socketPin", "socketPin3", "plugSocket"];
     const geoKeyByVariant = {
-      standard: "outletRound", powerJis: "outletPowerJis", powerEarthJis: "outletPowerEarthJis",
+      standard: "outletGeneral", wall: "outletWall", ceiling: "outletRound",
+      powerJis: "outletPowerJis", powerEarthJis: "outletPowerEarthJis",
       plugPin: "outletPlugPin", plugPin3: "outletPlugPin3",
       socketPin: "outletSocketPin", socketPin3: "outletSocketPin3", plugSocket: "outletPlugSocket"
     };
@@ -2805,7 +2806,7 @@ test("一般コンセントとJIS電力用コンセントを接点記号から�
       const prims = window.__edsTest.geoPrims(element);
       if (!prims.length) throw new Error(`outlet/${symbolVariant} has no geometry`);
       const anchors = window.__edsTest.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]);
-      return { signature: JSON.stringify(prims), anchors, kinds: prims.map(prim => prim.t) };
+      return { symbolVariant, signature: JSON.stringify(prims), anchors, kinds: prims.map(prim => prim.t) };
     });
     const migrated = window.__edsTest.migrateProjectData({
       schemaVersion: 4,
@@ -2815,30 +2816,43 @@ test("一般コンセントとJIS電力用コンセントを接点記号から�
         { id: "w1", type: "wire", points: [[90, 61.5], [100, 61.5]] },
         { id: "sc2", type: "outlet", x: 140, y: 50, w: 10, h: 14, symbolVariant: "boxGrid10" },
         { id: "sc3", type: "outlet", x: 180, y: 50, w: 10, h: 6, symbolVariant: "standard" },
-        { id: "sc4", type: "outlet", x: 210, y: 50, w: 10, h: 8.2, symbolVariant: "earthed" }
+        { id: "sc4", type: "outlet", x: 210, y: 50, w: 10, h: 8.2, symbolVariant: "earthed" },
+        { id: "sc5", type: "outlet", x: 240, y: 50, w: 10, h: 6, symbolVariant: "round" }
       ] }]
     });
     const byId = id => migrated.pages[0].elements.find(item => item.id === id);
+    const byVariant = Object.fromEntries(signatures.map(item => [item.symbolVariant, item]));
     const raw = window.__edsTest.SYMBOL_GEO;
     const defaultOutlet = window.__edsTest.defaultElement("outlet", 0, 0);
     const dxfOutlet = { ...defaultOutlet, id: "dxf-plug", symbolVariant: "plugPin", w: 10, h: 7.5, label: "" };
     const dxf = window.__edsTest.buildDxf({ id: "dxf", size: "A4", orientation: "portrait", title: {}, elements: [dxfOutlet] });
+    const wallDxfOutlet = { ...defaultOutlet, id: "dxf-wall", symbolVariant: "wall", label: "" };
+    const wallDxf = window.__edsTest.buildDxf({ id: "dxf-wall-page", size: "A4", orientation: "portrait", title: {}, elements: [wallDxfOutlet] });
     return {
       unique: new Set(signatures.map(item => item.signature)).size,
       defaultOutlet: { variant: defaultOutlet.symbolVariant, label: defaultOutlet.label, w: defaultOutlet.w, h: defaultOutlet.h },
-      standardAnchors: signatures[0].anchors,
-      powerAnchors: signatures[1].anchors,
-      powerEarthAnchors: signatures[2].anchors,
-      plugAnchors: signatures[3].anchors,
-      plug3Anchors: signatures[4].anchors,
-      socketAnchors: signatures[5].anchors,
-      socket3Anchors: signatures[6].anchors,
-      plugKinds: signatures[3].kinds,
-      plug3Kinds: signatures[4].kinds,
-      socketKinds: signatures[5].kinds,
-      socket3Kinds: signatures[6].kinds,
-      pairKinds: signatures[7].kinds,
-      pairAnchors: signatures[7].anchors,
+      standardAnchors: byVariant.standard.anchors,
+      wallAnchors: byVariant.wall.anchors,
+      ceilingAnchors: byVariant.ceiling.anchors,
+      powerAnchors: byVariant.powerJis.anchors,
+      powerEarthAnchors: byVariant.powerEarthJis.anchors,
+      plugAnchors: byVariant.plugPin.anchors,
+      plug3Anchors: byVariant.plugPin3.anchors,
+      socketAnchors: byVariant.socketPin.anchors,
+      socket3Anchors: byVariant.socketPin3.anchors,
+      generalKinds: byVariant.standard.kinds,
+      mountedWallKinds: byVariant.wall.kinds,
+      ceilingKinds: byVariant.ceiling.kinds,
+      plugKinds: byVariant.plugPin.kinds,
+      plug3Kinds: byVariant.plugPin3.kinds,
+      socketKinds: byVariant.socketPin.kinds,
+      socket3Kinds: byVariant.socketPin3.kinds,
+      pairKinds: byVariant.plugSocket.kinds,
+      pairAnchors: byVariant.plugSocket.anchors,
+      generalBars: raw.outletGeneral.prims.filter(prim => prim.t === "line").map(prim => prim.p),
+      wallSegment: raw.outletWall.prims.find(prim => prim.t === "arcSegment"),
+      wallBars: raw.outletWall.prims.filter(prim => prim.t === "line").map(prim => prim.p),
+      ceilingBars: raw.outletRound.prims.filter(prim => prim.t === "line").map(prim => prim.p),
       powerGeometry: raw.outletPowerJis.prims.filter(prim => prim.t !== "text").map(prim => prim.p),
       powerEarthGeometry: raw.outletPowerEarthJis.prims.filter(prim => prim.t !== "text").map(prim => prim.p),
       plugFills: raw.outletPlugPin.prims.filter(prim => prim.t === "rect").map(prim => prim.fill),
@@ -2847,21 +2861,32 @@ test("一般コンセントとJIS電力用コンセントを接点記号から�
       pairArc: raw.outletPlugSocket.prims.find(prim => prim.t === "arc").p.slice(3),
       pairFill: raw.outletPlugSocket.prims.find(prim => prim.t === "rect").fill,
       dxfSolidCount: (dxf.match(/\nSOLID\n/g) || []).length,
+      wallDxfSolidCount: (wallDxf.match(/\nSOLID\n/g) || []).length,
       wireEnd: byId("w1").points[1],
       renamed: byId("sc2").symbolVariant,
       migratedStandard: byId("sc3").symbolVariant,
-      migratedEarthed: byId("sc4").symbolVariant
+      migratedEarthed: byId("sc4").symbolVariant,
+      migratedRound: byId("sc5").symbolVariant
     };
   });
-  expect(result.unique).toBe(8);
+  expect(result.unique).toBe(10);
   expect(result.defaultOutlet).toEqual({ variant: "standard", label: "SC", w: 10, h: 6 });
   expect(result.standardAnchors).toEqual([[0, 3]]);
+  expect(result.wallAnchors).toEqual([[0, 3]]);
+  expect(result.ceilingAnchors).toEqual([[0, 3]]);
   expect(result.powerAnchors).toEqual([[5, 0]]);
   expect(result.powerEarthAnchors).toEqual([[5, 0]]);
   expect(result.plugAnchors).toEqual([[0, 1.25], [0, 6.25]]);
   expect(result.plug3Anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
   expect(result.socketAnchors).toEqual([[0, 1.25], [0, 6.25]]);
   expect(result.socket3Anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
+  expect(result.generalKinds).toEqual(["circle", "line", "line", "text"]);
+  expect(result.mountedWallKinds).toEqual(["circle", "arcSegment", "line", "line", "text"]);
+  expect(result.ceilingKinds).toEqual(["circle", "line", "line", "text"]);
+  expect(result.generalBars).toEqual([[0.16, 2.13, 5.04, 2.13], [0.16, 3.87, 5.04, 3.87]]);
+  expect(result.wallSegment).toEqual({ t: "arcSegment", p: [2.6, 3, 2.6, 120.7, 239.3], fill: "solid" });
+  expect(result.wallBars).toEqual([[1.27, 2.13, 5.04, 2.13], [1.27, 3.87, 5.04, 3.87]]);
+  expect(result.ceilingBars).toEqual([[1.8, 1.8, 1.8, 4.2], [3.4, 1.8, 3.4, 4.2]]);
   expect(result.plugKinds).toEqual(["line", "line", "rect", "rect", "text"]);
   expect(result.plug3Kinds).toEqual(["line", "line", "line", "rect", "rect", "rect", "text"]);
   expect(result.socketKinds).toEqual(["line", "line", "arc", "arc", "text"]);
@@ -2876,10 +2901,12 @@ test("一般コンセントとJIS電力用コンセントを接点記号から�
   expect(result.pairArc).toEqual([90, 270]);
   expect(result.pairFill).toBe("solid");
   expect(result.dxfSolidCount).toBe(2);
+  expect(result.wallDxfSolidCount).toBeGreaterThan(0);
   expect(result.wireEnd).toEqual([100, 57]);
   expect(result.renamed).toBe("socketPin");
   expect(result.migratedStandard).toBe("standard");
   expect(result.migratedEarthed).toBe("powerEarthJis");
+  expect(result.migratedRound).toBe("ceiling");
 
   await page.getByRole("searchbox", { name: "部品検索" }).fill("コンセント");
   const paletteOutlet = page.locator('#paletteGrid .palette-item[data-type="outlet"]');
@@ -2888,6 +2915,7 @@ test("一般コンセントとJIS電力用コンセントを接点記号から�
   await paletteOutlet.click();
   await page.locator("svg#canvas").click({ position: { x: 260, y: 260 } });
   await expect(page.locator('svg#canvas g[data-type="outlet"] circle')).toHaveCount(1);
+  await expect(page.locator('svg#canvas g[data-type="outlet"] path.symbol-solid')).toHaveCount(0);
   expect(await page.evaluate(() => {
     const outlet = window.__edsTest.state.pages[0].elements.find(element => element.type === "outlet");
     return { variant: outlet.symbolVariant, label: outlet.label };
