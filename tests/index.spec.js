@@ -485,7 +485,7 @@ test("破損JSON・空ページ・将来版を拒否して現在図面を保持�
     },
     {
       name: "future.json",
-      body: { schemaVersion: 8, pages: [{ id: "p1", title: {}, elements: [] }] },
+      body: { schemaVersion: 9, pages: [{ id: "p1", title: {}, elements: [] }] },
       expected: "新しい形式"
     },
     {
@@ -553,7 +553,7 @@ test("部分JSONは現在図面を継承せず既定値で補完し、staleな�
   const legacy = await page.evaluate(() => window.__edsTest.normalizeProjectData({
     pages: [{ id: "legacy-page" }]
   }));
-  expect(legacy.schemaVersion).toBe(7);
+  expect(legacy.schemaVersion).toBe(8);
   expect(legacy.pages[0].title).toBeTruthy();
   expect(legacy.pages[0].elements).toEqual([]);
 });
@@ -596,7 +596,7 @@ test("schema v2の回転部品と機器箱・端子箱を配線ごと現行版�
   }));
 
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(7);
+  expect(migrated.schemaVersion).toBe(8);
   expect(elements.contact).toMatchObject({ x: 50, y: 49, w: 10, rotation: 90 });
   expect(elements["wire-left"].points[1][0]).toBeCloseTo(47.8, 6);
   expect(elements["wire-left"].points[1][1]).toBeCloseTo(49, 6);
@@ -693,7 +693,7 @@ test("schema v3のCPとユニット列を接続を保って現行版へ移行し
 
   const migrated = result.migrated;
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(7);
+  expect(migrated.schemaVersion).toBe(8);
   expect(result.idempotent).toBe(true);
 
   expect(elements["cp-horizontal"]).toMatchObject({ w: 12.5, h: 5, cpLinked: true });
@@ -767,7 +767,7 @@ test("schema v4のブザーを配線ごとJIS記号の新ピンへ移行し再�
   });
 
   const elements = Object.fromEntries(result.migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(result.migrated.schemaVersion).toBe(7);
+  expect(result.migrated.schemaVersion).toBe(8);
   expect(result.idempotent).toBe(true);
 
   // 旧jis/generalはjis0806へ、sirenはキーを保つ。略画hornは無変更。
@@ -1245,7 +1245,7 @@ test("全テンプレートの接続点・配線・主要枠は2.5mmグリッド
 
 test("JIS遮断器と切替スイッチは設備標準・見本専用の選択肢を表示しない", async ({ page }) => {
   await page.evaluate(() => window.__edsTest.installProjectData({
-    schemaVersion: 7,
+    schemaVersion: 8,
     activePageId: "p1",
     pages: [{
       id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
@@ -2787,14 +2787,17 @@ test("直線を選択クリックしただけでは接続点へ吸着しない",
   expect(after.points).toEqual([[40.3, 30.7], [70.3, 50.7]]);
 });
 
-test("壁付・天井コンセントとJIS電力用コンセントを用途別の記号で描く", async ({ page }) => {
+test("家庭用2Pコンセント／プラグとJIS接点形を用途別の記号で描く", async ({ page }) => {
   const result = await page.evaluate(() => {
-    const values = ["standard", "wall", "ceiling", "powerJis", "powerEarthJis", "plugPin", "plugPin3", "socketPin", "socketPin3", "plugSocket"];
+    const values = ["standard", "wall", "ceiling", "powerJis", "powerEarthJis", "plugPin", "plugPin3", "socketPin", "socketPin3", "plugContactJis2", "plugContactJis3", "socketContactJis2", "socketContactJis3", "plugSocket"];
     const geoKeyByVariant = {
       standard: "outletGeneral", wall: "outletWall", ceiling: "outletRound",
       powerJis: "outletPowerJis", powerEarthJis: "outletPowerEarthJis",
       plugPin: "outletPlugPin", plugPin3: "outletPlugPin3",
-      socketPin: "outletSocketPin", socketPin3: "outletSocketPin3", plugSocket: "outletPlugSocket"
+      socketPin: "outletSocketPin", socketPin3: "outletSocketPin3",
+      plugContactJis2: "outletPlugContactJis2", plugContactJis3: "outletPlugContactJis3",
+      socketContactJis2: "outletSocketContactJis2", socketContactJis3: "outletSocketContactJis3",
+      plugSocket: "outletPlugSocket"
     };
     const signatures = values.map(symbolVariant => {
       const element = window.__edsTest.defaultElement("outlet", 20, 20);
@@ -2840,6 +2843,10 @@ test("壁付・天井コンセントとJIS電力用コンセントを用途別�
       plug3Anchors: byVariant.plugPin3.anchors,
       socketAnchors: byVariant.socketPin.anchors,
       socket3Anchors: byVariant.socketPin3.anchors,
+      plugContactAnchors: byVariant.plugContactJis2.anchors,
+      plugContact3Anchors: byVariant.plugContactJis3.anchors,
+      socketContactAnchors: byVariant.socketContactJis2.anchors,
+      socketContact3Anchors: byVariant.socketContactJis3.anchors,
       generalKinds: byVariant.standard.kinds,
       mountedWallKinds: byVariant.wall.kinds,
       ceilingKinds: byVariant.ceiling.kinds,
@@ -2847,17 +2854,23 @@ test("壁付・天井コンセントとJIS電力用コンセントを用途別�
       plug3Kinds: byVariant.plugPin3.kinds,
       socketKinds: byVariant.socketPin.kinds,
       socket3Kinds: byVariant.socketPin3.kinds,
+      plugContactKinds: byVariant.plugContactJis2.kinds,
+      socketContactKinds: byVariant.socketContactJis2.kinds,
       pairKinds: byVariant.plugSocket.kinds,
       pairAnchors: byVariant.plugSocket.anchors,
-      generalBars: raw.outletGeneral.prims.filter(prim => prim.t === "line").map(prim => prim.p),
+      generalLead: raw.outletGeneral.prims.find(prim => prim.t === "line").p,
+      generalSlots: raw.outletGeneral.prims.filter(prim => prim.t === "rect" && prim.fill === "solid").map(prim => prim.p),
       wallSegment: raw.outletWall.prims.find(prim => prim.t === "arcSegment"),
       wallBars: raw.outletWall.prims.filter(prim => prim.t === "line").map(prim => prim.p),
       ceilingBars: raw.outletRound.prims.filter(prim => prim.t === "line").map(prim => prim.p),
       powerGeometry: raw.outletPowerJis.prims.filter(prim => prim.t !== "text").map(prim => prim.p),
       powerEarthGeometry: raw.outletPowerEarthJis.prims.filter(prim => prim.t !== "text").map(prim => prim.p),
-      plugFills: raw.outletPlugPin.prims.filter(prim => prim.t === "rect").map(prim => prim.fill),
-      plug3Fills: raw.outletPlugPin3.prims.filter(prim => prim.t === "rect").map(prim => prim.fill),
-      socketArcs: raw.outletSocketPin.prims.filter(prim => prim.t === "arc").map(prim => prim.p.slice(3)),
+      plugBlades: raw.outletPlugPin.prims.filter(prim => prim.t === "rect" && prim.fill === "solid").map(prim => prim.p),
+      plugGroundPin: raw.outletPlugPin3.prims.find(prim => prim.t === "circle"),
+      socketSlots: raw.outletSocketPin.prims.filter(prim => prim.t === "rect" && prim.fill === "solid").map(prim => prim.p),
+      socketGroundHole: raw.outletSocketPin3.prims.find(prim => prim.t === "circle"),
+      jisPlugFills: raw.outletPlugContactJis2.prims.filter(prim => prim.t === "rect").map(prim => prim.fill),
+      jisSocketArcs: raw.outletSocketContactJis2.prims.filter(prim => prim.t === "arc").map(prim => prim.p.slice(3)),
       pairArc: raw.outletPlugSocket.prims.find(prim => prim.t === "arc").p.slice(3),
       pairFill: raw.outletPlugSocket.prims.find(prim => prim.t === "rect").fill,
       dxfSolidCount: (dxf.match(/\nSOLID\n/g) || []).length,
@@ -2869,9 +2882,9 @@ test("壁付・天井コンセントとJIS電力用コンセントを用途別�
       migratedRound: byId("sc5").symbolVariant
     };
   });
-  expect(result.unique).toBe(10);
-  expect(result.defaultOutlet).toEqual({ variant: "standard", label: "SC", w: 10, h: 6 });
-  expect(result.standardAnchors).toEqual([[0, 3]]);
+  expect(result.unique).toBe(14);
+  expect(result.defaultOutlet).toEqual({ variant: "standard", label: "SC", w: 10, h: 7.5 });
+  expect(result.standardAnchors).toEqual([[0, 3.75]]);
   expect(result.wallAnchors).toEqual([[0, 3]]);
   expect(result.ceilingAnchors).toEqual([[0, 3]]);
   expect(result.powerAnchors).toEqual([[5, 0]]);
@@ -2880,31 +2893,41 @@ test("壁付・天井コンセントとJIS電力用コンセントを用途別�
   expect(result.plug3Anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
   expect(result.socketAnchors).toEqual([[0, 1.25], [0, 6.25]]);
   expect(result.socket3Anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
-  expect(result.generalKinds).toEqual(["circle", "line", "line", "text"]);
+  expect(result.plugContactAnchors).toEqual([[0, 1.25], [0, 6.25]]);
+  expect(result.plugContact3Anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
+  expect(result.socketContactAnchors).toEqual([[0, 1.25], [0, 6.25]]);
+  expect(result.socketContact3Anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
+  expect(result.generalKinds).toEqual(["line", "rect", "rect", "rect", "text"]);
   expect(result.mountedWallKinds).toEqual(["circle", "arcSegment", "line", "line", "text"]);
   expect(result.ceilingKinds).toEqual(["circle", "line", "line", "text"]);
-  expect(result.generalBars).toEqual([[0.16, 2.13, 5.04, 2.13], [0.16, 3.87, 5.04, 3.87]]);
+  expect(result.generalLead).toEqual([0, 3.75, 2.5, 3.75]);
+  expect(result.generalSlots).toEqual([[3.55, 2.25, 0.75, 3], [5.7, 2.25, 0.75, 3]]);
   expect(result.wallSegment).toEqual({ t: "arcSegment", p: [2.6, 3, 2.6, 120.7, 239.3], fill: "solid" });
   expect(result.wallBars).toEqual([[1.27, 2.13, 5.04, 2.13], [1.27, 3.87, 5.04, 3.87]]);
   expect(result.ceilingBars).toEqual([[1.8, 1.8, 1.8, 4.2], [3.4, 1.8, 3.4, 4.2]]);
-  expect(result.plugKinds).toEqual(["line", "line", "rect", "rect", "text"]);
-  expect(result.plug3Kinds).toEqual(["line", "line", "line", "rect", "rect", "rect", "text"]);
-  expect(result.socketKinds).toEqual(["line", "line", "arc", "arc", "text"]);
-  expect(result.socket3Kinds).toEqual(["line", "line", "line", "arc", "arc", "arc", "text"]);
+  expect(result.plugKinds).toEqual(["line", "line", "rect", "rect", "rect", "text"]);
+  expect(result.plug3Kinds).toEqual(["line", "line", "line", "rect", "rect", "rect", "line", "circle", "text"]);
+  expect(result.socketKinds).toEqual(["line", "line", "rect", "rect", "rect", "text"]);
+  expect(result.socket3Kinds).toEqual(["line", "line", "line", "rect", "rect", "rect", "circle", "text"]);
+  expect(result.plugContactKinds).toEqual(["line", "line", "rect", "rect", "text"]);
+  expect(result.socketContactKinds).toEqual(["line", "line", "arc", "arc", "text"]);
   expect(result.pairKinds).toEqual(["line", "arc", "rect", "line", "text"]);
   expect(result.pairAnchors).toEqual([[0, 3], [10, 3]]);
   expect(result.powerGeometry).toEqual([[5, 0, 5, 3], [5, 6, 3, 180, 360]]);
   expect(result.powerEarthGeometry).toEqual([[5, 0, 5, 3], [2.5, 3, 7.5, 3], [5, 6, 3, 180, 360]]);
-  expect(result.plugFills).toEqual(["solid", "solid"]);
-  expect(result.plug3Fills).toEqual(["solid", "solid", "solid"]);
-  expect(result.socketArcs).toEqual([[90, 270], [90, 270]]);
+  expect(result.plugBlades).toEqual([[5.5, 0.9, 1.9, 0.7], [5.5, 5.9, 1.9, 0.7]]);
+  expect(result.plugGroundPin).toEqual({ t: "circle", p: [6.9, 6.25, 0.45], fill: "solid" });
+  expect(result.socketSlots).toEqual([[3.55, 2.25, 0.75, 3], [5.7, 2.25, 0.75, 3]]);
+  expect(result.socketGroundHole).toEqual({ t: "circle", p: [5, 5.65, 0.55], fill: "solid" });
+  expect(result.jisPlugFills).toEqual(["solid", "solid"]);
+  expect(result.jisSocketArcs).toEqual([[90, 270], [90, 270]]);
   expect(result.pairArc).toEqual([90, 270]);
   expect(result.pairFill).toBe("solid");
   expect(result.dxfSolidCount).toBe(2);
   expect(result.wallDxfSolidCount).toBeGreaterThan(0);
   expect(result.wireEnd).toEqual([100, 57]);
-  expect(result.renamed).toBe("socketPin");
-  expect(result.migratedStandard).toBe("standard");
+  expect(result.renamed).toBe("socketContactJis2");
+  expect(result.migratedStandard).toBe("distributionGeneral");
   expect(result.migratedEarthed).toBe("powerEarthJis");
   expect(result.migratedRound).toBe("ceiling");
 
@@ -2914,8 +2937,8 @@ test("壁付・天井コンセントとJIS電力用コンセントを用途別�
   await expect(paletteOutlet).toBeVisible();
   await paletteOutlet.click();
   await page.locator("svg#canvas").click({ position: { x: 260, y: 260 } });
-  await expect(page.locator('svg#canvas g[data-type="outlet"] circle')).toHaveCount(1);
-  await expect(page.locator('svg#canvas g[data-type="outlet"] path.symbol-solid')).toHaveCount(0);
+  await expect(page.locator('svg#canvas g[data-type="outlet"] rect.symbol-fill')).toHaveCount(1);
+  await expect(page.locator('svg#canvas g[data-type="outlet"] rect.symbol-solid')).toHaveCount(2);
   expect(await page.evaluate(() => {
     const outlet = window.__edsTest.state.pages[0].elements.find(element => element.type === "outlet");
     return { variant: outlet.symbolVariant, label: outlet.label };
@@ -4421,7 +4444,7 @@ test("rotating a symbol keeps its visible center inside the selection bounds", a
     const api = window.__edsTest;
     const breaker = { ...api.defaultElement("breaker", 20, 30), id: "cb", symbolVariant: "iec" };
     api.installProjectData({
-      schemaVersion: 7,
+      schemaVersion: 8,
       activePageId: "p",
       pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [breaker] }]
     });
@@ -4444,4 +4467,48 @@ test("rotating a symbol keeps its visible center inside the selection bounds", a
   expect(result.afterSize[0]).toBeCloseTo(5, 6);
   expect(result.afterSize[1]).toBeCloseTo(12.5, 6);
   expect(result.anchors[0].x).toBeCloseTo(result.anchors[1].x, 6);
+});
+
+test("家庭用接地2Pコンセントは90度ずつ回転しても選択枠中央と3接続点を保つ", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const outlet = {
+      ...api.defaultElement("outlet", 40, 50),
+      id: "socket",
+      symbolVariant: "socketPin3",
+      w: 10,
+      h: 7.5,
+      label: ""
+    };
+    api.installProjectData({
+      schemaVersion: 8,
+      activePageId: "p",
+      pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [outlet] }]
+    });
+    api.setSelectionForTest(["socket"]);
+    const snapshots = [];
+    for (let turn = 0; turn < 4; turn += 1) {
+      const element = api.state.pages[0].elements[0];
+      const bounds = api.elementBounds(element);
+      snapshots.push({
+        rotation: element.rotation,
+        center: [bounds.x + bounds.w / 2, bounds.y + bounds.h / 2],
+        size: [bounds.w, bounds.h],
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x, anchor.y])
+      });
+      api.rotateSelected(90);
+    }
+    return snapshots;
+  });
+  expect(result.map(item => item.rotation)).toEqual([0, 90, 180, 270]);
+  result.forEach(item => {
+    expect(item.center[0]).toBeCloseTo(result[0].center[0], 6);
+    expect(item.center[1]).toBeCloseTo(result[0].center[1], 6);
+    expect(item.anchors).toHaveLength(3);
+  });
+  expect(result[0].size).toEqual([10, 7.5]);
+  expect(result[1].size[0]).toBeCloseTo(7.5, 6);
+  expect(result[1].size[1]).toBeCloseTo(10, 6);
+  expect(result[2].size[0]).toBeCloseTo(10, 6);
+  expect(result[2].size[1]).toBeCloseTo(7.5, 6);
 });
