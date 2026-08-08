@@ -396,13 +396,17 @@
     .dash-line { stroke-dasharray: 3 2; }
     .symbol-fill { fill: #fff; stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); vector-effect: non-scaling-stroke; }
     .symbol-line { stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; stroke-linejoin: round; }
+    .symbol-solid { stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); fill: var(--element-stroke, #111820); vector-effect: non-scaling-stroke; }
     .terminal-dot { fill: #fff; stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); vector-effect: non-scaling-stroke; }
 
     .element:hover .symbol-line,
     .element:hover .wire-line,
-    .element:hover .symbol-fill {
+    .element:hover .symbol-fill,
+    .element:hover .symbol-solid {
       stroke: var(--accent-2);
     }
+
+    .element:hover .symbol-solid { fill: var(--accent-2); }
 
     .selection-box {
       fill: none;
@@ -1606,7 +1610,7 @@
         { type: "photocoupler", label: "フォトカプラ", icon: "diode" },
         { type: "currentTransformer", label: "変流器(CT)", icon: "coil" },
         { type: "disconnector", label: "断路器", icon: "contactNO" },
-        { type: "outlet", label: "コンセント", icon: "power" },
+        { type: "outlet", label: "コンセント／プラグ", icon: "power" },
         { type: "resistor", label: "抵抗", icon: "resistor" },
         { type: "capacitor", label: "コンデンサ", icon: "capacitor" },
         { type: "diode", label: "ダイオード", icon: "diode" },
@@ -2600,13 +2604,18 @@
                 plug: [[0, 3]], plugPin: [[0, 3]], plugPin3: [[0, 3]], standard: [[0, 3]]
               }[variant] || [[0, 3]];
               if (variant === "plugSocket") {
-                replaceWithAnchors(element, { type: "connector", connStyle: "pair", w: 6, h: 3 }, oldAnchors, [[0, 1.5], [6, 1.5]]);
+                replaceWithAnchors(element, { symbolVariant: "plugSocket", w: 10, h: 6 }, oldAnchors, [[0, 3], [10, 3]]);
+              } else if (variant === "standard" || variant === "round") {
+                replaceWithAnchors(element, { symbolVariant: "standard", w: 10, h: 6 }, oldAnchors, [[0, 3]]);
+              } else if (variant === "earthed") {
+                replaceWithAnchors(element, { symbolVariant: "powerEarthJis", w: 10, h: 6.5 }, oldAnchors, [[5, 0]]);
               } else {
-                const earthed = variant === "earthed" || variant === "plugPin3";
-                replaceWithAnchors(element, { symbolVariant: earthed ? "plugPin3" : "plugPin", w: 10, h: 7.5 }, oldAnchors, earthed ? [[0, 1.25], [0, 3.75], [0, 6.25]] : [[0, 1.25], [0, 6.25]]);
+                const threePole = variant === "plugPin3";
+                const socket = ["box", "boxGrid10", "boxDouble"].includes(variant);
+                replaceWithAnchors(element, { symbolVariant: threePole ? "plugPin3" : (socket ? "socketPin" : "plugPin"), w: 10, h: 7.5 }, oldAnchors, threePole ? [[0, 1.25], [0, 3.75], [0, 6.25]] : [[0, 1.25], [0, 6.25]]);
                 // v6以前の箱形2極は第2端子が 11.5mm の版も存在する。先に第1端子を
                 // 固定した後のローカル 10.75mm が旧第2端子に相当するので、両版の配線を救済する。
-                if (["box", "boxGrid10", "boxDouble"].includes(variant) && !earthed) {
+                if (["box", "boxGrid10", "boxDouble"].includes(variant) && !threePole) {
                   const legacySecond = globalAt(element, [0, 10.75]);
                   const newSecond = globalAt(element, [0, 6.25]);
                   moves.push([legacySecond[0], legacySecond[1], newSecond[0], newSecond[1]]);
@@ -8307,6 +8316,27 @@
             { t: "text", p: [8.4, 3], size: 1.8, anchor: "start", field: "label" }
           ]
         },
+        // JIS C 0617-11 S00457（旧番号11-13-01）電力用コンセント。
+        outletPowerJis: {
+          w: 10, h: 6.5,
+          anchors: [[5, 0]],
+          prims: [
+            { t: "line", p: [5, 0, 5, 3] },
+            { t: "arc", p: [5, 6, 3, 180, 360] },
+            { t: "text", p: [9, 3.8], size: 1.8, anchor: "start", field: "label" }
+          ]
+        },
+        // JIS C 0617-11 S00460（旧番号11-13-04）保護接点付き電力用コンセント。
+        outletPowerEarthJis: {
+          w: 10, h: 6.5,
+          anchors: [[5, 0]],
+          prims: [
+            { t: "line", p: [5, 0, 5, 3] },
+            { t: "line", p: [2.5, 3, 7.5, 3] },
+            { t: "arc", p: [5, 6, 3, 180, 360] },
+            { t: "text", p: [9, 3.8], size: 1.8, anchor: "start", field: "label" }
+          ]
+        },
         // コンセント(半円+接地極): 標準の半円ソケットに接地記号(横棒3本)を併記。
         outletEarthed: {
           w: 10, h: 8.2,
@@ -8328,39 +8358,36 @@
           w: 10, h: 7.5,
           anchors: [[0, 1.25], [0, 6.25]],
           prims: [
-            { t: "line", p: [0, 1.25, 4.2, 1.25] },
-            { t: "line", p: [0, 6.25, 4.2, 6.25] },
-            { t: "rect", p: [4.2, 0.5, 1.5, 6.5], fill: "white" },
-            { t: "line", p: [5.7, 1.25, 7.6, 1.25] },
-            { t: "line", p: [5.7, 6.25, 7.6, 6.25] },
+            { t: "line", p: [0, 1.25, 5.4, 1.25] },
+            { t: "line", p: [0, 6.25, 5.4, 6.25] },
+            { t: "rect", p: [5.4, 0.6, 1.6, 1.3], fill: "solid" },
+            { t: "rect", p: [5.4, 5.6, 1.6, 1.3], fill: "solid" },
             { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
-        // 一般形の雄プラグ（2極）。L/N は別アンカーへ接続する。
+        // JIS C 0617-3 S00032（旧番号03-03-03）おす形接点の2極表示。L/N は別アンカーへ接続する。
         outletPlugPin: {
           w: 10, h: 7.5,
           anchors: [[0, 1.25], [0, 6.25]],
           prims: [
-            { t: "line", p: [0, 1.25, 4.2, 1.25] },
-            { t: "line", p: [0, 6.25, 4.2, 6.25] },
-            { t: "rect", p: [4.2, 0.5, 1.5, 6.5], fill: "white" },
-            { t: "line", p: [5.7, 1.25, 7.6, 1.25] },
-            { t: "line", p: [5.7, 6.25, 7.6, 6.25] },
+            { t: "line", p: [0, 1.25, 5.4, 1.25] },
+            { t: "line", p: [0, 6.25, 5.4, 6.25] },
+            { t: "rect", p: [5.4, 0.6, 1.6, 1.3], fill: "solid" },
+            { t: "rect", p: [5.4, 5.6, 1.6, 1.3], fill: "solid" },
             { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
-        // 一般形の雄プラグ（2極+保護接地）。L/N/PE はそれぞれ独立したアンカー。
+        // JIS C 0617-3 S00032（旧番号03-03-03）おす形接点の3極表示。L/N/PE は独立アンカー。
         outletPlugPin3: {
           w: 10, h: 7.5,
           anchors: [[0, 1.25], [0, 3.75], [0, 6.25]],
           prims: [
-            { t: "line", p: [0, 1.25, 4.2, 1.25] },
-            { t: "line", p: [0, 3.75, 4.2, 3.75] },
-            { t: "line", p: [0, 6.25, 4.2, 6.25] },
-            { t: "rect", p: [4.2, 0.5, 1.5, 6.5], fill: "white" },
-            { t: "line", p: [5.7, 1.25, 7.6, 1.25] },
-            { t: "line", p: [5.7, 3.75, 6.7, 3.75] },
-            { t: "line", p: [5.7, 6.25, 7.6, 6.25] },
+            { t: "line", p: [0, 1.25, 5.4, 1.25] },
+            { t: "line", p: [0, 3.75, 5.4, 3.75] },
+            { t: "line", p: [0, 6.25, 5.4, 6.25] },
+            { t: "rect", p: [5.4, 0.6, 1.6, 1.3], fill: "solid" },
+            { t: "rect", p: [5.4, 3.1, 1.6, 1.3], fill: "solid" },
+            { t: "rect", p: [5.4, 5.6, 1.6, 1.3], fill: "solid" },
             { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
@@ -8373,8 +8400,8 @@
           prims: [
             { t: "line", p: [0, 1.25, 5.9, 1.25] },
             { t: "line", p: [0, 6.25, 5.9, 6.25] },
-            { t: "arc", p: [6.8, 1.25, 0.9, 270, 450] },
-            { t: "arc", p: [6.8, 6.25, 0.9, 270, 450] },
+            { t: "arc", p: [6.8, 1.25, 0.9, 90, 270] },
+            { t: "arc", p: [6.8, 6.25, 0.9, 90, 270] },
             { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
@@ -8386,9 +8413,9 @@
             { t: "line", p: [0, 1.25, 5.9, 1.25] },
             { t: "line", p: [0, 3.75, 5.9, 3.75] },
             { t: "line", p: [0, 6.25, 5.9, 6.25] },
-            { t: "arc", p: [6.8, 1.25, 0.9, 270, 450] },
-            { t: "arc", p: [6.8, 3.75, 0.9, 270, 450] },
-            { t: "arc", p: [6.8, 6.25, 0.9, 270, 450] },
+            { t: "arc", p: [6.8, 1.25, 0.9, 90, 270] },
+            { t: "arc", p: [6.8, 3.75, 0.9, 90, 270] },
+            { t: "arc", p: [6.8, 6.25, 0.9, 90, 270] },
             { t: "text", p: [8.2, 3.75], size: 1.8, anchor: "start", field: "label" }
           ]
         },
@@ -8398,10 +8425,10 @@
           w: 10, h: 6,
           anchors: [[0, 3], [10, 3]],
           prims: [
-            { t: "line", p: [0, 3, 4.0, 3] },
-            { t: "line", p: [4.0, 1.6, 4.0, 4.4] },
-            { t: "arc", p: [5.8, 3, 1.5, 270, 450] },
-            { t: "line", p: [7.3, 3, 10, 3] },
+            { t: "line", p: [0, 3, 3, 3] },
+            { t: "arc", p: [4.4, 3, 1.4, 90, 270] },
+            { t: "rect", p: [5, 1.8, 2.4, 2.4], fill: "solid" },
+            { t: "line", p: [7.4, 3, 10, 3] },
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -9744,13 +9771,15 @@
           }
           case "disconnector": return variant === "loadBreak" ? "disconnectorLoadBreak" : "disconnector";
           case "outlet": {
-            // boxGrid10は10mmピッチ統合によりboxと同一形状(旧図面互換の別名として受け付ける)。
-            if (variant === "plug") return "outletPlug";
+            if (variant === "standard" || variant === "round") return "outletRound";
+            if (variant === "powerJis") return "outletPowerJis";
+            if (variant === "powerEarthJis" || variant === "earthed") return "outletPowerEarthJis";
+            if (variant === "plug" || variant === "plugPin") return "outletPlugPin";
             if (variant === "plug3" || variant === "plugPin3") return "outletPlugPin3";
             if (variant === "socket" || variant === "socketPin") return "outletSocketPin";
             if (variant === "socket3" || variant === "socketPin3") return "outletSocketPin3";
             if (variant === "plugSocket") return "outletPlugSocket";
-            return "outletPlugPin";
+            return "outletRound";
           }
           case "thermalElement": return "thermalElement";
           case "breaker": {
@@ -10067,7 +10096,7 @@
             g.appendChild(svgEl("path", { d: prim.pts.map((pt, i) => (i ? "L " : "M ") + pt[0] + " " + pt[1]).join(" "), class: "symbol-line", stroke, "stroke-dasharray": prim.dash || null }));
           } else if (prim.t === "rect") {
             const solid = prim.fill === "solid";
-            g.appendChild(svgEl("rect", { x: prim.p[0], y: prim.p[1], width: prim.p[2], height: prim.p[3], class: prim.fill === "white" ? "symbol-fill" : "symbol-line", stroke, fill: prim.fill === "white" ? "#fff" : (solid ? stroke : "none"), "stroke-dasharray": prim.dash || null }));
+            g.appendChild(svgEl("rect", { x: prim.p[0], y: prim.p[1], width: prim.p[2], height: prim.p[3], class: prim.fill === "white" ? "symbol-fill" : (solid ? "symbol-solid" : "symbol-line"), stroke, fill: prim.fill === "white" ? "#fff" : (solid ? stroke : "none"), "stroke-dasharray": prim.dash || null }));
           } else if (prim.t === "circle") {
             if (prim.fill === "solid") g.appendChild(svgEl("circle", { cx: prim.p[0], cy: prim.p[1], r: prim.p[2], fill: stroke }));
             else g.appendChild(svgEl("circle", { cx: prim.p[0], cy: prim.p[1], r: prim.p[2], class: prim.fill === "white" ? "terminal-dot" : "symbol-line", stroke, fill: prim.fill === "white" ? "#fff" : "none" }));
@@ -10100,7 +10129,8 @@
               dxfLineLocal(out, page, "SYMBOL", element, prim.pts[i - 1][0], prim.pts[i - 1][1], prim.pts[i][0], prim.pts[i][1], primLtype);
             }
           } else if (prim.t === "rect") {
-            dxfRectLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3], primLtype);
+            if (prim.fill === "solid") dxfSolidRectLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3]);
+            else dxfRectLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3], primLtype);
           } else if (prim.t === "circle") {
             dxfCircleLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2]);
           } else if (prim.t === "arc") {
@@ -11136,7 +11166,7 @@
         arrester: [["standard", "避雷器（一般形・箱＋矢印）"], ["gap", "避雷器（一般形・ギャップ＝対向三角）"]],
         qualifierMark: [["dc", "直流（実線＋破線）"], ["ac", "交流（正弦波）"], ["acdc", "交直流（正弦波＋実線・破線）"], ["threePhase", "三相交流（3＋正弦波）"]],
         operatorMark: [["manual", "手動操作・一般（JIS 02-13-01）"], ["push", "押し動作（JIS 02-13-05）"], ["pull", "引き動作（JIS 02-13-03）"], ["rotate", "回転操作（JIS 02-13-04）"], ["key", "キー操作（実務形）"], ["roller", "ローラ操作（実務形）"], ["foot", "足踏み操作（JIS 02-13-10）"], ["emergency", "非常停止（JIS 02-13-08）"], ["electromagnetic", "電磁効果による操作（JIS 02-13-23）"], ["thermal", "熱操作（実務形・⊓）"]],
-        outlet: [["plugPin", "雄プラグ・2極（JIS 03-03-02の複線表示・L/N別接続）"], ["plugPin3", "雄プラグ・2極＋保護接地（JIS 03-03-02の複線表示・L/N/PE別接続）"], ["socketPin", "雌接点（ソケット）・2極（JIS 03-03-01の複線表示・L/N別接続）"], ["socketPin3", "雌接点（ソケット）・2極＋保護接地（JIS 03-03-01の複線表示・L/N/PE別接続）"], ["plugSocket", "プラグ及びソケット（JIS 03-03-05）"]],
+        outlet: [["standard", "コンセント（配線図・一般形）"], ["powerJis", "電力用コンセント（JIS 11-13-01・S00457）"], ["powerEarthJis", "保護接点付き電力用コンセント（JIS 11-13-04・S00460）"], ["plugPin", "雄接点（プラグ）・2極（JIS 03-03-03・S00032、L/N別接続）"], ["plugPin3", "雄接点（プラグ）・2極＋保護接地（JIS 03-03-03・S00032、L/N/PE別接続）"], ["socketPin", "雌接点（ソケット）・2極（JIS 03-03-01・S00031、L/N別接続）"], ["socketPin3", "雌接点（ソケット）・2極＋保護接地（JIS 03-03-01・S00031、L/N/PE別接続）"], ["plugSocket", "プラグ及びソケット（JIS 03-03-05・S00033）"]],
         pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "非常停止スイッチ（JIS 07-07-06・キノコ＋b接点）"], ["multi2", "縦連結2接点（一般形・連動）"], ["multi3", "縦連結3接点（一般形・連動）"], ["jisMulti2", "縦連結2接点（JIS 07-07-06系・連動）"], ["jisMulti3", "縦連結3接点（JIS 07-07-06系・連動）"], ["bar", "バー押込式（一般形）"]],
         pressureSwitch: [["standard", "a接点＋ダイヤフラム（一般形）"], ["nc", "b接点＋ダイヤフラム（一般形）"]],
         floatSwitch: [["standard", "a接点＋フロート（実務形）"], ["nc", "b接点＋フロート（実務形）"]],
@@ -12212,7 +12242,7 @@
           arrester: { ...base, w: 10, h: 6, label: "AR" },
           transistor: { ...base, w: 10, h: 6, label: "TR" },
           disconnector: { ...base, w: 10, h: 5, label: "DS", orientation: "horizontal" },
-          outlet: { ...base, w: 10, h: 7.5, label: "PLG", symbolVariant: "plugPin" },
+          outlet: { ...base, w: 10, h: 6, label: "SC", symbolVariant: "standard" },
           ground: { ...base, w: 4, h: 5, label: "E", symbolVariant: "bars" },
           motor: { ...base, w: 16, h: 16, label: "M" },
           fan: { ...base, w: 15, h: 15, r: 5, label: "FAN" },
@@ -15476,7 +15506,7 @@
             els.push({ ...defaultElement("mechanicalLink", cpLinkX, 0), points: [[cpLinkX, round(yA - 2.35)], [cpLinkX, round(yB - 2.35)]] });
             els.push({ ...defaultElement("wire", cpX + 12.5, yA), points: [[round(cpX + 12.5), yA], [147.5, yA]], wireNo: "101", wireNoAlign: "start" });
             els.push({ ...defaultElement("wire", cpX + 12.5, yB), points: [[round(cpX + 12.5), yB], [142.5, yB], [142.5, round(yA + 5)], [147.5, round(yA + 5)]], wireNo: "102", wireNoAlign: "start" });
-            els.push({ ...defaultElement("outlet", 147.5, round(yA - 1.25)), w: 10, h: 7.5, symbolVariant: "plugPin", label: "PLG1", tag: "PLG1" });
+            els.push({ ...defaultElement("outlet", 147.5, round(yA - 1.25)), w: 10, h: 7.5, symbolVariant: "socketPin", label: "SC1", tag: "SC1" });
             els.push(textElement(160, round(yA + 1.4), "制御盤内", 1.8, 0, 12));
             els.push(textElement(160, round(yA + 4.4), "コンセント", 1.8, 0, 12));
           }
@@ -15492,7 +15522,7 @@
           els.push({ ...defaultElement("mechanicalLink", 109.75, 0), points: [[109.75, round(yA - 2.35)], [109.75, round(yB - 2.35)]] });
           els.push({ ...defaultElement("wire", 117.5, yA), points: [[117.5, yA], [122.5, yA]], wireNo: "107", wireNoAlign: "start" });
           els.push({ ...defaultElement("wire", 117.5, yB), points: [[117.5, yB], [120, yB], [120, round(yA + 5)], [122.5, round(yA + 5)]], wireNo: "108", wireNoAlign: "start" });
-          els.push({ ...defaultElement("outlet", 122.5, round(yA - 1.25)), w: 10, h: 7.5, symbolVariant: "plugPin", label: "PLG2", tag: "PLG2" });
+          els.push({ ...defaultElement("outlet", 122.5, round(yA - 1.25)), w: 10, h: 7.5, symbolVariant: "socketPin", label: "SC2", tag: "SC2" });
           els.push(textElement(135, round(yA + 1.4), "操作盤", 1.8, 0, 12));
           els.push(textElement(135, round(yA + 4.4), "コンセント", 1.8, 0, 12));
         }
@@ -20433,7 +20463,7 @@
             接地5種（一般02-15-01／保護接地02-15-03／機能接地02-15-06ほか）、ヒューズ3種、ダイオード7種（トライアック・フォトダイオード含む）、変圧器7種（06-09-01 円形／06-09-02 巻線形、各＋磁心／06-09-04・06-09-05 の3巻き）＋テンプレート専用10mm形、論理ゲート3種、押しボタンa/b接点（設備標準・JIS C 0617）、
             リミットスイッチ箱形NO/NC・ローラーNO/NC、圧力/フロート/温度/フロー/フットスイッチのa/b接点、
             切替接点（c接点）、接触器主接点（半円・JIS C 0617）、サーマルリレー10種（熱動素子付きa/b接点ほか）、照光式/パーム押しボタン、切替スイッチJIS形、ブリッジ整流◇、避雷器2種、
-            コンデンサ3種、リアクトル4種（04-03-01 コイル／04-03-03 磁心入り＝磁心線1本／旧JIS 2本線／箱形）、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント9種（箱形2口・丸形・接地極付き・雄側プラグ3種・プラグ対ほか）、蛍光灯、針付き計器、ブザー7形状（JIS C 0617 08-10-06 半円／08-10-10 反転半円／08-10-09 サイレン・直角三角形／ホーン／スピーカーほか）、交流電源（円＋〜）、ポテンショメータ3端子、AC/DC・DC/AC（インバータ）・DC/DC変換器箱、光電スイッチ10種（透過/回帰反射/拡散/距離設定BGS/ファイバ/溝形/マーク・カラー/一般形ほか）、マットスイッチ・リードスイッチ（線のみのa/b接点に加え<b>縦バー2本のa接点・縦バー＋斜線のb接点</b>）など100種類以上。
+            コンデンサ3種、リアクトル4種（04-03-01 コイル／04-03-03 磁心入り＝磁心線1本／旧JIS 2本線／箱形）、CT3種、ヒータ2種、バッテリ2セル/単セル、アーチ形CP、コンセント／プラグ8種（配線図一般形、JIS電力用・保護接点付き、雄・雌接点2/3極、プラグ対）、蛍光灯、針付き計器、ブザー7形状（JIS C 0617 08-10-06 半円／08-10-10 反転半円／08-10-09 サイレン・直角三角形／ホーン／スピーカーほか）、交流電源（円＋〜）、ポテンショメータ3端子、AC/DC・DC/AC（インバータ）・DC/DC変換器箱、光電スイッチ10種（透過/回帰反射/拡散/距離設定BGS/ファイバ/溝形/マーク・カラー/一般形ほか）、マットスイッチ・リードスイッチ（線のみのa/b接点に加え<b>縦バー2本のa接点・縦バー＋斜線のb接点</b>）など100種類以上。
             さらに <b>JIS C 0617 の限定図記号</b>として、電流種別4種（直流／交流／交直流／三相交流）と操作機構10種（手動一般・押し・引き・回転・キー・ローラ・足踏・非常・電磁・熱）、<b>発電機</b>（円＋G）、<b>位置スイッチ</b>（07-08-01 a接点／07-08-02 b接点＝線のみの接点＋三角の操作子）、<b>トランジスタの外囲みの円なし版</b>（NPN／PNP）を追加。ツェナーダイオード（05-03-06）はカソードバーの折れを片側だけに是正し、<b>サイリスタ・トライアックはゲート線の先端が配線接続点</b>になりました。
             <b>変圧器</b>のJIS形は規格の単線図どおりに描き直しました。<b>06-09-01（円形）</b>は縦に重なる2円の上下へ1本ずつ、
             <b>06-09-02（巻線形）</b>は凸側を向かい合わせた2巻線で、余分なタップを持ちません。<b>06-09-04／06-09-05 の3巻き変圧器</b>も追加。
@@ -23201,6 +23231,19 @@
         dxfLineLocal(out, page, layer, element, x + w, y, x + w, y + h, ltype);
         dxfLineLocal(out, page, layer, element, x + w, y + h, x, y + h, ltype);
         dxfLineLocal(out, page, layer, element, x, y + h, x, y, ltype);
+      }
+
+      // 黒塗り接点などの矩形をDXF SOLIDで出力。DXFの第3・第4頂点順に合わせて対辺を渡す。
+      function dxfSolidRectLocal(out, page, layer, element, x, y, w, h) {
+        const a = localPoint(element, x, y);
+        const b = localPoint(element, x + w, y);
+        const c = localPoint(element, x, y + h);
+        const d = localPoint(element, x + w, y + h);
+        out.push("0", "SOLID", "8", layer,
+          "10", round(a[0]), "20", round(cadY(page, a[1])),
+          "11", round(b[0]), "21", round(cadY(page, b[1])),
+          "12", round(c[0]), "22", round(cadY(page, c[1])),
+          "13", round(d[0]), "23", round(cadY(page, d[1])));
       }
 
       // 端子台/PLCユニット列の端子記号のDXF出力(SVGと同じ白抜き小円のみ)。
