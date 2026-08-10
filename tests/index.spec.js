@@ -4512,3 +4512,233 @@ test("家庭用接地2Pコンセントは90度ずつ回転しても選択枠中�
   expect(result[2].size[0]).toBeCloseTo(10, 6);
   expect(result[2].size[1]).toBeCloseTo(7.5, 6);
 });
+
+test("コンセントのおす形/めす形接点はJIS C 0617-3の一般図記号(黒塗り長方形・開いた半円)で1極から選べる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const geoKeys = {
+      plugContactJis1: "outletPlugContactJis1", socketContactJis1: "outletSocketContactJis1",
+      plugContactJis2: "outletPlugContactJis2", socketContactJis2: "outletSocketContactJis2",
+      plugContactJis3: "outletPlugContactJis3", socketContactJis3: "outletSocketContactJis3",
+      plugSocket: "outletPlugSocket", plugSocketMulti: "outletPlugSocketMulti",
+      connectionLink: "outletConnectionLink"
+    };
+    const read = variant => {
+      const element = api.defaultElement("outlet", 20, 20);
+      element.symbolVariant = variant;
+      const geo = api.SYMBOL_GEO[geoKeys[variant]];
+      element.w = geo.w;
+      element.h = geo.h;
+      return {
+        variant,
+        w: geo.w,
+        h: geo.h,
+        rects: geo.prims.filter(prim => prim.t === "rect" && prim.fill === "solid").map(prim => prim.p),
+        arcs: geo.prims.filter(prim => prim.t === "arc").map(prim => prim.p),
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20])
+      };
+    };
+    return {
+      options: api.SYMBOL_VARIANT_OPTIONS.outlet.map(([value]) => value),
+      rows: Object.keys(geoKeys).map(read)
+    };
+  });
+
+  // オス(おす形)・メス(めす形)とも1極の一般図記号が選択肢にある
+  for (const variant of ["plugContactJis1", "socketContactJis1", "plugSocketMulti", "connectionLink"]) {
+    expect(result.options, variant).toContain(variant);
+  }
+  const find = variant => result.rows.find(row => row.variant === variant);
+
+  // おす形接点(03-03-02)は黒塗り長方形。規格実測の幅:高さ=1.9:1に合わせる
+  for (const variant of ["plugContactJis1", "plugContactJis2", "plugContactJis3"]) {
+    const rects = find(variant).rects;
+    expect(rects.length, variant).toBeGreaterThan(0);
+    rects.forEach(rect => expect(rect[2] / rect[3], variant).toBeGreaterThan(1.7));
+  }
+  // 1極のおす形は長方形の高さが記号高さいっぱい(規格図と同じ)
+  const plug1 = find("plugContactJis1");
+  expect(plug1.rects).toHaveLength(1);
+  expect(plug1.rects[0][3]).toBeCloseTo(plug1.h, 6);
+  expect(plug1.anchors).toHaveLength(1);
+  expect(plug1.anchors[0][0]).toBeCloseTo(0, 6);
+  expect(plug1.anchors[0][1]).toBeCloseTo(1.3, 6);
+
+  // めす形接点(03-03-01)は開いた半円。記号高さいっぱいの直径を持たせる
+  const socket1 = find("socketContactJis1");
+  expect(socket1.arcs).toHaveLength(1);
+  expect(socket1.arcs[0][2] * 2).toBeGreaterThan(socket1.h * 0.8);
+  expect(socket1.arcs[0][3]).toBe(90);
+  expect(socket1.arcs[0][4]).toBe(270);
+  expect(socket1.anchors).toHaveLength(1);
+  expect(socket1.anchors[0][0]).toBeCloseTo(0, 6);
+  expect(socket1.anchors[0][1]).toBeCloseTo(2.5, 6);
+  // 2極は極ピッチ5mmに対して直径4mm、3極はピッチ2.5mmで隣の弧と触れない
+  expect(find("socketContactJis2").arcs.every(arc => arc[2] === 2)).toBe(true);
+  expect(find("socketContactJis3").arcs.every(arc => arc[2] < 1.25)).toBe(true);
+
+  // プラグ及びソケット(03-03-05)はめす形の弧の中心からおす形の長方形が始まる
+  const pair = find("plugSocket");
+  expect(pair.arcs).toHaveLength(1);
+  expect(pair.rects).toHaveLength(1);
+  expect(pair.rects[0][0]).toBeCloseTo(pair.arcs[0][0], 6);
+  expect(pair.rects[0][2] / pair.rects[0][3]).toBeGreaterThan(1.7);
+
+  // 既存図面互換のため2極/3極の接続点は変えていない
+  expect(find("plugContactJis2").anchors).toEqual([[0, 1.25], [0, 6.25]]);
+  expect(find("socketContactJis3").anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
+});
+
+test("限時接点の半円はJIS 07-05-01〜04どおりの向きで、ちょうつがいから軸線が伸びる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const geoKeys = {
+      "timerContactNO/iec": "timerContactNOIec", "timerContactNO/iecOff": "timerContactNOIecOff",
+      "timerContactNC/iec": "timerContactNCIec", "timerContactNC/iecOff": "timerContactNCIecOff"
+    };
+    return Object.keys(geoKeys).map(key => {
+      const geo = api.SYMBOL_GEO[geoKeys[key]];
+      const arc = geo.prims.find(prim => prim.t === "arc");
+      // ちょうつがい(3.9, 2.2)から限時記号へ下ろす軸線
+      const stem = geo.prims.find(prim => prim.t === "line"
+        && prim.p[0] === 3.9 && prim.p[2] === 3.9 && prim.p[1] === 2.2 && prim.p[3] > 2.2);
+      // 限時記号の位置に水平な弦が残っていないこと
+      const chords = geo.prims.filter(prim => prim.t === "line" && prim.p[1] === prim.p[3] && prim.p[1] > 4).length;
+      return { key, arc: arc && arc.p, stem: stem && stem.p, chords };
+    });
+  });
+
+  const find = key => result.find(row => row.key === key);
+  for (const row of result) {
+    // 規格図は軸線+開いた半円。弦は引かない
+    expect(row.stem, row.key).toBeTruthy();
+    expect(row.arc, row.key).toBeTruthy();
+    expect(row.chords, row.key).toBe(0);
+  }
+  // 07-05-01/03(限時閉路のメーク・限時開路のブレーク)はふくらみが接点から遠い側=下
+  for (const key of ["timerContactNO/iec", "timerContactNC/iec"]) {
+    const arc = find(key).arc;
+    expect(arc[3] < 90 && arc[4] > 90, key).toBe(true);
+    // 軸線はふくらみの頂点(円弧の最下点)まで届く
+    expect(find(key).stem[3], key).toBeCloseTo(arc[1] + arc[2], 6);
+  }
+  // 07-05-02/04はふくらみが接点側=上
+  for (const key of ["timerContactNO/iecOff", "timerContactNC/iecOff"]) {
+    const arc = find(key).arc;
+    expect(arc[3] < 270 && arc[4] > 270, key).toBe(true);
+    expect(find(key).stem[3], key).toBeCloseTo(arc[1] - arc[2], 6);
+  }
+});
+
+test("断路器・負荷開閉器はJIS 07-13-06/08どおりで規格外の円端子を持たない", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    return ["disconnector", "disconnectorLoadBreak"].map(key => {
+      const geo = api.SYMBOL_GEO[key];
+      return {
+        key,
+        circles: geo.prims.filter(prim => prim.t === "circle").map(prim => prim.p),
+        // 導線(y=3)をまたぐ縦の止め棒
+        stops: geo.prims.filter(prim => prim.t === "line" && prim.p[0] === prim.p[2] && prim.p[1] < 3 && prim.p[3] > 3).map(prim => prim.p)
+      };
+    });
+  });
+
+  const ds = result[0];
+  const lb = result[1];
+  // 07-13-06は断路機能の止め棒だけ。旧様式の円端子は描かない
+  expect(ds.circles).toHaveLength(0);
+  expect(ds.stops).toHaveLength(1);
+  // 止め棒は導線をまたいで上下対称
+  expect(ds.stops[0][1] + ds.stops[0][3]).toBeCloseTo(6, 6);
+  // 07-13-08は負荷開閉装置の小円1個だけ。止め棒もちょうつがいの円も付かない
+  expect(lb.circles).toHaveLength(1);
+  expect(lb.circles[0][1]).toBeCloseTo(3, 6);
+  expect(lb.stops).toHaveLength(0);
+});
+
+test("JIS C 0617 新規追加記号(近接効果/接触/電動機操作・保護等電位結合・接合形FET)を枠内に作画する", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const cases = [
+      ["operatorMark", ["proximity", "touch", "motor"]],
+      ["ground", ["protectiveBond"]],
+      ["transistor", ["jfetN", "jfetP"]]
+    ];
+    const rows = [];
+    cases.forEach(([type, variants]) => variants.forEach(variant => {
+      const element = api.defaultElement(type, 20, 20);
+      element.symbolVariant = variant;
+      const prims = api.geoPrims(element);
+      let minX = Infinity, maxX = -Infinity;
+      prims.forEach(prim => {
+        if (prim.t === "text") return;
+        let xs;
+        if (prim.pts) xs = prim.pts.map(point => point[0]);
+        else if (prim.t === "circle" || prim.t === "arc") xs = [prim.p[0] - prim.p[2], prim.p[0] + prim.p[2]];
+        else if (prim.t === "rect") xs = [prim.p[0], prim.p[0] + prim.p[2]];
+        else xs = [prim.p[0], prim.p[2]];
+        minX = Math.min(minX, ...xs);
+        maxX = Math.max(maxX, ...xs);
+      });
+      rows.push({
+        type, variant, w: element.w, primCount: prims.length, minX, maxX,
+        options: api.SYMBOL_VARIANT_OPTIONS[type].map(([value]) => value),
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20])
+      });
+    }));
+    return rows;
+  });
+
+  for (const row of result) {
+    const label = `${row.type}/${row.variant}`;
+    expect(row.options, label).toContain(row.variant);
+    expect(row.primCount, label).toBeGreaterThan(1);
+    expect(row.minX, label).toBeGreaterThanOrEqual(-0.01);
+    expect(row.maxX, label).toBeLessThanOrEqual(row.w + 0.01);
+    expect(row.anchors.length, label).toBeGreaterThan(0);
+  }
+  const find = variant => result.find(row => row.variant === variant);
+  // 操作機構は下端中央の1点、接地系は上端中央の1点
+  expect(find("proximity").anchors).toEqual([[4, 8]]);
+  expect(find("motor").anchors).toEqual([[4, 8]]);
+  expect(find("protectiveBond").anchors).toEqual([[2, 0]]);
+  // 接合形FETはゲート+ドレイン+ソースの3点
+  for (const variant of ["jfetN", "jfetP"]) {
+    expect(find(variant).anchors, variant).toEqual([[0, 3], [10, 0.5], [10, 5.5]]);
+  }
+});
+
+test("変換器の限定図記号は対角線の入力側(左上)と出力側(右下)へ振り分けられる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    return ["powerSupplyAcDc", "powerSupplyDcDc", "powerSupplyDcAc"].map(key => {
+      const geo = api.SYMBOL_GEO[key];
+      // 交流=弧、直流=箱の中の水平線。箱は(7.5,2.5)-(27.5,22.5)で対角線は x+y=30
+      const marks = [];
+      geo.prims.forEach(prim => {
+        if (prim.t === "arc") marks.push({ kind: "ac", x: prim.p[0], y: prim.p[1] });
+        else if (prim.t === "line" && prim.p[1] === prim.p[3] && prim.p[0] > 7.5 && prim.p[2] < 27.5) {
+          marks.push({ kind: "dc", x: (prim.p[0] + prim.p[2]) / 2, y: prim.p[1] });
+        }
+      });
+      return { key, marks, box: geo.prims.find(prim => prim.t === "rect").p };
+    });
+  });
+
+  const expected = {
+    powerSupplyAcDc: ["ac", "dc"],
+    powerSupplyDcDc: ["dc", "dc"],
+    powerSupplyDcAc: ["dc", "ac"]
+  };
+  for (const row of result) {
+    // 規格図(06-14-02/03/05)の本体は正方形
+    expect(row.box[2], row.key).toBeCloseTo(row.box[3], 6);
+    const input = row.marks.filter(mark => mark.x + mark.y < 30);
+    const output = row.marks.filter(mark => mark.x + mark.y > 30);
+    expect(input.length, row.key + " input").toBeGreaterThan(0);
+    expect(output.length, row.key + " output").toBeGreaterThan(0);
+    expect([...new Set(input.map(mark => mark.kind))], row.key).toEqual([expected[row.key][0]]);
+    expect([...new Set(output.map(mark => mark.kind))], row.key).toEqual([expected[row.key][1]]);
+  }
+});
