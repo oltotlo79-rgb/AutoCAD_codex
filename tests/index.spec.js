@@ -4978,3 +4978,45 @@ test("盤内コンセント箱形2口は受電2点、接地端子つきは反対
   expect(result.earth.earthLeads[0][2]).toBeCloseTo(12.5, 6);
   expect(result.earth.earthLeads[0][0]).toBeCloseTo(result.earth.circles[0][0] + result.earth.circles[0][2], 6);
 });
+
+test("部品検索は表示名だけでなく別名・タグ接頭辞・JIS図記号番号でも引ける", async ({ page }) => {
+  const search = page.getByRole("searchbox", { name: "部品検索" });
+  const visibleTypes = async () => page.evaluate(() => {
+    const grid = document.querySelector("#paletteGrid");
+    if (grid.textContent.includes("該当する部品がありません")) return [];
+    return [...grid.querySelectorAll(".palette-item")].map(item => item.dataset.type);
+  });
+
+  // 電磁接触器(JIS 07-13-02)は現場での呼び方と規格番号のどちらからでも辿り着ける
+  for (const query of ["電磁接触器", "接触器", "コンタクタ", "マグネットスイッチ", "電磁開閉器", "contactor"]) {
+    await search.fill(query);
+    expect(await visibleTypes(), query).toContain("contactor");
+  }
+  // タグ接頭辞(MC)と規格番号(07-13-02)でも出る
+  await search.fill("MC");
+  expect(await visibleTypes()).toContain("contactor");
+  await search.fill("07-13-02");
+  const byNumber = await visibleTypes();
+  expect(byNumber).toContain("contactor");
+  // a接点の「電磁接触器の主メーク接点」デザインも同じ番号なので一緒に出る
+  expect(byNumber).toContain("contactNO");
+
+  // 他部品の別名も同様に引ける
+  await search.fill("ブレーカ");
+  expect(await visibleTypes()).toContain("breaker");
+  await search.fill("セレクタ");
+  expect(await visibleTypes()).toContain("selectorSwitch");
+  await search.fill("アース");
+  expect(await visibleTypes()).toContain("ground");
+
+  // デザイン名の本文までは検索対象にしない(「半円」で無関係な部品が並ばない)
+  await search.fill("半円");
+  expect(await visibleTypes()).toEqual([]);
+
+  // 検索を消せば全カテゴリが戻り、電磁接触器は「接点・スイッチ」に入っている
+  await search.fill("");
+  expect(await page.evaluate(() => {
+    const item = document.querySelector('#paletteGrid .palette-item[data-type="contactor"]');
+    return { exists: Boolean(item), group: (item?.closest("details")?.querySelector("summary")?.textContent || "").trim() };
+  })).toEqual({ exists: true, group: expect.stringContaining("接点・スイッチ") });
+});

@@ -1729,6 +1729,78 @@
         generator: "power"
       };
 
+      // 部品検索の別名表。パレットの表示名は1つしか出せないので、現場で使う別の呼び方をここへ足す。
+      // 検索はこの別名に加えて「表示名・種別キー・タグ接頭辞(MC/CB/PB…)・シンボルデザイン名に
+      // 入っているJIS図記号番号(例 07-13-02)」も対象にする(paletteSearchText参照)。
+      // 例: 電磁接触器は「MC」「コンタクタ」「マグネットスイッチ」「電磁開閉器」「07-13-02」で引ける。
+      const PALETTE_SEARCH_ALIASES = {
+        contactNO: "メーク接点 ノーマルオープン",
+        contactNC: "ブレーク接点 ノーマルクローズ",
+        contactor: "コンタクタ マグネットスイッチ マグネットコンタクタ 電磁開閉器 マグネット 主接点",
+        timerContactNO: "タイマ接点 限時接点 オンディレー オフディレー",
+        timerContactNC: "タイマ接点 限時接点 オンディレー オフディレー",
+        contactBlock: "接点ユニット 補助接点",
+        pushButton: "押釦 ボタン プッシュボタン",
+        pushButtonEmergency: "非常停止 緊急停止 キノコ",
+        selectorSwitch: "セレクタ セレクタスイッチ 切換スイッチ 切り替えスイッチ ロータリスイッチ 入切",
+        limitSwitch: "リミット 位置スイッチ マイクロスイッチ",
+        coil: "リレー 継電器 補助リレー タイマ カウンタ",
+        fuse: "ヒューズ",
+        breaker: "ブレーカ ブレーカー 配線用遮断器 サーキットブレーカ NFB MCCB",
+        lamp: "表示灯 パイロットランプ ランプ 表示ランプ",
+        buzzer: "ベル サイレン 警報 ホーン",
+        meter: "電圧計 電流計 メータ 指示計",
+        solenoidValve: "電磁弁 バルブ ソレノイド",
+        sensor: "センサー 近接スイッチ 検出器",
+        photoelectricSwitch: "光電センサ ビームセンサ 光電管",
+        matSwitch: "感圧マット 安全マット",
+        reedSwitch: "リード 磁気スイッチ シリンダスイッチ オートスイッチ",
+        lightCurtain: "セーフティライトカーテン 多光軸 安全光線 エリアセンサ",
+        powerSupply: "電源装置 スイッチング電源 直流電源 コンバータ インバータ",
+        transformer: "トランス 変圧器",
+        ground: "アース 接地 接地極 グランド",
+        motor: "モーター 電動機 誘導電動機",
+        generator: "発電機",
+        fan: "送風機 ファンモータ",
+        inductor: "リアクトル インダクタ チョーク",
+        heater: "ヒーター 加熱",
+        battery: "電池 バッテリー",
+        arrester: "サージアブソーバ 避雷 サージ",
+        transistor: "トランジスタ FET 半導体",
+        logicGate: "ゲート 論理素子",
+        photocoupler: "フォトカプラ 絶縁素子",
+        currentTransformer: "変流器 零相変流器 ZCT",
+        disconnector: "断路 アイソレータ 負荷開閉器",
+        outlet: "コンセント レセプタクル ソケット プラグ 差込口 盤内コンセント 接点",
+        resistor: "抵抗器 レジスタ ポテンショメータ",
+        capacitor: "コンデンサ キャパシタ",
+        diode: "ダイオード サイリスタ トライアック ツェナー LED",
+        thermalRelay: "サーマル 過負荷 熱動継電器 オーバーロード",
+        thermalElement: "熱動素子 サーマル素子 過負荷",
+        pressureSwitch: "圧力 プレッシャ",
+        floatSwitch: "フロート 液面 レベル",
+        thermoSwitch: "温度 サーモ",
+        flowSwitch: "流量 フロー",
+        footSwitch: "フット 足踏み ペダル",
+        deviceBox: "機器 ボックス ユニット",
+        plcBlock: "PLC シーケンサ 入出力 IO ユニット",
+        connector: "コネクタ",
+        cableMarker: "ケーブル 電線",
+        cableBundle: "ケーブル束 多芯 より線",
+        terminal: "端子",
+        terminalStrip: "端子台",
+        terminalSheet: "端子配線 端子接続",
+        terminalBox: "端子箱 中継箱",
+        junction: "接続点 ジャンクション ドット 黒丸",
+        wire: "配線 電線 結線",
+        mechanicalLink: "機械連動 連動 破線",
+        qualifierMark: "限定図記号 電流種別 直流 交流",
+        operatorMark: "限定図記号 作動装置 操作機構 回転操作 押し操作",
+        positionMark: "ポジション 入切表示",
+        cloud: "改訂雲 リビジョンクラウド",
+        revisionMark: "改訂 リビジョン"
+      };
+
       // 開いているパレットカテゴリのid集合(セッション内で開閉状態を保持)。
       // 同梱の標準回路スニペット。座標は配置基準点(クリック点=先頭ピン)からの相対mm。
       // 配線ラインy=0/9.5(行ピッチ)に乗るよう設計し、2.5mmグリッド整合を保つ。
@@ -3651,6 +3723,33 @@
         parent.appendChild(group);
       }
 
+      // 部品検索の照合文字列(小文字)。表示名だけだと現場の呼び方や規格番号で引けないため、
+      //   1. パレット表示名        例「電磁接触器」
+      //   2. 種別キー              例「contactor」
+      //   3. 部品タグ接頭辞        例「MC」(利用者が変更していればその値)
+      //   4. 別名表                例「コンタクタ」「マグネットスイッチ」「電磁開閉器」
+      //   5. デザイン名のJIS番号   例「07-13-02」(シンボルデザインの表示名から機械的に拾う)
+      // をまとめて対象にする。デザイン名の本文まで含めると「a接点」で十数件が並んで
+      // 目的の部品が埋もれるので、番号だけを取り出している。
+      // タグ接頭辞は利用者が変更できるためキャッシュはしない(1回の検索で90件程度の文字列連結)。
+      function paletteSearchText(item) {
+        const type = String(item.type || "");
+        const parts = [String(item.label || ""), type];
+        const prefix = tagPrefix(type);
+        if (prefix) parts.push(prefix);
+        const alias = PALETTE_SEARCH_ALIASES[type];
+        if (alias) parts.push(alias);
+        // 押しボタンは通常形と非常停止形でデザイン表が分かれているため両方から番号を拾う。
+        const variantTables = [SYMBOL_VARIANT_OPTIONS[type]];
+        if (type === "pushButton") variantTables.push(SYMBOL_VARIANT_OPTIONS.pushButtonEmergency);
+        variantTables.forEach(table => {
+          (table || []).forEach(([, text]) => {
+            (String(text).match(/\d{2}-\d{2}-\d{2}/g) || []).forEach(number => parts.push(number));
+          });
+        });
+        return parts.join(" ").toLowerCase();
+      }
+
       // 左パネルの部品パレットを再構築。検索文字列があればフラット表示、無ければカテゴリ別アコーディオン。
       // ユーザー部品(customSymbols)は type=custom:<id> の項目として合流する。
       function renderPalette() {
@@ -3684,8 +3783,7 @@
         const matchedTypes = new Set();
         const matches = allItems.filter(item => {
           if (!filter) return true;
-          const matched = String(item.label || "").toLowerCase().includes(filter)
-            || String(item.type || "").toLowerCase().includes(filter);
+          const matched = paletteSearchText(item).includes(filter);
           if (!matched || matchedTypes.has(item.type)) return false;
           matchedTypes.add(item.type);
           return true;
@@ -20862,7 +20960,10 @@
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
               <li><b>ドラッグ配置</b>: パレットから用紙へドラッグ＆ドロップ</li>
               <li><b>連続配置</b>: 部品をクリック→用紙をクリックするたびに配置。<b>Esc</b>で終了</li>
-              <li><b>検索して配置</b>: 部品検索に入力→<b>Enter</b>で先頭候補が配置モードに</li>
+              <li><b>検索して配置</b>: 部品検索に入力→<b>Enter</b>で先頭候補が配置モードに。
+                検索は<b>パレットの表示名だけでなく、別の呼び方・部品タグ接頭辞・JIS図記号番号</b>にも当たります
+                （例: <b>電磁接触器</b>は「コンタクタ」「マグネットスイッチ」「電磁開閉器」「MC」「07-13-02」のどれでも出ます。
+                ほかにも「ブレーカ」「NFB」→遮断器、「セレクタ」→切替スイッチ、「アース」→接地、「サーマル」→サーマルリレーなど）</li>
               <li><b>最近使用</b>: パレット先頭に直近6件が自動で並ぶ。タイル右上の<b>☆</b>クリックで<b>お気に入り（先頭固定）</b>へ追加/解除</li>
               <li>配置時は<b>接続ピンがグリッド・行に自動で一致</b>。配線上に置くと線が自動分割されて割り込む</li>
               <li><b>移動（ドラッグ）でも接続ピンがグリッドへ乗り直します</b>。ズレた部品は動かすだけで揃い、近くに他の接続点があれば<b>外接矩形の角より接続点を優先</b>して吸着します。<b>複製（Ctrl+D）・貼り付け（Ctrl+V）は5mm</b>（グリッドの倍数）ずらすので、コピーした部品もグリッド上に残ります</li>
