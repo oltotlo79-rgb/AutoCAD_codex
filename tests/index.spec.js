@@ -5038,3 +5038,70 @@ test("部品検索は表示名だけでなく別名・タグ接頭辞・JIS図�
     return { exists: Boolean(item), group: (item?.closest("details")?.querySelector("summary")?.textContent || "").trim() };
   })).toEqual({ exists: true, group: expect.stringContaining("接点・スイッチ") });
 });
+
+test("回転機は3相＋接地の4接続点と、2相＋接地の3接続点を選べる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const read = variant => {
+      const element = api.defaultElement("motor", 20, 20);
+      element.symbolVariant = variant;
+      const prims = api.geoPrims(element);
+      const body = prims.find(prim => prim.t === "circle" && prim.p[2] > 2);
+      return {
+        variant,
+        w: element.w,
+        h: element.h,
+        body: body && body.p,
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
+        // 端子の小円(本体円以外)と引出線
+        terminals: prims.filter(prim => prim.t === "circle" && prim.p[2] < 2).map(prim => prim.p),
+        leads: prims.filter(prim => prim.t === "line").map(prim => prim.p)
+      };
+    };
+    return { options: api.SYMBOL_VARIANT_OPTIONS.motor.map(([value]) => value), three: read("standard"), two: read("twoPhase") };
+  });
+
+  expect(result.options).toEqual(["standard", "twoPhase"]);
+
+  // 接続点の比較(要素座標を引いた残差の丸め誤差を吸収する)
+  const sameAnchors = (actual, expected, label) => {
+    expect(actual.length, label).toBe(expected.length);
+    actual.forEach((anchor, index) => {
+      expect(anchor[0], label + "[" + index + "].x").toBeCloseTo(expected[index][0], 6);
+      expect(anchor[1], label + "[" + index + "].y").toBeCloseTo(expected[index][1], 6);
+    });
+  };
+
+  // 3相＋接地は従来どおり4接続点
+  sameAnchors(result.three.anchors, [[0.9, 3], [0.9, 8], [0.9, 13], [13.4, 15.5]], "3相");
+
+  // 2相＋接地は3接続点。外形と本体円は3相形と共通
+  expect(result.two.w).toBe(result.three.w);
+  expect(result.two.h).toBe(result.three.h);
+  result.two.body.forEach((value, index) => expect(value).toBeCloseTo(result.three.body[index], 6));
+  sameAnchors(result.two.anchors, [[0.9, 5.5], [0.9, 10.5], [13.4, 15.5]], "2相");
+  expect(result.two.terminals).toHaveLength(3);
+  expect(result.two.leads).toHaveLength(3);
+
+  // 相端子2個は本体円の縦中心について対称で、ピッチは3相形と同じ5mm
+  const [phaseA, phaseB, earth] = result.two.anchors;
+  expect(phaseB[1] - phaseA[1]).toBeCloseTo(5, 6);
+  expect((phaseA[1] + phaseB[1]) / 2).toBeCloseTo(result.two.body[1], 6);
+  // 接地端子は3相形と同じ位置(本体円の右下)
+  expect(earth[0]).toBeCloseTo(result.three.anchors[3][0], 6);
+  expect(earth[1]).toBeCloseTo(result.three.anchors[3][1], 6);
+
+  // 接続ピン間隔はすべて2.5mmグリッドの倍数
+  for (const anchor of result.two.anchors) {
+    expect(Math.round(Math.abs(anchor[0] - phaseA[0]) * 1000) % 2500).toBe(0);
+    expect(Math.round(Math.abs(anchor[1] - phaseA[1]) * 1000) % 2500).toBe(0);
+  }
+
+  // 引出線は端子円の外周から本体円の外周まで(3相形と同じ規約)
+  const [cx, cy, r] = result.two.body;
+  const dist = (x, y) => Math.hypot(x - cx, y - cy);
+  for (const lead of result.two.leads) {
+    const inner = dist(lead[0], lead[1]) < dist(lead[2], lead[3]) ? [lead[0], lead[1]] : [lead[2], lead[3]];
+    expect(dist(inner[0], inner[1])).toBeCloseTo(r, 1);
+  }
+});
