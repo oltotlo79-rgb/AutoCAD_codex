@@ -1578,6 +1578,7 @@
         { type: "contactNC", label: "b接点", icon: "contactNC" },
         { type: "timerContactNO", label: "限時a接点", icon: "contactNO" },
         { type: "timerContactNC", label: "限時b接点", icon: "contactNC" },
+        { type: "contactor", label: "電磁接触器", icon: "contactor" },
         { type: "contactBlock", label: "接点ブロック", icon: "contactBlock" },
         { type: "pushButton", label: "押しボタン", icon: "pushButton" },
         { type: "pushButtonEmergency", label: "非常停止ボタン", icon: "pushButton" },
@@ -1641,6 +1642,7 @@
       const DEFAULT_TAG_PREFIXES = {
         contactNO: "CR",
         contactNC: "CR",
+        contactor: "MC",
         contactBlock: "CR",
         pushButton: "PB",
         selectorSwitch: "SS",
@@ -1715,7 +1717,7 @@
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
         arc: "basic", ellipse: "basic", ellipseArc: "basic", polygon: "basic",
-        contactNO: "contact", contactNC: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact", flowSwitch: "contact", footSwitch: "contact", photoelectricSwitch: "contact", matSwitch: "contact", reedSwitch: "contact", lightCurtain: "contact",
+        contactNO: "contact", contactNC: "contact", contactor: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact", flowSwitch: "contact", footSwitch: "contact", photoelectricSwitch: "contact", matSwitch: "contact", reedSwitch: "contact", lightCurtain: "contact",
         coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil",
         disconnector: "power", outlet: "power",
         powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power", inductor: "power", heater: "power", battery: "power", rectifierBox: "power", arrester: "power", currentTransformer: "power",
@@ -3854,6 +3856,7 @@
           sheet: `<svg ${common}><path ${thin} d="M12 34h56M20 12v22M34 12v22M48 12v22M62 12v22"/><path ${stroke} d="M12 12h56"/></svg>`,
           contactNO: `<svg ${common}><path ${stroke} d="M8 22h24M48 22h24"/><rect x="32" y="9" width="5" height="26" ${thin}/><rect x="43" y="9" width="5" height="26" ${thin}/></svg>`,
           contactNC: `<svg ${common}><path ${stroke} d="M8 22h24M48 22h24"/><rect x="32" y="9" width="5" height="26" ${thin}/><rect x="43" y="9" width="5" height="26" ${thin}/><path ${stroke} d="M30 37L52 6"/></svg>`,
+          contactor: `<svg ${common}><path ${stroke} d="M8 30h22M50 30h22"/><path ${stroke} d="M30 30L52 16"/><path ${thin} fill="none" d="M50 30a6 6 0 0 1 12 0"/></svg>`,
           contactBlock: `<svg ${common}><rect x="14" y="6" width="52" height="32" ${thin}/><path ${stroke} d="M18 22h14M48 22h14"/><rect x="34" y="12" width="4" height="20" ${thin}/><rect x="42" y="12" width="4" height="20" ${thin}/></svg>`,
           pushButton: `<svg ${common}><path ${stroke} d="M8 28h16M56 28h16"/><circle cx="30" cy="28" r="4" ${thin}/><circle cx="50" cy="28" r="4" ${thin}/><path ${stroke} d="M24 18h32M40 18v-8M32 10h16"/></svg>`,
           selectorSwitch: `<svg ${common}><path ${stroke} d="M8 28h16M56 28h16"/><circle cx="30" cy="28" r="4" ${thin}/><circle cx="50" cy="28" r="4" ${thin}/><path ${thin} d="M30 22v-8h8M50 22v-8h-8"/></svg>`,
@@ -6480,7 +6483,7 @@
 
       // クロス参照で「子(接点)」として扱う種別集合。
       function contactChildTypes() {
-        return new Set(["contactNO", "contactNC", "timerContactNO", "timerContactNC", "contactBlock", "thermalRelay"]);
+        return new Set(["contactNO", "contactNC", "contactor", "timerContactNO", "timerContactNC", "contactBlock", "thermalRelay"]);
       }
 
       // サーマルリレー接点のうちa接点(NO)扱いのデザイン。クロス参照の開閉判定に使う。
@@ -6503,7 +6506,7 @@
                 page,
                 element,
                 address: elementAddress(page, element),
-                closed: element.type === "contactNC" || element.type === "timerContactNC" || (element.type === "thermalRelay" && !THERMAL_RELAY_NO_VARIANTS.has(element.symbolVariant || "standard")) || element.blockContact === "NC"
+                closed: element.type === "contactNC" || element.type === "timerContactNC" || (element.type === "thermalRelay" && !THERMAL_RELAY_NO_VARIANTS.has(element.symbolVariant || "standard")) || (element.type === "contactor" && element.symbolVariant === "nc") || element.blockContact === "NC"
               });
               contacts.set(tag, list);
             }
@@ -6608,6 +6611,24 @@
             { t: "line", p: [6.1, 2.2, 10, 2.2] },
             { t: "line", p: [3.9, 2.2, 6.4, 0.6] },
             { t: "arc", p: [6.8, 2.2, 0.7, 180, 360] },
+            { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
+            { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
+            { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
+          ]
+        },
+        // 電磁接触器のブレーク接点(JIS C 0617-7, 07-13-02系): ブレーク接点(07-02-03)へ
+        // 接触器機能の限定図記号(半円)を重ねる。半円の弦・半径・位置はメーク接点版と同一で、
+        // 止め棒(固定接点の先端に導線と直交する短い線)が加わるところだけが違う。
+        // 寸法・接続点はa接点版と共通なので、切り替えても配線はずれない。
+        contactorNC: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.9, 2.2] },
+            { t: "line", p: [6.1, 2.2, 10, 2.2] },
+            { t: "line", p: [6.1, 0.7, 6.1, 2.2] },
+            { t: "line", p: [3.9, 2.2, 6.6, 0.5] },
+            { t: "arc", p: [7.0, 2.2, 0.7, 180, 360] },
             { t: "text", p: [5, -1.8], size: 2, anchor: "middle", field: "label" },
             { t: "text", p: [5, -4.0], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [5, 6.2], size: 1.7, anchor: "middle", field: "refNo" }
@@ -7202,26 +7223,9 @@
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 見本PDFの切替スイッチ＋「切」線表示＋「入」箱表示を一体化した配置用シンボル。
-        // 電気接続ピンは左側10mm区間のスイッチ本体に保持し、右側表示は注記として描く。
-        selectorSwitchOnOff: {
-          w: 30, h: 8,
-          anchors: [[0, 3.2], [10, 3.2]],
-          prims: [
-            { t: "line", p: [0, 3.2, 2.4, 3.2] },
-            { t: "line", p: [7.05, 3.2, 10, 3.2] },
-            { t: "circle", p: [3.0, 3.2, 0.6], fill: "white" },
-            { t: "circle", p: [6.45, 3.2, 0.6], fill: "white" },
-            { t: "pline", pts: [[3.6, 3.2], [4.2, 3.2], [4.2, 1.95]] },
-            { t: "pline", pts: [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]] },
-            { t: "line", p: [17, 0.2, 17, 6.2] },
-            { t: "text", p: [17, -1.2], size: 2, anchor: "middle", value: "切" },
-            { t: "rect", p: [26, 2.1, 2, 2.2] },
-            { t: "line", p: [27, 0.2, 27, 6.2] },
-            { t: "text", p: [27, -1.2], size: 2, anchor: "middle", value: "入" },
-            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
-          ]
-        },
+        // (旧 selectorSwitchOnOff は削除。見本PDF固有の入切表示付き切替スイッチで、
+        //  geoKeyForから参照されない死んだ定義だった。操作位置表示つきの切替スイッチは
+        //  selectorSwitchJisOnOff / …NcOnOff / selectorSwitch3OnOff / selectorSwitchKeyOnOff が引き継ぐ。)
         limitSwitch: {
           w: 10, h: 4.6,
           anchors: [[0, 2.8], [10, 2.8]],
@@ -7870,6 +7874,30 @@
             { t: "pline", pts: [[3.6, 3.2], [4.2, 3.2], [4.2, 1.95]] },
             { t: "pline", pts: [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]] },
             { t: "line", p: [4.675, 0.7, 4.675, 1.55] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 切替スイッチ(3位置)+操作位置表示(入1・切・入2)。中央が「切」、左右の入位置で接点が
+        // 閉じるので、入1と入2の位置線へ接点行を囲む長方形を重ねる。
+        selectorSwitch3OnOff: {
+          w: 40, h: 5,
+          anchors: [[0, 3.2], [10, 3.2]],
+          prims: [
+            { t: "line", p: [0, 3.2, 2.4, 3.2] },
+            { t: "line", p: [7.05, 3.2, 10, 3.2] },
+            { t: "circle", p: [3.0, 3.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.45, 3.2, 0.6], fill: "white" },
+            { t: "pline", pts: [[3.6, 3.2], [4.2, 3.2], [4.2, 1.95]] },
+            { t: "pline", pts: [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]] },
+            { t: "line", p: [4.675, 0.7, 4.675, 1.55] },
+            { t: "rect", p: [16.5, 2.1, 2, 2.2] },
+            { t: "line", p: [17.5, 0.2, 17.5, 4.8] },
+            { t: "text", p: [17.5, -1.2], size: 2, anchor: "middle", value: "入1" },
+            { t: "line", p: [27.5, 0.2, 27.5, 4.8] },
+            { t: "text", p: [27.5, -1.2], size: 2, anchor: "middle", value: "切" },
+            { t: "rect", p: [36.5, 2.1, 2, 2.2] },
+            { t: "line", p: [37.5, 0.2, 37.5, 4.8] },
+            { t: "text", p: [37.5, -1.2], size: 2, anchor: "middle", value: "入2" },
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8762,7 +8790,18 @@
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 切替スイッチ・JIS C 0617(IEC)形: 斜め可動線+回転操作記号(鉤形レバー+破線連動)。
+        // ---- 切替スイッチ(JIS C 0617形)と操作位置表示 ----
+        // 回転操作の作動装置(02-13-04)は「棒の両端を反対向きへ折ったS/Z形のクランク」。
+        // 規格図の実測比(棒19px:脚10px)に合わせ、棒1.6mm・脚0.8mmで描く。左脚は連動破線と
+        // 同じ側(下)、右脚は反対側(上)へ折る。旧版は片側だけのL形で規格の形になっていなかった。
+        // 記号全長10mmに対する棒の比(16%)も規格図(20/116=17%)とほぼ一致する。
+        // 連動はJISどおり破線(機械的連結)で可動接点の中ほどへ落とす。
+        //
+        // 操作位置表示(見本PDF様式・末尾がOnOffの定義)は、位置ごとの縦線(10mm間隔)に名称を添え、
+        // その位置で閉じる接点には接点行を囲む小さな長方形を重ねる。表示なしの版と接続ピン
+        // (左10mm区間の[0,3.2]/[10,3.2])は共通なので、表示あり/なしを切り替えても配線はずれない。
+        //
+        // 切替スイッチ・JIS C 0617形 2位置a接点: メーク接点(07-02-01)+回転操作(02-13-04)。
         selectorSwitchJis: {
           w: 10, h: 5,
           anchors: [[0, 3.2], [10, 3.2]],
@@ -8770,8 +8809,60 @@
             { t: "line", p: [0, 3.2, 3.9, 3.2] },
             { t: "line", p: [6.1, 3.2, 10, 3.2] },
             { t: "line", p: [3.9, 3.2, 6.4, 1.6] },
-            { t: "pline", pts: [[4.2, 0.3], [5, 0.3], [5, 0.9]] },
-            { t: "line", p: [5, 0.9, 5, 2.4], dash: "1.2 1.4" },
+            { t: "pline", pts: [[4.0, 1.5], [4.0, 0.5], [6.0, 0.5], [6.0, -0.5]] },
+            { t: "line", p: [5, 0.5, 5, 2.5], dash: "0.8 0.6" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 切替スイッチ・JIS C 0617形 2位置b接点: ブレーク接点(07-02-03=固定接点の先端に導線と
+        // 直交する止め棒、可動線は止めに当たって閉じる)+回転操作(02-13-04)。接点部の寸法は
+        // contactNCIecと同一形(接点行だけy=3.2へ下げたもの)。
+        selectorSwitchJisNc: {
+          w: 10, h: 5,
+          anchors: [[0, 3.2], [10, 3.2]],
+          prims: [
+            { t: "line", p: [0, 3.2, 3.9, 3.2] },
+            { t: "line", p: [6.1, 3.2, 10, 3.2] },
+            { t: "line", p: [6.1, 1.7, 6.1, 3.2] },
+            { t: "line", p: [3.9, 3.2, 6.6, 1.5] },
+            { t: "pline", pts: [[4.0, 1.5], [4.0, 0.5], [6.0, 0.5], [6.0, -0.5]] },
+            { t: "line", p: [5, 0.5, 5, 2.5], dash: "0.8 0.6" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 上記2種の操作位置表示つき(切・入)。
+        selectorSwitchJisOnOff: {
+          w: 30, h: 5,
+          anchors: [[0, 3.2], [10, 3.2]],
+          prims: [
+            { t: "line", p: [0, 3.2, 3.9, 3.2] },
+            { t: "line", p: [6.1, 3.2, 10, 3.2] },
+            { t: "line", p: [3.9, 3.2, 6.4, 1.6] },
+            { t: "pline", pts: [[4.0, 1.5], [4.0, 0.5], [6.0, 0.5], [6.0, -0.5]] },
+            { t: "line", p: [5, 0.5, 5, 2.5], dash: "0.8 0.6" },
+            { t: "line", p: [17.5, 0.2, 17.5, 4.8] },
+            { t: "text", p: [17.5, -1.2], size: 2, anchor: "middle", value: "切" },
+            { t: "rect", p: [26.5, 2.1, 2, 2.2] },
+            { t: "line", p: [27.5, 0.2, 27.5, 4.8] },
+            { t: "text", p: [27.5, -1.2], size: 2, anchor: "middle", value: "入" },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        selectorSwitchJisNcOnOff: {
+          w: 30, h: 5,
+          anchors: [[0, 3.2], [10, 3.2]],
+          prims: [
+            { t: "line", p: [0, 3.2, 3.9, 3.2] },
+            { t: "line", p: [6.1, 3.2, 10, 3.2] },
+            { t: "line", p: [6.1, 1.7, 6.1, 3.2] },
+            { t: "line", p: [3.9, 3.2, 6.6, 1.5] },
+            { t: "pline", pts: [[4.0, 1.5], [4.0, 0.5], [6.0, 0.5], [6.0, -0.5]] },
+            { t: "line", p: [5, 0.5, 5, 2.5], dash: "0.8 0.6" },
+            { t: "rect", p: [16.5, 2.1, 2, 2.2] },
+            { t: "line", p: [17.5, 0.2, 17.5, 4.8] },
+            { t: "text", p: [17.5, -1.2], size: 2, anchor: "middle", value: "切" },
+            { t: "line", p: [27.5, 0.2, 27.5, 4.8] },
+            { t: "text", p: [27.5, -1.2], size: 2, anchor: "middle", value: "入" },
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -8788,6 +8879,27 @@
             { t: "pline", pts: [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]] },
             { t: "circle", p: [4.675, 0.75, 0.6] },
             { t: "line", p: [4.675, 1.35, 4.675, 1.6] },
+            { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
+        // 切替スイッチ(鍵付き)+操作位置表示(切・入)。
+        selectorSwitchKeyOnOff: {
+          w: 30, h: 5,
+          anchors: [[0, 3.2], [10, 3.2]],
+          prims: [
+            { t: "line", p: [0, 3.2, 2.4, 3.2] },
+            { t: "line", p: [7.05, 3.2, 10, 3.2] },
+            { t: "circle", p: [3.0, 3.2, 0.6], fill: "white" },
+            { t: "circle", p: [6.45, 3.2, 0.6], fill: "white" },
+            { t: "pline", pts: [[3.6, 3.2], [4.2, 3.2], [4.2, 1.95]] },
+            { t: "pline", pts: [[5.15, 1.95], [5.15, 3.2], [5.85, 3.2]] },
+            { t: "circle", p: [4.675, 0.75, 0.6] },
+            { t: "line", p: [4.675, 1.35, 4.675, 1.6] },
+            { t: "line", p: [17.5, 0.2, 17.5, 4.8] },
+            { t: "text", p: [17.5, -1.2], size: 2, anchor: "middle", value: "切" },
+            { t: "rect", p: [26.5, 2.1, 2, 2.2] },
+            { t: "line", p: [27.5, 0.2, 27.5, 4.8] },
+            { t: "text", p: [27.5, -1.2], size: 2, anchor: "middle", value: "入" },
             { t: "text", p: [5, -1.2], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -9817,14 +9929,16 @@
             { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
-        // 作動装置・回転操作(JIS C 0617-2, 02-13-04): 左端を上・右端を下へ折ったクランク(Z形)。
-        // 旧版は横棒+半円ドームで、非常操作(02-13-08)のキノコと紛らわしかったので規格形へ直した。
+        // 作動装置・回転操作(JIS C 0617-2, 02-13-04): 棒の両端を反対向きへ折ったクランク(S/Z形)。
+        // 規格図(59x21px)の実測比は「棒19px:折れ脚10px = 1:0.5」で、折れは片側ではなく必ず両端に付く。
+        // ここでは棒5.0mm・脚2.5mmとし、操作軸側(左)へ下向き・反対側(右)へ上向きに折る。
+        // 旧版は脚が1.2mmしかなく、Sの形に見えなかったので規格比へ是正した。
         operatorRotate: {
           w: 8, h: 8,
           anchors: [[4, 8]],
           prims: [
-            { t: "pline", pts: [[1.5, 0.2], [1.5, 1.4], [6.5, 1.4], [6.5, 2.6]] },
-            { t: "line", p: [4, 1.4, 4, 8] },
+            { t: "pline", pts: [[1.5, 5.0], [1.5, 2.5], [6.5, 2.5], [6.5, 0.0]] },
+            { t: "line", p: [4, 2.5, 4, 8] },
             { t: "text", p: [4, -1.0], size: 2, anchor: "middle", field: "label" }
           ]
         },
@@ -10127,10 +10241,17 @@
             return "pushButton";
           case "selectorSwitch": {
             if (variant === "three") return "selectorSwitch3";
+            if (variant === "threeOnOff") return "selectorSwitch3OnOff";
             if (variant === "key") return "selectorSwitchKey";
+            if (variant === "keyOnOff") return "selectorSwitchKeyOnOff";
+            if (variant === "jisNc") return "selectorSwitchJisNc";
+            if (variant === "jisOnOff") return "selectorSwitchJisOnOff";
+            if (variant === "jisNcOnOff") return "selectorSwitchJisNcOnOff";
             if (variant === "jis") return "selectorSwitchJis";
             return "selectorSwitch";
           }
+          // 電磁接触器(JIS 07-13-02「電磁接触器、電磁接触器の主メーク接点」)。
+          case "contactor": return variant === "nc" ? "contactorNC" : "contactNOContactor";
           case "flowSwitch": return variant === "nc" ? "flowSwitchNC" : "flowSwitch";
           case "footSwitch": return variant === "nc" ? "footSwitchNC" : "footSwitch";
           case "logicGate": {
@@ -11453,7 +11574,8 @@
         thermalRelay: [["standard", "○✕○（旧JIS・一般形）"], ["box", "箱形（一般形・内部⊓）"], ["iecNc", "b接点＋熱動素子（JIS 07-02-03・斜め線）"], ["iecNo", "a接点＋熱動素子（JIS 07-02-01・斜め線）"], ["jisNc", "b接点＋熱動素子（旧JIS・円端子）"], ["jisNo", "a接点＋熱動素子（旧JIS・円端子）"], ["barNc", "b接点＋熱動素子（旧JIS・縦バー）"], ["barNo", "a接点＋熱動素子（旧JIS・縦バー）"], ["changeover", "切替接点（1c・1入2出）"], ["xOnly", "✕のみ（一般形）"]],
         inductor: [["standard", "コイル（JIS 04-03-01・コブ3個）"], ["core", "磁心入りインダクタ（JIS 04-03-03・磁心線1本）"], ["gapCore", "気隙入りインダクタ（JIS 04-03-04）"], ["reactor", "リアクトル（JIS 06-09-08・円形）"], ["coreOld", "鉄心入りリアクトル（旧JIS・2本線）"], ["box", "リアクトル（IEC・箱形）"]],
         currentTransformer: [["standard", "変流器（JIS 06-09-10・円）"], ["zct", "零相変流器（実務形・二重円）"], ["coil", "変流器（旧JIS・貫通線＋コブ2）"]],
-        selectorSwitch: [["jis", "2位置（JIS 02-13-04・回転操作）"], ["three", "3位置（一般形）"], ["key", "鍵付き（一般形）"]],
+        selectorSwitch: [["jis", "2位置・a接点（JIS 02-13-04・回転操作）"], ["jisNc", "2位置・b接点（JIS 02-13-04・回転操作）"], ["jisOnOff", "2位置・a接点＋操作位置表示（JIS 02-13-04・切／入）"], ["jisNcOnOff", "2位置・b接点＋操作位置表示（JIS 02-13-04・切／入）"], ["three", "3位置（一般形）"], ["threeOnOff", "3位置＋操作位置表示（一般形・入1／切／入2）"], ["key", "鍵付き（一般形）"], ["keyOnOff", "鍵付き＋操作位置表示（一般形・切／入）"]],
+        contactor: [["standard", "電磁接触器の主メーク接点（JIS 07-13-02・半円）"], ["nc", "電磁接触器のブレーク接点（JIS 07-13-02系・半円＋止め）"]],
         logicGate: [["and", "AND（&）"], ["or", "OR（≥1）"], ["not", "NOT（1＋否定丸）"], ["nand", "NAND（&＋否定丸）"], ["nor", "NOR（≥1＋否定丸）"], ["xor", "XOR（=1）"]],
         limitSwitch: [["standard", "箱形アクチュエータ・a接点（一般形）"], ["nc", "箱形アクチュエータ・b接点（一般形・下側）"], ["jisNo", "位置スイッチ・メーク接点（JIS 07-08-01）"], ["jisNc", "位置スイッチ・ブレーク接点（JIS 07-08-02）"], ["roller", "ローラーレバー・a接点（一般形）"], ["rollerNc", "ローラーレバー・b接点（一般形）"]],
         transformer: [["circles", "2巻き変圧器・円形（JIS 06-09-01）"], ["circlesCore", "2巻き変圧器・円形＋磁心（JIS 06-09-01）"], ["circlesShielded", "遮蔽変圧器・円形（JIS 06-10-01）"], ["coils", "2巻き変圧器・巻線形（JIS 06-09-02）"], ["coilsCore", "2巻き変圧器・巻線形＋磁心（JIS 06-09-02）"], ["coilsShielded", "遮蔽変圧器・巻線形（JIS 06-10-02）"], ["circles3", "3巻き変圧器・円形（JIS 06-09-04）"], ["coils3", "3巻き変圧器・巻線形（JIS 06-09-05）"], ["instrument", "計器用変圧器（JIS 06-13-01・円形）"]],
@@ -11794,7 +11916,7 @@
             <label><input data-bind="arrowAtStart" type="checkbox" ${element.arrowAtStart ? "checked" : ""} style="width:auto;min-height:auto"> 始点側にも矢印</label>
           `;
         }
-        if (["contactNO", "contactNC", "pushButton"].includes(element.type)) {
+        if (["contactNO", "contactNC", "contactor", "pushButton"].includes(element.type)) {
           const orientation = element.orientation || "horizontal";
           const pbStyle = element.pbStyle || "momentary";
           return `
@@ -12360,7 +12482,7 @@
           }
           if (["orientation", "count", "stripStyle", "levels", "comTerminal", "cardMode", "zeroVTerminal"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element);
           if (key === "orientation" && element.type === "terminal" && !resizeGeoElementForOrientation(element)) resizeSingleTerminalForOrientation(element);
-          if (key === "orientation" && ["contactNO", "contactNC", "pushButton", "selectorSwitch", "limitSwitch", "pressureSwitch", "thermalRelay", "thermalElement", "contactBlock"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeContactElementForOrientation(element);
+          if (key === "orientation" && ["contactNO", "contactNC", "contactor", "pushButton", "selectorSwitch", "limitSwitch", "pressureSwitch", "thermalRelay", "thermalElement", "contactBlock"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeContactElementForOrientation(element);
           if (key === "orientation" && ["fuse", "breaker", "resistor"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
           if (["pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "buzzerVariant", "terminalShape", "connStyle", "blockContact", "symbolVariant", "contactGap"].includes(key)) {
             if (!resizeGeoElementForOrientation(element)) {
@@ -12512,6 +12634,7 @@
           terminalStrip: { ...base, w: 10, h: 161.5, count: 16, start: 1, prefix: "", orientation: "vertical", terminalShape: "circle", stripStyle: "unit", label: "TB1", jumpers: "", terminalMarkLeft: true, comTerminal: "auto" },
           contactNO: { ...base, w: 10, h: 4.4, label: "NO", orientation: "horizontal", refNo: "" },
           contactNC: { ...base, w: 10, h: 4.4, label: "NC", orientation: "horizontal", refNo: "" },
+          contactor: { ...base, w: 10, h: 4.4, label: "MC", orientation: "horizontal", symbolVariant: "standard", refNo: "" },
           contactBlock: { ...base, w: 15, h: 8, label: "CR", orientation: "horizontal", blockContact: "NO", blockFrame: "solid", refNo: "" },
           pushButton: { ...base, w: 10, h: 5, label: "PB", orientation: "horizontal", pbStyle: "momentary" },
           selectorSwitch: { ...base, w: 10, h: 5, label: "SS", orientation: "horizontal", symbolVariant: "jis" },
@@ -12857,7 +12980,7 @@
           }
           return anchors;
         }
-        if (["contactNO", "contactNC", "contactBlock", "pushButton", "selectorSwitch", "limitSwitch"].includes(element.type)) {
+        if (["contactNO", "contactNC", "contactor", "contactBlock", "pushButton", "selectorSwitch", "limitSwitch"].includes(element.type)) {
           if (element.orientation === "vertical") {
             add(w / 2, 0);
             add(w / 2, h);
@@ -13023,6 +13146,7 @@
           "generator",
           "contactNO",
           "contactNC",
+          "contactor",
           "timerContactNO",
           "timerContactNC",
           "contactBlock",
@@ -13082,6 +13206,7 @@
           "generator",
           "contactNO",
           "contactNC",
+          "contactor",
           "timerContactNO",
           "timerContactNC",
           "contactBlock",
@@ -20777,6 +20902,12 @@
             <b>負荷開閉器（07-13-08）</b>の限定図記号は半円ではなく<b>小円</b>で、断路の止め棒は付かない形へ是正しました。
             <b>遮断器（07-13-05）</b>の✕は可動線のちょうつがい側ではなく<b>反対側の固定接点の先端</b>が正しい位置なので直し、
             <b>電磁接触器の主メーク接点（07-13-02）</b>の半円も固定側リードに載せて膨らみが接点の開く側を向く形にしました。
+            <b>電磁接触器（07-13-02）はパレットの独立部品</b>になりました（既定タグ<b>MC</b>）。デザインは
+            <b>主メーク接点（半円）</b>と<b>ブレーク接点（半円＋止め棒）</b>の2種で、寸法・接続ピン（左右10mm）は接点部品と共通です。
+            <b>切替スイッチ</b>は回転操作の作動装置（<b>02-13-04</b>）を規格どおり<b>棒の両端を反対向きへ折ったS字のクランク</b>へ是正し
+            （従来は片側だけのL形でした）、<b>b接点</b>のデザインを追加しました。あわせて<b>2位置・3位置・鍵付きのそれぞれに
+            「切／入」の操作位置表示つき</b>のデザインを用意しています（位置線の名称と、その位置で閉じる接点を示す枠）。
+            表示あり／なしで<b>接続ピンは同じ</b>なので、切り替えても配線はずれません。
             光電・マット・リードスイッチは他の接点部品と揃うサイズ（幅15mm前後）で配置されます。
             光電/マット/リード/ライトカーテン/センサ/ソレノイド弁/電源も、選択して右パネルの「シンボルデザイン」から様式を切り替えられます。
             デザイン名は<b>「名称（出典・形の特徴）」</b>で統一しています。出典は<b>JIS番号</b>（例: JIS 07-13-05）、
@@ -22059,7 +22190,7 @@
                 issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "線番が未入力です。", target: element.id });
               }
             }
-            if (auditRuleOn("emptyLabel") && ["contactNO", "contactNC", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "transformer", "ground", "motor", "fan", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
+            if (auditRuleOn("emptyLabel") && ["contactNO", "contactNC", "contactor", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "transformer", "ground", "motor", "fan", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
               issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "ラベルが未入力です。", target: element.type });
             }
             // 信号矢印はlabelがページ間参照名であり、部品タグの採番対象ではない。

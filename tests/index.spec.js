@@ -4742,3 +4742,130 @@ test("変換器の限定図記号は対角線の入力側(左上)と出力側(�
     expect([...new Set(output.map(mark => mark.kind))], row.key).toEqual([expected[row.key][1]]);
   }
 });
+
+test("電磁接触器(JIS 07-13-02)はa接点/b接点とも接触器機能の半円を固定接点側へ持つ", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const read = variant => {
+      const element = api.defaultElement("contactor", 20, 20);
+      element.symbolVariant = variant;
+      const prims = api.geoPrims(element);
+      return {
+        variant,
+        w: element.w,
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
+        arcs: prims.filter(prim => prim.t === "arc").map(prim => prim.p.map(v => v - 0)),
+        // 導線(y=2.2)から上へ立ち上がる止め棒(縦線)
+        stops: prims.filter(prim => prim.t === "line" && Math.abs(prim.p[0] - prim.p[2]) < 0.001).map(prim => prim.p),
+        texts: prims.filter(prim => prim.t === "text").length
+      };
+    };
+    return {
+      options: api.SYMBOL_VARIANT_OPTIONS.contactor.map(([value]) => value),
+      no: read("standard"),
+      nc: read("nc")
+    };
+  });
+
+  expect(result.options).toEqual(["standard", "nc"]);
+  for (const row of [result.no, result.nc]) {
+    // 接続ピンは接点部品と同じ左右10mm
+    expect(row.anchors.map(a => a[0]), row.variant).toEqual([0, 10]);
+    row.anchors.forEach(a => expect(a[1], row.variant).toBeCloseTo(2.2, 6));
+    // 接触器機能の限定図記号は半円1個(上ふくらみ=可動接点の開く側)
+    expect(row.arcs.length, row.variant).toBe(1);
+    expect(row.arcs[0][2], row.variant).toBeCloseTo(0.7, 6);
+    expect(row.arcs[0][3], row.variant).toBe(180);
+    expect(row.arcs[0][4], row.variant).toBe(360);
+    // 半円は固定接点(右リード)側に載る
+    expect(row.arcs[0][0], row.variant).toBeGreaterThan(6.1);
+  }
+  // a接点には止め棒が付かず、b接点(ブレーク接点07-02-03)には固定接点の先端に止め棒が1本付く
+  expect(result.no.stops).toHaveLength(0);
+  expect(result.nc.stops).toHaveLength(1);
+  expect(result.nc.stops[0][0]).toBeCloseTo(6.1, 6);
+});
+
+test("切替スイッチの回転操作(JIS 02-13-04)は棒の両端が逆向きに折れ、a/b接点と操作位置表示が揃う", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    // クランク(S/Z形)を [左脚, 折れ点, 折れ点, 右脚] の4点ポリラインとして取り出す。
+    const crankOf = key => (api.SYMBOL_GEO[key].prims.find(prim => prim.t === "pline" && prim.pts.length === 4) || {}).pts || null;
+    const readVariant = (variant, geoKey) => {
+      const element = api.defaultElement("selectorSwitch", 20, 20);
+      element.symbolVariant = variant;
+      const geo = api.SYMBOL_GEO[geoKey];
+      element.w = geo.w;
+      element.h = geo.h;
+      const prims = api.geoPrims(element);
+      return {
+        variant,
+        w: element.w,
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
+        fixedTexts: prims.filter(prim => prim.t === "text" && prim.value).map(prim => prim.value),
+        boxes: prims.filter(prim => prim.t === "rect").length,
+        dashed: prims.filter(prim => prim.dash).length
+      };
+    };
+    return {
+      options: api.SYMBOL_VARIANT_OPTIONS.selectorSwitch.map(([value]) => value),
+      switchCrank: crankOf("selectorSwitchJis"),
+      ncCrank: crankOf("selectorSwitchJisNc"),
+      markCrank: crankOf("operatorRotate"),
+      variants: [
+        readVariant("jis", "selectorSwitchJis"),
+        readVariant("jisNc", "selectorSwitchJisNc"),
+        readVariant("jisOnOff", "selectorSwitchJisOnOff"),
+        readVariant("jisNcOnOff", "selectorSwitchJisNcOnOff"),
+        readVariant("three", "selectorSwitch3"),
+        readVariant("threeOnOff", "selectorSwitch3OnOff"),
+        readVariant("key", "selectorSwitchKey"),
+        readVariant("keyOnOff", "selectorSwitchKeyOnOff")
+      ]
+    };
+  });
+
+  expect(result.options).toEqual(["jis", "jisNc", "jisOnOff", "jisNcOnOff", "three", "threeOnOff", "key", "keyOnOff"]);
+
+  // 回転操作の作動装置は「横棒＋両端を反対向きへ折った脚」。片側だけのL形ではない。
+  for (const [name, crank] of [["selectorSwitchJis", result.switchCrank], ["selectorSwitchJisNc", result.ncCrank], ["operatorRotate", result.markCrank]]) {
+    expect(crank, name).not.toBeNull();
+    const [a, b, c, d] = crank;
+    // 中央2点が水平な棒
+    expect(b[1], name).toBeCloseTo(c[1], 6);
+    expect(c[0] - b[0], name).toBeGreaterThan(0);
+    // 左脚と右脚は棒に対して垂直で、向きが逆(片方が下・片方が上)
+    expect(a[0], name).toBeCloseTo(b[0], 6);
+    expect(d[0], name).toBeCloseTo(c[0], 6);
+    expect((a[1] - b[1]) * (d[1] - c[1]), name).toBeLessThan(0);
+    // 脚の長さは左右同じで、規格図の実測比(棒:脚 = 1:0.5)どおり
+    const legL = Math.abs(a[1] - b[1]);
+    const legR = Math.abs(d[1] - c[1]);
+    expect(legL, name).toBeCloseTo(legR, 6);
+    expect(legL / (c[0] - b[0]), name).toBeCloseTo(0.5, 2);
+  }
+
+  const find = variant => result.variants.find(row => row.variant === variant);
+  // 表示ありでも接続ピンは表示なしと同じ(左10mm区間)なので、切り替えても配線がずれない
+  for (const row of result.variants) {
+    expect(row.anchors.map(a => a[0]), row.variant).toEqual([0, 10]);
+    row.anchors.forEach(a => expect(a[1], row.variant).toBeCloseTo(3.2, 6));
+  }
+  // JIS形は回転操作との連動を破線で描く
+  expect(find("jis").dashed).toBe(1);
+  expect(find("jisNc").dashed).toBe(1);
+  // 操作位置表示なしには固定文字も閉路の枠も無い
+  for (const variant of ["jis", "jisNc", "three", "key"]) {
+    expect(find(variant).fixedTexts, variant).toEqual([]);
+    expect(find(variant).boxes, variant).toBe(0);
+  }
+  // 2位置・鍵付きは「切／入」、3位置は「入1／切／入2」。閉じる位置にだけ枠が付く
+  for (const variant of ["jisOnOff", "jisNcOnOff", "keyOnOff"]) {
+    expect(find(variant).fixedTexts, variant).toEqual(["切", "入"]);
+    expect(find(variant).boxes, variant).toBe(1);
+    expect(find(variant).w, variant).toBe(30);
+  }
+  expect(find("threeOnOff").fixedTexts).toEqual(["入1", "切", "入2"]);
+  expect(find("threeOnOff").boxes).toBe(2);
+  expect(find("threeOnOff").w).toBe(40);
+});
