@@ -4795,6 +4795,8 @@ test("切替スイッチの回転操作(JIS 02-13-04)は棒の両端が逆向き
     const api = window.__edsTest;
     // クランク(S/Z形)を [左脚, 折れ点, 折れ点, 右脚] の4点ポリラインとして取り出す。
     const crankOf = key => (api.SYMBOL_GEO[key].prims.find(prim => prim.t === "pline" && prim.pts.length === 4) || {}).pts || null;
+    // 作動装置と可動接点をつなぐ機械連動(破線)。
+    const linkOf = key => (api.SYMBOL_GEO[key].prims.find(prim => prim.t === "line" && prim.dash) || {}).p || null;
     const readVariant = (variant, geoKey) => {
       const element = api.defaultElement("selectorSwitch", 20, 20);
       element.symbolVariant = variant;
@@ -4815,6 +4817,8 @@ test("切替スイッチの回転操作(JIS 02-13-04)は棒の両端が逆向き
       options: api.SYMBOL_VARIANT_OPTIONS.selectorSwitch.map(([value]) => value),
       switchCrank: crankOf("selectorSwitchJis"),
       ncCrank: crankOf("selectorSwitchJisNc"),
+      switchLink: linkOf("selectorSwitchJis"),
+      ncLink: linkOf("selectorSwitchJisNc"),
       markCrank: crankOf("operatorRotate"),
       variants: [
         readVariant("jis", "selectorSwitchJis"),
@@ -4847,6 +4851,20 @@ test("切替スイッチの回転操作(JIS 02-13-04)は棒の両端が逆向き
     const legR = Math.abs(d[1] - c[1]);
     expect(legL, name).toBeCloseTo(legR, 6);
     expect(legL / (c[0] - b[0]), name).toBeCloseTo(0.5, 2);
+  }
+
+  // 回転操作の作動装置は接点線(y=3.2)より下に描く。連動破線も接点から下へ落ちる。
+  for (const [name, crank] of [["selectorSwitchJis", result.switchCrank], ["selectorSwitchJisNc", result.ncCrank]]) {
+    for (const point of crank) expect(point[1], name + "は接点線より下").toBeGreaterThan(3.2);
+  }
+  for (const [name, link] of [["selectorSwitchJis", result.switchLink], ["selectorSwitchJisNc", result.ncLink]]) {
+    expect(link, name).not.toBeNull();
+    // 可動接点(上)から作動装置(下)へ、接点の開き間隔の中を通って降りる
+    expect(link[0], name).toBeCloseTo(link[2], 6);
+    expect(link[1], name).toBeLessThan(3.2);
+    expect(link[3], name).toBeGreaterThan(3.2);
+    expect(link[0], name).toBeGreaterThan(3.9);
+    expect(link[0], name).toBeLessThan(6.1);
   }
 
   const find = variant => result.variants.find(row => row.variant === variant);
