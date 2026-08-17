@@ -2562,7 +2562,9 @@
                 return;
               }
               if (element.type === "breaker") {
-                if (variant !== "iec") element.symbolVariant = "iec";
+                // 設備標準の円＋アーク系(standard/arc)は選択肢として復活させたので旧図面もそのまま残す。
+                // 箱形MCCB・漏電遮断器・アーチ形CPは選択肢が無いのでJIS形へ寄せる。
+                if (!["iec", "standard", "arc"].includes(variant)) element.symbolVariant = "iec";
                 const vertical = element.orientation === "vertical";
                 element.w = vertical ? 5 : 12.5;
                 element.h = vertical ? 12.5 : 5;
@@ -8374,6 +8376,29 @@
             { t: "text", p: [5, -1.4], size: 2, anchor: "middle", field: "label" }
           ]
         },
+        // コンセント(箱形2口・接地端子つき3接続点): 見本PDFのSC1(制御盤内コンセント)の実測形。
+        // 箱と差込口スロット2組は箱形2口と同一で、接地だけを扱いが違う。
+        //   ・見本では接地は箱の中央にある端子の丸から導体が出て、箱の右側の壁を抜けて外へ出る。
+        //     こちらは接地線を自分で描く前提なので、箱形2口の内側の接地バーは描かず端子と導体にする。
+        //   ・接地の接続点は受電2点(左)の左右反対側=右辺。ピン間隔は第1ピンから(12.5, 5)mmで
+        //     2.5mmグリッド整合。受電2点の位置は箱形2口と同じなので相互に切り替えても配線が残る。
+        // 実測比(見本の箱 102x206px): 端子の丸は箱の縦中央(0.51)、スロットは幅の0.34/0.65の位置。
+        outletBoxDoubleEarth: {
+          w: 12.5, h: 14,
+          anchors: [[0, 2], [0, 12], [12.5, 7]],
+          prims: [
+            { t: "line", p: [0, 2, 2.5, 2] },
+            { t: "line", p: [0, 12, 2.5, 12] },
+            { t: "rect", p: [2.5, 0, 7.5, 13.5], fill: "white" },
+            { t: "line", p: [5.2, 1.8, 5.2, 4.4] },
+            { t: "line", p: [7.2, 1.8, 7.2, 4.0] },
+            { t: "line", p: [5.2, 7.4, 5.2, 10.0] },
+            { t: "line", p: [7.2, 7.4, 7.2, 9.6] },
+            { t: "circle", p: [6.2, 7, 0.65] },
+            { t: "line", p: [6.85, 7, 12.5, 7] },
+            { t: "text", p: [6.25, -1.4], size: 2, anchor: "middle", field: "label" }
+          ]
+        },
         // コンセント(箱形2口): 箱+差込口スロット2組+接地バー。ピンは箱形と共通。
         outletBoxDouble: {
           w: 10, h: 14,
@@ -10179,6 +10204,8 @@
             if (variant === "socketContactJis1") return "outletSocketContactJis1";
             if (variant === "socketContactJis2") return "outletSocketContactJis2";
             if (variant === "socketContactJis3") return "outletSocketContactJis3";
+            if (variant === "boxDouble") return "outletBoxDouble";
+            if (variant === "boxDoubleEarth") return "outletBoxDoubleEarth";
             if (variant === "plugSocket") return "outletPlugSocket";
             if (variant === "plugSocketMulti") return "outletPlugSocketMulti";
             if (variant === "connectionLink") return "outletConnectionLink";
@@ -10186,6 +10213,9 @@
           }
           case "thermalElement": return "thermalElement";
           case "breaker": {
+            // 設備標準(見本PDFの実測形)の2種は、JIS形と同じ12.5×5mm・同じ接続ピンなので相互に切替できる。
+            if (variant === "standard") return "breaker";
+            if (variant === "arc") return "breakerArc";
             return "breakerIec";
           }
           case "coil": {
@@ -11566,7 +11596,7 @@
         capacitor: [["standard", "コンデンサ（平行板）"], ["polarized", "有極コンデンサ（＋と曲板）"], ["variable", "可変コンデンサ（貫通矢印）"]],
         fuse: [["standard", "ヒューズ（JIS 07-21-01・箱＋貫通線）"], ["blank", "ヒューズ（IEC・箱のみ）"], ["wave", "ヒューズ（旧JIS・S字）"]],
         disconnector: [["standard", "断路器（JIS 07-13-06・止め棒＋斜め線）"], ["loadBreak", "負荷開閉器（JIS 07-13-08・小円）"]],
-        breaker: [["iec", "遮断器（JIS 07-13-05・✕＋下開き斜め線）"]],
+        breaker: [["iec", "遮断器（JIS 07-13-05・✕＋下開き斜め線）"], ["standard", "遮断器（設備標準・円＋アーク＋トリップ）"], ["arc", "遮断器（設備標準・円＋アーク）"]],
         pushButton: [["standard", "押しa接点（旧JIS・一般形）"], ["nc", "押しb接点（旧JIS・一般形）"], ["jis", "押しボタン・a接点（JIS 07-07-02）"], ["jisNc", "押しボタン・b接点（JIS 07-07-02系）"], ["illuminated", "照光式押しボタン（一般形・ランプ内蔵）"], ["palm", "パーム押しボタン（一般形・大形キノコ）"], ["pull", "引きボタン（一般形）"], ["twist", "ひねりボタン（一般形）"]],
         transistor: [["npn", "NPNトランジスタ（JIS 05-05-02・外囲みの円あり）"], ["pnp", "PNPトランジスタ（JIS 05-05-01・外囲みの円あり）"], ["npnPlain", "NPNトランジスタ（円なし）"], ["pnpPlain", "PNPトランジスタ（円なし）"], ["jfetN", "Nチャンネル接合形FET（JIS 05-05-09・矢は内向き）"], ["jfetP", "Pチャンネル接合形FET（JIS 05-05-10・矢は外向き）"], ["photo", "フォトトランジスタ（JIS 05-06-04）"]],
         meter: [["standard", "指示計（JIS 08-01-01・円）"], ["box", "指示計（角形）"], ["double", "積算計（二重円）"], ["needle", "指示計（実務形・円＋目盛弧＋針）"]],
@@ -11583,7 +11613,7 @@
         arrester: [["standard", "避雷器（一般形・箱＋矢印）"], ["gap", "避雷器（一般形・ギャップ＝対向三角）"]],
         qualifierMark: [["dc", "直流（実線＋破線）"], ["ac", "交流（正弦波）"], ["acdc", "交直流（正弦波＋実線・破線）"], ["threePhase", "三相交流（3＋正弦波）"]],
         operatorMark: [["manual", "手動操作・一般（JIS 02-13-01）"], ["push", "押し動作（JIS 02-13-05）"], ["pull", "引き動作（JIS 02-13-03）"], ["rotate", "回転操作（JIS 02-13-04）"], ["key", "キー操作（実務形）"], ["roller", "ローラ操作（実務形）"], ["foot", "足踏み操作（JIS 02-13-10）"], ["emergency", "非常停止（JIS 02-13-08）"], ["electromagnetic", "電磁効果による操作（JIS 02-13-23）"], ["proximity", "近接効果による操作（JIS 02-13-06）"], ["touch", "接触操作（JIS 02-13-07）"], ["motor", "電動機操作（JIS 02-13-26）"], ["thermal", "熱操作（実務形・⊓）"]],
-        outlet: [["standard", "一般家庭用2Pコンセント（単線用・縦スロット2本）"], ["wall", "壁付2Pコンセント（国交省標準図・壁側黒塗り＋水平2線）"], ["ceiling", "天井2Pコンセント（一般形・円＋垂直2線）"], ["powerJis", "電力用コンセント（JIS 11-13-01・S00457）"], ["powerEarthJis", "保護接点付き電力用コンセント（JIS 11-13-04・S00460）"], ["plugPin", "一般家庭用2Pプラグ（平刃2本・L/N別接続）"], ["plugPin3", "一般家庭用接地2Pプラグ（平刃2本＋接地ピン・L/N/PE別接続）"], ["socketPin", "一般家庭用2Pコンセント（縦スロット2本・L/N別接続）"], ["socketPin3", "一般家庭用接地2Pコンセント（縦スロット2本＋接地穴・L/N/PE別接続）"], ["plugContactJis1", "おす形接点・一般（JIS 03-03-02・S00032・黒塗り長方形）"], ["socketContactJis1", "めす形接点・一般（JIS 03-03-01・S00031・開いた半円）"], ["plugContactJis2", "おす形接点2極（JIS 03-03-02・S00032）"], ["plugContactJis3", "おす形接点3極（JIS 03-03-02・S00032）"], ["socketContactJis2", "めす形接点2極（JIS 03-03-01・S00031）"], ["socketContactJis3", "めす形接点3極（JIS 03-03-01・S00031）"], ["plugSocket", "プラグ及びソケット（JIS 03-03-05・S00033）"], ["plugSocketMulti", "多極プラグ及びソケット・単線表示（JIS 03-03-08）"], ["connectionLink", "接続リンク・閉（JIS 03-03-17・試験用端子）"]],
+        outlet: [["standard", "一般家庭用2Pコンセント（単線用・縦スロット2本）"], ["wall", "壁付2Pコンセント（国交省標準図・壁側黒塗り＋水平2線）"], ["ceiling", "天井2Pコンセント（一般形・円＋垂直2線）"], ["powerJis", "電力用コンセント（JIS 11-13-01・S00457）"], ["powerEarthJis", "保護接点付き電力用コンセント（JIS 11-13-04・S00460）"], ["plugPin", "一般家庭用2Pプラグ（平刃2本・L/N別接続）"], ["plugPin3", "一般家庭用接地2Pプラグ（平刃2本＋接地ピン・L/N/PE別接続）"], ["socketPin", "一般家庭用2Pコンセント（縦スロット2本・L/N別接続）"], ["socketPin3", "一般家庭用接地2Pコンセント（縦スロット2本＋接地穴・L/N/PE別接続）"], ["plugContactJis1", "おす形接点・一般（JIS 03-03-02・S00032・黒塗り長方形）"], ["socketContactJis1", "めす形接点・一般（JIS 03-03-01・S00031・開いた半円）"], ["plugContactJis2", "おす形接点2極（JIS 03-03-02・S00032）"], ["plugContactJis3", "おす形接点3極（JIS 03-03-02・S00032）"], ["socketContactJis2", "めす形接点2極（JIS 03-03-01・S00031）"], ["socketContactJis3", "めす形接点3極（JIS 03-03-01・S00031）"], ["plugSocket", "プラグ及びソケット（JIS 03-03-05・S00033）"], ["plugSocketMulti", "多極プラグ及びソケット・単線表示（JIS 03-03-08）"], ["connectionLink", "接続リンク・閉（JIS 03-03-17・試験用端子）"], ["boxDouble", "盤内コンセント・箱形2口（設備標準・受電2接続点）"], ["boxDoubleEarth", "盤内コンセント・箱形2口＋接地端子（設備標準・接地は反対側の3接続点）"]],
         pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "非常停止スイッチ（JIS 07-07-06・キノコ＋b接点）"], ["multi2", "縦連結2接点（一般形・連動）"], ["multi3", "縦連結3接点（一般形・連動）"], ["jisMulti2", "縦連結2接点（JIS 07-07-06系・連動）"], ["jisMulti3", "縦連結3接点（JIS 07-07-06系・連動）"], ["bar", "バー押込式（一般形）"]],
         pressureSwitch: [["standard", "a接点＋ダイヤフラム（一般形）"], ["nc", "b接点＋ダイヤフラム（一般形）"]],
         floatSwitch: [["standard", "a接点＋フロート（実務形）"], ["nc", "b接点＋フロート（実務形）"]],
@@ -20908,6 +20938,11 @@
             （従来は片側だけのL形でした）、<b>b接点</b>のデザインを追加しました。あわせて<b>2位置・3位置・鍵付きのそれぞれに
             「切／入」の操作位置表示つき</b>のデザインを用意しています（位置線の名称と、その位置で閉じる接点を示す枠）。
             表示あり／なしで<b>接続ピンは同じ</b>なので、切り替えても配線はずれません。
+            <b>遮断器</b>は見本図面の実測形である<b>円＋アーク＋トリップ</b>と<b>円＋アーク</b>の2デザインを復活させました。
+            JIS 07-13-05形と<b>外形12.5×5mm・接続ピンが共通</b>なので、既存図面のまま様式だけ切り替えられます。
+            <b>コンセント</b>にも<b>盤内コンセント・箱形2口</b>（受電2接続点）を復活させ、あわせて
+            <b>箱形2口＋接地端子</b>を追加しました。接地端子つきは見本図面のSC1と同じく、箱の中央の端子から
+            導体が出て<b>受電2点とは左右反対側（右辺）に3点目の接続点</b>を持ちます。受電2点の位置は箱形2口と同じです。
             光電・マット・リードスイッチは他の接点部品と揃うサイズ（幅15mm前後）で配置されます。
             光電/マット/リード/ライトカーテン/センサ/ソレノイド弁/電源も、選択して右パネルの「シンボルデザイン」から様式を切り替えられます。
             デザイン名は<b>「名称（出典・形の特徴）」</b>で統一しています。出典は<b>JIS番号</b>（例: JIS 07-13-05）、

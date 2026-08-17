@@ -1243,7 +1243,7 @@ test("全テンプレートの接続点・配線・主要枠は2.5mmグリッド
   }
 });
 
-test("JIS遮断器と切替スイッチは設備標準・見本専用の選択肢を表示しない", async ({ page }) => {
+test("遮断器はJIS形と設備標準の円＋アーク2種を選べ、箱形MCCB・アーチ形CPは出さない", async ({ page }) => {
   await page.evaluate(() => window.__edsTest.installProjectData({
     schemaVersion: 8,
     activePageId: "p1",
@@ -1259,8 +1259,12 @@ test("JIS遮断器と切替スイッチは設備標準・見本専用の選択�
 
   const variantSelect = page.locator('[data-bind="symbolVariant"]');
   await expect(variantSelect.locator('option[value="iec"]')).toHaveCount(1);
-  await expect(variantSelect.locator('option[value="arc"]')).toHaveCount(0);
+  // 見本PDF実測の円＋アーク形は復活させた選択肢
+  await expect(variantSelect.locator('option[value="standard"]')).toHaveCount(1);
+  await expect(variantSelect.locator('option[value="arc"]')).toHaveCount(1);
+  // 箱形MCCB・漏電遮断器・アーチ形CPは選択肢に出さないまま
   await expect(variantSelect.locator('option[value="mccb"]')).toHaveCount(0);
+  await expect(variantSelect.locator('option[value="elb"]')).toHaveCount(0);
   await expect(variantSelect.locator('option[value="cp"]')).toHaveCount(0);
 
   const geometry = await page.evaluate(() => {
@@ -4868,4 +4872,109 @@ test("切替スイッチの回転操作(JIS 02-13-04)は棒の両端が逆向き
   expect(find("threeOnOff").fixedTexts).toEqual(["入1", "切", "入2"]);
   expect(find("threeOnOff").boxes).toBe(2);
   expect(find("threeOnOff").w).toBe(40);
+});
+
+test("設備標準の遮断器2種は円＋アークを共有し、トリップ段差の有無だけで分かれる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const read = variant => {
+      const element = api.defaultElement("breaker", 20, 20);
+      element.symbolVariant = variant;
+      const prims = api.geoPrims(element);
+      return {
+        variant,
+        w: element.w,
+        h: element.h,
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
+        arcs: prims.filter(prim => prim.t === "arc").map(prim => prim.p),
+        circles: prims.filter(prim => prim.t === "circle").map(prim => prim.p),
+        plines: prims.filter(prim => prim.t === "pline").map(prim => prim.pts)
+      };
+    };
+    return { options: api.SYMBOL_VARIANT_OPTIONS.breaker.map(([value]) => value), trip: read("standard"), arc: read("arc") };
+  });
+
+  expect(result.options).toEqual(["iec", "standard", "arc"]);
+  for (const row of [result.trip, result.arc]) {
+    // JIS形と同じ外形・接続ピンなので相互に切り替えても配線がずれない
+    expect(row.w, row.variant).toBe(12.5);
+    expect(row.h, row.variant).toBe(5);
+    expect(row.anchors.map(anchor => anchor[0]), row.variant).toEqual([0, 12.5]);
+    row.anchors.forEach(anchor => expect(anchor[1], row.variant).toBeCloseTo(3, 6));
+    // 2つの端子円をまたぐ上向きの弧
+    expect(row.circles.length, row.variant).toBe(2);
+    expect(row.arcs.length, row.variant).toBe(1);
+    expect(row.arcs[0][3], row.variant).toBe(180);
+    expect(row.arcs[0][4], row.variant).toBe(360);
+  }
+  // トリップ素子の段差を持つのはstandardだけ
+  expect(result.trip.plines).toHaveLength(1);
+  expect(result.trip.plines[0].length).toBe(7);
+  expect(result.arc.plines).toHaveLength(0);
+});
+
+test("盤内コンセント箱形2口は受電2点、接地端子つきは反対側へ3点目を持つ", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const read = (variant, geoKey) => {
+      const element = api.defaultElement("outlet", 20, 20);
+      element.symbolVariant = variant;
+      const geo = api.SYMBOL_GEO[geoKey];
+      element.w = geo.w;
+      element.h = geo.h;
+      const prims = api.geoPrims(element);
+      return {
+        variant,
+        w: element.w,
+        h: element.h,
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
+        // 差込口スロット(箱の内側の縦線)
+        slots: prims.filter(prim => prim.t === "line" && Math.abs(prim.p[0] - prim.p[2]) < 0.001).map(prim => prim.p),
+        // 接地バー(箱の内側で完結する横線)と接地導体(箱の外へ抜ける横線)
+        bars: prims.filter(prim => prim.t === "line" && Math.abs(prim.p[1] - prim.p[3]) < 0.001 && prim.p[0] > 2.5 && prim.p[2] <= 10).map(prim => prim.p),
+        earthLeads: prims.filter(prim => prim.t === "line" && Math.abs(prim.p[1] - prim.p[3]) < 0.001 && prim.p[0] > 2.5 && prim.p[2] > 10).map(prim => prim.p),
+        circles: prims.filter(prim => prim.t === "circle").map(prim => prim.p),
+        rects: prims.filter(prim => prim.t === "rect").map(prim => prim.p)
+      };
+    };
+    return {
+      options: api.SYMBOL_VARIANT_OPTIONS.outlet.map(([value]) => value),
+      plain: read("boxDouble", "outletBoxDouble"),
+      earth: read("boxDoubleEarth", "outletBoxDoubleEarth")
+    };
+  });
+
+  expect(result.options).toContain("boxDouble");
+  expect(result.options).toContain("boxDoubleEarth");
+
+  // 箱形2口(復活分): 受電2点はどちらも左辺、10mm間隔
+  expect(result.plain.w).toBe(10);
+  expect(result.plain.h).toBe(14);
+  expect(result.plain.anchors).toEqual([[0, 2], [0, 12]]);
+  expect(result.plain.slots).toHaveLength(4);
+  expect(result.plain.bars).toHaveLength(2);
+
+  // 接地端子つき: 受電2点は箱形2口と同じ位置のまま、3点目だけ左右反対側の右辺へ出る
+  expect(result.earth.w).toBe(12.5);
+  expect(result.earth.h).toBe(14);
+  expect(result.earth.anchors).toEqual([[0, 2], [0, 12], [12.5, 7]]);
+  const [first, second, third] = result.earth.anchors;
+  expect(first[0]).toBe(second[0]);
+  expect(third[0]).toBeGreaterThan(first[0]);
+  // ピン間隔はすべて2.5mmグリッドの倍数
+  for (const anchor of result.earth.anchors) {
+    expect(Math.abs(anchor[0] - first[0]) % 2.5).toBeCloseTo(0, 6);
+    expect(Math.abs(anchor[1] - first[1]) % 2.5).toBeCloseTo(0, 6);
+  }
+  // 箱と差込口スロット2組は箱形2口と共通。接地は端子の丸+導体で表し、内側の接地バーは持たない
+  expect(result.earth.rects).toEqual(result.plain.rects);
+  expect(result.earth.slots).toEqual(result.plain.slots);
+  expect(result.earth.bars).toHaveLength(0);
+  expect(result.earth.circles).toHaveLength(1);
+  // 端子の丸は箱の縦中央付近(見本実測比0.51)で、導体は丸から右のピンまで届く
+  expect(result.earth.circles[0][1]).toBeCloseTo(7, 6);
+  expect(result.plain.earthLeads).toHaveLength(0);
+  expect(result.earth.earthLeads).toHaveLength(1);
+  expect(result.earth.earthLeads[0][2]).toBeCloseTo(12.5, 6);
+  expect(result.earth.earthLeads[0][0]).toBeCloseTo(result.earth.circles[0][0] + result.earth.circles[0][2], 6);
 });
