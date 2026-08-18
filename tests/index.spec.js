@@ -485,7 +485,7 @@ test("破損JSON・空ページ・将来版を拒否して現在図面を保持�
     },
     {
       name: "future.json",
-      body: { schemaVersion: 9, pages: [{ id: "p1", title: {}, elements: [] }] },
+      body: { schemaVersion: 10, pages: [{ id: "p1", title: {}, elements: [] }] },
       expected: "新しい形式"
     },
     {
@@ -553,7 +553,7 @@ test("部分JSONは現在図面を継承せず既定値で補完し、staleな�
   const legacy = await page.evaluate(() => window.__edsTest.normalizeProjectData({
     pages: [{ id: "legacy-page" }]
   }));
-  expect(legacy.schemaVersion).toBe(8);
+  expect(legacy.schemaVersion).toBe(9);
   expect(legacy.pages[0].title).toBeTruthy();
   expect(legacy.pages[0].elements).toEqual([]);
 });
@@ -596,7 +596,7 @@ test("schema v2の回転部品と機器箱・端子箱を配線ごと現行版�
   }));
 
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(8);
+  expect(migrated.schemaVersion).toBe(9);
   expect(elements.contact).toMatchObject({ x: 50, y: 49, w: 10, rotation: 90 });
   expect(elements["wire-left"].points[1][0]).toBeCloseTo(47.8, 6);
   expect(elements["wire-left"].points[1][1]).toBeCloseTo(49, 6);
@@ -693,7 +693,7 @@ test("schema v3のCPとユニット列を接続を保って現行版へ移行し
 
   const migrated = result.migrated;
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(8);
+  expect(migrated.schemaVersion).toBe(9);
   expect(result.idempotent).toBe(true);
 
   expect(elements["cp-horizontal"]).toMatchObject({ w: 12.5, h: 5, cpLinked: true });
@@ -767,7 +767,7 @@ test("schema v4のブザーを配線ごとJIS記号の新ピンへ移行し再�
   });
 
   const elements = Object.fromEntries(result.migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(result.migrated.schemaVersion).toBe(8);
+  expect(result.migrated.schemaVersion).toBe(9);
   expect(result.idempotent).toBe(true);
 
   // 旧jis/generalはjis0806へ、sirenはキーを保つ。略画hornは無変更。
@@ -1243,9 +1243,9 @@ test("全テンプレートの接続点・配線・主要枠は2.5mmグリッド
   }
 });
 
-test("遮断器はJIS形と設備標準の円＋アーク2種を選べ、箱形MCCB・アーチ形CPは出さない", async ({ page }) => {
+test("遮断器はJIS形と見本形の円＋アーク2種を選べ、箱形MCCB・アーチ形CPは出さない", async ({ page }) => {
   await page.evaluate(() => window.__edsTest.installProjectData({
-    schemaVersion: 8,
+    schemaVersion: 9,
     activePageId: "p1",
     pages: [{
       id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
@@ -2024,7 +2024,7 @@ test("詳細表題欄の日付と改訂履歴は別の欄に収まる", async ({
   expect(Number(x)).toBeLessThan(180);
 });
 
-test("設備標準表題欄の日付は罫線内に収まり、他の図枠線も用紙内にある", async ({ page }) => {
+test("ラダー図枠の表題欄の日付は罫線内に収まり、他の図枠線も用紙内にある", async ({ page }) => {
   await page.evaluate(() => window.__edsTest.installProjectData({
     schemaVersion: 4,
     activePageId: "p1",
@@ -2503,7 +2503,7 @@ test("光電・マット・リード・ライトカーテンを複数表現で�
   }
   const result = await page.evaluate(() => {
     const variants = {
-      photoelectricSwitch: ["throughBeam", "transmitter", "receiver", "retro", "diffuse", "fiber", "fork", "general", "convergent", "colorMark"],
+      photoelectricSwitch: ["throughBeam", "transmitter", "receiver", "retro", "diffuse", "fiber", "fork", "convergent", "colorMark"],
       matSwitch: ["standard", "no", "nc", "safety"],
       reedSwitch: ["no", "nc", "changeover", "magnet", "cylinder"],
       lightCurtain: ["pair", "emitter", "receiver", "safety", "tube"],
@@ -2526,7 +2526,7 @@ test("光電・マット・リード・ライトカーテンを複数表現で�
     return { checks, blankLabels };
   });
   expect(result.checks).toEqual({
-    photoelectricSwitch: { count: 10, unique: 10 },
+    photoelectricSwitch: { count: 9, unique: 9 },
     matSwitch: { count: 4, unique: 4 },
     reedSwitch: { count: 5, unique: 5 },
     lightCurtain: { count: 5, unique: 5 },
@@ -2535,7 +2535,7 @@ test("光電・マット・リード・ライトカーテンを複数表現で�
   expect(result.blankLabels).toEqual(["", "", "", "", "", ""]);
 });
 
-test("サーマルリレー接点を複数デザインへ拡張し、設備標準表記を使わない", async ({ page }) => {
+test("サーマルリレー接点を複数デザインへ拡張し、出典表記を統一基準に揃える", async ({ page }) => {
   const result = await page.evaluate(() => {
     const values = ["standard", "box", "iecNc", "iecNo", "jisNc", "jisNo", "barNc", "barNo", "changeover", "xOnly"];
     const signatures = values.map(symbolVariant => {
@@ -3019,6 +3019,7 @@ test("端子台・ユニット列の端子記号と機器箱の端子文字サ�
   expect(result.unitAnchors).toEqual(expect.not.arrayContaining([[135, 35]]));
   expect(result.unitAnchors).toEqual(expect.not.arrayContaining([[125, 35]]));
   expect(result.pinSizes).toEqual(["3", "3"]);
+  // 明示指定したcontentFontSize=2.6が優先される(既定は2.2mm)
   expect(result.labelSize).toBe("2.6");
 });
 
@@ -4259,6 +4260,9 @@ test("位置スイッチ07-08-01/02の三角形は可動線に密着した30-60-
     const probe = variant => {
       const element = api.defaultElement("limitSwitch", 20, 20);
       element.symbolVariant = variant;
+      // 07-08-01/02の枠は10x6mm(既定デザインの4.6mmではない)
+      element.w = 10;
+      element.h = 6;
       const prims = api.geoPrims(element);
       // 可動線=斜めの線分(水平でも垂直でもない線)。三角形はplineで1つだけ。
       const blade = prims.find(prim => prim.t === "line" && prim.p[0] !== prim.p[2] && prim.p[1] !== prim.p[3]);
@@ -4298,11 +4302,229 @@ test("位置スイッチ07-08-01/02の三角形は可動線に密着した30-60-
     const rootDistanceB = Math.hypot(B[0] - data.blade[0], B[1] - data.blade[1]);
     expect(rootDistanceA, `${name} 30度側が根元向き`).toBeLessThan(rootDistanceB);
   }
-  // a接点は可動線の上側(Cのyが辺ABより小さい)、b接点は下側
-  expect(result.no.pts[2][1]).toBeLessThan(result.no.pts[1][1]);
-  expect(result.nc.pts[2][1]).toBeGreaterThan(result.nc.pts[1][1]);
-  // b接点の三角形は止めの縦線(x=6.1)より左に収まり交差しない
-  expect(Math.max(...result.nc.pts.map(point => point[0]))).toBeLessThan(6.1);
+  // 規格図どおり可動線は右の支点から左下へ開く(接点線y=2.2より下へ出る)
+  expect(result.no.blade[1]).toBeCloseTo(2.2, 6);
+  expect(result.no.blade[3]).toBeGreaterThan(result.no.blade[1]);
+  expect(result.no.blade[2]).toBeLessThan(result.no.blade[0]);
+  // a接点の三角形は可動線の下側(Cのyが辺ABより大きい)、b接点は導体側(上側)
+  expect(result.no.pts[2][1]).toBeGreaterThan(result.no.pts[1][1]);
+  expect(result.nc.pts[2][1]).toBeLessThan(result.nc.pts[1][1]);
+  // 三角形は接点線(y=2.2)より下にあり、可動線と同じ側に付く
+  expect(Math.min(...result.no.pts.map(point => point[1]))).toBeGreaterThan(2.2);
+  // b接点の三角形は止めの縦線(x=3.9)より右に収まり交差しない
+  expect(Math.min(...result.nc.pts.map(point => point[0]))).toBeGreaterThan(3.9);
+});
+
+test("押しボタンのJIS形(07-07-02)はa/b接点とも押し操作のT字を接点線の下へ描く", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const probe = variant => {
+      const element = api.defaultElement("pushButton", 20, 20);
+      element.symbolVariant = variant;
+      element.w = 10;
+      element.h = 7;
+      const prims = api.geoPrims(element);
+      const blade = prims.find(prim => prim.t === "line" && prim.p[0] !== prim.p[2] && prim.p[1] !== prim.p[3]);
+      const dash = prims.find(prim => prim.dash);
+      // 押しキャップ=最も下にある水平線
+      const cap = prims.filter(prim => prim.t === "line" && prim.p[1] === prim.p[3])
+        .sort((a, b) => b.p[1] - a.p[1])[0];
+      return {
+        blade: blade.p,
+        dash: dash.p,
+        cap: cap.p,
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20])
+      };
+    };
+    return { no: probe("jis"), nc: probe("jisNc") };
+  });
+
+  for (const [name, data] of Object.entries(result)) {
+    // 接続ピンは左右2点(y=3.5)のまま。既存図面の配線がずれない条件
+    expect(data.anchors.map(anchor => anchor[0]), `${name} ピンx`).toEqual([0, 10]);
+    data.anchors.forEach(anchor => expect(anchor[1], `${name} ピンy`).toBeCloseTo(3.5, 6));
+    // 押しキャップ(T字の横棒)と機械連動の破線はどちらも接点線より下
+    expect(data.cap[1], `${name} キャップ`).toBeGreaterThan(3.5);
+    expect(Math.min(data.dash[1], data.dash[3]), `${name} 連動破線`).toBeGreaterThan(3.5);
+    // 可動線は右の支点から左下へ向かう
+    expect(data.blade[1], `${name} 可動線の始点`).toBeCloseTo(3.5, 6);
+    expect(data.blade[3], `${name} 可動線の終点`).toBeGreaterThan(3.5);
+    expect(data.blade[2], `${name} 可動線の向き`).toBeLessThan(data.blade[0]);
+  }
+  // b接点だけが止めの縦線を持ち、可動線と同じ左側にある
+  const stops = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const element = api.defaultElement("pushButton", 20, 20);
+    element.symbolVariant = "jisNc";
+    element.w = 10;
+    element.h = 7;
+    return api.geoPrims(element).filter(prim => prim.t === "line" && prim.p[0] === prim.p[2]).map(prim => prim.p);
+  });
+  expect(stops).toHaveLength(3);
+  expect(stops.some(stop => Math.abs(stop[0] - 3.4) < 0.001 && Math.max(stop[1], stop[3]) > 3.5)).toBe(true);
+});
+
+test("近接スイッチはJIS 07-19-01の検出器と07-20-02のメーク接点を選べる", async ({ page }) => {
+  await expect(page.locator('#paletteGrid .palette-item[data-type="proximitySwitch"]')).toHaveCount(1);
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const probe = variant => {
+      const element = api.defaultElement("proximitySwitch", 20, 20);
+      element.symbolVariant = variant;
+      const geo = api.SYMBOL_GEO[variant === "detector" ? "proximityDetectorJis" : "proximitySwitchJisNo"];
+      element.w = geo.w;
+      element.h = geo.h;
+      const prims = api.geoPrims(element);
+      return {
+        size: [geo.w, geo.h],
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
+        diamond: prims.find(prim => prim.t === "pline" && prim.pts.length === 5)?.pts,
+        bars: prims.filter(prim => prim.t === "line" && prim.p[1] === prim.p[3] && prim.p[0] > 3 && prim.p[2] < 7).map(prim => prim.p),
+        blade: prims.find(prim => prim.t === "line" && prim.p[0] !== prim.p[2] && prim.p[1] !== prim.p[3])?.p,
+        dash: prims.find(prim => prim.dash)?.p
+      };
+    };
+    return {
+      detector: probe("detector"),
+      switchNo: probe("jisNo"),
+      labels: api.SYMBOL_VARIANT_OPTIONS.proximitySwitch.map(option => option[1])
+    };
+  });
+
+  // 選択肢名にJIS番号を明示(部品検索も番号で引ける)
+  expect(result.labels.join(" ")).toContain("JIS 07-20-02");
+  expect(result.labels.join(" ")).toContain("JIS 07-19-01");
+
+  // どちらも左右2点の接続ピン(y=2.2)を持つ
+  for (const key of ["detector", "switchNo"]) {
+    expect(result[key].anchors.map(anchor => anchor[0]), key).toEqual([0, 10]);
+    result[key].anchors.forEach(anchor => expect(anchor[1], key).toBeCloseTo(2.2, 6));
+  }
+
+  // 07-19-01: ひし形が導体上に直列で入り、内部2線は導体と平行(水平)で接点線を挟む
+  const detector = result.detector;
+  expect(detector.diamond).toHaveLength(5);
+  expect(detector.diamond[0]).toEqual(detector.diamond[4]);
+  const dxs = detector.diamond.slice(0, 4).map(point => point[0]);
+  const dys = detector.diamond.slice(0, 4).map(point => point[1]);
+  expect(Math.max(...dxs) - Math.min(...dxs)).toBeCloseTo(Math.max(...dys) - Math.min(...dys), 6);
+  expect(detector.bars).toHaveLength(2);
+  expect(Math.min(...detector.bars.map(bar => bar[1]))).toBeLessThan(2.2);
+  expect(Math.max(...detector.bars.map(bar => bar[1]))).toBeGreaterThan(2.2);
+
+  // 07-20-02: 可動線は右の支点から左下へ開き、破線連動もひし形も接点線より下
+  const sw = result.switchNo;
+  expect(sw.blade[1]).toBeCloseTo(2.2, 6);
+  expect(sw.blade[3]).toBeGreaterThan(2.2);
+  expect(sw.blade[2]).toBeLessThan(sw.blade[0]);
+  expect(Math.min(sw.dash[1], sw.dash[3])).toBeGreaterThan(2.2);
+  expect(Math.min(...sw.diamond.map(point => point[1]))).toBeGreaterThan(2.2);
+  expect(sw.bars).toHaveLength(2);
+  sw.bars.forEach(bar => expect(bar[1]).toBeGreaterThan(2.2));
+});
+
+test("光電スイッチの一般形は廃止され、旧図面は拡散反射形へ移行する", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const migrated = api.migrateProjectData({
+      schemaVersion: 8,
+      activePageId: "p1",
+      pages: [{
+        id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+        elements: [
+          { id: "ph", type: "photoelectricSwitch", x: 20, y: 20, w: 15, h: 8.4, symbolVariant: "general" },
+          { id: "pb", type: "pushButton", x: 40, y: 20, w: 10, h: 5, symbolVariant: "jis" },
+          { id: "pb2", type: "pushButton", x: 60, y: 20, w: 10, h: 5, symbolVariant: "standard" }
+        ]
+      }]
+    });
+    return {
+      variants: api.SYMBOL_VARIANT_OPTIONS.photoelectricSwitch.map(option => option[0]),
+      hasGeneralGeo: Boolean(api.SYMBOL_GEO.photoSwitchGeneral),
+      migratedPhoto: migrated.pages[0].elements[0].symbolVariant,
+      migratedPb: [migrated.pages[0].elements[1].w, migrated.pages[0].elements[1].h],
+      untouchedPb: [migrated.pages[0].elements[2].w, migrated.pages[0].elements[2].h]
+    };
+  });
+  expect(result.variants).not.toContain("general");
+  expect(result.hasGeneralGeo).toBe(false);
+  expect(result.migratedPhoto).toBe("diffuse");
+  // 押しボタンJIS形は枠が10x7へ広がるが、他デザインは触らない
+  expect(result.migratedPb).toEqual([10, 7]);
+  expect(result.untouchedPb).toEqual([10, 5]);
+});
+
+test("盤内コンセント箱形2口＋接地端子の接地導体は箱の壁から出る", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const element = api.defaultElement("outlet", 20, 20);
+    element.symbolVariant = "boxDoubleEarth";
+    const geo = api.SYMBOL_GEO.outletBoxDoubleEarth;
+    element.w = geo.w;
+    element.h = geo.h;
+    const prims = api.geoPrims(element);
+    const box = prims.find(prim => prim.t === "rect");
+    return {
+      box: box.p,
+      terminal: prims.find(prim => prim.t === "circle").p,
+      lead: prims.filter(prim => prim.t === "line" && prim.p[1] === prim.p[3] && prim.p[2] > 10).map(prim => prim.p)[0],
+      anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20])
+    };
+  });
+  const right = result.box[0] + result.box[2];
+  // 接地端子の小円は箱の右辺の内側に接し、中心は箱の中央ではない
+  expect(result.terminal[0] + result.terminal[2]).toBeCloseTo(right, 6);
+  expect(result.terminal[0]).toBeGreaterThan(result.box[0] + result.box[2] / 2);
+  // 導体は箱の壁から出るので、始点が箱の内部に入り込まない
+  expect(result.lead[0]).toBeCloseTo(right, 6);
+  expect(result.lead[2]).toBeCloseTo(12.5, 6);
+  // 接続点は受電2点(左)と接地1点(右)のまま
+  expect(result.anchors).toEqual([[0, 2], [0, 12], [12.5, 7]]);
+});
+
+test("ラベルの文字サイズは既定2.2mmで文字スタイルの表示と一致する", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const types = ["contactNO", "limitSwitch", "pushButton", "deviceBox", "terminalStrip", "motor", "outlet", "proximitySwitch"];
+    api.installProjectData({
+      schemaVersion: 9,
+      activePageId: "p1",
+      pages: [{
+        id: "p1", name: "P1", size: "A3", orientation: "landscape", frameVariant: "blank", title: {},
+        elements: types.map((type, index) => ({
+          ...api.defaultElement(type, 20 + index * 30, 30), id: "e" + index, label: "LB" + index
+        }))
+      }]
+    });
+    const sizes = types.map((type, index) => {
+      const node = Array.from(document.querySelectorAll(`g[data-id="e${index}"] text`))
+        .find(text => text.textContent === "LB" + index);
+      return [type, node && node.getAttribute("font-size")];
+    });
+    // 「文字スタイル」パネルが表示する既定値
+    api.selectElement("e0");
+    const panel = document.querySelector('[data-bind="contentFontSize"]');
+    return { sizes, panelDefault: panel && panel.value };
+  });
+  expect(result.panelDefault).toBe("2.2");
+  for (const [type, size] of result.sizes) expect(size, type).toBe("2.2");
+});
+
+test("アプリの表示文言に「設備標準」を使わない", async ({ page }) => {
+  await page.locator("#helpBtn").click();
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const designNames = Object.values(api.SYMBOL_VARIANT_OPTIONS).flat().map(option => option[1]);
+    const optionTexts = Array.from(document.querySelectorAll("option")).map(node => node.textContent || "");
+    return {
+      designHits: designNames.filter(name => name.includes("設備標準")),
+      optionHits: optionTexts.filter(text => text.includes("設備標準")),
+      bodyHit: (document.body.textContent || "").includes("設備標準")
+    };
+  });
+  expect(result.designHits).toEqual([]);
+  expect(result.optionHits).toEqual([]);
+  expect(result.bodyHit).toBe(false);
 });
 
 test("ページ追加・複製は表題欄の内容を引き継ぐ", async ({ page }) => {
@@ -4892,7 +5114,7 @@ test("切替スイッチの回転操作(JIS 02-13-04)は棒の両端が逆向き
   expect(find("threeOnOff").w).toBe(40);
 });
 
-test("設備標準の遮断器2種は円＋アークを共有し、トリップ段差の有無だけで分かれる", async ({ page }) => {
+test("見本形の遮断器2種は円＋アークを共有し、トリップ段差の有無だけで分かれる", async ({ page }) => {
   const result = await page.evaluate(() => {
     const api = window.__edsTest;
     const read = variant => {
