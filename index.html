@@ -395,6 +395,8 @@
     .wire-line { stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .38); fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; }
     .dash-line { stroke-dasharray: 3 2; }
     .symbol-fill { fill: #fff; stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); vector-effect: non-scaling-stroke; }
+    /* 輪郭線を持たない白地。外形線を別のlineで描いて途中を切りたい記号(接地端子付きコンセント等)で使う。 */
+    .symbol-mask { fill: #fff; stroke: none; }
     .symbol-line { stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; stroke-linejoin: round; }
     .symbol-solid { stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); fill: var(--element-stroke, #111820); vector-effect: non-scaling-stroke; }
     .terminal-dot { fill: #fff; stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); vector-effect: non-scaling-stroke; }
@@ -1594,6 +1596,7 @@
         { type: "sensor", label: "センサ", icon: "sensor" },
         { type: "photoelectricSwitch", label: "光電スイッチ", icon: "sensor" },
         { type: "proximitySwitch", label: "近接スイッチ", icon: "sensor" },
+        { type: "thermocouple", label: "熱電対", icon: "sensor" },
         { type: "matSwitch", label: "マットスイッチ", icon: "limitSwitch" },
         { type: "reedSwitch", label: "リードスイッチ", icon: "limitSwitch" },
         { type: "lightCurtain", label: "ライトカーテン（光電管）", icon: "sensor" },
@@ -1657,6 +1660,7 @@
         sensor: "SEN",
         photoelectricSwitch: "PHS",
         proximitySwitch: "PXS",
+        thermocouple: "TC",
         matSwitch: "MAT",
         reedSwitch: "RS",
         lightCurtain: "LC",
@@ -1719,7 +1723,7 @@
       const PALETTE_GROUP_BY_TYPE = {
         text: "basic", wire: "basic", line: "basic", dimension: "basic", mechanicalLink: "basic", rect: "basic", circle: "basic",
         arc: "basic", ellipse: "basic", ellipseArc: "basic", polygon: "basic",
-        contactNO: "contact", contactNC: "contact", contactor: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact", flowSwitch: "contact", footSwitch: "contact", photoelectricSwitch: "contact", proximitySwitch: "contact", matSwitch: "contact", reedSwitch: "contact", lightCurtain: "contact",
+        contactNO: "contact", contactNC: "contact", contactor: "contact", timerContactNO: "contact", timerContactNC: "contact", contactBlock: "contact", pushButton: "contact", pushButtonEmergency: "contact", selectorSwitch: "contact", limitSwitch: "contact", pressureSwitch: "contact", floatSwitch: "contact", thermoSwitch: "contact", flowSwitch: "contact", footSwitch: "contact", photoelectricSwitch: "contact", proximitySwitch: "contact", thermocouple: "contact", matSwitch: "contact", reedSwitch: "contact", lightCurtain: "contact",
         coil: "coil", lamp: "coil", buzzer: "coil", meter: "coil",
         disconnector: "power", outlet: "power",
         powerSupply: "power", transformer: "power", motor: "power", fan: "power", solenoidValve: "power", sensor: "power", ground: "power", inductor: "power", heater: "power", battery: "power", rectifierBox: "power", arrester: "power", currentTransformer: "power",
@@ -1743,7 +1747,8 @@
         timerContactNC: "タイマ接点 限時接点 オンディレー オフディレー",
         contactBlock: "接点ユニット 補助接点",
         pushButton: "押釦 ボタン プッシュボタン",
-        proximitySwitch: "近接 近接スイッチ 近接センサ プロキシミティ 無接触スイッチ 近接検出器 誘導形 静電容量形",
+        proximitySwitch: "近接 近接スイッチ 近接センサ プロキシミティ 無接触スイッチ 近接検出装置 誘導形 静電容量形",
+        thermocouple: "熱電対 ねつでんつい サーモカップル 測温 温度センサ K熱電対 補償導線",
         pushButtonEmergency: "非常停止 緊急停止 キノコ",
         selectorSwitch: "セレクタ セレクタスイッチ 切換スイッチ 切り替えスイッチ ロータリスイッチ 入切",
         limitSwitch: "リミット 位置スイッチ マイクロスイッチ",
@@ -7015,6 +7020,54 @@
         },
         // コイルデザイン・盤間中継形(◫◫): 見本図面の盤境界中継リレー/機器内蔵接点で使われる
         // 小四角2連の表記。寸法・接続点は円版と共通。
+        // 作動装置・継電器コイル(結合表示)(JIS C 0617-7, 07-15-02): 箱2つを壁を共有して並べ、
+        // それぞれに独立した2端子を持たせる。キープリレーのセット/リセットコイルなどに使う。
+        // 規格図(縦向き)は箱が導体方向39px・横方向154pxの2分割。反時計回りに90度回すと
+        // 箱は導体方向に並ばず、上下2段に積み上がる。接続点の段間は5mm(2.5mmグリッドの倍数)。
+        coilJisCoupled: {
+          w: 10, h: 10.4,
+          anchors: [[0, 2.7], [10, 2.7], [0, 7.7], [10, 7.7]],
+          prims: [
+            { t: "line", p: [0, 2.7, 3, 2.7] },
+            { t: "line", p: [7, 2.7, 10, 2.7] },
+            { t: "line", p: [0, 7.7, 3, 7.7] },
+            { t: "line", p: [7, 7.7, 10, 7.7] },
+            { t: "rect", p: [3, 0.2, 4, 5], fill: "white" },
+            { t: "rect", p: [3, 5.2, 4, 5], fill: "white" },
+            { t: "text", p: [5, -1.4], anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.6], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        // 熱動継電器で構成される作動装置(JIS C 0617-7, 07-15-21): 箱の中で導体が四角く迂回する。
+        // 規格図の実測比: 迂回の始点/終点は箱の29.5%/70.5%、迂回の深さは箱の半幅の48.7%。
+        coilJisThermal: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3, 2.2] },
+            { t: "line", p: [7, 2.2, 10, 2.2] },
+            { t: "rect", p: [3, 0.2, 4, 4], fill: "white" },
+            { t: "pline", pts: [[3, 2.2], [4.2, 2.2], [4.2, 1.2], [5.8, 1.2], [5.8, 2.2], [7, 2.2]] },
+            { t: "text", p: [5, -1.4], anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.6], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        // 電気式継電器で構成される作動装置(JIS C 0617-7, 07-15-22): 箱の中央の導体へ矢じりが刺さり、
+        // 反対側へ短い軸が伸びる。箱の両端では導体が途切れる(規格図どおり)。
+        coilJisElectric: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3, 2.2] },
+            { t: "line", p: [7, 2.2, 10, 2.2] },
+            { t: "rect", p: [3, 0.2, 4, 4], fill: "white" },
+            { t: "line", p: [4.13, 2.2, 6.18, 2.2] },
+            { t: "pline", pts: [[3.82, 1.64], [5, 2.2], [6.18, 1.64]] },
+            { t: "line", p: [5, 2.2, 5, 2.79] },
+            { t: "text", p: [5, -1.4], anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.6], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
         coilInterface: {
           w: 10, h: 4.4,
           anchors: [[0, 2.2], [10, 2.2]],
@@ -7321,6 +7374,56 @@
             { t: "text", p: [5, -3.8], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
+        // 引きボタンスイッチ・自動復帰(JIS C 0617-7, 07-07-03): a接点の向き・寸法は07-07-02と共通で、
+        // 操作部だけが引き動作(棒の両端が同じ向きへ折れたコの字)になる。折れの長さは棒の1/2。
+        pushButtonJisPull: {
+          w: 10, h: 7,
+          anchors: [[0, 3.5], [10, 3.5]],
+          prims: [
+            { t: "line", p: [0, 3.5, 3.4, 3.5] },
+            { t: "line", p: [6.6, 3.5, 10, 3.5] },
+            { t: "line", p: [6.6, 3.5, 3.1, 5.3] },
+            { t: "pline", pts: [[4.2, 7.0], [4.2, 6.2], [5.8, 6.2], [5.8, 7.0]] },
+            { t: "line", p: [5, 6.2, 5, 4.45], dash: "1.2 1.4" },
+            { t: "text", p: [5, -1.2], anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        // ひねりスイッチ・非自動復帰(JIS C 0617-7, 07-07-04): 操作部が回転操作(02-13-04)と同じ
+        // S字のクランク。棒の両端が逆向きに折れ、折れの長さは棒の1/2。
+        pushButtonJisTwist: {
+          w: 10, h: 7,
+          anchors: [[0, 3.5], [10, 3.5]],
+          prims: [
+            { t: "line", p: [0, 3.5, 3.4, 3.5] },
+            { t: "line", p: [6.6, 3.5, 10, 3.5] },
+            { t: "line", p: [6.6, 3.5, 3.1, 5.3] },
+            { t: "pline", pts: [[4.2, 5.4], [4.2, 6.2], [5.8, 6.2], [5.8, 7.0]] },
+            { t: "line", p: [5, 6.2, 5, 4.45], dash: "1.2 1.4" },
+            { t: "text", p: [5, -1.2], anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        // 確実動作が行われる押しボタンスイッチ・自動復帰(JIS C 0617-7, 07-07-05):
+        // 07-07-02へ「スイッチの確実動作」(07-01-09 円＋矢印)を接点の脇へ添えた形。
+        // 非常停止まわりの安全回路で、直接開路動作機構つきの接点を示すときに使う。
+        pushButtonJisPositive: {
+          w: 10, h: 7,
+          anchors: [[0, 3.5], [10, 3.5]],
+          prims: [
+            { t: "line", p: [0, 3.5, 3.4, 3.5] },
+            { t: "line", p: [6.6, 3.5, 10, 3.5] },
+            { t: "line", p: [6.6, 3.5, 3.1, 5.3] },
+            { t: "line", p: [4.3, 6.6, 5.7, 6.6] },
+            { t: "line", p: [5, 6.6, 5, 6.0] },
+            { t: "line", p: [5, 6.0, 5, 4.35], dash: "1.2 1.4" },
+            { t: "circle", p: [1.5, 5.8, 1.0] },
+            { t: "line", p: [0.88, 5.8, 2.12, 5.8] },
+            { t: "pline", pts: [[1.8, 5.5], [2.12, 5.8], [1.8, 6.1]] },
+            { t: "text", p: [5, -1.2], anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.4], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
         // 押しボタン(照光式): ランプ球内蔵の押しa接点。表示色はランプ同様lampColorで指定。
         pushButtonIlluminated: {
           w: 10, h: 9,
@@ -7421,24 +7524,25 @@
           ]
         },
         // 位置スイッチ・ブレーク接点(JIS C 0617-7, 07-08-02): 線だけのb接点(IEC形)の可動線へ、
-        // 同じ直角三角形を可動線の上側(導体側)に密着させる。30度の頂点Aはやはり接点の根元を向く。
-        // 向きは07-08-01と揃えて、可動線・止め棒とも接点線の下側に置く。
-        // 三角形の最小x=4.1は止めの縦線(x=3.9)より右なので、止めとは交差しない。
+        // 同じ直角三角形を可動線の下側に密着させる。30度の頂点Aはやはり接点の根元を向く。
+        // 規格図(07-08-02)は07-08-01と左右を反転して描かれており、可動線・止め棒・三角形は
+        // 接点線の上側に来る。a接点(07-08-01)だけが下に開く。
+        // 三角形の最大x=5.9は止めの縦線(x=6.1)より左なので、止めとは交差しない。
         limitSwitchJisNC: {
           w: 10, h: 6,
           anchors: [[0, 2.2], [10, 2.2]],
           prims: [
             { t: "line", p: [0, 2.2, 3.9, 2.2] },
             { t: "line", p: [6.1, 2.2, 10, 2.2] },
-            { t: "line", p: [3.9, 3.7, 3.9, 2.2] },
-            { t: "line", p: [6.1, 2.2, 3.4, 3.9] },
-            { t: "pline", pts: [[5.6, 2.515], [4.5, 3.207], [4.1, 2.572], [5.6, 2.515]] },
+            { t: "line", p: [6.1, 0.7, 6.1, 2.2] },
+            { t: "line", p: [3.9, 2.2, 6.6, 0.5] },
+            { t: "pline", pts: [[4.4, 1.885], [5.5, 1.193], [5.9, 1.828], [4.4, 1.885]] },
             { t: "text", p: [5, -1.8], anchor: "middle", field: "label" },
             { t: "text", p: [5, -4.4], size: 1.8, anchor: "middle", field: "descLine" },
             { t: "text", p: [5, 5.8], size: 1.7, anchor: "middle", field: "refNo" }
           ]
         },
-        // 近接検出器(JIS C 0617-7, 07-19-01): 導体に直列へ入れたひし形の検出素子。
+        // 近接センサ(JIS C 0617-7, 07-19-01): 導体に直列へ入れたひし形の検出素子。
         // 規格図(縦向き)を反時計回りに90度回した形なので、素子内部の2本線は導体と平行になる。
         // 規格図の実測比: ひし形は幅≒高さ、内部2本線の間隔はひし形高さの0.22、線長は幅の0.73。
         proximityDetectorJis: {
@@ -7454,7 +7558,7 @@
             { t: "text", p: [5, -4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
-        // 近接スイッチ・メーク接点(JIS C 0617-7, 07-20-02): 下へ開くa接点へ、近接効果による操作
+        // 近接検出装置(JIS C 0617-7, 07-20-02): 下へ開くa接点へ、近接効果による操作
         // (02-13-06)のひし形を破線の機械連動でつないだ形。規格図(縦向き)を反時計回りに90度回した
         // ため、可動線は右の支点から左下へ開き、ひし形と内部2本線は接点線の下側へ並ぶ。
         proximitySwitchJisNo: {
@@ -8490,6 +8594,34 @@
             { t: "text", p: [5, -1.6], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
+        // 電圧計(JIS C 0617-8, 08-02-01): 指示計器の円の中へ量記号Vを入れる。
+        // 円と接続点は 08-01-01(標準の指示計器)と共通なので、相互に切り替えても配線がずれない。
+        // 量記号は図記号の一部なので、利用者のラベルは円の外(上)へ出す。
+        meterVoltJis: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.1, 2.2] },
+            { t: "line", p: [6.9, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.9], fill: "white" },
+            { t: "text", p: [5, 2.2], size: 2.2, anchor: "middle", value: "V" },
+            { t: "text", p: [5, -1.6], anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.8], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
+        // 電流計(JIS C 0617-8, 08-02-02): 指示計器の円の中へ量記号Aを入れる。
+        meterAmpereJis: {
+          w: 10, h: 4.4,
+          anchors: [[0, 2.2], [10, 2.2]],
+          prims: [
+            { t: "line", p: [0, 2.2, 3.1, 2.2] },
+            { t: "line", p: [6.9, 2.2, 10, 2.2] },
+            { t: "circle", p: [5, 2.2, 1.9], fill: "white" },
+            { t: "text", p: [5, 2.2], size: 2.2, anchor: "middle", value: "A" },
+            { t: "text", p: [5, -1.6], anchor: "middle", field: "label" },
+            { t: "text", p: [5, -3.8], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
         // 計器(積算計): 二重円+ラベル文字。
         meterDouble: {
           w: 10, h: 4.4,
@@ -8593,13 +8725,18 @@
           prims: [
             { t: "line", p: [0, 2, 2.5, 2] },
             { t: "line", p: [0, 12, 2.5, 12] },
-            { t: "rect", p: [2.5, 0, 7.5, 13.5], fill: "white" },
+            { t: "rect", p: [2.5, 0, 7.5, 13.5], fill: "mask" },
+            { t: "line", p: [2.5, 0, 10, 0] },
+            { t: "line", p: [2.5, 13.5, 10, 13.5] },
+            { t: "line", p: [2.5, 0, 2.5, 13.5] },
+            { t: "line", p: [10, 0, 10, 6.35] },
+            { t: "line", p: [10, 7.65, 10, 13.5] },
             { t: "line", p: [5.2, 1.8, 5.2, 4.4] },
             { t: "line", p: [7.2, 1.8, 7.2, 4.0] },
             { t: "line", p: [5.2, 7.4, 5.2, 10.0] },
             { t: "line", p: [7.2, 7.4, 7.2, 9.6] },
-            { t: "circle", p: [9.35, 7, 0.65] },
-            { t: "line", p: [10, 7, 12.5, 7] },
+            { t: "circle", p: [10, 7, 0.65], fill: "white" },
+            { t: "line", p: [10.65, 7, 12.5, 7] },
             { t: "text", p: [6.25, -1.4], anchor: "middle", field: "label" }
           ]
         },
@@ -9766,6 +9903,25 @@
             { t: "circle", p: [10, 7, 2.2], fill: "white" }, { t: "line", p: [12.2, 7, 19, 7] }, { t: "pline", pts: [[17.6, 5.8], [19, 7], [17.6, 8.2]] }, { t: "text", p: [12.5, -1], anchor: "middle", field: "label" }
           ]
         },
+        // 熱電対(JIS C 0617-8, 08-06-01): 2本の異種導体が測温接点(黒丸)で合わさり、
+        // 導体の脇に極性(＋/−)を添える。規格図(縦向き)を反時計回りに90度回した形なので、
+        // 2本の脚は同じ側(左)から入り、右の測温接点で合流する。
+        // 規格図の実測: 直線部は全長の67%、脚の間隔は全長の37%(本アプリでは5mm=グリッド2本)。
+        thermocoupleJis: {
+          w: 12.5, h: 8,
+          anchors: [[0, 1.5], [0, 6.5]],
+          prims: [
+            { t: "line", p: [0, 1.5, 8.4, 1.5] },
+            { t: "line", p: [0, 6.5, 8.4, 6.5] },
+            { t: "line", p: [8.4, 1.5, 11.8, 4] },
+            { t: "line", p: [8.4, 6.5, 11.8, 4] },
+            { t: "circle", p: [11.8, 4, 0.5], fill: "solid" },
+            { t: "text", p: [7.6, 0.3], size: 1.8, anchor: "middle", value: "＋" },
+            { t: "text", p: [7.6, 7.7], size: 1.8, anchor: "middle", value: "−" },
+            { t: "text", p: [6.25, -1.8], anchor: "middle", field: "label" },
+            { t: "text", p: [6.25, -4.0], size: 1.8, anchor: "middle", field: "descLine" }
+          ]
+        },
         sensorHall: {
           w: 25, h: 14, anchors: [[0, 7], [25, 7]], prims: [
             { t: "line", p: [0, 7, 4, 7] }, { t: "line", p: [21, 7, 25, 7] }, { t: "rect", p: [4, 2, 17, 10], fill: "white" },
@@ -10242,6 +10398,19 @@
             { t: "text", p: [4, -2.2], anchor: "middle", field: "label" }
           ]
         },
+        // スイッチの確実動作(JIS C 0617-7, 07-01-09): 円の中へ操作方向を示す矢印を入れた限定図記号。
+        // 規格図の実測比: 矢は円の直径の62%を占め、矢じりの返しは半径の30%。
+        operatorPositive: {
+          w: 8, h: 8,
+          anchors: [[4, 8]],
+          prims: [
+            { t: "circle", p: [4, 1.2, 2.0] },
+            { t: "line", p: [2.76, 1.2, 5.24, 1.2] },
+            { t: "pline", pts: [[4.6, 0.6], [5.24, 1.2], [4.6, 1.8]] },
+            { t: "line", p: [4, 3.2, 4, 8] },
+            { t: "text", p: [4, -1.8], anchor: "middle", field: "label" }
+          ]
+        },
         // 作動装置・接触操作(JIS C 0617-2, 02-13-07): 近接効果のひし形へ、軸と反対側の頂点に
         // 接触面を表す横棒を足した形。
         operatorTouch: {
@@ -10417,6 +10586,9 @@
           }
           case "coil": {
             if (variant === "box") return "coilBox";
+            if (variant === "jisCoupled") return "coilJisCoupled";
+            if (variant === "jisThermal") return "coilJisThermal";
+            if (variant === "jisElectric") return "coilJisElectric";
             if (variant === "ac") return "coilAc";
             if (variant === "latch") return "coilLatch";
             if (variant === "timer") return "coilTimer";
@@ -10463,6 +10635,9 @@
             if (variant === "nc") return "pushButtonNC";
             if (variant === "jis") return "pushButtonJis";
             if (variant === "jisNc") return "pushButtonJisNC";
+            if (variant === "jisPull") return "pushButtonJisPull";
+            if (variant === "jisTwist") return "pushButtonJisTwist";
+            if (variant === "jisPositive") return "pushButtonJisPositive";
             if (variant === "illuminated") return "pushButtonIlluminated";
             if (variant === "palm") return "pushButtonPalm";
             return "pushButton";
@@ -10501,8 +10676,10 @@
             return null;
           }
           case "photoelectricSwitch": return ({ transmitter: "photoSwitchTransmitter", receiver: "photoSwitchReceiver", throughBeam: "photoSwitchThroughBeam", retro: "photoSwitchRetro", diffuse: "photoSwitchDiffuse", fiber: "photoSwitchFiber", fork: "photoSwitchFork", convergent: "photoSwitchConvergent", colorMark: "photoSwitchColorMark" })[variant] || "photoSwitchThroughBeam";
-          // 近接スイッチ(JIS 07-19-01 近接検出器 / 07-20-02 近接スイッチ・メーク接点)。
+          // 近接スイッチ(JIS 07-19-01 近接センサ / 07-20-02 近接検出装置)。
           case "proximitySwitch": return variant === "detector" ? "proximityDetectorJis" : "proximitySwitchJisNo";
+          // 熱電対(JIS 08-06-01)。デザインは1種類だけなので変種を見ない。
+          case "thermocouple": return "thermocoupleJis";
           case "matSwitch": return ({ standard: "matSwitchStandard", no: "matSwitchNO", nc: "matSwitchNC", safety: "matSwitchSafety" })[variant] || "matSwitchStandard";
           case "reedSwitch": return ({ no: "reedSwitchNO", nc: "reedSwitchNC", barNo: "reedSwitchBarNO", barNc: "reedSwitchBarNC", changeover: "reedSwitchChangeover", magnet: "reedSwitchMagnet", cylinder: "reedSwitchCylinder" })[variant] || "reedSwitchNO";
           case "lightCurtain": return ({ pair: "lightCurtainPair", emitter: "lightCurtainEmitter", receiver: "lightCurtainReceiver", safety: "lightCurtainSafety", tube: "lightCurtainTube" })[variant] || "lightCurtainPair";
@@ -10537,6 +10714,8 @@
             return "transformerCoils";
           }
           case "meter": {
+            if (variant === "voltJis") return "meterVoltJis";
+            if (variant === "ampereJis") return "meterAmpereJis";
             if (variant === "box") return "meterBox";
             if (variant === "double") return "meterDouble";
             if (variant === "needle") return "meterNeedle";
@@ -10605,7 +10784,7 @@
             manual: "operatorManual", push: "operatorPush", pull: "operatorPull", rotate: "operatorRotate",
             key: "operatorKey", roller: "operatorRoller", foot: "operatorFoot", emergency: "operatorEmergency",
             electromagnetic: "operatorElectromagnetic", thermal: "operatorThermal",
-            proximity: "operatorProximity", touch: "operatorTouch", motor: "operatorMotor"
+            proximity: "operatorProximity", touch: "operatorTouch", motor: "operatorMotor", positive: "operatorPositive"
           })[variant] || "operatorManual";
           case "generator": return "generator";
           default: return null;
@@ -10737,7 +10916,9 @@
             g.appendChild(svgEl("path", { d: prim.pts.map((pt, i) => (i ? "L " : "M ") + pt[0] + " " + pt[1]).join(" "), class: "symbol-line", stroke, "stroke-dasharray": prim.dash || null }));
           } else if (prim.t === "rect") {
             const solid = prim.fill === "solid";
-            g.appendChild(svgEl("rect", { x: prim.p[0], y: prim.p[1], width: prim.p[2], height: prim.p[3], class: prim.fill === "white" ? "symbol-fill" : (solid ? "symbol-solid" : "symbol-line"), stroke, fill: prim.fill === "white" ? "#fff" : (solid ? stroke : "none"), "stroke-dasharray": prim.dash || null }));
+            // fill:"mask" は白地だけを敷く矩形。外形線は別のlineで描くので、ここでは輪郭を出さない。
+            if (prim.fill === "mask") g.appendChild(svgEl("rect", { x: prim.p[0], y: prim.p[1], width: prim.p[2], height: prim.p[3], class: "symbol-mask" }));
+            else g.appendChild(svgEl("rect", { x: prim.p[0], y: prim.p[1], width: prim.p[2], height: prim.p[3], class: prim.fill === "white" ? "symbol-fill" : (solid ? "symbol-solid" : "symbol-line"), stroke, fill: prim.fill === "white" ? "#fff" : (solid ? stroke : "none"), "stroke-dasharray": prim.dash || null }));
           } else if (prim.t === "circle") {
             if (prim.fill === "solid") g.appendChild(svgEl("circle", { cx: prim.p[0], cy: prim.p[1], r: prim.p[2], fill: stroke }));
             else g.appendChild(svgEl("circle", { cx: prim.p[0], cy: prim.p[1], r: prim.p[2], class: prim.fill === "white" ? "terminal-dot" : "symbol-line", stroke, fill: prim.fill === "white" ? "#fff" : "none" }));
@@ -10772,6 +10953,8 @@
               dxfLineLocal(out, page, "SYMBOL", element, prim.pts[i - 1][0], prim.pts[i - 1][1], prim.pts[i][0], prim.pts[i][1], primLtype);
             }
           } else if (prim.t === "rect") {
+            // 白地だけの矩形(mask)は輪郭を持たないのでDXFへは出さない(外形線は別のlineが持つ)。
+            if (prim.fill === "mask") return;
             if (prim.fill === "solid") dxfSolidRectLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3]);
             else dxfRectLocal(out, page, "SYMBOL", element, prim.p[0], prim.p[1], prim.p[2], prim.p[3], primLtype);
           } else if (prim.t === "circle") {
@@ -11786,16 +11969,16 @@
         contactNC: [["standard", "縦バー＋斜線（旧JIS・一般形）"], ["jis", "円端子＋閉じ線（旧JIS・一般形）"], ["iec", "ブレーク接点（JIS 07-02-03・斜め線＋止め）"]],
         timerContactNO: [["standard", "オンディレー（旧JIS・∩＋縦バー）"], ["off", "オフディレー（旧JIS・∪＋縦バー）"], ["iec", "メーク接点・限時閉路（JIS 07-05-01・軸線＋下ふくらみの半円）"], ["iecOff", "メーク接点・限時開路（JIS 07-05-02・軸線＋上ふくらみの半円）"]],
         timerContactNC: [["standard", "オンディレー（旧JIS・∩＋縦バー）"], ["off", "オフディレー（旧JIS・∪＋縦バー）"], ["iec", "ブレーク接点・限時開路（JIS 07-05-03・軸線＋下ふくらみの半円）"], ["iecOff", "ブレーク接点・限時閉路（JIS 07-05-04・軸線＋上ふくらみの半円）"]],
-        coil: [["standard", "円（旧JIS・一般形）"], ["box", "作動装置・継電器コイル（JIS 07-15-01・箱形）"], ["ac", "交流コイル（円＋〜）"], ["latch", "ラッチコイル（箱＋斜線）"], ["timer", "限時コイル（円＋T）"], ["counter", "カウンタコイル（円＋C）"], ["flicker", "フリッカコイル（円＋F）"], ["interface", "盤間中継（一般形・小四角2連）"]],
+        coil: [["standard", "円（旧JIS・一般形）"], ["box", "作動装置・継電器コイル（JIS 07-15-01・箱形）"], ["jisCoupled", "作動装置・継電器コイル・結合表示（JIS 07-15-02・箱2連＋接続点4）"], ["jisThermal", "熱動継電器で構成される作動装置（JIS 07-15-21・箱＋迂回）"], ["jisElectric", "電気式継電器で構成される作動装置（JIS 07-15-22・箱＋矢じり）"], ["ac", "交流コイル（円＋〜）"], ["latch", "ラッチコイル（箱＋斜線）"], ["timer", "限時コイル（円＋T）"], ["counter", "カウンタコイル（円＋C）"], ["flicker", "フリッカコイル（円＋F）"], ["interface", "盤間中継（一般形・小四角2連）"]],
         ground: [["bars", "接地・一般（JIS 02-15-01・横棒3本）"], ["circle", "保護接地（JIS 02-15-03・円囲み）"], ["protectiveBond", "保護等電位結合（JIS 02-15-05・下向き三角）"], ["functional", "機能接地（JIS 02-15-06・弧囲み）"], ["chassis", "機能等電位接続（JIS 02-15-07・櫛形）"]],
         diode: [["standard", "半導体ダイオード（JIS 05-03-01・三角＋バー）"], ["led", "発光ダイオード（JIS 05-03-02・LED）"], ["photo", "フォトダイオード（JIS 05-06-02）"], ["photovoltaic", "光起電力素子（JIS 05-06-03）"], ["zener", "一方向性降伏ダイオード（JIS 05-03-07・ツェナー）"], ["zenerBi", "双方向性降伏ダイオード（JIS 05-03-06）"], ["thyristor", "逆阻止3端子サイリスタ（JIS 05-04-06・ゲート線）"], ["bridge", "ブリッジ接続の整流器（JIS 06-14-04・◇4端子）"], ["triac", "双方向性3端子サイリスタ（JIS 05-04-11・トライアック）"]],
         capacitor: [["standard", "コンデンサ（平行板）"], ["polarized", "有極コンデンサ（＋と曲板）"], ["variable", "可変コンデンサ（貫通矢印）"]],
         fuse: [["standard", "ヒューズ（JIS 07-21-01・箱＋貫通線）"], ["blank", "ヒューズ（IEC・箱のみ）"], ["wave", "ヒューズ（旧JIS・S字）"]],
         disconnector: [["standard", "断路器（JIS 07-13-06・止め棒＋斜め線）"], ["loadBreak", "負荷開閉器（JIS 07-13-08・小円）"]],
         breaker: [["iec", "遮断器（JIS 07-13-05・✕＋下開き斜め線）"], ["standard", "遮断器（見本形・円＋アーク＋トリップ）"], ["arc", "遮断器（見本形・円＋アーク）"]],
-        pushButton: [["standard", "押しa接点（旧JIS・一般形）"], ["nc", "押しb接点（旧JIS・一般形）"], ["jis", "押しボタン・a接点（JIS 07-07-02）"], ["jisNc", "押しボタン・b接点（JIS 07-07-02系）"], ["illuminated", "照光式押しボタン（一般形・ランプ内蔵）"], ["palm", "パーム押しボタン（一般形・大形キノコ）"], ["pull", "引きボタン（一般形）"], ["twist", "ひねりボタン（一般形）"]],
+        pushButton: [["standard", "押しa接点（旧JIS・一般形）"], ["nc", "押しb接点（旧JIS・一般形）"], ["jis", "押しボタン・a接点（JIS 07-07-02）"], ["jisNc", "押しボタン・b接点（JIS 07-07-02系）"], ["jisPull", "引きボタン・a接点（JIS 07-07-03・自動復帰）"], ["jisTwist", "ひねりスイッチ・a接点（JIS 07-07-04・非自動復帰）"], ["jisPositive", "確実動作の押しボタン・a接点（JIS 07-07-05・自動復帰）"], ["illuminated", "照光式押しボタン（一般形・ランプ内蔵）"], ["palm", "パーム押しボタン（一般形・大形キノコ）"], ["pull", "引きボタン（一般形）"], ["twist", "ひねりボタン（一般形）"]],
         transistor: [["npn", "NPNトランジスタ（JIS 05-05-02・外囲みの円あり）"], ["pnp", "PNPトランジスタ（JIS 05-05-01・外囲みの円あり）"], ["npnPlain", "NPNトランジスタ（円なし）"], ["pnpPlain", "PNPトランジスタ（円なし）"], ["jfetN", "Nチャンネル接合形FET（JIS 05-05-09・矢は内向き）"], ["jfetP", "Pチャンネル接合形FET（JIS 05-05-10・矢は外向き）"], ["photo", "フォトトランジスタ（JIS 05-06-04）"]],
-        meter: [["standard", "指示計（JIS 08-01-01・円）"], ["box", "指示計（角形）"], ["double", "積算計（二重円）"], ["needle", "指示計（実務形・円＋目盛弧＋針）"]],
+        meter: [["standard", "指示計（JIS 08-01-01・円）"], ["voltJis", "電圧計（JIS 08-02-01・円＋V）"], ["ampereJis", "電流計（JIS 08-02-02・円＋A）"], ["box", "指示計（角形）"], ["double", "積算計（二重円）"], ["needle", "指示計（実務形・円＋目盛弧＋針）"]],
         motor: [["standard", "回転機・3相＋接地（JIS 06-04-01・円＋接続点4）"], ["twoPhase", "回転機・2相＋接地（JIS 06-04-01・円＋接続点3）"]],
         thermalRelay: [["standard", "○✕○（旧JIS・一般形）"], ["box", "箱形（一般形・内部⊓）"], ["iecNc", "b接点＋熱動素子（JIS 07-02-03・斜め線）"], ["iecNo", "a接点＋熱動素子（JIS 07-02-01・斜め線）"], ["jisNc", "b接点＋熱動素子（旧JIS・円端子）"], ["jisNo", "a接点＋熱動素子（旧JIS・円端子）"], ["barNc", "b接点＋熱動素子（旧JIS・縦バー）"], ["barNo", "a接点＋熱動素子（旧JIS・縦バー）"], ["changeover", "切替接点（1c・1入2出）"], ["xOnly", "✕のみ（一般形）"]],
         inductor: [["standard", "コイル（JIS 04-03-01・コブ3個）"], ["core", "磁心入りインダクタ（JIS 04-03-03・磁心線1本）"], ["gapCore", "気隙入りインダクタ（JIS 04-03-04）"], ["reactor", "リアクトル（JIS 06-09-08・円形）"], ["coreOld", "鉄心入りリアクトル（旧JIS・2本線）"], ["box", "リアクトル（IEC・箱形）"]],
@@ -11808,7 +11991,7 @@
         heater: [["standard", "ヒータ（一般形・箱＋斜線）"], ["plain", "ヒータ（JIS 04-01-01・抵抗器形の箱）"]],
         arrester: [["standard", "避雷器（一般形・箱＋矢印）"], ["gap", "避雷器（一般形・ギャップ＝対向三角）"]],
         qualifierMark: [["dc", "直流（実線＋破線）"], ["ac", "交流（正弦波）"], ["acdc", "交直流（正弦波＋実線・破線）"], ["threePhase", "三相交流（3＋正弦波）"]],
-        operatorMark: [["manual", "手動操作・一般（JIS 02-13-01）"], ["push", "押し動作（JIS 02-13-05）"], ["pull", "引き動作（JIS 02-13-03）"], ["rotate", "回転操作（JIS 02-13-04）"], ["key", "キー操作（実務形）"], ["roller", "ローラ操作（実務形）"], ["foot", "足踏み操作（JIS 02-13-10）"], ["emergency", "非常停止（JIS 02-13-08）"], ["electromagnetic", "電磁効果による操作（JIS 02-13-23）"], ["proximity", "近接効果による操作（JIS 02-13-06）"], ["touch", "接触操作（JIS 02-13-07）"], ["motor", "電動機操作（JIS 02-13-26）"], ["thermal", "熱操作（実務形・⊓）"]],
+        operatorMark: [["manual", "手動操作・一般（JIS 02-13-01）"], ["positive", "スイッチの確実動作（JIS 07-01-09・円＋矢印）"], ["push", "押し動作（JIS 02-13-05）"], ["pull", "引き動作（JIS 02-13-03）"], ["rotate", "回転操作（JIS 02-13-04）"], ["key", "キー操作（実務形）"], ["roller", "ローラ操作（実務形）"], ["foot", "足踏み操作（JIS 02-13-10）"], ["emergency", "非常停止（JIS 02-13-08）"], ["electromagnetic", "電磁効果による操作（JIS 02-13-23）"], ["proximity", "近接効果による操作（JIS 02-13-06）"], ["touch", "接触操作（JIS 02-13-07）"], ["motor", "電動機操作（JIS 02-13-26）"], ["thermal", "熱操作（実務形・⊓）"]],
         outlet: [["standard", "一般家庭用2Pコンセント（単線用・縦スロット2本）"], ["wall", "壁付2Pコンセント（国交省標準図・壁側黒塗り＋水平2線）"], ["ceiling", "天井2Pコンセント（一般形・円＋垂直2線）"], ["powerJis", "電力用コンセント（JIS 11-13-01・S00457）"], ["powerEarthJis", "保護接点付き電力用コンセント（JIS 11-13-04・S00460）"], ["plugPin", "一般家庭用2Pプラグ（平刃2本・L/N別接続）"], ["plugPin3", "一般家庭用接地2Pプラグ（平刃2本＋接地ピン・L/N/PE別接続）"], ["socketPin", "一般家庭用2Pコンセント（縦スロット2本・L/N別接続）"], ["socketPin3", "一般家庭用接地2Pコンセント（縦スロット2本＋接地穴・L/N/PE別接続）"], ["plugContactJis1", "おす形接点・一般（JIS 03-03-02・S00032・黒塗り長方形）"], ["socketContactJis1", "めす形接点・一般（JIS 03-03-01・S00031・開いた半円）"], ["plugContactJis2", "おす形接点2極（JIS 03-03-02・S00032）"], ["plugContactJis3", "おす形接点3極（JIS 03-03-02・S00032）"], ["socketContactJis2", "めす形接点2極（JIS 03-03-01・S00031）"], ["socketContactJis3", "めす形接点3極（JIS 03-03-01・S00031）"], ["plugSocket", "プラグ及びソケット（JIS 03-03-05・S00033）"], ["plugSocketMulti", "多極プラグ及びソケット・単線表示（JIS 03-03-08）"], ["connectionLink", "接続リンク・閉（JIS 03-03-17・試験用端子）"], ["boxDouble", "盤内コンセント・箱形2口（見本形・受電2接続点）"], ["boxDoubleEarth", "盤内コンセント・箱形2口＋接地端子（見本形・接地は反対側の3接続点）"]],
         pushButtonEmergency: [["standard", "キノコ＋b接点（一般形）"], ["jis", "非常停止スイッチ（JIS 07-07-06・キノコ＋b接点）"], ["multi2", "縦連結2接点（一般形・連動）"], ["multi3", "縦連結3接点（一般形・連動）"], ["jisMulti2", "縦連結2接点（JIS 07-07-06系・連動）"], ["jisMulti3", "縦連結3接点（JIS 07-07-06系・連動）"], ["bar", "バー押込式（一般形）"]],
         pressureSwitch: [["standard", "a接点＋ダイヤフラム（一般形）"], ["nc", "b接点＋ダイヤフラム（一般形）"]],
@@ -11819,7 +12002,7 @@
         battery: [["standard", "電池（2セル・長短2組）"], ["single", "電池（単セル・長短1組）"]],
         sensor: [["standard", "汎用センサ"], ["inductive", "誘導形近接センサ"], ["photo", "光電センサ"], ["capacitive", "静電容量形近接センサ"], ["magnetic", "磁気・リードセンサ"], ["ultrasonic", "超音波センサ"], ["laser", "レーザセンサ"], ["hall", "ホールセンサ"]],
         photoelectricSwitch: [["throughBeam", "透過形（投光・受光対向）"], ["transmitter", "投光器単体"], ["receiver", "受光器単体"], ["retro", "回帰反射形"], ["diffuse", "拡散反射形"], ["convergent", "距離設定形（BGS・焦点収束）"], ["fiber", "ファイバ式"], ["fork", "溝形・フォーク式"], ["colorMark", "マーク・カラー検出形"]],
-        proximitySwitch: [["jisNo", "近接スイッチ・メーク接点（JIS 07-20-02・近接操作＋a接点）"], ["detector", "近接検出器（JIS 07-19-01・ひし形＋内部2線）"]],
+        proximitySwitch: [["jisNo", "近接検出装置（JIS 07-20-02・近接操作＋a接点）"], ["detector", "近接センサ（JIS 07-19-01・ひし形＋内部2線）"]],
         matSwitch: [["standard", "感圧マット一般形"], ["no", "a接点付感圧マット"], ["nc", "b接点付感圧マット"], ["safety", "安全マット2チャンネル"]],
         reedSwitch: [["no", "リードa接点（線のみ）"], ["nc", "リードb接点（線のみ）"], ["barNo", "リードa接点（縦バー2本）"], ["barNc", "リードb接点（縦バー2本＋斜線）"], ["changeover", "リード切替接点"], ["magnet", "磁石併記形"], ["cylinder", "シリンダ取付形"]],
         lightCurtain: [["pair", "投光・受光一体表現"], ["emitter", "投光器単体"], ["receiver", "受光器単体"], ["safety", "安全ライトカーテン（OSSD）"], ["tube", "光電管・多光軸形"]],
@@ -12876,6 +13059,7 @@
           sensor: { ...base, w: 25, h: 14, label: "SEN" },
           photoelectricSwitch: { ...base, w: 15, h: 8.4, label: "", symbolVariant: "throughBeam" },
           proximitySwitch: { ...base, w: 10, h: 9, label: "PXS", orientation: "horizontal", symbolVariant: "jisNo" },
+          thermocouple: { ...base, w: 12.5, h: 8, label: "", symbolVariant: "standard" },
           matSwitch: { ...base, w: 15, h: 8.4, label: "", symbolVariant: "standard" },
           reedSwitch: { ...base, w: 15, h: 8.4, label: "", symbolVariant: "no" },
           lightCurtain: { ...base, w: 25, h: 22, label: "", symbolVariant: "pair" },
@@ -21147,16 +21331,28 @@
             <b>2相＋接地（接続点3）</b>を追加しました。円・端子円・接地端子の描き方と外形16×16mmは3相形と共通で、
             相端子2個は円の縦中心について対称（ピッチ5mm）に付きます。
             <b>コンセント</b>にも<b>盤内コンセント・箱形2口</b>（受電2接続点）を復活させ、あわせて
-            <b>箱形2口＋接地端子</b>を追加しました。接地端子つきは見本図面のSC1と同じく、接地端子（小円）を
-            <b>箱の右辺の内側</b>に置き、導体は<b>箱の壁から</b>出て<b>受電2点とは左右反対側（右辺）に3点目の接続点</b>を持ちます。
-            受電2点の位置は箱形2口と同じです。
-            <b>位置スイッチ（JIS 07-08-01／07-08-02）</b>と<b>押しボタン（JIS 07-07-02）</b>は、規格図（縦向き）を
+            <b>箱形2口＋接地端子</b>を追加しました。接地端子つきは見本図面のSC1と同じく、接地端子（小円）の
+            <b>中心を箱の外形線が通り</b>、外形線は円の手前で切れて<b>円の中には線が残りません</b>。導体は円の外周から右へ抜け、
+            <b>受電2点とは左右反対側（右辺）に3点目の接続点</b>を持ちます。受電2点の位置は箱形2口と同じです。
+            <b>位置スイッチのa接点（JIS 07-08-01）</b>と<b>押しボタン（JIS 07-07-02）</b>は、規格図（縦向き）を
             反時計回りに90度回した向きへそろえました。可動接点は<b>右の支点から左下へ開き</b>、位置スイッチの三角形も
-            押しボタンのT字（押し操作）も<b>接点線の下側</b>に付きます。a接点・b接点で開く向きが食い違わないよう、
-            b接点も同じ向きにしています。<b>接続ピン（左右2点）は変えていない</b>ので、既存図面の配線はそのままです。
-            <b>近接スイッチ</b>を新設し、<b>近接検出器（JIS 07-19-01・ひし形＋内部2線）</b>と
-            <b>近接スイッチ・メーク接点（JIS 07-20-02・近接操作＋a接点）</b>の2デザインを選べます。07-20-02は
+            押しボタンのT字（押し操作）も<b>接点線の下側</b>に付きます。
+            <b>位置スイッチのb接点（JIS 07-08-02）</b>は規格図が左右反転して描かれているため、可動接点も三角形も
+            <b>接点線の上側</b>のままです。<b>接続ピン（左右2点）は変えていない</b>ので、既存図面の配線はそのままです。
+            押しボタンには<b>引きボタン（JIS 07-07-03・自動復帰）</b>、<b>ひねりスイッチ（JIS 07-07-04・非自動復帰）</b>、
+            <b>確実動作の押しボタン（JIS 07-07-05）</b>を追加しました。いずれも接点の向き・寸法・接続ピンは 07-07-02 と共通で、
+            操作部だけが変わります（07-07-05 は「スイッチの確実動作」JIS 07-01-09 の円＋矢印を接点の脇に添えた形で、安全回路の
+            直接開路動作機構つき接点に使います）。作動機構の限定図記号にも<b>スイッチの確実動作（JIS 07-01-09）</b>を加えました。
+            <b>近接スイッチ</b>を新設し、<b>近接センサ（JIS 07-19-01・ひし形＋内部2線）</b>と
+            <b>近接検出装置（JIS 07-20-02・近接操作＋a接点）</b>の2デザインを選べます。07-20-02は
             下へ開くa接点に、近接効果による操作（JIS 02-13-06）のひし形を破線の機械連動でつないだ形です。
+            <b>熱電対（JIS 08-06-01）</b>も新設しました。2本の脚が同じ側（左）から入り、右端の測温接点（黒丸）で合わさります。
+            脚の間隔は5mmで、＋／−の極性が図記号に入ります。
+            <b>継電器コイル</b>には<b>結合表示（JIS 07-15-02・箱2連＋接続点4）</b>、
+            <b>熱動継電器で構成される作動装置（JIS 07-15-21）</b>、<b>電気式継電器で構成される作動装置（JIS 07-15-22）</b>を追加しました。
+            07-15-02はキープリレーのセット／リセットコイルのように、連動する2巻線を1つの部品で表せます（段のピッチ5mm）。
+            <b>計器</b>には<b>電圧計（JIS 08-02-01・円＋V）</b>と<b>電流計（JIS 08-02-02・円＋A）</b>を追加しました。
+            円と接続ピンは指示計（JIS 08-01-01）と共通なので、様式だけ切り替えられます。
             <b>光電スイッチ</b>の「一般形（箱＋入射光）」は<b>拡散反射形</b>と重複するため廃止し、旧図面は拡散反射形へ移行します。
             光電・マット・リードスイッチは他の接点部品と揃うサイズ（幅15mm前後）で配置されます。
             光電/マット/リード/ライトカーテン/センサ/ソレノイド弁/電源も、選択して右パネルの「シンボルデザイン」から様式を切り替えられます。

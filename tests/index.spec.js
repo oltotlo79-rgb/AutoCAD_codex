@@ -4302,17 +4302,20 @@ test("位置スイッチ07-08-01/02の三角形は可動線に密着した30-60-
     const rootDistanceB = Math.hypot(B[0] - data.blade[0], B[1] - data.blade[1]);
     expect(rootDistanceA, `${name} 30度側が根元向き`).toBeLessThan(rootDistanceB);
   }
-  // 規格図どおり可動線は右の支点から左下へ開く(接点線y=2.2より下へ出る)
+  // a接点(07-08-01)は右の支点から左下へ開き、三角形も接点線(y=2.2)より下に付く
   expect(result.no.blade[1]).toBeCloseTo(2.2, 6);
   expect(result.no.blade[3]).toBeGreaterThan(result.no.blade[1]);
   expect(result.no.blade[2]).toBeLessThan(result.no.blade[0]);
-  // a接点の三角形は可動線の下側(Cのyが辺ABより大きい)、b接点は導体側(上側)
   expect(result.no.pts[2][1]).toBeGreaterThan(result.no.pts[1][1]);
-  expect(result.nc.pts[2][1]).toBeLessThan(result.nc.pts[1][1]);
-  // 三角形は接点線(y=2.2)より下にあり、可動線と同じ側に付く
   expect(Math.min(...result.no.pts.map(point => point[1]))).toBeGreaterThan(2.2);
-  // b接点の三角形は止めの縦線(x=3.9)より右に収まり交差しない
-  expect(Math.min(...result.nc.pts.map(point => point[0]))).toBeGreaterThan(3.9);
+  // b接点(07-08-02)は規格図が左右反転して描かれるので、可動線も三角形も接点線より上
+  expect(result.nc.blade[1]).toBeCloseTo(2.2, 6);
+  expect(result.nc.blade[3]).toBeLessThan(result.nc.blade[1]);
+  expect(result.nc.blade[2]).toBeGreaterThan(result.nc.blade[0]);
+  expect(result.nc.pts[2][1]).toBeGreaterThan(result.nc.pts[1][1]);
+  expect(Math.max(...result.nc.pts.map(point => point[1]))).toBeLessThan(2.2);
+  // b接点の三角形は止めの縦線(x=6.1)より左に収まり交差しない
+  expect(Math.max(...result.nc.pts.map(point => point[0]))).toBeLessThan(6.1);
 });
 
 test("押しボタンのJIS形(07-07-02)はa/b接点とも押し操作のT字を接点線の下へ描く", async ({ page }) => {
@@ -4454,7 +4457,7 @@ test("光電スイッチの一般形は廃止され、旧図面は拡散反射�
   expect(result.untouchedPb).toEqual([10, 5]);
 });
 
-test("盤内コンセント箱形2口＋接地端子の接地導体は箱の壁から出る", async ({ page }) => {
+test("盤内コンセント箱形2口＋接地端子は円の中心を箱の外形が通り円内に線を残さない", async ({ page }) => {
   const result = await page.evaluate(() => {
     const api = window.__edsTest;
     const element = api.defaultElement("outlet", 20, 20);
@@ -4466,17 +4469,30 @@ test("盤内コンセント箱形2口＋接地端子の接地導体は箱の壁�
     const box = prims.find(prim => prim.t === "rect");
     return {
       box: box.p,
+      boxFill: box.fill,
       terminal: prims.find(prim => prim.t === "circle").p,
       lead: prims.filter(prim => prim.t === "line" && prim.p[1] === prim.p[3] && prim.p[2] > 10).map(prim => prim.p)[0],
+      verticals: prims.filter(prim => prim.t === "line" && Math.abs(prim.p[0] - prim.p[2]) < 0.001).map(prim => prim.p),
       anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20])
     };
   });
   const right = result.box[0] + result.box[2];
-  // 接地端子の小円は箱の右辺の内側に接し、中心は箱の中央ではない
-  expect(result.terminal[0] + result.terminal[2]).toBeCloseTo(right, 6);
-  expect(result.terminal[0]).toBeGreaterThan(result.box[0] + result.box[2] / 2);
-  // 導体は箱の壁から出るので、始点が箱の内部に入り込まない
-  expect(result.lead[0]).toBeCloseTo(right, 6);
+  // 箱の白地はmask(輪郭なし)で敷き、外形線は別のlineが持つ
+  expect(result.boxFill).toBe("mask");
+  // 接地端子の小円は中心が箱の右辺の上に載る
+  expect(result.terminal[0]).toBeCloseTo(right, 6);
+  expect(result.terminal[1]).toBeCloseTo(7, 6);
+  // 右辺は円の手前で切れていて、円の中には線が残らない
+  const rightWall = result.verticals.filter(seg => Math.abs(seg[0] - right) < 0.001);
+  expect(rightWall).toHaveLength(2);
+  const r = result.terminal[2];
+  for (const seg of rightWall) {
+    const lo = Math.min(seg[1], seg[3]);
+    const hi = Math.max(seg[1], seg[3]);
+    expect(hi <= result.terminal[1] - r + 1e-6 || lo >= result.terminal[1] + r - 1e-6).toBe(true);
+  }
+  // 導体は円の外周から右のピンまで
+  expect(result.lead[0]).toBeCloseTo(right + r, 6);
   expect(result.lead[2]).toBeCloseTo(12.5, 6);
   // 接続点は受電2点(左)と接地1点(右)のまま
   expect(result.anchors).toEqual([[0, 2], [0, 12], [12.5, 7]]);
@@ -5169,7 +5185,7 @@ test("盤内コンセント箱形2口は受電2点、接地端子つきは反対
         h: element.h,
         anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
         // 差込口スロット(箱の内側の縦線)
-        slots: prims.filter(prim => prim.t === "line" && Math.abs(prim.p[0] - prim.p[2]) < 0.001).map(prim => prim.p),
+        slots: prims.filter(prim => prim.t === "line" && Math.abs(prim.p[0] - prim.p[2]) < 0.001 && prim.p[0] > 2.6 && prim.p[0] < 9.9).map(prim => prim.p),
         // 接地バー(箱の内側で完結する横線)と接地導体(箱の外へ抜ける横線)
         bars: prims.filter(prim => prim.t === "line" && Math.abs(prim.p[1] - prim.p[3]) < 0.001 && prim.p[0] > 2.5 && prim.p[2] <= 10).map(prim => prim.p),
         earthLeads: prims.filter(prim => prim.t === "line" && Math.abs(prim.p[1] - prim.p[3]) < 0.001 && prim.p[0] > 2.5 && prim.p[2] > 10).map(prim => prim.p),
@@ -5206,7 +5222,8 @@ test("盤内コンセント箱形2口は受電2点、接地端子つきは反対
     expect(Math.abs(anchor[0] - first[0]) % 2.5).toBeCloseTo(0, 6);
     expect(Math.abs(anchor[1] - first[1]) % 2.5).toBeCloseTo(0, 6);
   }
-  // 箱と差込口スロット2組は箱形2口と共通。接地は端子の丸+導体で表し、内側の接地バーは持たない
+  // 箱と差込口スロット2組は箱形2口と共通(接地端子つきは白地と外形線を分けているのでrectは白地のみ)。
+  // 接地は端子の丸+導体で表し、内側の接地バーは持たない
   expect(result.earth.rects).toEqual(result.plain.rects);
   expect(result.earth.slots).toEqual(result.plain.slots);
   expect(result.earth.bars).toHaveLength(0);
@@ -5217,6 +5234,8 @@ test("盤内コンセント箱形2口は受電2点、接地端子つきは反対
   expect(result.earth.earthLeads).toHaveLength(1);
   expect(result.earth.earthLeads[0][2]).toBeCloseTo(12.5, 6);
   expect(result.earth.earthLeads[0][0]).toBeCloseTo(result.earth.circles[0][0] + result.earth.circles[0][2], 6);
+  // 丸の中心は箱の右辺(x=10)の上に載る
+  expect(result.earth.circles[0][0]).toBeCloseTo(10, 6);
 });
 
 test("部品検索は表示名だけでなく別名・タグ接頭辞・JIS図記号番号でも引ける", async ({ page }) => {
@@ -5326,4 +5345,185 @@ test("回転機は3相＋接地の4接続点と、2相＋接地の3接続点を�
     const inner = dist(lead[0], lead[1]) < dist(lead[2], lead[3]) ? [lead[0], lead[1]] : [lead[2], lead[3]];
     expect(dist(inner[0], inner[1])).toBeCloseTo(r, 1);
   }
+});
+
+test("継電器コイルはJIS 07-15-01/02/21/22の4形を選べ、結合表示は接続点4点を持つ", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const read = (variant, geoKey) => {
+      const element = api.defaultElement("coil", 20, 20);
+      element.symbolVariant = variant;
+      const geo = api.SYMBOL_GEO[geoKey];
+      element.w = geo.w;
+      element.h = geo.h;
+      const prims = api.geoPrims(element);
+      return {
+        size: [geo.w, geo.h],
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
+        rects: prims.filter(prim => prim.t === "rect").map(prim => prim.p),
+        plines: prims.filter(prim => prim.t === "pline").map(prim => prim.pts)
+      };
+    };
+    return {
+      labels: api.SYMBOL_VARIANT_OPTIONS.coil.map(option => option[1]),
+      box: read("box", "coilBox"),
+      coupled: read("jisCoupled", "coilJisCoupled"),
+      thermal: read("jisThermal", "coilJisThermal"),
+      electric: read("jisElectric", "coilJisElectric")
+    };
+  });
+
+  const names = result.labels.join(" ");
+  expect(names).toContain("JIS 07-15-02");
+  expect(names).toContain("JIS 07-15-21");
+  expect(names).toContain("JIS 07-15-22");
+
+  // 07-15-02(結合表示): 箱2つが壁を共有して縦に並び、各段が左右2点=合計4接続点
+  expect(result.coupled.rects).toHaveLength(2);
+  const [top, bottom] = result.coupled.rects;
+  expect(top[0]).toBe(bottom[0]);
+  expect(top[2]).toBe(bottom[2]);
+  expect(top[1] + top[3]).toBeCloseTo(bottom[1], 6);
+  expect(result.coupled.anchors).toHaveLength(4);
+  expect(result.coupled.anchors.map(anchor => anchor[0])).toEqual([0, 10, 0, 10]);
+  // 段のピッチは5mm=2.5mmグリッドの倍数
+  const pitch = result.coupled.anchors[2][1] - result.coupled.anchors[0][1];
+  expect(Math.round(pitch * 1000) % 2500).toBe(0);
+  // 各段のピンは箱の縦中央
+  expect(result.coupled.anchors[0][1]).toBeCloseTo(top[1] + top[3] / 2, 6);
+  expect(result.coupled.anchors[2][1]).toBeCloseTo(bottom[1] + bottom[3] / 2, 6);
+
+  // 07-15-21(熱動): 箱形コイルと同じ枠へ、導体が四角く迂回する折れ線が入る
+  expect(result.thermal.size).toEqual(result.box.size);
+  expect(result.thermal.anchors).toEqual(result.box.anchors);
+  expect(result.thermal.rects).toEqual(result.box.rects);
+  expect(result.thermal.plines).toHaveLength(1);
+  const detour = result.thermal.plines[0];
+  expect(detour).toHaveLength(6);
+  // 迂回は接点線(y=2.2)の片側だけへ出て、箱の中に収まる
+  const inner = detour.map(point => point[1]);
+  expect(Math.min(...inner)).toBeGreaterThan(result.box.rects[0][1]);
+  expect(Math.max(...inner)).toBeCloseTo(2.2, 6);
+
+  // 07-15-22(電気式): 箱の中央へ矢じりが向く
+  expect(result.electric.size).toEqual(result.box.size);
+  expect(result.electric.anchors).toEqual(result.box.anchors);
+  expect(result.electric.plines).toHaveLength(1);
+  expect(result.electric.plines[0]).toHaveLength(3);
+});
+
+test("押しボタンはJIS 07-07-02/03/04/05の4形を選べ、操作記号は接点線の下に付く", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const read = variant => {
+      const element = api.defaultElement("pushButton", 20, 20);
+      element.symbolVariant = variant;
+      element.w = 10;
+      element.h = 7;
+      const prims = api.geoPrims(element);
+      return {
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
+        blade: prims.find(prim => prim.t === "line" && prim.p[0] !== prim.p[2] && prim.p[1] !== prim.p[3]).p,
+        crank: prims.filter(prim => prim.t === "pline").map(prim => prim.pts)[0],
+        circles: prims.filter(prim => prim.t === "circle").map(prim => prim.p),
+        lowest: Math.max(...prims.filter(prim => prim.t === "line").flatMap(prim => [prim.p[1], prim.p[3]]))
+      };
+    };
+    return {
+      labels: api.SYMBOL_VARIANT_OPTIONS.pushButton.map(option => option[1]),
+      pull: read("jisPull"),
+      twist: read("jisTwist"),
+      positive: read("jisPositive")
+    };
+  });
+
+  const names = result.labels.join(" ");
+  expect(names).toContain("JIS 07-07-03");
+  expect(names).toContain("JIS 07-07-04");
+  expect(names).toContain("JIS 07-07-05");
+
+  for (const key of ["pull", "twist", "positive"]) {
+    const data = result[key];
+    // 接続ピンは07-07-02と同じ左右2点(y=3.5)
+    expect(data.anchors.map(anchor => anchor[0]), key).toEqual([0, 10]);
+    data.anchors.forEach(anchor => expect(anchor[1], key).toBeCloseTo(3.5, 6));
+    // 可動線は右の支点から左下へ開く
+    expect(data.blade[1], key).toBeCloseTo(3.5, 6);
+    expect(data.blade[3], key).toBeGreaterThan(3.5);
+    expect(data.blade[2], key).toBeLessThan(data.blade[0]);
+    // 操作記号は接点線より下
+    expect(data.lowest, key).toBeGreaterThan(3.5);
+  }
+
+  // 07-07-03(引き): 棒の両端が同じ向きへ折れる。07-07-04(ひねり): 逆向きに折れる
+  const legDir = pts => [pts[0][1] - pts[1][1], pts[3][1] - pts[2][1]];
+  const pull = legDir(result.pull.crank);
+  const twist = legDir(result.twist.crank);
+  expect(pull[0] * pull[1]).toBeGreaterThan(0);
+  expect(twist[0] * twist[1]).toBeLessThan(0);
+  // 折れの長さは棒の1/2(規格実測比)
+  const bar = Math.abs(result.twist.crank[2][0] - result.twist.crank[1][0]);
+  expect(Math.abs(twist[0]) / bar).toBeCloseTo(0.5, 2);
+  expect(Math.abs(twist[1]) / bar).toBeCloseTo(0.5, 2);
+
+  // 07-07-05(確実動作): 円＋矢印の限定図記号を1つ持つ
+  expect(result.positive.circles).toHaveLength(1);
+  expect(result.positive.circles[0][1]).toBeGreaterThan(3.5);
+  expect(result.pull.circles).toHaveLength(0);
+});
+
+test("スイッチの確実動作(JIS 07-01-09)と計器のV/A・熱電対を追加する", async ({ page }) => {
+  await expect(page.locator('#paletteGrid .palette-item[data-type="thermocouple"]')).toHaveCount(1);
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const read = (type, variant, geoKey) => {
+      const element = api.defaultElement(type, 20, 20);
+      element.symbolVariant = variant;
+      const geo = api.SYMBOL_GEO[geoKey];
+      element.w = geo.w;
+      element.h = geo.h;
+      const prims = api.geoPrims(element);
+      return {
+        size: [geo.w, geo.h],
+        anchors: api.elementConnectionAnchors(element).map(anchor => [anchor.x - 20, anchor.y - 20]),
+        prims,
+        values: prims.filter(prim => prim.t === "text" && prim.value).map(prim => prim.value)
+      };
+    };
+    return {
+      operatorLabels: api.SYMBOL_VARIANT_OPTIONS.operatorMark.map(option => option[1]).join(" "),
+      meterLabels: api.SYMBOL_VARIANT_OPTIONS.meter.map(option => option[1]).join(" "),
+      positive: read("operatorMark", "positive", "operatorPositive"),
+      volt: read("meter", "voltJis", "meterVoltJis"),
+      ampere: read("meter", "ampereJis", "meterAmpereJis"),
+      meterStd: read("meter", "standard", "meter"),
+      tc: read("thermocouple", "standard", "thermocoupleJis"),
+      tcPrefix: api.componentTagPrefix ? api.componentTagPrefix("thermocouple") : null
+    };
+  });
+
+  expect(result.operatorLabels).toContain("JIS 07-01-09");
+  expect(result.meterLabels).toContain("JIS 08-02-01");
+  expect(result.meterLabels).toContain("JIS 08-02-02");
+
+  // 07-01-09: 円＋矢じり＋軸。作動装置マーク共通の8x8mm・軸の先(4,8)が接続点
+  expect(result.positive.size).toEqual([8, 8]);
+  expect(result.positive.anchors).toEqual([[4, 8]]);
+  expect(result.positive.prims.filter(prim => prim.t === "circle")).toHaveLength(1);
+  expect(result.positive.prims.filter(prim => prim.t === "pline")).toHaveLength(1);
+
+  // 08-02-01/02: 円も接続点も 08-01-01 と共通で、量記号だけが違う
+  expect(result.volt.size).toEqual(result.meterStd.size);
+  expect(result.volt.anchors).toEqual(result.meterStd.anchors);
+  expect(result.volt.values).toEqual(["V"]);
+  expect(result.ampere.values).toEqual(["A"]);
+
+  // 08-06-01(熱電対): 2本の脚が同じ側(左)から入り、測温接点は黒丸
+  expect(result.tc.anchors.map(anchor => anchor[0])).toEqual([0, 0]);
+  const gap = Math.abs(result.tc.anchors[1][1] - result.tc.anchors[0][1]);
+  expect(Math.round(gap * 1000) % 2500).toBe(0);
+  expect(result.tc.values.sort()).toEqual(["＋", "−"].sort());
+  const dot = result.tc.prims.find(prim => prim.t === "circle" && prim.fill === "solid");
+  expect(dot).toBeTruthy();
+  expect(dot.p[0]).toBeGreaterThan(result.tc.size[0] * 0.8);
 });
