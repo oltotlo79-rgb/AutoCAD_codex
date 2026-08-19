@@ -4831,7 +4831,7 @@ test("コンセントのおす形/めす形接点はJIS C 0617-3の一般図記�
   expect(find("socketContactJis3").anchors).toEqual([[0, 1.25], [0, 3.75], [0, 6.25]]);
 });
 
-test("限時接点の半円はJIS 07-05-01〜04どおりの向きで、ちょうつがいから軸線が伸びる", async ({ page }) => {
+test("限時接点の限時記号はJIS 07-05-01〜04どおり、可動線の中央から二重線で伸びる", async ({ page }) => {
   const result = await page.evaluate(() => {
     const api = window.__edsTest;
     const geoKeys = {
@@ -4841,35 +4841,109 @@ test("限時接点の半円はJIS 07-05-01〜04どおりの向きで、ちょう
     return Object.keys(geoKeys).map(key => {
       const geo = api.SYMBOL_GEO[geoKeys[key]];
       const arc = geo.prims.find(prim => prim.t === "arc");
-      // ちょうつがい(3.9, 2.2)から限時記号へ下ろす軸線
-      const stem = geo.prims.find(prim => prim.t === "line"
-        && prim.p[0] === 3.9 && prim.p[2] === 3.9 && prim.p[1] === 2.2 && prim.p[3] > 2.2);
+      // 可動線(斜めの線)。接点線(水平)・止め棒(垂直)と区別する。
+      const blade = geo.prims.find(prim => prim.t === "line" && prim.p[0] !== prim.p[2] && prim.p[1] !== prim.p[3]);
+      // 限時記号の二重線: 接点線と直角(垂直)で、限時記号の位置(y>4)まで下りる線
+      const stems = geo.prims.filter(prim => prim.t === "line"
+        && prim.p[0] === prim.p[2] && prim.p[3] > 4).map(prim => prim.p);
+      // 止め棒(接点線をはさむ短い縦線)は限時記号ではない
+      const stops = geo.prims.filter(prim => prim.t === "line"
+        && prim.p[0] === prim.p[2] && prim.p[3] <= 2.2).map(prim => prim.p);
       // 限時記号の位置に水平な弦が残っていないこと
       const chords = geo.prims.filter(prim => prim.t === "line" && prim.p[1] === prim.p[3] && prim.p[1] > 4).length;
-      return { key, arc: arc && arc.p, stem: stem && stem.p, chords };
+      return { key, arc: arc && arc.p, blade: blade && blade.p, stems, stops, chords };
     });
   });
 
   const find = key => result.find(row => row.key === key);
+  const bladeY = (blade, x) => blade[1] + (x - blade[0]) * (blade[3] - blade[1]) / (blade[2] - blade[0]);
+
   for (const row of result) {
-    // 規格図は軸線+開いた半円。弦は引かない
-    expect(row.stem, row.key).toBeTruthy();
+    // 規格図は二重線+開いた半円。弦は引かない
     expect(row.arc, row.key).toBeTruthy();
+    expect(row.blade, row.key).toBeTruthy();
     expect(row.chords, row.key).toBe(0);
+    // 限時記号の軸線は必ず2本(二重線)
+    expect(row.stems, row.key).toHaveLength(2);
+    const [a, b] = row.stems.slice().sort((p, q) => p[0] - q[0]);
+    // 二重線は接点線と直角=垂直で、間隔0.7mm(線幅0.32mmで2本と分かる最小間隔)
+    expect(b[0] - a[0], row.key).toBeCloseTo(0.7, 6);
+    // 二重線の中心は「可動線の中央」= 可動線の中点のx
+    const bladeMidX = (row.blade[0] + row.blade[2]) / 2;
+    expect((a[0] + b[0]) / 2, row.key).toBeCloseTo(bladeMidX, 6);
+    // 2本とも根元(ちょうつがい)ではなく可動線そのものの上から出る
+    for (const stem of [a, b]) {
+      expect(stem[1], row.key).toBeCloseTo(bladeY(row.blade, stem[0]), 2);
+      // 先端は半円の上に載る(中心からの距離=半径)
+      const d = Math.hypot(stem[0] - row.arc[0], stem[3] - row.arc[1]);
+      expect(d, row.key).toBeCloseTo(row.arc[2], 6);
+    }
+    // 2本の先端は同じ高さ(半円について対称)
+    expect(a[3], row.key).toBeCloseTo(b[3], 6);
+  }
+
+  // メーク接点(07-05-01/02)は右の支点から左下へ開き、限時記号も接点線の下
+  for (const key of ["timerContactNO/iec", "timerContactNO/iecOff"]) {
+    const row = find(key);
+    expect(row.blade[0], key).toBeGreaterThan(row.blade[2]);
+    expect(row.blade[3], key).toBeGreaterThan(row.blade[1]);
+    expect(row.stops, key).toHaveLength(0);
+  }
+  // ブレーク接点(07-05-03/04)は可動線と止め棒が接点線の上、限時記号だけ下
+  for (const key of ["timerContactNC/iec", "timerContactNC/iecOff"]) {
+    const row = find(key);
+    expect(row.blade[0], key).toBeGreaterThan(row.blade[2]);
+    expect(row.blade[3], key).toBeLessThan(row.blade[1]);
+    expect(row.stops, key).toHaveLength(1);
+    expect(row.stops[0][1], key).toBeLessThan(2.2);
   }
   // 07-05-01/03(限時閉路のメーク・限時開路のブレーク)はふくらみが接点から遠い側=下
   for (const key of ["timerContactNO/iec", "timerContactNC/iec"]) {
-    const arc = find(key).arc;
-    expect(arc[3] < 90 && arc[4] > 90, key).toBe(true);
-    // 軸線はふくらみの頂点(円弧の最下点)まで届く
-    expect(find(key).stem[3], key).toBeCloseTo(arc[1] + arc[2], 6);
+    const row = find(key);
+    expect(row.arc[3] < 90 && row.arc[4] > 90, key).toBe(true);
+    // 二重線の先端は半円の頂点(最下点)の側にある
+    expect(row.stems[0][3], key).toBeGreaterThan(row.arc[1]);
   }
   // 07-05-02/04はふくらみが接点側=上
   for (const key of ["timerContactNO/iecOff", "timerContactNC/iecOff"]) {
-    const arc = find(key).arc;
-    expect(arc[3] < 270 && arc[4] > 270, key).toBe(true);
-    expect(find(key).stem[3], key).toBeCloseTo(arc[1] - arc[2], 6);
+    const row = find(key);
+    expect(row.arc[3] < 270 && row.arc[4] > 270, key).toBe(true);
+    expect(row.stems[0][3], key).toBeLessThan(row.arc[1]);
   }
+});
+
+test("光電スイッチ・ライトカーテンの多端子形は端子が増えても2.5mmグリッドに乗る", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const api = window.__edsTest;
+    const keys = ["photoelectricWired3", "photoelectricWired4", "photoelectricDetectorNo", "photoelectricDetectorNc",
+      "lightCurtainWired3", "lightCurtainWired4", "lightCurtainContacts"];
+    return keys.map(key => ({ key, geo: api.SYMBOL_GEO[key] || null }));
+  });
+
+  for (const row of result) {
+    expect(row.geo, row.key).toBeTruthy();
+    const anchors = row.geo.anchors;
+    const base = anchors[0];
+    for (const anchor of anchors.slice(1)) {
+      for (const delta of [anchor[0] - base[0], anchor[1] - base[1]]) {
+        expect(Math.abs(delta % 2.5), row.key).toBeLessThan(0.001);
+      }
+    }
+  }
+  // 端子数: 3線式=3、4線式=4、接点表現=2接点で4点
+  const pins = Object.fromEntries(result.map(row => [row.key, row.geo.anchors.length]));
+  expect(pins.photoelectricWired3).toBe(3);
+  expect(pins.photoelectricWired4).toBe(4);
+  expect(pins.lightCurtainWired3).toBe(3);
+  expect(pins.lightCurtainWired4).toBe(4);
+  expect(pins.lightCurtainContacts).toBe(4);
+  // 既存の2端子シンボルは変えていない
+  const kept = await page.evaluate(() => {
+    const api = window.__edsTest;
+    return ["photoSwitchThroughBeam", "photoSwitchDiffuse", "lightCurtainPair", "lightCurtainSafety"]
+      .map(key => api.SYMBOL_GEO[key].anchors.length);
+  });
+  expect(kept).toEqual([2, 2, 2, 2]);
 });
 
 test("断路器・負荷開閉器はJIS 07-13-06/08どおりで規格外の円端子を持たない", async ({ page }) => {
