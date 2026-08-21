@@ -1926,7 +1926,7 @@
       // 読み込むときはMIGRATIONSで1段ずつ現行版へ引き上げる。versionは人間向けの表示文字列で、
       // 互換判定にはschemaVersionのみを使う。
       // 将来データ構造を変えるとき: SCHEMA_VERSIONを+1し、MIGRATIONSへ「旧版数: 変換関数」を1件追加する。
-      const SCHEMA_VERSION = 9;
+      const SCHEMA_VERSION = 10;
 
       // schema v3公開後に変圧器3デザインの上タップを主ピンの1行上へ移したため、
       // 旧v3図面に残る上タップ配線だけを新アンカーへ追従させる。スキーマ構造は変わらないので
@@ -2790,6 +2790,90 @@
               element.h = vertical ? 10 : 7;
             }
           }));
+          return data;
+        },
+        // 9→10: 光電スイッチの3線式・4線式の端子ピッチを5mm→2.5mmへ詰め、本体高さを
+        //        15→10mm・20→12.5mmへ縮める。第1端子(上端)の位置は変えないので、
+        //        そこへ繋がる配線はそのまま。2番目以降の端子へ繋がっていた配線・接続点は
+        //        新しい端子位置へ追従させる。ライトカーテンの多端子形は5mmのまま。
+        9: data => {
+          const near = (a, b) => Math.abs(Number(a) - Number(b)) < .02;
+          const legacy = {
+            wired3: { w: 21, h: 15, anchors: [[0, 2.5], [0, 7.5], [0, 12.5]] },
+            wired4: { w: 21, h: 20, anchors: [[0, 2.5], [0, 7.5], [0, 12.5], [0, 17.5]] }
+          };
+          const next = {
+            wired3: { w: 21, h: 10, anchors: [[0, 2.5], [0, 5], [0, 7.5]] },
+            wired4: { w: 21, h: 12.5, anchors: [[0, 2.5], [0, 5], [0, 7.5], [0, 10]] }
+          };
+          // geoMapPoint と同じ規則(縦向きは90度回転、要素枠が本体より大きい場合は中央寄せ、
+          // mirrorXは要素枠の左右中心で折り返し)でgeoローカル座標→要素ローカル座標へ写す。
+          const toLocal = (geo, element, x, y) => {
+            const vertical = element.orientation === "vertical";
+            const bw = vertical ? geo.h : geo.w;
+            const bh = vertical ? geo.w : geo.h;
+            const ox = (Number(element.w || bw) - bw) / 2;
+            const oy = (Number(element.h || bh) - bh) / 2;
+            const point = vertical ? [geo.h - y + ox, x + oy] : [x + ox, y + oy];
+            if (element.mirrorX) point[0] = Number(element.w || bw) - point[0];
+            return point;
+          };
+          const elementLists = [];
+          (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+            if (isPlainObject(page) && Array.isArray(page.elements)) elementLists.push(page.elements);
+          });
+          const collectCustomSymbolTemplates = symbols => {
+            (Array.isArray(symbols) ? symbols : []).forEach(symbol => {
+              if (!isPlainObject(symbol)) return;
+              if (Array.isArray(symbol.templates)) elementLists.push(symbol.templates);
+              else if (isPlainObject(symbol.template)) elementLists.push([symbol.template]);
+            });
+          };
+          collectCustomSymbolTemplates(data.customSymbols);
+          (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach(pack => {
+            if (isPlainObject(pack)) collectCustomSymbolTemplates(pack.customSymbols);
+          });
+          elementLists.forEach(elements => {
+            const moves = [];
+            elements.forEach(element => {
+              if (!isPlainObject(element) || element.type !== "photoelectricSwitch") return;
+              const old = legacy[element.symbolVariant];
+              if (!old) return;
+              const geoNext = next[element.symbolVariant];
+              const vertical = element.orientation === "vertical";
+              const angle = Number(element.rotation || 0) * Math.PI / 180;
+              const cos = Math.cos(angle), sin = Math.sin(angle);
+              const originX = Number(element.x || 0), originY = Number(element.y || 0);
+              const globalAt = ([localX, localY]) => [
+                originX + localX * cos - localY * sin,
+                originY + localX * sin + localY * cos
+              ];
+              // 旧ピンは寸法を書き換える前の element.w/h で、新ピンは新寸法で計算する。
+              const before = old.anchors.map(anchor => globalAt(toLocal(old, element, anchor[0], anchor[1])));
+              element.w = vertical ? geoNext.h : geoNext.w;
+              element.h = vertical ? geoNext.w : geoNext.h;
+              const after = geoNext.anchors.map(anchor => globalAt(toLocal(geoNext, element, anchor[0], anchor[1])));
+              before.forEach((point, index) => {
+                const target = after[index];
+                if (!near(point[0], target[0]) || !near(point[1], target[1])) {
+                  moves.push([point[0], point[1], target[0], target[1]]);
+                }
+              });
+            });
+            if (!moves.length) return;
+            elements.forEach(element => {
+              if (!isPlainObject(element)) return;
+              if (["wire", "line", "arrow", "mechanicalLink"].includes(element.type) && Array.isArray(element.points)) {
+                element.points.forEach(point => {
+                  const move = moves.find(item => near(item[0], point[0]) && near(item[1], point[1]));
+                  if (move) { point[0] = round(move[2]); point[1] = round(move[3]); }
+                });
+              } else if (element.type === "junction") {
+                const move = moves.find(item => near(item[0], Number(element.x || 0)) && near(item[1], Number(element.y || 0)));
+                if (move) { element.x = round(move[2]); element.y = round(move[3]); }
+              }
+            });
+          });
           return data;
         }
       };
@@ -4957,12 +5041,27 @@
         return ["line", "mechanicalLink"].includes(element.type) ? LINE_LABEL_TEXT_SIZE : LABEL_TEXT_SIZE;
       }
 
+      // 端子文字・ポート名・構造記号など「ラベルと同じ文字列でも別物」の文字へ付ける印。
+      // 機器箱の端子文字をラベルと同じ文字("X1"等)にしたとき、ラベル位置X/Yの移動や
+      // ラベル文字サイズの変更が端子文字まで巻き込まないよう、この印で対象から外す。
+      function markNotLabelText(node) {
+        node?.setAttribute?.("data-label-exempt", "true");
+        return node;
+      }
+
+      // ラベルとして扱わない文字か(端子文字=data-label-exempt、構造記号・説明=data-content-exempt)。
+      function isLabelExemptText(node) {
+        return node.getAttribute("data-label-exempt") === "true"
+          || node.getAttribute("data-content-exempt") === "true";
+      }
+
       // シンボル固有の既定ラベル位置を基準に、利用者指定の移動量と文字サイズを適用する。
       // 文字サイズはlabelTextSize()で必ず上書きするので、各シンボルの描画関数が渡した
       // 個別サイズ(1.8〜2.6mm)ではなく、パネル表示と同じ既定値で揃う。
       function applyLabelPresentation(g, element) {
         if (!element?.label || element.type === "text" || element.type === "wire" || element.type === "line") return;
         const matches = Array.from(g.querySelectorAll("text"))
+          .filter(node => !isLabelExemptText(node))
           .filter(node => node.textContent === String(element.label));
         if (!matches.length) return;
         const dx = Number(element.labelDx || 0);
@@ -5538,7 +5637,7 @@
         g.appendChild(svgEl("rect", { x: cx - 1.05, y: y - 1.6, width: 0.3, height: 3.2, class: "symbol-fill", stroke, fill: "#fff" }));
         g.appendChild(svgEl("rect", { x: cx + 0.75, y: y - 1.6, width: 0.3, height: 3.2, class: "symbol-fill", stroke, fill: "#fff" }));
         g.appendChild(svgEl("line", { x1: cx + 1.05, y1: y, x2: cx + 3.8, y2: y, class: "symbol-line", stroke }));
-        if (name) g.appendChild(textEl(name, cx, y - 3.1, { fontSize: 1.8, anchor: "middle" }));
+        if (name) g.appendChild(markNotLabelText(textEl(name, cx, y - 3.1, { fontSize: 1.8, anchor: "middle" })));
       }
 
       // 出力カードのポート行のDXF描画(SVGのdrawCardContactRowと同一配置)。
@@ -5685,7 +5784,7 @@
               // 入力カード(従来): 端子円は実測⌀6.4(r3.2)+円内にデバイス名。
               const r = Math.min(3.2, geo.pitch * .35);
               g.appendChild(svgEl("circle", { cx: node.x, cy: node.y, r, class: "terminal-dot", stroke }));
-              g.appendChild(textEl(terminalLabel(element, i), node.x, node.y, { fontSize: 2, anchor: "middle" }));
+              g.appendChild(markNotLabelText(textEl(terminalLabel(element, i), node.x, node.y, { fontSize: 2, anchor: "middle" })));
             }
             if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, 0, node.y, stroke);
             if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, geo.w, node.y, stroke);
@@ -5693,13 +5792,13 @@
           if (geo.comSide) {
             const comR = Math.min(3.2, geo.pitch * .35);
             g.appendChild(svgEl("circle", { cx: geo.w / 2, cy: geo.comY, r: comR, class: "terminal-dot", stroke }));
-            g.appendChild(textEl(comPortLabel(element), geo.w / 2, geo.comY, { fontSize: 1.8, anchor: "middle" }));
+            g.appendChild(markNotLabelText(textEl(comPortLabel(element), geo.w / 2, geo.comY, { fontSize: 1.8, anchor: "middle" })));
             if (stripComMarkVisible(element)) drawStripTerminalMark(g, geo.comSide === "left" ? 0 : geo.w, geo.comY, stroke);
           }
           if (geo.zeroSide) {
             const zeroR = Math.min(3.2, geo.pitch * .35);
             g.appendChild(svgEl("circle", { cx: geo.w / 2, cy: geo.zeroY, r: zeroR, class: "terminal-dot", stroke }));
-            g.appendChild(textEl(zeroPortLabel(element), geo.w / 2, geo.zeroY, { fontSize: 1.8, anchor: "middle" }));
+            g.appendChild(markNotLabelText(textEl(zeroPortLabel(element), geo.w / 2, geo.zeroY, { fontSize: 1.8, anchor: "middle" })));
             if (stripZeroMarkVisible(element)) drawStripTerminalMark(g, geo.zeroSide === "left" ? 0 : geo.w, geo.zeroY, stroke);
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -2.4, { fontSize: 2.2 }));
@@ -6314,11 +6413,14 @@
             const node = textEl(leftLabels[i], 1.5, y, { fontSize: pinFontSize });
             // 端子文字は「文字スタイル」の一括サイズから独立させ、専用の端子文字サイズで描く。
             node.setAttribute("data-content-exempt", "true");
+            // 端子文字がラベルと同じ文字列でも、ラベル位置X/Yの移動では動かさない。
+            markNotLabelText(node);
             g.appendChild(node);
           }
           if (rightLabels[i]) {
             const node = textEl(rightLabels[i], w - 1.5, y, { fontSize: pinFontSize, anchor: "end" });
             node.setAttribute("data-content-exempt", "true");
+            markNotLabelText(node);
             g.appendChild(node);
           }
         }
@@ -6341,7 +6443,7 @@
           const y = pinY + 3;
           g.appendChild(svgEl("line", { x1: 0, y1: y, x2: w, y2: y, class: "symbol-line", stroke }));
           g.appendChild(svgEl("line", { x1: -8, y1: y - 3, x2: 0, y2: y - 3, class: "symbol-line", stroke }));
-          g.appendChild(textEl(labels[i - 1] || String(i).padStart(2, "0"), 3, y - 3, { fontSize: 2 }));
+          g.appendChild(markNotLabelText(textEl(labels[i - 1] || String(i).padStart(2, "0"), 3, y - 3, { fontSize: 2 })));
         }
       }
 
@@ -6358,7 +6460,7 @@
           for (let i = 0; i < count; i++) {
             const cy = pitch * i + pitch / 2;
             drawTerminalNode(g, w / 2, cy, Math.min(2.7, pitch * .33), shape, stroke);
-            g.appendChild(textEl(String(i + 1), w + 3, cy, { fontSize: 2 }));
+            g.appendChild(markNotLabelText(textEl(String(i + 1), w + 3, cy, { fontSize: 2 })));
           }
           if (element.label) g.appendChild(textEl(element.label, w + 3, -3, { fontSize: 2.4 }));
         } else {
@@ -6367,7 +6469,7 @@
           for (let i = 0; i < count; i++) {
             const cx = pitch * i + pitch / 2;
             drawTerminalNode(g, cx, h / 2, Math.min(2.7, pitch * .33), shape, stroke);
-            g.appendChild(textEl(String(i + 1), cx, h + 4, { fontSize: 2, anchor: "middle" }));
+            g.appendChild(markNotLabelText(textEl(String(i + 1), cx, h + 4, { fontSize: 2, anchor: "middle" })));
           }
           if (element.label) g.appendChild(textEl(element.label, 0, -3, { fontSize: 2.4 }));
         }
@@ -6418,7 +6520,7 @@
           const y = terminalBoxPinY(element, i);
           if (stub > 0 && terminalBoxStubVisible(element, "left", i)) g.appendChild(svgEl("line", { x1: -stub, y1: y, x2: 0, y2: y, class: "symbol-line", stroke }));
           if (stub > 0 && terminalBoxStubVisible(element, "right", i)) g.appendChild(svgEl("line", { x1: w, y1: y, x2: w + stub, y2: y, class: "symbol-line", stroke }));
-          if (boxLabels[i]) g.appendChild(textEl(boxLabels[i], w / 2, y, { fontSize: boxLabelSize, anchor: "middle" }));
+          if (boxLabels[i]) g.appendChild(markNotLabelText(textEl(boxLabels[i], w / 2, y, { fontSize: boxLabelSize, anchor: "middle" })));
         }
         // ラベルはシンボル上側で統一(DXF出力の-2.2と同じ側)。
         if (element.label) g.appendChild(textEl(element.label, w / 2, -1.8, { fontSize: 2.2, anchor: "middle" }));
@@ -10005,45 +10107,49 @@
         // 実機の光電スイッチ/ライトカーテンは電源2線(+V/0V)と出力線が別々にあり、既存の
         // 2端子シンボル(P-Nの2線だけ)では+24V系の配線を描けない。既存シンボルはそのまま残し、
         // 端子を増やした配線図向けの様式をここに追加する。
-        // 端子は本体の片側へ5mmピッチ(2.5mmグリッドの倍数)で並べ、光軸は反対側へ出す。
+        // 端子は本体の片側へ並べ、光軸は反対側へ出す。ピッチは2.5mmグリッドの倍数。
+        // ライトカーテンは5mmピッチ、光電スイッチは実機の端子台に合わせて2.5mmピッチ。
+        // どちらも「左右ミラー」で端子側と光軸側を入れ替えられる(回転180度と違い文字は正立のまま)。
         // 光電スイッチ・3線式(+V/0V/出力)。DCセンサの標準結線(茶=+V、青=0V、黒=出力)。
+        // 端子ピッチ2.5mmに合わせ、本体高さは上下マージン2.5mm込みの10mmとする。
         photoelectricWired3: {
-          w: 21, h: 15,
-          anchors: [[0, 2.5], [0, 7.5], [0, 12.5]],
+          w: 21, h: 10,
+          anchors: [[0, 2.5], [0, 5], [0, 7.5]],
           prims: [
             { t: "line", p: [0, 2.5, 4, 2.5] },
+            { t: "line", p: [0, 5, 4, 5] },
             { t: "line", p: [0, 7.5, 4, 7.5] },
-            { t: "line", p: [0, 12.5, 4, 12.5] },
-            { t: "rect", p: [4, 0, 11, 15], fill: "white" },
-            { t: "circle", p: [12, 7.5, 2.1], fill: "white" },
-            { t: "line", p: [15, 7.5, 19.4, 7.5], dash: "1 1" },
-            { t: "pline", pts: [[18.4, 6.5], [19.6, 7.5], [18.4, 8.5]] },
+            { t: "rect", p: [4, 0, 11, 10], fill: "white" },
+            { t: "circle", p: [12, 5, 2.1], fill: "white" },
+            { t: "line", p: [15, 5, 19.4, 5], dash: "1 1" },
+            { t: "pline", pts: [[18.4, 4], [19.6, 5], [18.4, 6]] },
             { t: "text", p: [4.8, 3.05], size: 1.5, anchor: "start", value: "+V" },
-            { t: "text", p: [4.8, 8.05], size: 1.5, anchor: "start", value: "0V" },
-            { t: "text", p: [4.8, 13.05], size: 1.5, anchor: "start", value: "OUT" },
+            { t: "text", p: [4.8, 5.55], size: 1.5, anchor: "start", value: "0V" },
+            { t: "text", p: [4.8, 8.05], size: 1.5, anchor: "start", value: "OUT" },
             { t: "text", p: [10.5, -1.4], anchor: "middle", field: "label" },
-            { t: "text", p: [10.5, 17.4], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [10.5, 12.4], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 光電スイッチ・4線式(+V/0V/出力2点)。NO・NCの2出力形(NPN/PNPの2出力形も同じ形)。
+        // 端子ピッチ2.5mm×4点+上下マージン2.5mmで本体高さは12.5mm。
         photoelectricWired4: {
-          w: 21, h: 20,
-          anchors: [[0, 2.5], [0, 7.5], [0, 12.5], [0, 17.5]],
+          w: 21, h: 12.5,
+          anchors: [[0, 2.5], [0, 5], [0, 7.5], [0, 10]],
           prims: [
             { t: "line", p: [0, 2.5, 4, 2.5] },
+            { t: "line", p: [0, 5, 4, 5] },
             { t: "line", p: [0, 7.5, 4, 7.5] },
-            { t: "line", p: [0, 12.5, 4, 12.5] },
-            { t: "line", p: [0, 17.5, 4, 17.5] },
-            { t: "rect", p: [4, 0, 11, 20], fill: "white" },
-            { t: "circle", p: [12, 10, 2.1], fill: "white" },
-            { t: "line", p: [15, 10, 19.4, 10], dash: "1 1" },
-            { t: "pline", pts: [[18.4, 9], [19.6, 10], [18.4, 11]] },
+            { t: "line", p: [0, 10, 4, 10] },
+            { t: "rect", p: [4, 0, 11, 12.5], fill: "white" },
+            { t: "circle", p: [12, 6.25, 2.1], fill: "white" },
+            { t: "line", p: [15, 6.25, 19.4, 6.25], dash: "1 1" },
+            { t: "pline", pts: [[18.4, 5.25], [19.6, 6.25], [18.4, 7.25]] },
             { t: "text", p: [4.8, 3.05], size: 1.5, anchor: "start", value: "+V" },
-            { t: "text", p: [4.8, 8.05], size: 1.5, anchor: "start", value: "0V" },
-            { t: "text", p: [4.8, 13.05], size: 1.5, anchor: "start", value: "NO" },
-            { t: "text", p: [4.8, 18.05], size: 1.5, anchor: "start", value: "NC" },
+            { t: "text", p: [4.8, 5.55], size: 1.5, anchor: "start", value: "0V" },
+            { t: "text", p: [4.8, 8.05], size: 1.5, anchor: "start", value: "NO" },
+            { t: "text", p: [4.8, 10.55], size: 1.5, anchor: "start", value: "NC" },
             { t: "text", p: [10.5, -1.4], anchor: "middle", field: "label" },
-            { t: "text", p: [10.5, 22.4], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [10.5, 14.9], size: 1.8, anchor: "middle", field: "descLine" }
           ]
         },
         // 光電検出装置・メーク接点(別表現)。JIS C 0617-7 の近接検出装置(07-20-02)と同じ組み立てで、
@@ -11333,12 +11439,12 @@
         g.appendChild(svgEl("line", { x1: 0, y1: totalH, x2: w, y2: totalH, class: "symbol-line", stroke }));
         if (comSide) {
           g.appendChild(svgEl("circle", { cx, cy: comY, r: 3.2, class: "terminal-dot", stroke }));
-          g.appendChild(textEl(comPortLabel(element), cx, comY, { fontSize: 1.8, anchor: "middle" }));
+          g.appendChild(markNotLabelText(textEl(comPortLabel(element), cx, comY, { fontSize: 1.8, anchor: "middle" })));
           if (stripComMarkVisible(element)) drawStripTerminalMark(g, comSide === "left" ? 0 : w, comY, stroke);
         }
         if (zeroSide) {
           g.appendChild(svgEl("circle", { cx, cy: zeroY, r: 3.2, class: "terminal-dot", stroke }));
-          g.appendChild(textEl(zeroPortLabel(element), cx, zeroY, { fontSize: 1.8, anchor: "middle" }));
+          g.appendChild(markNotLabelText(textEl(zeroPortLabel(element), cx, zeroY, { fontSize: 1.8, anchor: "middle" })));
           if (stripZeroMarkVisible(element)) drawStripTerminalMark(g, zeroSide === "left" ? 0 : w, zeroY, stroke);
         }
         for (let i = 0; i < rows; i++) {
@@ -11347,7 +11453,7 @@
             drawCardContactRow(g, cx, cy, labels[i] || "", stroke);
           } else {
             g.appendChild(svgEl("circle", { cx, cy, r: 3.2, class: "terminal-dot", stroke }));
-            if (labels[i]) g.appendChild(textEl(labels[i], cx, cy, { fontSize: 2, anchor: "middle" }));
+            if (labels[i]) g.appendChild(markNotLabelText(textEl(labels[i], cx, cy, { fontSize: 2, anchor: "middle" })));
           }
           if (stripTerminalMarkVisible(element, "left", i)) drawStripTerminalMark(g, 0, cy, stroke);
           if (stripTerminalMarkVisible(element, "right", i)) drawStripTerminalMark(g, w, cy, stroke);
@@ -12379,6 +12485,22 @@
             </details>`;
       }
 
+      // 左右ミラーで形が変わるgeoシンボルか。左右対称の記号ではチェック欄を出さないため、
+      // 実際にプリミティブが変化するかを反転前後で比較して判定する。
+      function geoMirrorMatters(element) {
+        if (!geoFor(element)) return false;
+        const shape = prims => JSON.stringify(prims.map(prim => [prim.t, prim.p, prim.pts, prim.anchor]));
+        return shape(geoPrims(element)) !== shape(geoPrims({ ...element, mirrorX: !element.mirrorX }));
+      }
+
+      // 「左右反転」チェック欄。回転180度と違い、記号と接続点だけを左右に映して文字は正立のまま。
+      // 右パネル下部の「左右ミラー」ボタンと同じ element.mirrorX を切り替える。
+      function mirrorCheckboxHtml(element) {
+        if (!geoMirrorMatters(element)) return "";
+        return `
+            <label><input data-bind="mirrorX" type="checkbox" ${element.mirrorX ? "checked" : ""} style="width:auto;min-height:auto"> 左右反転（記号と接続点だけを左右に映す・文字は正立）</label>`;
+      }
+
       // 選択中要素に対応する「シンボルデザイン」セレクトHTML(バリエーションが無い種別は空文字)。
       function symbolVariantSelectHtml(element) {
         const key = variantOptionsKeyFor(element);
@@ -12399,7 +12521,7 @@
             <label>シンボルデザイン（規格・様式切替）</label>
             <select data-bind="symbolVariant">
               ${options.map(([value, label]) => `<option value="${escapeAttr(value)}"${current === value ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}
-            </select>`;
+            </select>${mirrorCheckboxHtml(element)}`;
       }
 
       // 種別固有の編集フィールド(接点方向、端子台段数、表の行列、下絵クロップ等)を返す大型分岐。
@@ -21435,7 +21557,7 @@
               <li><b>端子台・PLCユニット列の端子記号</b>: 本体の辺上に<b>機器箱と同じ白抜き小円の端子</b>を表示し、その<b>端子だけが配線接続点</b>になります。パレットの端子台は<b>左のみON</b>で配置、PLC入出力回路テンプレートは<b>入力=左／出力=右</b>。右パネルで左右一括・端子ごとに切替可能</li>
               <li><b>端子台・PLCユニット列のカード種別</b>: 本体は<b>長方形</b>（上下も直線）。右パネルの「カード種別」で<b>入力カード（円＋デバイス名）／出力カード（a接点＋上にデバイス名）</b>を切替できます。出力カードは<b>0Vポート</b>（既定=左・表示/非表示切替可）も付きます</li>
               <li><b>COM/0Vポート</b>: パレットの端子台は<b>最下段にCOMポートを標準装備</b>（位置は他の端子の逆側が自動既定、なし/自動/左/右を切替可）。右パネルの<b>「COM/0Vポートの表示名」で COM/0V ⇔ COM＋/COM− を切替</b>できます。PLC入出力回路テンプレートは<b>入力=円モード・COM右→N1／出力=a接点モード・COM左→P1・0V右→N1</b>へ自動配線し、各行・COM・0Vともレール接続部に接続点(黒丸)を打ちます</li>
-              <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます。<b>端子ピッチ（端子間距離）と上下マージン（上下端〜端子）</b>を指定でき、指定すると箱の高さが端子配置に自動追従します（空欄なら従来どおり高さを等分）</li>
+              <li><b>機器箱</b>: <b>端子文字サイズ</b>は専用欄で、<b>ラベル</b>は「文字スタイル」の文字サイズで別々に変更できます。<b>ラベル位置X/Yで動くのはラベルだけ</b>で、端子文字がラベルと同じ文字列でも一緒には動きません。<b>端子ピッチ（端子間距離）と上下マージン（上下端〜端子）</b>を指定でき、指定すると箱の高さが端子配置に自動追従します（空欄なら従来どおり高さを等分）</li>
               <li><b>基本図形</b>: 矩形・円・<b>楕円・円弧・楕円弧・多角形</b>（多角形は辺数変更/頂点編集/直線へ分解可）・雲マーク・<b>改訂三角</b>（△+改訂番号）</li>
               <li><b>円・楕円の接続点</b>: 外周の<b>0/45/90/135/180/225/270/315度</b>の8点が配線接続点です（矩形の頂点+辺中央と同じ扱い）。楕円は同じ8方向を外周へ投影した点になります</li>
               <li>間違えたら <b>Ctrl+Z</b>。位置の微調整は<b>矢印キー</b>（1mm、Shiftで5mm）</li>
@@ -21456,7 +21578,7 @@
           ${section("選択・編集を速くするコツ", `
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
               <li><b>同じ要素を素早く2回押すとその場編集</b>（ダブルクリック）: 配線=線番、部品=ラベル、文字=本文。Enter確定・Esc取消・<b>Tabで次の要素へ連続入力</b>。2回目の押下からドラッグしたときは移動が優先されます</li>
-              <li><b>左右ミラー</b>（右パネル/右クリック）: 記号そのものが左右反転し、<b>表示・DXF・接続点が同時に反転</b>します。もう一度実行すると戻ります。左右対称な図形や個別描画の部品（ホーン形ブザー・電源・センサ・箱物など）は形が変わらないため、その旨を表示して何もしません</li>
+              <li><b>左右ミラー</b>（右パネル/右クリック、または「シンボルデザイン」下の<b>左右反転</b>チェック）: 記号そのものが左右反転し、<b>表示・DXF・接続点が同時に反転</b>します。文字は鏡文字にならず正立のままなので、180度回転と違って端子文字やラベルが逆さになりません。もう一度実行すると戻ります。左右対称な図形や個別描画の部品（ホーン形ブザー・電源・センサ・箱物など）は形が変わらないため、その旨を表示して何もしません</li>
               <li><b>右クリックメニュー</b>: その場編集/コピー/複製/削除/回転/ミラー/ロック/参照ジャンプをその場で実行</li>
               <li><b>同種をページ内全選択</b>（右パネル/右クリック）→ 一括デザイン変更・一括線色・一括ロックと組み合わせて様式替えが数クリック</li>
               <li><b>Shift+クリック</b>や範囲ドラッグで複数選択 → 整列（左/中/右/上/下）・均等配置・剛体回転</li>
@@ -21537,7 +21659,9 @@
             従来の2端子シンボルはそのまま残してあります。光電スイッチは
             <b>3線式（+V／0V／出力）</b>と<b>4線式（+V／0V／NO・NC出力）</b>、ライトカーテンは
             <b>投光器・3線式（+24V／0V／テスト）</b>と<b>受光器・4線式（+24V／0V／OSSD1／OSSD2）</b>で、
-            端子は本体の片側に<b>5mmピッチ</b>（2.5mmグリッドの倍数）で並び、光軸は反対側へ出ます。
+            端子は本体の片側に並び（<b>光電スイッチは2.5mmピッチ、ライトカーテンは5mmピッチ</b>。どちらも2.5mmグリッドの倍数）、光軸は反対側へ出ます。
+            端子側と光軸側を入れ替えるときは、回転ではなく<b>「左右反転」</b>（右パネルの「シンボルデザイン」の下のチェック／「左右ミラー」ボタン）を使います。
+            記号と接続点だけが左右に映り、端子文字とラベルは正立のままです。
             投光器と受光器を左右に並べると光軸が向かい合って1組になります。
             別表現として、ラダー図の中へ1接点として置ける<b>光電検出装置（メーク接点／ブレーク接点）</b>と、
             安全回路図で使われる<b>ライトカーテンの接点表現（OSSD2出力を2つのメーク接点で表す）</b>も追加しました。

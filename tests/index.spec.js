@@ -485,7 +485,7 @@ test("破損JSON・空ページ・将来版を拒否して現在図面を保持�
     },
     {
       name: "future.json",
-      body: { schemaVersion: 10, pages: [{ id: "p1", title: {}, elements: [] }] },
+      body: { schemaVersion: 11, pages: [{ id: "p1", title: {}, elements: [] }] },
       expected: "新しい形式"
     },
     {
@@ -553,7 +553,7 @@ test("部分JSONは現在図面を継承せず既定値で補完し、staleな�
   const legacy = await page.evaluate(() => window.__edsTest.normalizeProjectData({
     pages: [{ id: "legacy-page" }]
   }));
-  expect(legacy.schemaVersion).toBe(9);
+  expect(legacy.schemaVersion).toBe(10);
   expect(legacy.pages[0].title).toBeTruthy();
   expect(legacy.pages[0].elements).toEqual([]);
 });
@@ -596,7 +596,7 @@ test("schema v2の回転部品と機器箱・端子箱を配線ごと現行版�
   }));
 
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(9);
+  expect(migrated.schemaVersion).toBe(10);
   expect(elements.contact).toMatchObject({ x: 50, y: 49, w: 10, rotation: 90 });
   expect(elements["wire-left"].points[1][0]).toBeCloseTo(47.8, 6);
   expect(elements["wire-left"].points[1][1]).toBeCloseTo(49, 6);
@@ -693,7 +693,7 @@ test("schema v3のCPとユニット列を接続を保って現行版へ移行し
 
   const migrated = result.migrated;
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(9);
+  expect(migrated.schemaVersion).toBe(10);
   expect(result.idempotent).toBe(true);
 
   expect(elements["cp-horizontal"]).toMatchObject({ w: 12.5, h: 5, cpLinked: true });
@@ -767,7 +767,7 @@ test("schema v4のブザーを配線ごとJIS記号の新ピンへ移行し再�
   });
 
   const elements = Object.fromEntries(result.migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(result.migrated.schemaVersion).toBe(9);
+  expect(result.migrated.schemaVersion).toBe(10);
   expect(result.idempotent).toBe(true);
 
   // 旧jis/generalはjis0806へ、sirenはキーを保つ。略画hornは無変更。
@@ -792,6 +792,160 @@ test("schema v4のブザーを配線ごとJIS記号の新ピンへ移行し再�
   expect(elements["j-gen-r"]).toMatchObject({ x: 57.25, y: 26 });
   expect(elements["w-siren-l"].points).toEqual([[84.75, 26], [70, 24]]);
   expect(elements["w-siren-r"].points).toEqual([[87.25, 26], [100, 24]]);
+});
+
+test("schema v9の光電スイッチ多端子形を2.5mmピッチへ詰めて配線を追従させる", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const source = {
+      schemaVersion: 9,
+      activePageId: "p1",
+      pages: [{
+        id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+        elements: [
+          // 旧4線式: h20・端子y=2.5/7.5/12.5/17.5(5mmピッチ)
+          { id: "ps4", type: "photoelectricSwitch", symbolVariant: "wired4", x: 100, y: 50, w: 21, h: 20, label: "PS4" },
+          { id: "w4-1", type: "wire", points: [[80, 52.5], [100, 52.5]] },
+          { id: "w4-2", type: "wire", points: [[80, 57.5], [100, 57.5]] },
+          { id: "w4-3", type: "wire", points: [[80, 62.5], [100, 62.5]] },
+          { id: "w4-4", type: "wire", points: [[80, 67.5], [100, 67.5]] },
+          // 旧3線式: h15・端子y=2.5/7.5/12.5
+          { id: "ps3", type: "photoelectricSwitch", symbolVariant: "wired3", x: 100, y: 100, w: 21, h: 15, label: "PS3" },
+          { id: "w3-1", type: "wire", points: [[80, 102.5], [100, 102.5]] },
+          { id: "w3-2", type: "wire", points: [[80, 107.5], [100, 107.5]] },
+          { id: "j3-3", type: "junction", x: 100, y: 112.5 },
+          // 従来の2端子形とライトカーテンの多端子形(5mmピッチのまま)は移行対象外
+          { id: "ps-beam", type: "photoelectricSwitch", symbolVariant: "throughBeam", x: 40, y: 150, w: 15, h: 8.4, label: "PS0" },
+          { id: "lc3", type: "lightCurtain", symbolVariant: "wired3", x: 40, y: 170, w: 21, h: 20, label: "LC1" }
+        ]
+      }]
+    };
+    const migrated = window.__edsTest.migrateProjectData(source);
+    const again = window.__edsTest.migrateProjectData(JSON.parse(JSON.stringify(migrated)));
+    const pins = id => {
+      const element = migrated.pages[0].elements.find(item => item.id === id);
+      return window.__edsTest.elementConnectionAnchors(element).map(anchor => [anchor.x, anchor.y]);
+    };
+    return {
+      migrated,
+      idempotent: JSON.stringify(migrated) === JSON.stringify(again),
+      pins: { ps4: pins("ps4"), ps3: pins("ps3"), lc3: pins("lc3") }
+    };
+  });
+
+  const elements = Object.fromEntries(result.migrated.pages[0].elements.map(element => [element.id, element]));
+  expect(result.migrated.schemaVersion).toBe(10);
+  expect(result.idempotent).toBe(true);
+
+  // 端子ピッチが2.5mmになり、本体高さも詰まる(第1端子の位置は変えない)
+  expect(elements.ps3).toMatchObject({ w: 21, h: 10 });
+  expect(elements.ps4).toMatchObject({ w: 21, h: 12.5 });
+  expect(result.pins.ps3).toEqual([[100, 102.5], [100, 105], [100, 107.5]]);
+  expect(result.pins.ps4).toEqual([[100, 52.5], [100, 55], [100, 57.5], [100, 60]]);
+
+  // 旧ピンへ接続していた配線・接続点が新ピンへ追従する(反対側の端点は動かさない)
+  expect(elements["w4-1"].points).toEqual([[80, 52.5], [100, 52.5]]);
+  expect(elements["w4-2"].points).toEqual([[80, 57.5], [100, 55]]);
+  expect(elements["w4-3"].points).toEqual([[80, 62.5], [100, 57.5]]);
+  expect(elements["w4-4"].points).toEqual([[80, 67.5], [100, 60]]);
+  expect(elements["w3-1"].points).toEqual([[80, 102.5], [100, 102.5]]);
+  expect(elements["w3-2"].points).toEqual([[80, 107.5], [100, 105]]);
+  expect(elements["j3-3"]).toMatchObject({ x: 100, y: 107.5 });
+
+  // 対象外の部品は寸法も5mmピッチも変わらない
+  expect(elements["ps-beam"]).toMatchObject({ w: 15, h: 8.4 });
+  expect(elements.lc3).toMatchObject({ w: 21, h: 20 });
+  expect(result.pins.lc3).toEqual([[40, 175], [40, 180], [40, 185]]);
+});
+
+test("光電スイッチ3線式・4線式を左右反転しても端子文字とラベルは正立のまま", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 10,
+    activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [
+        { id: "ps3", type: "photoelectricSwitch", symbolVariant: "wired3", x: 60, y: 60, w: 21, h: 10, label: "PS1", layer: "symbols" }
+      ]
+    }]
+  }));
+  await page.evaluate(() => window.__edsTest.selectElement("ps3"));
+
+  // 「シンボルデザイン」の下に左右反転チェックが出る
+  const mirror = page.locator('[data-bind="mirrorX"]');
+  await expect(mirror).toHaveCount(1);
+  await mirror.check();
+
+  const flipped = await page.evaluate(() => {
+    const element = window.__edsTest.state.pages[0].elements[0];
+    return {
+      mirrorX: element.mirrorX,
+      anchors: window.__edsTest.elementConnectionAnchors(element).map(anchor => [anchor.x, anchor.y]),
+      // 文字は鏡文字にならず、寄せ方向だけが入れ替わる
+      texts: window.__edsTest.geoPrims(element)
+        .filter(prim => prim.t === "text" && prim.value)
+        .map(prim => [prim.value, prim.p[0], prim.p[1], prim.anchor]),
+      transforms: Array.from(document.querySelectorAll('[data-id="ps3"] text'))
+        .map(node => node.getAttribute("transform"))
+    };
+  });
+
+  // 接続点だけが右辺へ移り、Y(端子の並び順)は変わらない
+  expect(flipped.mirrorX).toBe(true);
+  expect(flipped.anchors).toEqual([[81, 62.5], [81, 65], [81, 67.5]]);
+  // geoPrimsは要素ローカル座標。反転前は左寄せx=4.8、反転後は右寄せx=21-4.8=16.2。
+  expect(flipped.texts).toEqual([
+    ["+V", 16.2, 3.05, "end"],
+    ["0V", 16.2, 5.55, "end"],
+    ["OUT", 16.2, 8.05, "end"]
+  ]);
+  expect(flipped.transforms.every(value => !value)).toBe(true);
+});
+
+test("機器箱のラベル位置X/Yは同じ文字列の端子文字を動かさない", async ({ page }) => {
+  await page.evaluate(() => window.__edsTest.installProjectData({
+    schemaVersion: 10,
+    activePageId: "p1",
+    pages: [{
+      id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {},
+      elements: [
+        {
+          id: "db1", type: "deviceBox", x: 40, y: 40, w: 28, h: 24, pins: 2,
+          label: "X1", pinText: "X1\nX2", pinFontSize: 1.5, labelFontSize: 3.4, layer: "symbols"
+        }
+      ]
+    }]
+  }));
+
+  const read = () => page.evaluate(() => Array.from(document.querySelectorAll('[data-id="db1"] text'))
+    .map(node => ({
+      text: node.textContent,
+      x: Number(node.getAttribute("x")),
+      y: Number(node.getAttribute("y")),
+      size: Number(node.getAttribute("font-size"))
+    })));
+
+  const before = await read();
+  // ラベル1件+端子文字2件。同じ"X1"でも文字サイズは別々(ラベル3.4/端子1.5)。
+  expect(before).toHaveLength(3);
+  const beforePins = before.filter(item => item.size === 1.5);
+  expect(beforePins.map(item => item.text)).toEqual(["X1", "X2"]);
+
+  await page.evaluate(() => {
+    const element = window.__edsTest.state.pages[0].elements[0];
+    element.labelDx = 10;
+    element.labelDy = 8;
+    window.__edsTest.commitHistory("ラベル位置を変更しました。");
+  });
+  await page.evaluate(() => window.__edsTest.selectElement("db1"));
+
+  const after = await read();
+  const beforeLabel = before.find(item => item.size === 3.4);
+  const afterLabel = after.find(item => item.size === 3.4);
+  // ラベルだけが+10/-8mm移動する
+  expect(afterLabel.x - beforeLabel.x).toBeCloseTo(10, 6);
+  expect(afterLabel.y - beforeLabel.y).toBeCloseTo(-8, 6);
+  // 端子文字は位置も文字サイズも変わらない
+  expect(after.filter(item => item.size === 1.5)).toEqual(beforePins);
 });
 
 test("不正な表題欄レイアウトを拒否してダイアログと履歴を壊さない", async ({ page }) => {
