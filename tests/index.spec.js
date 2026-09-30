@@ -343,6 +343,60 @@ test("初期画面にキャンバスと部品パレットが表示される", as
   expect(await paletteItems.count()).toBeGreaterThan(0);
 });
 
+for (const width of [1920, 1440, 1280, 1024]) {
+  test(`シンボルをドラッグ配置しても上部ボタンが重ならない（幅${width}px）`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const buttons = page.locator(".topbar button");
+    const positions = () => buttons.evaluateAll(nodes => nodes.map(node => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { label: node.textContent.trim(), x, y, width, height };
+    }));
+    const before = await positions();
+
+    await page.locator("#paletteFilter").fill("coil");
+    const canvas = page.locator("svg#canvas");
+    await page.locator('#paletteGrid .palette-item[data-type="coil"]').dragTo(canvas, {
+      targetPosition: { x: 150, y: 20 }
+    });
+    await expect(canvas.locator('g[data-type="coil"]')).toHaveCount(1);
+    await expect(page.locator("#status")).toContainText("シンボルデザイン");
+
+    const after = await positions();
+    expect(after, "案内文が長くなってもボタンの位置と幅を保つ").toEqual(before);
+    const header = await page.locator(".topbar").boundingBox();
+    for (let i = 0; i < after.length; i++) {
+      const button = after[i];
+      expect(button.x, button.label).toBeGreaterThanOrEqual(header.x);
+      expect(button.y, button.label).toBeGreaterThanOrEqual(header.y);
+      expect(button.x + button.width, button.label).toBeLessThanOrEqual(header.x + header.width);
+      expect(button.y + button.height, button.label).toBeLessThanOrEqual(header.y + header.height);
+      for (const other of after.slice(i + 1)) {
+        const overlaps = Math.min(button.x + button.width, other.x + other.width) > Math.max(button.x, other.x)
+          && Math.min(button.y + button.height, other.y + other.height) > Math.max(button.y, other.y);
+        expect(overlaps, `${button.label}と${other.label}が重ならない`).toBe(false);
+      }
+    }
+    const iconWidths = await page.locator(".topbar button.icon").evaluateAll(nodes =>
+      nodes.map(node => node.getBoundingClientRect().width));
+    expect(iconWidths).toEqual([34, 34, 34, 34, 34, 34]);
+    const status = await page.locator("#status").textContent();
+    await expect(page.locator("#status")).toHaveAttribute("title", status);
+
+    // 折り返したツールバーの高さに、パネル開閉ボタンと選択部品の操作バーも追従する。
+    for (const viewportWidth of [width, width >= 1440 ? 1024 : 1920]) {
+      await page.setViewportSize({ width: viewportWidth, height: 1000 });
+      await expect(page.locator("#miniToolbar")).toBeVisible();
+      const workspace = await page.locator(".workspace").boundingBox();
+      const miniToolbar = await page.locator("#miniToolbar").boundingBox();
+      expect(miniToolbar.y).toBeGreaterThanOrEqual(workspace.y);
+      for (const id of ["#toggleLeftPanel", "#toggleRightPanel"]) {
+        const toggle = await page.locator(id).boundingBox();
+        expect(toggle.y).toBeGreaterThanOrEqual(workspace.y);
+      }
+    }
+  });
+}
+
 test("パレット内にscopeした部品を選択してキャンバスへ配置できる", async ({ page }) => {
   const filter = page.getByRole("searchbox", { name: "部品検索" });
   await filter.fill("coil");

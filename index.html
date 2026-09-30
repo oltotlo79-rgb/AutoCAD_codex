@@ -122,7 +122,7 @@
     .app {
       height: 100%;
       display: grid;
-      grid-template-rows: 48px 40px auto minmax(0, 1fr);
+      grid-template-rows: auto 40px auto minmax(0, 1fr);
     }
 
     /* ===== 上部ツールバー・ページタブ(共通の帯スタイル) ===== */
@@ -137,11 +137,19 @@
       min-width: 0;
     }
 
+    .topbar {
+      min-height: 48px;
+      padding: 6px 10px;
+      flex-wrap: wrap;
+    }
+
     .brand {
       display: flex;
       align-items: center;
       gap: 9px;
       min-width: 210px;
+      flex-shrink: 0;
+      white-space: nowrap;
       font-weight: 700;
       letter-spacing: 0;
     }
@@ -173,7 +181,16 @@
       align-items: center;
       gap: 6px;
       min-width: 0;
+      flex-shrink: 0;
     }
+
+    .top-actions {
+      max-width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .topbar button,
+    .topbar .tool-sep { flex-shrink: 0; }
 
     .spacer { flex: 1; }
 
@@ -187,12 +204,14 @@
     }
 
     .status {
+      /* 案内文の長さに関係なく、ボタンの残り幅だけを使う。 */
+      flex: 1 1 0;
+      min-width: 0;
       font-size: 12px;
       color: var(--muted);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 38vw;
     }
 
     .tabbar {
@@ -1071,7 +1090,6 @@
         <button type="button" id="exportSvgBtn" title="現在ページをSVG出力">SVG</button>
         <button type="button" id="exportPngBtn" title="現在ページをPNG出力">PNG</button>
       </div>
-      <div class="spacer"></div>
       <div class="tool-actions" role="toolbar" aria-label="作図ツール">
         <button type="button" class="icon active" data-tool="select" title="選択/移動（ショートカット: S または V）">S</button>
         <button type="button" class="icon" data-tool="wire" title="直交配線を引く（ショートカット: W）">W</button>
@@ -18038,6 +18056,9 @@
         app.classList.toggle("right-collapsed", !!state.settings.rightPanelCollapsed);
         qs("#toggleLeftPanel").textContent = state.settings.leftPanelCollapsed ? "›" : "‹";
         qs("#toggleRightPanel").textContent = state.settings.rightPanelCollapsed ? "‹" : "›";
+        const panelTop = qs(".shell").getBoundingClientRect().top + 8 + "px";
+        qs("#toggleLeftPanel").style.top = panelTop;
+        qs("#toggleRightPanel").style.top = panelTop;
         qsa("#quickRibbon [data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === activeTool));
         qs("#ribbonAudit")?.classList.toggle("active", !!state.settings.auditOverlay);
         const page = currentPage();
@@ -18074,10 +18095,11 @@
         });
         host.classList.remove("hidden");
         // 選択ハンドルや接続点の操作を邪魔しないよう、要素からしっかり離す。
-        // 上に収まらないときは要素の下側へ出す。
+        // キャンバス領域の上に収まらないときは要素の下側へ出す。
         host.style.left = Math.max(8, Math.min(window.innerWidth - 280, box.left)) + "px";
         const above = box.top - 64;
-        host.style.top = (above >= 84 ? above : Math.min(window.innerHeight - 48, box.bottom + 28)) + "px";
+        const workspaceTop = qs(".workspace").getBoundingClientRect().top + 8;
+        host.style.top = Math.max(workspaceTop, above >= workspaceTop ? above : Math.min(window.innerHeight - 48, box.bottom + 28)) + "px";
       }
 
       // 選択部品から配線を始める(ミニツールバーの「配線」)。配線ツールへ切り替え、
@@ -24951,7 +24973,10 @@
           if (!event.target.closest("#contextMenu")) hideContextMenu();
         });
         qs(".workspace")?.addEventListener("scroll", hideContextMenu, { passive: true });
-        window.addEventListener("resize", hideContextMenu);
+        window.addEventListener("resize", () => {
+          hideContextMenu();
+          updateProductivityUi();
+        });
         window.addEventListener("keydown", onKeyDown);
       }
 
