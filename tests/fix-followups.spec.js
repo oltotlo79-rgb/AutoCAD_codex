@@ -182,3 +182,18 @@ test("カタログ差分更新は項目名を表示名で出し、端子台エ�
   });
   expect(fits).toBe(true);
 });
+
+test("縦配線列の開始Xは、母線のあるページでは最も右の左母線の右側を既定にする", async ({ page }) => {
+  await page.locator("#templateMenu").selectOption("facilityLadder");
+  await page.locator("#ladRails").fill("P1,P2,P3");
+  await page.locator("#ladBuildBtn").click();
+  await page.locator("#actionMenu").selectOption("wireColumn");
+  // P1/P2/P3は32.5/37.5/42.5なので、P3の7.5mm右(50)から始める。
+  await expect(page.locator("#wireColumnX")).toHaveValue("50");
+  await page.locator("#dialogClose").click();
+
+  await page.locator("#tabbar .page-tab").first().click();
+  await page.locator("#actionMenu").selectOption("wireColumn");
+  // 母線のないページは従来どおり30。
+  await expect(page.locator("#wireColumnX")).toHaveValue("30");
+});

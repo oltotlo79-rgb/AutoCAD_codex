@@ -15678,6 +15678,13 @@
         const page = currentPage();
         if (!page) return;
         const size = pageSize(page);
+        // 母線のあるページでは、1本目(とその線番)が左母線に重ならないよう、最も右の左母線から7.5mm右を既定にする。
+        const railXs = (page.elements || [])
+          .filter(el => el.ladderRail && el.points?.length >= 2 && Math.abs(el.points[0][0] - el.points[el.points.length - 1][0]) < 0.01)
+          .map(el => Number(el.points[0][0]));
+        const railMid = (Math.min(...railXs) + Math.max(...railXs)) / 2;
+        const leftRails = railXs.filter(x => x < railMid);
+        const defaultX = railXs.length >= 2 && leftRails.length ? snapToGrid(Math.max(...leftRails) + 7.5) : 30;
         const html = `
           <p class="muted">Yは右パネルの座標と同じく用紙の下端からの位置です（上が＋）。上端Yには下端Yより大きい値を入れます。</p>
           <div class="row">
@@ -15685,7 +15692,7 @@
             <div><label>ピッチ mm</label><input id="wireColumnPitch" type="number" min="2.5" step="2.5" value="12.5"></div>
           </div>
           <div class="row">
-            <div><label>開始X mm</label><input id="wireColumnX" type="number" step="2.5" value="30"></div>
+            <div><label>開始X mm</label><input id="wireColumnX" type="number" step="2.5" value="${defaultX}"></div>
             <div><label>上端Y mm（上が＋）</label><input id="wireColumnY1" type="number" step="2.5" value="${dialogDisplayY(page, 42.5)}"></div>
           </div>
           <div class="row">
