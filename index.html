@@ -3374,6 +3374,8 @@
         syncPageTotals();
         resetHistory();
         render();
+        // resetHistory()は履歴名「初期化」をステータスへ出すので、利用者向けの案内へ置き換える。
+        setStatus("A4縦の図枠付きページを作成しました。");
       }
 
       // 基準ページの表題欄から、新しいページへ引き継ぐ値をcreatePage()のオプション形式で返す。
