@@ -2095,6 +2095,12 @@ test("高速作画UIは集中表示・キー設定・ページナビゲータ・
   await page.locator("#ribbonPanels").click();
   await expect(page.locator(".app")).toHaveClass(/left-collapsed/);
   await expect(page.locator(".app")).toHaveClass(/right-collapsed/);
+  // 押したボタンにフォーカスが残っている間のTabは次のボタンへの移動で、集中表示は切り替えない。
+  await page.keyboard.press("Tab");
+  await expect(page.locator("#ribbonShortcuts")).toBeFocused();
+  await expect(page.locator(".app")).toHaveClass(/left-collapsed/);
+  // どこも選んでいない(用紙側)ときのTabで戻る。
+  await page.evaluate(() => document.activeElement?.blur());
   await page.keyboard.press("Tab");
   await expect(page.locator(".app")).not.toHaveClass(/left-collapsed/);
 

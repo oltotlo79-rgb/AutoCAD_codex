@@ -12153,22 +12153,30 @@
         render();
       }
 
+      // 画面座標(clientX/Y)の下にある図面上の点を、ページSVGの外形に対する比率で返す
+      // (倍率が変わっても同じ点を指す)。SVGが表示されていなければnull。
+      function svgFractionAtClient(svg, clientX, clientY) {
+        const box = svg?.getBoundingClientRect();
+        if (!box || !box.width || !box.height) return null;
+        return { fx: (clientX - box.left) / box.width, fy: (clientY - box.top) / box.height };
+      }
+
+      // svgFractionAtClientで覚えた図面上の点が画面座標(clientX/Y)へ来るよう作業領域をスクロールする。
+      function scrollSvgFractionToClient(svg, fraction, clientX, clientY) {
+        const workspace = qs(".workspace");
+        const box = svg?.getBoundingClientRect();
+        if (!workspace || !fraction || !box || !box.width || !box.height) return;
+        workspace.scrollLeft += box.left + fraction.fx * box.width - clientX;
+        workspace.scrollTop += box.top + fraction.fy * box.height - clientY;
+      }
+
       // ズームしても指定した画面座標(clientX/Y)の下にある図面上の点が動かないよう、
       // 再描画後に作業領域のスクロールを補正する(Ctrl+ホイールのカーソル位置ズーム)。
       // svgは拡大縮小前後で同じ要素(単一表示の#canvas/並べて表示のページSVG)を渡す。
       function zoomAtClientPoint(value, svg, clientX, clientY) {
-        const workspace = qs(".workspace");
-        const before = svg?.getBoundingClientRect();
-        if (!workspace || !before || !before.width || !before.height) {
-          setZoom(value);
-          return;
-        }
-        const fx = (clientX - before.left) / before.width;
-        const fy = (clientY - before.top) / before.height;
+        const anchor = svgFractionAtClient(svg, clientX, clientY);
         setZoom(value);
-        const after = svg.getBoundingClientRect();
-        workspace.scrollLeft += after.left + fx * after.width - clientX;
-        workspace.scrollTop += after.top + fy * after.height - clientY;
+        scrollSvgFractionToClient(svg, anchor, clientX, clientY);
       }
 
       // 標準セレクタの選択肢を構築(組込+取込済み標準パック)。
@@ -12445,6 +12453,19 @@
           input.addEventListener("change", () => updateSelectedFromInput(input, true, boundElementId));
           input.addEventListener("input", () => {
             if (input.tagName === "TEXTAREA" || input.type === "text" || input.dataset.live === "true") updateSelectedFromInput(input, false, boundElementId);
+          });
+        });
+        // 表の「セル文字（タブ/カンマ区切り）」ではTabで列区切りのタブ文字を入れる(Shift+Tabは前の欄へ)。
+        // 欄から抜けると続けて打った文字がツール切替キーとして働いてしまうため。
+        // execCommandで入れると通常の入力と同じく欄内のCtrl+Zで戻せ、図面の履歴は欄を離れたときの1件にまとまる。
+        qsa('textarea[data-bind="cellText"]', panel).forEach(area => {
+          area.addEventListener("keydown", event => {
+            if (event.key !== "Tab" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+            event.preventDefault();
+            if (!document.execCommand("insertText", false, "\t")) {
+              area.setRangeText("\t", area.selectionStart, area.selectionEnd, "end");
+              area.dispatchEvent(new Event("input", { bubbles: true }));
+            }
           });
         });
         qsa(".swatch", panel).forEach(button => {
@@ -23039,7 +23060,7 @@
 
           ${section("タッチ操作（タブレット）", `
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
-              <li><b>2本指の開閉でズーム</b>、<b>2本指スライドでスクロール</b>。2本目の指を置くと、作図・移動の途中操作は中断されます</li>
+              <li><b>2本指の開閉でズーム</b>（指の間にある図面の位置を保ったまま拡大・縮小）、<b>2本指スライドでスクロール</b>。2本目の指を置くと、作図・移動の途中操作は中断されます</li>
               <li><b>1本指はマウスと同じ</b>: タップで選択、ドラッグで移動・作図（配線は「配線 W」を選んでからドラッグ）</li>
               <li><b>同じ要素を素早く2回タップ</b>するとその場編集（線番/ラベル/文字）</li>
               <li>キーボードがないときは、上部の<b>U</b>（元に戻す）・<b>R</b>（やり直し）・<b>X</b>（削除）ボタン、クイック作図リボン（繰返・回転・複製・削除・集中表示）、選択時のミニツールバーで操作できます</li>
@@ -23059,11 +23080,11 @@
                 <tr><th colspan="4">編集</th></tr>
                 <tr><td>Ctrl+Z / Ctrl+Y</td><td>元に戻す / やり直し</td><td>Delete / Backspace</td><td>削除（右下の通知「元に戻す」でも戻せる）</td></tr>
                 <tr><td>Ctrl+C / Ctrl+V</td><td>コピー / 貼付（5mmずらす。番号はそのまま）</td><td>Ctrl+D</td><td>複製（5mmずらし、タグ・線番の末尾番号を進める）</td></tr>
-                <tr><td>矢印キー</td><td>1mm移動（Shiftで5mm）。つながった配線の端も追従</td><td>Enter / Space（選択ツール中）</td><td>直前のツール・複製・機能メニューの操作を繰り返す（リボン「繰返 Enter」）</td></tr>
+                <tr><td>矢印キー</td><td>1mm移動（Shiftで5mm）。つながった配線の端も追従</td><td>Enter / Space（選択ツール中）</td><td>直前のツール・複製・機能メニューの操作を繰り返す（リボン「繰返 Enter」）。ボタンを選んでいるときはそのボタンを押す</td></tr>
                 <tr><td>同じ要素を素早く2回押す</td><td>その場編集（線番/ラベル/文字）</td><td>その場編集中の Enter / Esc / Tab</td><td>確定 / 取消 / 確定して次の要素へ（Shift+Tabで前へ）</td></tr>
                 <tr><th colspan="4">選択・表示</th></tr>
                 <tr><td>Shift+クリック</td><td>複数選択（追加/解除）</td><td>Alt+クリック</td><td>重なった要素を前面から順に選択</td></tr>
-                <tr><td>Alt+← / Alt+→</td><td>検索・監査・参照で移動した位置を戻る / 進む</td><td>Tab</td><td>集中表示（左右パネルを閉じる/開く）</td></tr>
+                <tr><td>Alt+← / Alt+→</td><td>検索・監査・参照で移動した位置を戻る / 進む</td><td>Tab</td><td>集中表示（左右パネルを閉じる/開く）。ボタンを選んでいるときは次のボタンへ移動</td></tr>
                 <tr><td>+ / − / 0</td><td>拡大 / 縮小 / 全体表示</td><td>Ctrl+ホイール</td><td>マウス位置を中心にズーム</td></tr>
                 <tr><td>部品検索で Enter / Esc</td><td>先頭候補を配置モード / 検索語を消す</td><td>Esc</td><td>属性スポイト終了→メニューを閉じる→ドラッグ取消→配置終了→選択解除</td></tr>
                 <tr><th colspan="4">配線・直線のドラッグ中（マウスのボタンを押したまま）</th></tr>
@@ -26385,10 +26406,21 @@
       }
 
       // ===== タッチ操作(ピンチズーム+二本指パン) =====
-      // 2本指タッチを検出したら作図・移動ドラッグを中断し、指間距離でズーム、
-      // 中点の移動でワークスペースをパンする。1本指タッチは従来どおりマウスと同じ操作。
+      // 2本指タッチを検出したら作図・移動ドラッグを中断し、指間距離でズームする。
+      // 置いた時点で2本指の中点の下にあった図面上の点を、以後は常に今の中点の下へ保つ
+      // (Ctrl+ホイールのカーソル位置ズームと同じ。中点を動かせばそのままパンになる)。
+      // 1本指タッチは従来どおりマウスと同じ操作。
       const touchPoints = new Map();
       let pinchState = null;
+
+      // 2本指の距離と中点。
+      function touchPinchMetrics() {
+        const pts = [...touchPoints.values()];
+        return {
+          dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+          mid: { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+        };
+      }
 
       // タッチ用pointerdown前処理。2本指を検出したら進行中ドラッグを中断してピンチ開始状態を作る。
       // trueを返した場合、呼び出し元は通常のポインタ処理を行わない。
@@ -26398,37 +26430,44 @@
         if (touchPoints.size === 2) {
           // 進行中の作図/移動はピンチ開始で中断。
           dragState = null;
-          const pts = [...touchPoints.values()];
-          pinchState = {
-            startDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
-            startZoom: state.settings.zoom,
-            lastMid: { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
-          };
           render();
+          const { dist, mid } = touchPinchMetrics();
+          // 基準は編集中ページのSVG(ピンチ中の軽量再描画で拡大縮小されるのはこのSVGだけ)。
+          const svg = qs("#canvas");
+          pinchState = {
+            startDist: dist,
+            startZoom: state.settings.zoom,
+            svg,
+            anchor: svgFractionAtClient(svg, mid.x, mid.y),
+            lastMid: mid
+          };
           return true;
         }
         return false;
       }
 
-      // ピンチ中の移動処理。指間距離の比でズーム、中点の移動量でワークスペースをパンする。
+      // ピンチ中の移動処理。指間距離の比でズームし、開始時に中点の下にあった点を今の中点へ合わせる。
+      // ズームは見え方だけの変更なので履歴は積まない。
       // trueを返した場合、呼び出し元は通常のポインタ処理を行わない。
       function handleTouchMove(event) {
         if (event.pointerType !== "touch" || !touchPoints.has(event.pointerId)) return false;
         touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (!pinchState || touchPoints.size < 2) return false;
         event.preventDefault();
-        const pts = [...touchPoints.values()];
-        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-        const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+        const { dist, mid } = touchPinchMetrics();
         if (pinchState.startDist > 10) {
           state.settings.zoom = clampZoom(pinchState.startZoom * (dist / pinchState.startDist));
           setValue("zoomRange", state.settings.zoom);
           render({ light: true });
         }
-        const workspace = qs(".workspace");
-        if (workspace) {
-          workspace.scrollLeft -= mid.x - pinchState.lastMid.x;
-          workspace.scrollTop -= mid.y - pinchState.lastMid.y;
+        if (pinchState.anchor) {
+          scrollSvgFractionToClient(pinchState.svg, pinchState.anchor, mid.x, mid.y);
+        } else {
+          const workspace = qs(".workspace");
+          if (workspace) {
+            workspace.scrollLeft -= mid.x - pinchState.lastMid.x;
+            workspace.scrollTop -= mid.y - pinchState.lastMid.y;
+          }
         }
         pinchState.lastMid = mid;
         return true;
@@ -26440,7 +26479,12 @@
         if (event.pointerType !== "touch") return false;
         touchPoints.delete(event.pointerId);
         if (pinchState && touchPoints.size < 2) {
+          const ended = pinchState;
           pinchState = null;
+          // 軽量再描画で省いていた他ページ・パネルを今の倍率で描き直す。並べて表示では前のページの
+          // 大きさが変わって用紙がずれるので、最後の中点の下の点をもう一度合わせる。
+          render();
+          scrollSvgFractionToClient(ended.svg, ended.anchor, ended.lastMid.x, ended.lastMid.y);
           // ピンチ終了。既存のpointerup処理(作図確定等)へは流さない。
           return true;
         }
@@ -27579,6 +27623,18 @@
         startInlineEdit(element);
       }
 
+      // Enter/Space(繰返)とTab(集中表示)を図面への操作として受けてよいか。どこも選んでいない(本文)か、
+      // 作業領域・用紙にフォーカスがあるときだけtrue。ツールバー・リボン・パネルのボタン、リンク、
+      // <summary>、パレット項目などを選んでいるときは、ブラウザ既定(Enter/Spaceでそのボタンを押す・
+      // Tabで次へ移る)に任せてキーボードだけでも操作できるようにする。
+      // 閉じたダイアログのボタンなど表示されていない要素に残ったフォーカスは、選んでいないものとみなす。
+      function keyboardFocusOnDrawing() {
+        const active = document.activeElement;
+        if (!active || active === document.body || active === document.documentElement) return true;
+        if (!active.getClientRects().length) return true;
+        return active.matches(".workspace, .stage") || !!active.closest("svg.drawing-page");
+      }
+
       // キーボードショートカット。S/V=選択 W=配線 T=文字 L=直線 R=矩形 C=円、Ctrl+C/V/D/Z/Y/S、
       // Delete=削除、矢印=1mm移動(Shiftで5mm)、Esc=配置キャンセル。入力欄フォーカス中は無視。
       function onKeyDown(event) {
@@ -27661,7 +27717,8 @@
             return;
           }
         }
-        if (event.key === "Tab" && !dragState && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        // ボタン等を選んでいるときのTabはフォーカス移動(ブラウザ既定)のまま。
+        if (event.key === "Tab" && !dragState && !event.ctrlKey && !event.metaKey && !event.altKey && keyboardFocusOnDrawing()) {
           event.preventDefault();
           toggleFocusMode();
           return;
@@ -27711,7 +27768,8 @@
             event.preventDefault(); showDrawingVectorDialog(); return;
           }
         }
-        if ((event.key === "Enter" || event.key === " ") && !dragState && activeTool === "select") {
+        // ボタン・リンク・<summary>を選んでいるときのEnter/Spaceはそれを押す(ブラウザ既定)。
+        if ((event.key === "Enter" || event.key === " ") && !dragState && activeTool === "select" && keyboardFocusOnDrawing()) {
           event.preventDefault(); repeatLastProductivityCommand(); return;
         }
         if (event.key.toLowerCase() === effectiveShortcut("quick") && !event.ctrlKey && !event.metaKey && !event.altKey) {
