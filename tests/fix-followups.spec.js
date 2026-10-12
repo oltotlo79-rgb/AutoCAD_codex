@@ -48,6 +48,18 @@ test("ブラウザ自身の印刷(Ctrl+P)でも印刷直前に最新の図面で
   });
   await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
   await expect(sheets.locator("text", { hasText: "CTRLP-MARK" })).toHaveCount(1);
+
+  // A3面付は印刷中だけ面付けのまま。印刷が終われば(afterprint)、次のCtrl+Pは等倍1面に戻る。
+  await page.evaluate(() => { window.print = () => {}; });
+  await page.locator("#printTwoUpBtn").click();
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  await expect(sheets.locator(".print-sheet")).toHaveCount(2);
+  await expect(sheets.locator(".print-sheet").first()).toHaveClass(/page-a3-/);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("afterprint"));
+    window.dispatchEvent(new Event("beforeprint"));
+  });
+  await expect(sheets.locator(".print-sheet").first()).not.toHaveClass(/page-a3-/);
 });
 
 test("端子・PLC CSV取込ページの各行は左端の端子小円で受け、監査で未接続扱いにならない", async ({ page }) => {

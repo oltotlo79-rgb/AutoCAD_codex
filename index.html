@@ -21428,7 +21428,9 @@
 
       // ブラウザ自身の印刷(Ctrl+Pやメニュー)でも最新の図面を印刷する。上部の「PDF印刷」「A3面付」は
       // 印刷方式(printMode)を設定してから印刷するので、ここではその方式のままシートを作り直すだけでよい。
+      // A3面付の方式は印刷が終わる(afterprint)まで保ち、終わったら通常のCtrl+P用に等倍1面へ戻す。
       window.addEventListener("beforeprint", renderPrintSheets);
+      window.addEventListener("afterprint", () => { printMode = "single"; });
 
       // ===== 画面内印刷プレビュー =====
       // 印刷と同条件(output=true: グリッド・選択枠・ガイド・下絵設定を反映)で全ページを
@@ -21506,7 +21508,6 @@
         renderPrintSheets();
         setStatus("A3面付で印刷します（A4を等倍で2ページずつ: A4縦はA3横に左右、A4横はA3縦に上下）。印刷ダイアログでPDF保存を選択してください。");
         window.print();
-        printMode = "single";
       }
 
       // ===== ワイヤーネット解析(同電位グループ) =====
