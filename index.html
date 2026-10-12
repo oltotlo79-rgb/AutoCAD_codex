@@ -23060,7 +23060,7 @@
 
           ${section("タッチ操作（タブレット）", `
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
-              <li><b>2本指の開閉でズーム</b>（指の間にある図面の位置を保ったまま拡大・縮小）、<b>2本指スライドでスクロール</b>。2本目の指を置くと、作図・移動の途中操作は中断されます</li>
+              <li><b>2本指の開閉でズーム</b>（指の間にある図面の位置を保ったまま拡大・縮小）、<b>2本指スライドでスクロール</b>。2本目の指を置くと、作図・移動の途中操作は取り消されます（引きかけの線は消え、動かしかけた要素は元の位置へ戻ります）</li>
               <li><b>1本指はマウスと同じ</b>: タップで選択、ドラッグで移動・作図（配線は「配線 W」を選んでからドラッグ）</li>
               <li><b>同じ要素を素早く2回タップ</b>するとその場編集（線番/ラベル/文字）</li>
               <li>キーボードがないときは、上部の<b>U</b>（元に戻す）・<b>R</b>（やり直し）・<b>X</b>（削除）ボタン、クイック作図リボン（繰返・回転・複製・削除・集中表示）、選択時のミニツールバーで操作できます</li>
@@ -26428,9 +26428,13 @@
         if (event.pointerType !== "touch") return false;
         touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (touchPoints.size === 2) {
-          // 進行中の作図/移動はピンチ開始で中断。
-          dragState = null;
-          render();
+          // 1本目の指で始めた作図/移動はピンチ開始で取り消す(途中の線や動かしかけた位置を図面に残さない)。
+          // 範囲選択は図面を変えていないので、取消の通知を出さずに終えるだけ。
+          if (dragState && dragState.mode !== "marquee") cancelActiveDrag();
+          else {
+            dragState = null;
+            render();
+          }
           const { dist, mid } = touchPinchMetrics();
           // 基準は編集中ページのSVG(ピンチ中の軽量再描画で拡大縮小されるのはこのSVGだけ)。
           const svg = qs("#canvas");

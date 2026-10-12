@@ -132,11 +132,12 @@ function drawingPointAt(page, point) {
   }, [point.x, point.y]);
 }
 
-// 編集中ページのSVGへタッチのポインタイベントを送る(2本指のピンチ操作の再現)。
+// 編集中ページのSVG(指の下の図形があればその図形)へタッチのポインタイベントを送る(2本指のピンチ操作の再現)。
 function touch(page, type, pointerId, point) {
   return page.evaluate(([eventType, id, x, y]) => {
     const svg = document.querySelector("svg#canvas");
-    svg.dispatchEvent(new PointerEvent(eventType, {
+    const hit = document.elementFromPoint(x, y);
+    (hit && svg.contains(hit) ? hit : svg).dispatchEvent(new PointerEvent(eventType, {
       pointerId: id, pointerType: "touch", isPrimary: id === 1, clientX: x, clientY: y,
       bubbles: true, cancelable: true, composed: true
     }));
@@ -230,6 +231,43 @@ test("並べて表示でも、ピンチを終えて他ページの大きさが�
   await expectSamePoint(page, mid, anchor, "指を離した後");
   const end = await snapshot(page);
   expect(end.historyCount).toBe(start.historyCount);
+});
+
+
+test("ピンチを始めると1本目の指で始めた作図・移動は取り消され、途中の線や動かしかけた位置が図面に残らない", async ({ page }) => {
+  const COIL = { id: "coil", type: "coil", x: 40, y: 100, w: 10, h: 4.4, layer: "symbols" };
+  await install(page, project([{ id: "p1", name: "P1", elements: [COIL] }]));
+  const start = await snapshot(page);
+  const clientAt = mm => page.evaluate(([x, y]) => {
+    const svg = document.querySelector("svg#canvas");
+    const box = svg.getBoundingClientRect();
+    const viewBox = svg.viewBox.baseVal;
+    return { x: box.left + x / viewBox.width * box.width, y: box.top + y / viewBox.height * box.height };
+  }, mm);
+
+  // 配線ツールで1本目の指を置く(作図開始) → 2本目の指でピンチ開始 → 作図中の線は残らない。
+  await page.evaluate(() => window.__edsTest.setActiveTool("wire"));
+  const a = await clientAt([100, 60]);
+  await touch(page, "pointerdown", 1, a);
+  await touch(page, "pointermove", 1, { x: a.x + 40, y: a.y });
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.length)).toBe(2);
+  await touch(page, "pointerdown", 2, { x: a.x + 120, y: a.y + 60 });
+  await touch(page, "pointerup", 2, { x: a.x + 120, y: a.y + 60 });
+  await touch(page, "pointerup", 1, { x: a.x + 40, y: a.y });
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.map(item => item.id))).toEqual(["coil"]);
+
+  // 選択ツールで部品を1本指でドラッグ中にピンチを始めると、部品は元の位置へ戻る。
+  await page.evaluate(() => window.__edsTest.setActiveTool("select"));
+  const c = await clientAt([45, 102.2]);
+  await touch(page, "pointerdown", 1, c);
+  await touch(page, "pointermove", 1, { x: c.x + 60, y: c.y + 40 });
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "coil").x), "1本指で動かし始めている").not.toBe(40);
+  await touch(page, "pointerdown", 2, { x: c.x + 160, y: c.y + 100 });
+  await touch(page, "pointerup", 2, { x: c.x + 160, y: c.y + 100 });
+  await touch(page, "pointerup", 1, { x: c.x + 60, y: c.y + 40 });
+  const coil = await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "coil"));
+  expect({ x: coil.x, y: coil.y }).toEqual({ x: 40, y: 100 });
+  expect((await snapshot(page)).historyCount).toBe(start.historyCount);
 });
 
 const TABLE = {
