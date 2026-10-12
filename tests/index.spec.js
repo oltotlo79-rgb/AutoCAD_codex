@@ -539,7 +539,7 @@ test("破損JSON・空ページ・将来版を拒否して現在図面を保持�
     },
     {
       name: "future.json",
-      body: { schemaVersion: 11, pages: [{ id: "p1", title: {}, elements: [] }] },
+      body: { schemaVersion: 12, pages: [{ id: "p1", title: {}, elements: [] }] },
       expected: "新しい形式"
     },
     {
@@ -607,7 +607,7 @@ test("部分JSONは現在図面を継承せず既定値で補完し、staleな�
   const legacy = await page.evaluate(() => window.__edsTest.normalizeProjectData({
     pages: [{ id: "legacy-page" }]
   }));
-  expect(legacy.schemaVersion).toBe(10);
+  expect(legacy.schemaVersion).toBe(11);
   expect(legacy.pages[0].title).toBeTruthy();
   expect(legacy.pages[0].elements).toEqual([]);
 });
@@ -650,7 +650,7 @@ test("schema v2の回転部品と機器箱・端子箱を配線ごと現行版�
   }));
 
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(10);
+  expect(migrated.schemaVersion).toBe(11);
   expect(elements.contact).toMatchObject({ x: 50, y: 49, w: 10, rotation: 90 });
   expect(elements["wire-left"].points[1][0]).toBeCloseTo(47.8, 6);
   expect(elements["wire-left"].points[1][1]).toBeCloseTo(49, 6);
@@ -747,7 +747,7 @@ test("schema v3のCPとユニット列を接続を保って現行版へ移行し
 
   const migrated = result.migrated;
   const elements = Object.fromEntries(migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(migrated.schemaVersion).toBe(10);
+  expect(migrated.schemaVersion).toBe(11);
   expect(result.idempotent).toBe(true);
 
   expect(elements["cp-horizontal"]).toMatchObject({ w: 12.5, h: 5, cpLinked: true });
@@ -821,7 +821,7 @@ test("schema v4のブザーを配線ごとJIS記号の新ピンへ移行し再�
   });
 
   const elements = Object.fromEntries(result.migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(result.migrated.schemaVersion).toBe(10);
+  expect(result.migrated.schemaVersion).toBe(11);
   expect(result.idempotent).toBe(true);
 
   // 旧jis/generalはjis0806へ、sirenはキーを保つ。略画hornは無変更。
@@ -887,7 +887,7 @@ test("schema v9の光電スイッチ多端子形を2.5mmピッチへ詰めて配
   });
 
   const elements = Object.fromEntries(result.migrated.pages[0].elements.map(element => [element.id, element]));
-  expect(result.migrated.schemaVersion).toBe(10);
+  expect(result.migrated.schemaVersion).toBe(11);
   expect(result.idempotent).toBe(true);
 
   // 端子ピッチが2.5mmになり、本体高さも詰まる(第1端子の位置は変えない)
@@ -3747,8 +3747,8 @@ test("ブザーは他部品と同等サイズへ縮小され図形が枠内に�
     };
     return { defaults: [base.w, base.h], horn: check("horn"), speaker: check("speaker") };
   });
-  // 既定は12x6(旧15x9から縮小、bell/lampと同等スケール)
-  expect(result.defaults).toEqual([12, 6]);
+  // 既定は12.5x6(旧15x9から縮小、bell/lampと同等スケール。右ピンを2.5mmグリッドへ乗せるため12→12.5)
+  expect(result.defaults).toEqual([12.5, 6]);
   // 図形は横0..w、縦は枠(0..h)内(わずかな線幅ぶんの許容0.6mm)に収まる=はみ出さない
   [result.horn, result.speaker].forEach(r => {
     expect(r.anchors).toBe(2);

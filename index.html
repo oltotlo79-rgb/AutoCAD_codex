@@ -1912,7 +1912,7 @@
           label: "非常停止行",
           templates: [
             { type: "wire", points: [[0, 0], [10, 0]] },
-            { type: "pushButton", x: 10, y: -3.4, w: 10, h: 5, label: "PBE1", tag: "PBE1", pbStyle: "emergency", orientation: "horizontal" },
+            { type: "pushButton", x: 10, y: -4.4, w: 10, h: 7, label: "PBE1", tag: "PBE1", pbStyle: "emergency", orientation: "horizontal" },
             { type: "wire", points: [[20, 0], [37.5, 0]] },
             { type: "arrow", points: [[37.5, 0], [47.5, 0]], label: "S:0", arrowStyle: "chevron" }
           ]
@@ -1944,7 +1944,7 @@
       // 読み込むときはMIGRATIONSで1段ずつ現行版へ引き上げる。versionは人間向けの表示文字列で、
       // 互換判定にはschemaVersionのみを使う。
       // 将来データ構造を変えるとき: SCHEMA_VERSIONを+1し、MIGRATIONSへ「旧版数: 変換関数」を1件追加する。
-      const SCHEMA_VERSION = 10;
+      const SCHEMA_VERSION = 11;
 
       // schema v3公開後に変圧器3デザインの上タップを主ピンの1行上へ移したため、
       // 旧v3図面に残る上タップ配線だけを新アンカーへ追従させる。スキーマ構造は変わらないので
@@ -2058,6 +2058,51 @@
             }
           });
         });
+        return data;
+      }
+
+      // symbolVariant未設定の要素が実際に描かれるデザイン(geoKeyForの既定分岐と同じ値)。
+      // これらの種別はデザイン候補に"standard"が無いため、未設定値をそのまま右パネルへ渡すと
+      // 生の「standard」が選択中として表示されてしまう。表示と読込時の補完はこの表で読み替える。
+      const IMPLICIT_SYMBOL_VARIANTS = {
+        transistor: "npn", logicGate: "and", ground: "bars", transformer: "coils",
+        qualifierMark: "dc", operatorMark: "manual", photoelectricSwitch: "throughBeam",
+        proximitySwitch: "jisNo", reedSwitch: "no", lightCurtain: "pair"
+      };
+
+      // 要素の現在のシンボルデザイン(未設定なら実際に描かれている既定デザイン)。
+      function currentSymbolVariant(element) {
+        return element.symbolVariant || IMPLICIT_SYMBOL_VARIANTS[element.type] || "standard";
+      }
+
+      // トランジスタ・論理ゲートは既定デザインを持たないまま保存されていた(描画はNPN/ANDで同じ)。
+      // 未設定のsymbolVariantを実際に描かれている既定デザインで補う。見た目も接続点も変わらないので
+      // 版数は据え置き、上の互換補修と同じく全読込で実行する(何度実行しても同じ結果)。
+      // 移行関数が未設定を"standard"として扱う種別(変圧器等)を先に移行させるため、移行の後に呼ぶ。
+      function fillImplicitSymbolVariants(data) {
+        const elementLists = [];
+        (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+          if (isPlainObject(page) && Array.isArray(page.elements)) elementLists.push(page.elements);
+        });
+        const collectCustomSymbolTemplates = symbols => {
+          (Array.isArray(symbols) ? symbols : []).forEach(symbol => {
+            if (!isPlainObject(symbol)) return;
+            if (Array.isArray(symbol.templates)) elementLists.push(symbol.templates);
+            else if (isPlainObject(symbol.template)) elementLists.push([symbol.template]);
+          });
+        };
+        collectCustomSymbolTemplates(data.customSymbols);
+        (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach(pack => {
+          if (isPlainObject(pack)) collectCustomSymbolTemplates(pack.customSymbols);
+        });
+        (Array.isArray(data.userCircuits) ? data.userCircuits : []).forEach(circuit => {
+          if (isPlainObject(circuit) && Array.isArray(circuit.elements)) elementLists.push(circuit.elements);
+        });
+        elementLists.forEach(elements => elements.forEach(element => {
+          if (!isPlainObject(element) || element.symbolVariant) return;
+          const implicit = IMPLICIT_SYMBOL_VARIANTS[element.type];
+          if (implicit) element.symbolVariant = implicit;
+        }));
         return data;
       }
 
@@ -2893,6 +2938,67 @@
             });
           });
           return data;
+        },
+        // 10→11: ブザーのホーン形(既定)・スピーカー形は左右ピン間隔が12mmで、右ピンが2.5mmグリッドから
+        //        外れていた。既定幅12mmの要素だけ幅を12.5mmへ広げる(図形は枠への比率なので0.5mm伸びる)。
+        //        左ピン(要素原点側)は動かないので、右ピンへ繋がる配線端点・接続点だけを新しい右ピンへ追従させる。
+        //        利用者が角ハンドルで別の幅に変えた要素は意図した寸法とみなして触らない。
+        10: data => {
+          const near = (a, b) => Math.abs(Number(a) - Number(b)) < .02;
+          const elementLists = [];
+          (Array.isArray(data.pages) ? data.pages : []).forEach(page => {
+            if (isPlainObject(page) && Array.isArray(page.elements)) elementLists.push(page.elements);
+          });
+          const collectCustomSymbolTemplates = symbols => {
+            (Array.isArray(symbols) ? symbols : []).forEach(symbol => {
+              if (!isPlainObject(symbol)) return;
+              if (Array.isArray(symbol.templates)) elementLists.push(symbol.templates);
+              else if (isPlainObject(symbol.template)) elementLists.push([symbol.template]);
+            });
+          };
+          collectCustomSymbolTemplates(data.customSymbols);
+          (Array.isArray(data.standardPacks) ? data.standardPacks : []).forEach(pack => {
+            if (isPlainObject(pack)) collectCustomSymbolTemplates(pack.customSymbols);
+          });
+          (Array.isArray(data.userCircuits) ? data.userCircuits : []).forEach(circuit => {
+            if (isPlainObject(circuit) && Array.isArray(circuit.elements)) elementLists.push(circuit.elements);
+          });
+          elementLists.forEach(elements => {
+            const moves = [];
+            elements.forEach(element => {
+              if (!isPlainObject(element) || element.type !== "buzzer") return;
+              if (!["horn", "speaker"].includes(element.buzzerVariant || "horn")) return;
+              // 旧版の描画・接続点はw未設定を12mmとして扱っていた。
+              if (!near(Number(element.w || 12), 12)) return;
+              const h = Number(element.h || 6);
+              // localAnchor と同じ規則(表示倍率→回転の順、要素原点を加算)で右ピンの絶対座標を求める。
+              const rawScale = Number(element.scale || 1);
+              const scale = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : 1;
+              const angle = Number(element.rotation || 0) * Math.PI / 180;
+              const globalAt = localX => [
+                Number(element.x || 0) + localX * scale * Math.cos(angle) - h / 2 * scale * Math.sin(angle),
+                Number(element.y || 0) + localX * scale * Math.sin(angle) + h / 2 * scale * Math.cos(angle)
+              ];
+              const before = globalAt(12);
+              const after = globalAt(12.5);
+              element.w = 12.5;
+              moves.push([before[0], before[1], after[0], after[1]]);
+            });
+            if (!moves.length) return;
+            elements.forEach(element => {
+              if (!isPlainObject(element)) return;
+              if (["wire", "line", "arrow", "mechanicalLink"].includes(element.type) && Array.isArray(element.points)) {
+                element.points.forEach(point => {
+                  const move = moves.find(item => near(item[0], point[0]) && near(item[1], point[1]));
+                  if (move) { point[0] = round(move[2]); point[1] = round(move[3]); }
+                });
+              } else if (element.type === "junction") {
+                const move = moves.find(item => near(item[0], Number(element.x || 0)) && near(item[1], Number(element.y || 0)));
+                if (move) { element.x = round(move[2]); element.y = round(move[3]); }
+              }
+            });
+          });
+          return data;
         }
       };
 
@@ -2914,6 +3020,7 @@
         }
         data = alignLegacyTransformerTopTapConnections(data);
         data = alignLegacyOutletBoxConnections(data);
+        data = fillImplicitSymbolVariants(data);
         data.schemaVersion = SCHEMA_VERSION;
         return data;
       }
@@ -6299,7 +6406,7 @@
       // ブザーのSVG描画(SYMBOL_GEO対象外のホーン形・スピーカー形)。
       // JIS形などgeoシンボルを持つ形状はdrawGeoSymbol側が描くため、ここへは来ない。
       function drawBuzzer(g, element, stroke) {
-        const w = Number(element.w || 12);
+        const w = Number(element.w || 12.5);
         const h = Number(element.h || 6);
         if ((element.buzzerVariant || "horn") === "speaker") {
           drawSpeakerBuzzer(g, element, stroke, w, h);
@@ -8541,7 +8648,7 @@
             { t: "text", p: [7.8, 6.4], size: 1.7, anchor: "start", field: "refNo" }
           ]
         },
-        // サーミスタ: 箱+貫通斜線+t°。
+        // サーミスタ: 箱+貫通斜線+θ(温度の限定記号)。
         resistorThermistor: {
           w: 10, h: 2.6,
           anchors: [[0, 1.3], [10, 1.3]],
@@ -12366,7 +12473,7 @@
           if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
           if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
           if (element.type === "lamp") { element.w = 10; element.h = 10; }
-          if (element.type === "buzzer") { element.w = 12; element.h = 6; }
+          if (element.type === "buzzer") { element.w = 12.5; element.h = 6; }
           if (element.type === "powerSupply") { element.w = 35; element.h = 25; }
         }
         if (pinBefore) {
@@ -12560,7 +12667,7 @@
       // 選択中要素に対応する「シンボルデザイン」セレクトHTML(バリエーションが無い種別は空文字)。
       function symbolVariantSelectHtml(element) {
         const key = variantOptionsKeyFor(element);
-        const stored = element.symbolVariant || "standard";
+        const stored = currentSymbolVariant(element);
         const current = key === "pushButtonEmergency" && stored === "gridMulti2" ? "multi2" : stored;
         const baseOptions = SYMBOL_VARIANT_OPTIONS[key];
         if (!baseOptions) return "";
@@ -12772,11 +12879,11 @@
               <option value="box"${style === "box" ? " selected" : ""}>抵抗器（JIS 04-01-01・箱）</option>
               <option value="varistor"${style === "varistor" ? " selected" : ""}>バリスタ（斜線）</option>
               <option value="variable"${style === "variable" ? " selected" : ""}>可変抵抗器（JIS 04-01-03・貫通矢印）</option>
-              <option value="thermistor"${style === "thermistor" ? " selected" : ""}>サーミスタ（t°）</option>
+              <option value="thermistor"${style === "thermistor" ? " selected" : ""}>サーミスタ（θ）</option>
               <option value="photo"${style === "photo" ? " selected" : ""}>光導電抵抗器（JIS 05-06-01）</option>
               <option value="zigzag"${style === "zigzag" ? " selected" : ""}>抵抗器（旧JIS・ジグザグ）</option>
               <option value="potentiometer"${style === "potentiometer" ? " selected" : ""}>ポテンショメータ（3端子）</option>
-            </select>
+            </select>${mirrorCheckboxHtml(element)}
             <label>方向</label>
             <select data-bind="orientation">
               <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横</option>
@@ -12813,7 +12920,7 @@
               <option value="cross"${variant === "cross" ? " selected" : ""}>ランプ（JIS 08-10-01・円＋✕）</option>
               <option value="cylinder"${variant === "cylinder" ? " selected" : ""}>筒形表示灯（実務形）</option>
               <option value="fluor"${variant === "fluor" ? " selected" : ""}>蛍光灯・盤内照明（見本形・箱形）</option>
-            </select>
+            </select>${mirrorCheckboxHtml(element)}
             <label>ランプ色文字(W/R/G等)</label>
             <input data-bind="lampColor" type="text" value="${escapeAttr(element.lampColor || "")}" placeholder="W">
           `;
@@ -12830,7 +12937,7 @@
               <option value="speaker"${variant === "speaker" ? " selected" : ""}>スピーカー（実務形）</option>
               <option value="sound"${variant === "sound" ? " selected" : ""}>発音強調（実務形・半円＋音波）</option>
               <option value="piezo"${variant === "piezo" ? " selected" : ""}>電子ブザー（実務形・箱＋半円）</option>
-            </select>
+            </select>${mirrorCheckboxHtml(element)}
           `;
         }
         if (element.type === "terminal") {
@@ -13257,7 +13364,7 @@
               if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
               if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
               if (element.type === "lamp") { element.w = 10; element.h = 10; }
-              if (element.type === "buzzer") { element.w = 12; element.h = 6; }
+              if (element.type === "buzzer") { element.w = 12.5; element.h = 6; }
               if (element.type === "powerSupply") { element.w = 35; element.h = 25; }
             }
           }
@@ -13375,7 +13482,9 @@
       function defaultElement(type, x = 30, y = 30) {
         // 別名: パレットの「非常停止ボタン」は押しボタンの非常停止スタイルとして生成する。
         if (type === "pushButtonEmergency") {
-          return { ...defaultElement("pushButton", x, y), pbStyle: "emergency", label: "PBE" };
+          // キノコ形は全デザインが本体10×7mm(接続点y=4.4)。押しボタンの既定h5のままだと
+          // 中央寄せでキノコの頭が要素枠から1mmはみ出すため、本体寸法に合わせて生成する。
+          return { ...defaultElement("pushButton", x, y), pbStyle: "emergency", label: "PBE", h: 7 };
         }
         // 別名: 楕円=幅高さ違いの円、楕円弧=幅高さ違いの円弧として生成する(機能は同一)。
         if (type === "ellipse") {
@@ -13412,7 +13521,7 @@
           fuse: { ...base, w: 10, h: 4.4, label: "F", orientation: "horizontal" },
           breaker: { ...base, w: 12.5, h: 5, label: "CB", orientation: "horizontal", symbolVariant: "iec", refNo: "" },
           lamp: { ...base, w: 10, h: 4.4, label: "PL", lampVariant: "pilot", lampColor: "W" },
-          buzzer: { ...base, w: 12, h: 6, label: "BZ", buzzerVariant: "horn" },
+          buzzer: { ...base, w: 12.5, h: 6, label: "BZ", buzzerVariant: "horn" },
           solenoidValve: { ...base, w: 25, h: 16, label: "SOL" },
           sensor: { ...base, w: 25, h: 14, label: "SEN" },
           photoelectricSwitch: { ...base, w: 15, h: 8.4, label: "", symbolVariant: "throughBeam" },
@@ -13432,13 +13541,13 @@
           thermoSwitch: { ...base, w: 10, h: 5, label: "TS", orientation: "horizontal" },
           flowSwitch: { ...base, w: 10, h: 6, label: "FLS", orientation: "horizontal" },
           footSwitch: { ...base, w: 10, h: 6.5, label: "FTS", orientation: "horizontal" },
-          logicGate: { ...base, w: 10, h: 10, label: "" },
+          logicGate: { ...base, w: 10, h: 10, label: "", symbolVariant: "and" },
           photocoupler: { ...base, w: 10, h: 8, label: "PC" },
           battery: { ...base, w: 10, h: 4.4, label: "BT" },
           rectifierBox: { ...base, w: 10, h: 6, label: "REC" },
           currentTransformer: { ...base, w: 10, h: 10, label: "CT" },
           arrester: { ...base, w: 10, h: 6, label: "AR" },
-          transistor: { ...base, w: 10, h: 6, label: "TR" },
+          transistor: { ...base, w: 10, h: 6, label: "TR", symbolVariant: "npn" },
           disconnector: { ...base, w: 10, h: 5, label: "DS", orientation: "horizontal" },
           outlet: { ...base, w: 10, h: 7.5, label: "SC", symbolVariant: "standard" },
           ground: { ...base, w: 4, h: 5, label: "E", symbolVariant: "bars" },
@@ -14134,12 +14243,12 @@
         breakWiresForInlineElement(page, element);
         selectSingle(element.id);
         // バリエーションを持つ部品は、初心者向けにデザイン切替の案内を出す。
-        const variantKey = element.type === "pushButton"
-          ? ((element.pbStyle || "momentary") === "emergency" ? "pushButtonEmergency" : "")
-          : element.type;
-        const hasVariants = !!SYMBOL_VARIANT_OPTIONS[variantKey] || ["resistor", "lamp"].includes(element.type);
-        commitHistory(hasVariants
-          ? paletteLabel(element.type) + "を配置しました。右パネルの「シンボルデザイン」で形状を切り替えられます。"
+        // 抵抗・ランプ・ブザー・端子は専用の選択欄なので、右パネルに実際に出る欄名で案内する。
+        const variantField = SYMBOL_VARIANT_OPTIONS[variantOptionsKeyFor(element)]
+          ? "シンボルデザイン"
+          : ({ resistor: "抵抗形状", lamp: "ランプ形状", buzzer: "ブザー形状", terminal: "端子形状" })[element.type];
+        commitHistory(variantField
+          ? paletteLabel(type) + "を配置しました。右パネルの「" + variantField + "」で形状を切り替えられます。"
           : "要素を配置しました。");
         if (!state.settings.continuousPlacement) setActiveTool("select");
         render();
@@ -18548,7 +18657,7 @@
         if (!item) { setStatus("要素を選択してください。"); return; }
         const variantKey = !item.points && item.type !== "text" ? variantOptionsKeyFor(item) : null;
         const variantOptions = variantKey ? SYMBOL_VARIANT_OPTIONS[variantKey] : null;
-        const currentVariant = item.symbolVariant || "standard";
+        const currentVariant = currentSymbolVariant(item);
         const variantHtml = variantOptions ? `
           <label>シンボルデザイン</label>
           <select id="quickVariant">
@@ -24586,7 +24695,7 @@
 
       // ブザーのDXF出力。
       function dxfBuzzerLocal(out, page, element) {
-        const w = Number(element.w || 12);
+        const w = Number(element.w || 12.5);
         const h = Number(element.h || 6);
         const cy = h / 2;
         if ((element.buzzerVariant || "horn") === "horn") {
