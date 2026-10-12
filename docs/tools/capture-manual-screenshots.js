@@ -314,12 +314,14 @@ job(["04-facility-ladder-dialog.png"], async browser => {
 job(["27-wire-shapes.png"], async browser => {
   const { context, page } = await freshPage(browser);
   const specs = [
-    { y: 62, cycle: 0, label: "① L字（縦→横）", color: "#d1495b" },
+    // ①はスペースを4回押して1周させ、ドラッグ方向に依らずL字（縦→横）にする（0回だとドラッグ方向で決まる）。
+    { y: 62, cycle: 4, label: "① L字（縦→横）", color: "#d1495b" },
     { y: 105, cycle: 1, label: "② L字（横→縦）", color: "#5367d5" },
     { y: 148, cycle: 2, label: "③ コの字（横→縦→横）", color: "#d97706" },
     { y: 191, cycle: 3, label: "④ コの字（縦→横→縦）", color: "#0f8f7c" }
   ];
-  for (const spec of specs) await drawWire(page, 57.5, spec.y, 137.5, spec.y + 20, spec.cycle);
+  // 縦の差は30mm。15度より浅い斜めドラッグは水平線にそろうため、折れ形状が出る角度にする。
+  for (const spec of specs) await drawWire(page, 57.5, spec.y, 137.5, spec.y + 30, spec.cycle);
   await clickEmpty(page, 185, 245);
   await hideCanvasHint(page);
   const badges = [];
@@ -487,15 +489,20 @@ job(["06-component-selection.png", "07-wire-editing.png", "09-drawing-audit.png"
 
   await page.click('.tool-actions [data-tool="wire"]');
   const start = await canvasPoint(page, 60, 170);
-  const end = await canvasPoint(page, 140, 185);
+  // 縦の差を15度より大きくしてL字配線にする(浅い斜めだと水平線にそろう)。
+  const end = await canvasPoint(page, 140, 200);
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 10 });
   await page.mouse.up();
   await page.click('.tool-actions [data-tool="select"]');
-  await page.locator(".inspector").evaluate(element => { element.scrollTop = element.scrollHeight; });
+  // 角を中間点にして□ハンドルと「中間1 X/Y」を出し、右パネルは座標欄が見える先頭に戻す。
+  await page.click("#addWirePointBtn");
+  await page.locator(".inspector").evaluate(element => { element.scrollTop = 0; });
   await settle(page);
   await shot(page, "07-wire-editing.png");
+  // 曲がり角追加と配線作成の2操作を取り消し、以降の画面へ影響させない。
+  await page.keyboard.press("Control+z");
   await page.keyboard.press("Control+z");
   await clickEmpty(page, 195, 280);
 
@@ -574,13 +581,42 @@ job(["21-plc-dialog.png", "22-plc-page.png"], async browser => {
   await context.close();
 });
 
+// 端子CSV取込の見本（端子台X1・X2の2台）。図10-4はX1のページ、図10-3の端子台エディタは2台を一覧する。
+const TERMINAL_SAMPLE_CSV = [
+  "端子台,端子,線番,信号,接続先,備考",
+  "X1,1,101,起動,PB1,", "X1,2,102,停止,PB2,", "X1,3,103,非常停止,PBE1,", "X1,4,104,運転表示,PL1,",
+  "X1,5,105,故障表示,PL2,", "X1,6,106,ブザー,BZ1,", "X1,7,107,上限,LS1,", "X1,8,108,下限,LS2,",
+  "X2,1,201,センサ1,PH1,", "X2,2,202,センサ2,PH2,", "X2,3,203,センサ3,PH3,"
+].join("\n");
+
 job(["23-terminal-page.png", "24-terminal-editor.png"], async browser => {
   const { context, page } = await freshPage(browser);
-  await page.selectOption("#templateMenu", "terminalSheet");
+  await page.setInputFiles("#terminalCsvInput", { name: "terminal.csv", mimeType: "text/csv", buffer: Buffer.from(TERMINAL_SAMPLE_CSV, "utf8") });
+  await page.waitForFunction(() => document.querySelectorAll("#tabbar .page-tab").length > 1);
+  await settle(page);
+  await deleteFirstPage(page);
+  await page.locator("#tabbar .page-tab").first().click();
   await settle(page);
   await page.click("#selectOnlyBtn");
+  // 用紙の幅がキャンバスに収まる倍率で、行のある上半分を表示する(文字を読めるように)。
+  await page.evaluate(() => {
+    const range = document.querySelector("#zoomRange");
+    range.value = "4.6";
+    range.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await settle(page);
+  const rowsTop = await canvasPoint(page, 105, 20);
+  await page.evaluate(([x, y]) => {
+    const workspace = document.querySelector("#workspace");
+    const rect = workspace.getBoundingClientRect();
+    workspace.scrollLeft += x - (rect.left + rect.width / 2);
+    workspace.scrollTop += y - rect.top - 40;
+  }, [rowsTop.x, rowsTop.y]);
+  await settle(page);
   await shot(page, "23-terminal-page.png");
   await openAction(page, "terminalEditor");
+  // 表が広く右端の「端子単位詳細」列は横スクロールの先にあるため、右端まで送って「詳細」を写す。
+  await page.locator(".dialog").evaluate(element => { element.scrollLeft = element.scrollWidth; });
   await shotDialog(page, "24-terminal-editor.png");
   await context.close();
 });
