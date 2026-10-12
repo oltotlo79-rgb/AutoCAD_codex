@@ -548,6 +548,14 @@ job(["23-terminal-page.png", "24-terminal-editor.png"], async browser => {
 module.exports = { JOBS, job, freshPage, shot, shotDialog, shotElement, closeDialog, openAction, settle, hideCanvasHint,
   setPageField, canvasPoint, canvasClip, drawWire, clickEmpty, placeComponent, addBadges, removeBadges, boxOf, addLadderPage, deleteFirstPage };
 
+// 章ごとの追加撮影ジョブ(docs/tools/manual-shots/*.js)。各ファイルは上の関数を require して job() で登録する。
+// 1ファイルに全章を書くと並行編集でぶつかるため、章単位のファイルに分けている。
+const EXTRA_JOB_DIR = path.join(__dirname, "manual-shots");
+if (fs.existsSync(EXTRA_JOB_DIR)) {
+  fs.readdirSync(EXTRA_JOB_DIR).filter(name => name.endsWith(".js")).sort()
+    .forEach(name => require(path.join(EXTRA_JOB_DIR, name)));
+}
+
 if (require.main === module) {
   (async () => {
     const selected = JOBS.filter(item => !FILTERS.length || item.files.some(file => FILTERS.some(filter => file.includes(filter))));
