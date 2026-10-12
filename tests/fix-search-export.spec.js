@@ -59,6 +59,8 @@ function pdfPageSizesMm(buffer) {
 }
 
 test("検索は端子名・右ピン文字・FROM/TOも大文字小文字を区別せず見つけ、種別は表示名で出す", async ({ page }) => {
+  // 操作手順が長く、並行実行などで負荷が高いと既定の15秒を超えるため余裕を持たせる。
+  test.slow();
   await page.evaluate(data => window.__edsTest.installProjectData(data), onePage([
     { id: "tb1", type: "terminalStrip", x: 20, y: 50, w: 30, h: 12, count: 2, terminalLabels: "XT77\nXT78", layer: "symbols" },
     { id: "box1", type: "deviceBox", x: 80, y: 50, w: 30, h: 25, label: "機器", pins: 2, pinText: "1\n2", rightPinText: "UQ9\nUQ10", layer: "symbols" },
