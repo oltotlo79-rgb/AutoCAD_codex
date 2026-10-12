@@ -15551,22 +15551,37 @@
         return ["table", "underlayImage", "cloud", "rect", "text"].includes(type);
       }
 
+      // 機能メニューの生成・挿入ダイアログのY欄は、右パネルの座標表示と同じく用紙下端からの「上が＋」(mm)。
+      // 既定値は内部座標(用紙上端から下向き)を表示値へ換算して出す(既定のまま生成すると従来と同じ位置)。
+      function dialogDisplayY(page, internalY) {
+        return round(pageSize(page).h - internalY);
+      }
+
+      // ダイアログのY欄(上が＋)を読み、内部座標(用紙上端から下向き)のmmで返す。空欄・非数値は既定の内部座標。
+      // A4/A3縦などは用紙高さが2.5mmの倍数でないため、グリッドへ揃える処理は呼び出し側で内部座標に対して行う。
+      function readDialogInternalY(page, selector, fallbackY) {
+        const raw = String(qs(selector).value ?? "").trim();
+        const value = Number(raw);
+        return raw === "" || !Number.isFinite(value) ? fallbackY : round(pageSize(page).h - value);
+      }
+
       // 縦配線列の一括生成ダイアログを開く。
       function showWireColumnDialog() {
         const page = currentPage();
         if (!page) return;
         const size = pageSize(page);
         const html = `
+          <p class="muted">Yは右パネルの座標と同じく用紙の下端からの位置です（上が＋）。上端Yには下端Yより大きい値を入れます。</p>
           <div class="row">
             <div><label>本数</label><input id="wireColumnCount" type="number" min="1" max="${Math.max(1, Math.floor((size.w - 57.5) / 12.5) + 1)}" step="1" value="8"></div>
             <div><label>ピッチ mm</label><input id="wireColumnPitch" type="number" min="2.5" step="2.5" value="12.5"></div>
           </div>
           <div class="row">
             <div><label>開始X mm</label><input id="wireColumnX" type="number" step="2.5" value="30"></div>
-            <div><label>上Y mm</label><input id="wireColumnY1" type="number" step="2.5" value="42.5"></div>
+            <div><label>上端Y mm（上が＋）</label><input id="wireColumnY1" type="number" step="2.5" value="${dialogDisplayY(page, 42.5)}"></div>
           </div>
           <div class="row">
-            <div><label>下Y mm</label><input id="wireColumnY2" type="number" step="2.5" value="${page.frameVariant === "ladder" ? 217.5 : Math.max(60, snapToGrid(size.h - 57.5))}"></div>
+            <div><label>下端Y mm（上が＋）</label><input id="wireColumnY2" type="number" step="2.5" value="${dialogDisplayY(page, page.frameVariant === "ladder" ? 217.5 : Math.max(60, snapToGrid(size.h - 57.5)))}"></div>
             <div><label>線番接頭辞</label><input id="wireColumnPrefix" type="text" value=""></div>
           </div>
           <label>線番開始番号</label>
@@ -15586,8 +15601,9 @@
         const count = Math.max(1, Math.floor(Number(qs("#wireColumnCount").value || 1)));
         const pitch = Math.max(Number(state.settings.grid || 2.5), Math.abs(snap(Number(qs("#wireColumnPitch").value || 12.5))));
         const startX = snap(Number(qs("#wireColumnX").value || 30));
-        const y1 = snap(Number(qs("#wireColumnY1").value || 42.5));
-        const y2 = snap(Number(qs("#wireColumnY2").value || 120));
+        // 上端・下端は「上が＋」で入力されるので内部座標(下向き)へ戻してからグリッドへ揃える。
+        const y1 = snap(readDialogInternalY(page, "#wireColumnY1", 42.5));
+        const y2 = snap(readDialogInternalY(page, "#wireColumnY2", 120));
         const size = pageSize(page);
         const rightLimit = snapToGrid(size.w - 27.5);
         const maxCount = Math.max(0, Math.floor((rightLimit - startX + .001) / pitch) + 1);
@@ -15628,6 +15644,7 @@
         if (!page) return;
         const size = pageSize(page);
         const html = `
+          <p class="muted">開始Y（上が＋）: 1本目の位置です。右パネルの座標と同じく用紙の下端から測ります。2本目以降はピッチごとに下へ並びます。</p>
           <div class="row">
             <div><label>本数</label><input id="wireRowCount" type="number" min="1" max="${Math.max(1, Math.floor(((page.frameVariant === "ladder" ? TEMPLATE_RAIL_BOTTOM : snapToGrid(size.h - 57.5)) - 55) / 12.5) + 1)}" step="1" value="6"></div>
             <div><label>ピッチ mm</label><input id="wireRowPitch" type="number" min="2.5" step="2.5" value="12.5"></div>
@@ -15637,7 +15654,7 @@
             <div><label>終了X mm</label><input id="wireRowX2" type="number" step="2.5" value="${Math.max(80, snapToGrid(size.w - 27.5))}"></div>
           </div>
           <div class="row">
-            <div><label>開始Y mm</label><input id="wireRowY" type="number" step="2.5" value="55"></div>
+            <div><label>開始Y mm（上が＋）</label><input id="wireRowY" type="number" step="2.5" value="${dialogDisplayY(page, 55)}"></div>
             <div><label>線番接頭辞</label><input id="wireRowPrefix" type="text" value=""></div>
           </div>
           <label>線番開始番号</label>
@@ -15658,7 +15675,8 @@
         const pitch = Math.max(Number(state.settings.grid || 2.5), Math.abs(snap(Number(qs("#wireRowPitch").value || 12.5))));
         const x1 = snap(Number(qs("#wireRowX1").value || 27.5));
         const x2 = snap(Number(qs("#wireRowX2").value || 182.5));
-        const startY = snap(Number(qs("#wireRowY").value || 55));
+        // 開始Y(上が＋)を内部座標へ戻し、グリッドへ揃える。2本目以降はここから下へ並べる。
+        const startY = snap(readDialogInternalY(page, "#wireRowY", 55));
         const size = pageSize(page);
         const bottomLimit = page.frameVariant === "ladder" ? TEMPLATE_RAIL_BOTTOM : snapToGrid(size.h - 57.5);
         const maxCount = Math.max(0, Math.floor((bottomLimit - startY + .001) / pitch) + 1);
@@ -16229,14 +16247,17 @@
 
       // ===== ツイストペア/シールド一括生成 =====
       function showTwistedPairDialog() {
+        const page = currentPage();
+        if (!page) return;
         openDialog("ツイストペア生成", `
+          <p class="muted">開始Y（上が＋）: 1本目の導体の位置です。右パネルの座標と同じく用紙の下端から測ります。2本目以降は導体ピッチごとに下へ並びます。</p>
           <div class="row">
             <div><label>導体数</label><input id="twCount" type="number" min="2" max="8" step="1" value="4"></div>
             <div><label>導体ピッチ mm</label><input id="twPitch" type="number" min="2.5" step="2.5" value="5"></div>
           </div>
           <div class="row">
             <div><label>開始X mm</label><input id="twX" type="number" step="2.5" value="40"></div>
-            <div><label>開始Y mm</label><input id="twY" type="number" step="2.5" value="80"></div>
+            <div><label>開始Y mm（上が＋）</label><input id="twY" type="number" step="2.5" value="${dialogDisplayY(page, 80)}"></div>
           </div>
           <div class="row">
             <div><label>全長 mm</label><input id="twSpan" type="number" min="20" step="2.5" value="60"></div>
@@ -16293,7 +16314,8 @@
           count: Number(qs("#twCount").value || 4),
           pitch: Number(qs("#twPitch").value || 5),
           x0: Number(qs("#twX").value || 40),
-          y0: Number(qs("#twY").value || 80),
+          // 開始Y(上が＋)は内部座標へ戻して渡す(グリッドへの整列はmakeTwistedPairElements側)。
+          y0: readDialogInternalY(page, "#twY", 80),
           span: Number(qs("#twSpan").value || 60),
           labels: String(qs("#twLabels").value || "").split(",").map(s => s.trim())
         });
@@ -16306,10 +16328,13 @@
 
       // ===== モータ分岐回路ビルダー =====
       function showMotorCircuitDialog() {
+        const page = currentPage();
+        if (!page) return;
         openDialog("モータ分岐回路", `
+          <p class="muted">1相目Y（上が＋）: 1相目の配線の位置です。右パネルの座標と同じく用紙の下端から測ります。2相目・3相目は5mm間隔で下へ並びます。</p>
           <div class="row">
             <div><label>開始X mm</label><input id="mcX" type="number" step="2.5" value="40"></div>
-            <div><label>1相目Y mm</label><input id="mcY" type="number" step="2.5" value="65"></div>
+            <div><label>1相目Y mm（上が＋）</label><input id="mcY" type="number" step="2.5" value="${dialogDisplayY(page, 65)}"></div>
           </div>
           <div class="row">
             <div><label>全長 mm</label><input id="mcSpan" type="number" min="70" step="2.5" value="95"></div>
@@ -16402,7 +16427,8 @@
         if (!page) return;
         const created = makeMotorBranchElements({
           x0: Number(qs("#mcX").value || 40),
-          y0: Number(qs("#mcY").value || 65),
+          // 1相目Y(上が＋)は内部座標へ戻して渡す(グリッドへの整列はmakeMotorBranchElements側)。
+          y0: readDialogInternalY(page, "#mcY", 65),
           span: Number(qs("#mcSpan").value || 95),
           tag: qs("#mcTag").value || "M1",
           contactTag: qs("#mcContactTag").value || "MC1",
@@ -18479,13 +18505,16 @@
 
       // ===== DINレール・配線ダクト =====
       function showDinRailDialog() {
+        const dialogPage = currentPage(); if (!dialogPage) return;
         openDialog("DINレール／配線ダクト", `<div class="row"><div><label>種類</label><select id="dinKind"><option value="rail">DINレール</option><option value="duct">配線ダクト</option></select></div><div><label>長さ mm</label><input id="dinLength" type="number" min="10" step="2.5" value="150"></div></div>
-          <div class="row"><div><label>X</label><input id="dinX" type="number" step="2.5" value="30"></div><div><label>Y</label><input id="dinY" type="number" step="2.5" value="60"></div></div>
+          <p class="muted">X・Yは外形の左上の位置です。Yは右パネルの「位置 Y」と同じく用紙の下端から測ります（上が＋）。</p>
+          <div class="row"><div><label>X</label><input id="dinX" type="number" step="2.5" value="30"></div><div><label>Y mm（上が＋）</label><input id="dinY" type="number" step="2.5" value="${dialogDisplayY(dialogPage, 60)}"></div></div>
           <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="dinBuild" class="primary">生成</button></div>`);
         qs("#dinBuild").onclick = () => {
           const page = currentPage(); if (!page) return;
           const kind = qs("#dinKind").value, length = Math.max(10, Number(qs("#dinLength").value || 150));
-          const x = Number(qs("#dinX").value || 30), y = Number(qs("#dinY").value || 60);
+          // Y(上が＋)は内部座標(外形の上辺)へ戻す。用紙高さが2.5mmの倍数でない用紙でも上辺がグリッドに乗るよう揃える。
+          const x = Number(qs("#dinX").value || 30), y = snap(readDialogInternalY(page, "#dinY", 60));
           const created = [{ ...defaultElement("rect", x, y), w: length, h: kind === "rail" ? 7.5 : 20, label: kind === "rail" ? "DINレール" : "配線ダクト", dash: kind === "duct" ? "3 2" : "", layer: "layout", accessoryType: kind }];
           if (kind === "rail") {
             // 取付穴は別の円要素なので、レールと同じグループにして一緒に選択・移動されるようにする。
@@ -18514,13 +18543,16 @@
       function showUserCircuitInsertDialog() {
         const circuits = state.userCircuits || [];
         if (!circuits.length) { openDialog("ユーザー回路", '<p class="muted">登録済みのユーザー回路がありません。</p>'); return; }
+        const dialogPage = currentPage(); if (!dialogPage) return;
         openDialog("ユーザー回路を挿入", `<label>回路</label><select id="userCircuitPick">${circuits.map((item, index) => `<option value="${index}">${escapeHtml(item.name)}</option>`).join("")}</select>
-          <div class="row"><div><label>X</label><input id="userCircuitX" type="number" step="2.5" value="30"></div><div><label>Y</label><input id="userCircuitY" type="number" step="2.5" value="40"></div></div>
+          <p class="muted">X・Yは挿入する回路全体の左上の位置です。Yは右パネルの「位置 Y」と同じく用紙の下端から測ります（上が＋）。</p>
+          <div class="row"><div><label>X</label><input id="userCircuitX" type="number" step="2.5" value="30"></div><div><label>Y mm（上が＋）</label><input id="userCircuitY" type="number" step="2.5" value="${dialogDisplayY(dialogPage, 40)}"></div></div>
           <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="userCircuitDelete">削除</button><button id="userCircuitInsert" class="primary">挿入</button></div>`);
         qs("#userCircuitDelete").onclick = () => { circuits.splice(Number(qs("#userCircuitPick").value), 1); commitHistory("ユーザー回路を削除しました。"); showUserCircuitInsertDialog(); };
         qs("#userCircuitInsert").onclick = () => {
           const source = circuits[Number(qs("#userCircuitPick").value)], page = currentPage(); if (!source || !page) return;
-          const x = Number(qs("#userCircuitX").value || 0), y = Number(qs("#userCircuitY").value || 0);
+          // Y(上が＋)は内部座標(回路の上端)へ戻す。用紙高さが2.5mmの倍数でない用紙でも移動量がグリッド単位になるよう揃える。
+          const x = Number(qs("#userCircuitX").value || 0), y = snap(readDialogInternalY(page, "#userCircuitY", 40));
           const idMap = new Map(), created = deepClone(source.elements);
           created.forEach(item => { const old = item.id; item.id = uid("el"); idMap.set(old, item.id); translateElement(item, x, y); });
           remapCopiedGroups(created);
@@ -19256,14 +19288,17 @@
 
       // ケーブル展開(ファンイン/アウト)ダイアログを開く。芯数ぶんの配線と芯番号をまとめて作図する。
       function showCableFanDialog() {
+        const dialogPage = currentPage(); if (!dialogPage) return;
         openDialog("ケーブル展開（ファンイン／アウト）", `<div class="row"><div><label>ケーブルタグ</label><input id="fanCableTag" value="CBL1"></div><div><label>芯数</label><input id="fanCoreCount" type="number" min="2" max="64" value="4"></div></div>
           <div class="row"><div><label>左X</label><input id="fanX1" type="number" step="2.5" value="30"></div><div><label>右X</label><input id="fanX2" type="number" step="2.5" value="150"></div></div>
-          <div class="row"><div><label>開始Y</label><input id="fanY" type="number" step="2.5" value="50"></div><div><label>芯間隔</label><input id="fanPitch" type="number" step="2.5" value="7.5"></div></div>
+          <div class="row"><div><label>開始Y mm（上が＋）</label><input id="fanY" type="number" step="2.5" value="${dialogDisplayY(dialogPage, 50)}"></div><div><label>芯間隔</label><input id="fanPitch" type="number" step="2.5" value="7.5"></div></div>
+          <p class="muted">開始Y（上が＋）: 1芯目の位置です。右パネルの座標と同じく用紙の下端から測ります。2芯目以降は芯間隔ごとに下へ並びます。</p>
           <label><input id="fanShield" type="checkbox" style="width:auto;min-height:auto"> シールド・ドレン線を追加</label>
           <div class="inline" style="justify-content:flex-end"><button id="fanApply" class="primary">生成</button></div>`);
         qs("#fanApply").onclick = () => {
           const page = currentPage(), tag = qs("#fanCableTag").value.trim() || "CBL1", count = Math.max(2, Number(qs("#fanCoreCount").value || 4));
-          const x1 = Number(qs("#fanX1").value), x2 = Number(qs("#fanX2").value), y = Number(qs("#fanY").value), pitch = Number(qs("#fanPitch").value || 7.5);
+          // 開始Y(上が＋)は内部座標(1芯目)へ戻す。用紙高さが2.5mmの倍数でない用紙でも1芯目がグリッドに乗るよう揃える。
+          const x1 = Number(qs("#fanX1").value), x2 = Number(qs("#fanX2").value), y = snap(readDialogInternalY(page, "#fanY", 50)), pitch = Number(qs("#fanPitch").value || 7.5);
           const bundleLeft = x1 + 35, bundleRight = x2 - 35, created = [], cableRows = [];
           for (let i = 0; i < count; i++) {
             const cy = round(y + i * pitch), core = String(i + 1);
@@ -22750,6 +22785,7 @@
               <li>遮断器などの多極機器は1極ずつ描き、2極目以降は1極目のタグを共有（採番・監査・BOMでは1台）。遮断器の定格は✕の上に表示され、右パネル「定格表示(トリップ素子上)」で変更できます</li>
               <li><b>一括生成</b>（機能メニュー）: ラング回路／非常停止チェーン／電源投入回路（自己保持）／ブレーキ/整流回路／縦配線列／横配線行／ツイストペア／モータ分岐回路／PLCユニット／盤レイアウト連携／DINレール／配線ダクト／ユーザー回路を挿入</li>
               <li>ラング回路・非常停止チェーン・電源投入・ブレーキ/整流は現在の母線へ接続し、母線がなければP1/N1を自動追加。「開始行」はラダー図枠の行番号（00〜20）です。ツイストペアとモータ分岐はスナップON時に座標・ピッチもグリッドへ揃えます</li>
+              <li>縦配線列・横配線行・ツイストペア・モータ分岐回路・DINレール／配線ダクト・ユーザー回路を挿入・ケーブル展開の<b>Y欄（「開始Y mm（上が＋）」など）</b>は、右パネルの座標と同じく<b>用紙の下端から測り上が＋</b>です。右パネルに表示されたYをそのまま入れると同じ高さに作図されます。開始Y・1相目Yは1本目の位置で、2本目以降は下へ並びます（スナップON時はグリッドへ揃えます）</li>
               <li>機能メニュー「<b>ラング追加</b>」: 母線の間へ横線（ラング）を1本ずつ下へ追加。設備ラダーではP1〜N1の間に、ラダー（汎用）では番号付きで追加します</li>
               <li><b>PLC電源回路</b>は1〜8スロット・接点列は各4件まで。区画線と縦向き型式名を2.5mmグリッドへ配置</li>
               <li>端子・PLCは<b>CSV取込</b>（機能メニュー「端子CSV取込」「PLC CSV取込」）でページ量産（1ページ17行、文字コード自動判定）。PLCアドレスは端子円内だけに表示し、CSVに線番がある行だけ配線上へ線番を表示。部品カタログもCSV入出力できます</li>

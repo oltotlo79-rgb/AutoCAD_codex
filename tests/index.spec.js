@@ -2045,7 +2045,8 @@ test("配線列・配線行は用紙外指定を拒否しツイストペアと�
   await page.locator("#actionMenu").selectOption("twistedPair");
   await page.locator("#twPitch").fill("6.1");
   await page.locator("#twX").fill("41.2");
-  await page.locator("#twY").fill("81.4");
+  // 開始Yは右パネルと同じ「上が＋」。A4縦(高さ297)で内部Y=81.4に当たる215.6を入れる。
+  await page.locator("#twY").fill("215.6");
   await page.locator("#twSpan").fill("61.1");
   await page.locator("#twBuildBtn").click();
   let offGrid = await page.evaluate(() => {
@@ -2059,7 +2060,8 @@ test("配線列・配線行は用紙外指定を拒否しツイストペアと�
   await page.goto(appUrl, { waitUntil: "load" });
   await page.locator("#actionMenu").selectOption("motorCircuit");
   await page.locator("#mcX").fill("41.2");
-  await page.locator("#mcY").fill("66.1");
+  // 1相目Yも「上が＋」。内部Y=66.1に当たる230.9を入れる。
+  await page.locator("#mcY").fill("230.9");
   await page.locator("#mcSpan").fill("96.2");
   await page.locator("#mcBuildBtn").click();
   offGrid = await page.evaluate(() => {
