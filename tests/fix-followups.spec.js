@@ -130,3 +130,55 @@ test("パネル見出しは部品名の英字を大文字にせず、配線接�
   await expect(page.locator("#miniToolbar button", { hasText: "回転" })).toHaveCount(1);
   await expect(page.locator("#miniToolbar button", { hasText: "配線" })).toHaveCount(0);
 });
+
+test("下絵の表示範囲を変えても画像を引き伸ばさず、「下絵を選択」は選択部品タブを開く", async ({ page }) => {
+  await page.evaluate(data => window.__edsTest.installProjectData(data), {
+    schemaVersion: 4,
+    activePageId: "p1",
+    pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: [
+      { id: "u1", type: "underlayImage", x: 10, y: 20, w: 180, h: 120, imageData: "", opacity: 0.35, cropPreset: "full", locked: false, layer: "layout" }
+    ] }]
+  });
+  await page.evaluate(() => window.__edsTest.selectElement("u1"));
+  await page.locator('#selectionPanel [data-bind="cropPreset"]').selectOption("left");
+  // 左半分は元の縦横比の半分の幅になる(高さはそのまま)。
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements[0])).toMatchObject({ cropPreset: "left", w: 90, h: 120 });
+  await page.locator('#selectionPanel [data-bind="cropPreset"]').selectOption("top");
+  expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements[0])).toMatchObject({ cropPreset: "top", w: 360, h: 120 });
+
+  // 下絵を選択したままページ設定タブへ切り替えてから「下絵を選択」しても、下絵の設定が見える。
+  await page.locator("#inspectorTabPage").click();
+  await page.locator("#underlayMenu").selectOption("select");
+  await expect(page.locator("#selectionPanel")).toBeVisible();
+  await expect(page.locator('#selectionPanel [data-bind="cropPreset"]')).toBeVisible();
+});
+
+test("カタログ差分更新は項目名を表示名で出し、端子台エディタは詳細列まで横スクロールなしで見える", async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.evaluate(data => window.__edsTest.installProjectData(data), {
+    schemaVersion: 4,
+    activePageId: "p1",
+    catalog: [{ family: "CR", manufacturer: "新メーカー", catalog: "RY-1", description: "補助リレー", rating: "DC24V", maxNO: 4 }],
+    pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: [
+      { id: "c1", type: "coil", x: 40, y: 60, w: 10, h: 4.4, tag: "CR1", label: "CR1", catalog: "RY-1", manufacturer: "旧", layer: "symbols" },
+      { id: "tb1", type: "terminalStrip", x: 120, y: 50, w: 10, h: 28.5, count: 3, orientation: "vertical", stripStyle: "unit", label: "TB1", layer: "symbols" }
+    ] }]
+  });
+  await page.locator("#actionMenu").selectOption("catalogRefresh");
+  const body = page.locator("#dialogBody");
+  await expect(body).toContainText("メーカー");
+  await expect(body).not.toContainText("manufacturer");
+  await page.locator("#dialogClose").click();
+
+  await page.locator("#actionMenu").selectOption("terminalEditor");
+  const detail = page.locator("#dialogBody button", { hasText: "詳細" }).first();
+  await expect(detail).toBeVisible();
+  const fits = await page.evaluate(() => {
+    const dialog = document.querySelector(".dialog");
+    const button = Array.from(dialog.querySelectorAll("button")).find(item => item.textContent.trim() === "詳細");
+    const box = button.getBoundingClientRect();
+    const frame = dialog.getBoundingClientRect();
+    return dialog.scrollWidth <= dialog.clientWidth + 1 && box.right <= frame.right;
+  });
+  expect(fits).toBe(true);
+});

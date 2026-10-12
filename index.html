@@ -1091,6 +1091,8 @@
        収まらない分はダイアログ内の横スクロールで見せる。 */
     #dialogBody table:has([data-terminal-row]) th,
     #dialogBody [data-terminal-row] > td { white-space: nowrap; }
+    /* 「端子単位詳細」列まで横スクロールなしで見えるよう、端子台エディタだけ広幅より少し広げる。 */
+    .dialog.wide:has([data-terminal-row]) { width: min(1240px, calc(100vw - 32px)); }
     #dialogBody [data-terminal-field] { min-width: 60px; }
     #dialogBody select[data-terminal-field] { min-width: 64px; }
     #dialogBody [data-terminal-field="count"],
@@ -13504,6 +13506,13 @@
           value = underlayOpacity(value);
           if (save) input.value = String(value);
         }
+        // 下絵の表示範囲を変えたら、切り出し後の縦横比に合わせて幅を直す(高さは保つ)。
+        // 幅・高さをそのままにすると、半分にした画像が元の枠いっぱいへ引き伸ばされるため。
+        if (key === "cropPreset" && element.type === "underlayImage" && value !== (element.cropPreset || "full")) {
+          const from = underlayCropRect(element.cropPreset);
+          const to = underlayCropRect(value);
+          element.w = round(Number(element.w || 1) * (from.h / from.w) * (to.w / to.h));
+        }
         const pointMatch = key.match(/^p(\d+)(x|y)$/);
         // 形状・向き・デザイン等の切替で要素寸法が変わる可能性のあるキー。
         // 切替の前後で第1接続ピンの絶対位置を保存し、寸法変更によるピンのズレを常に打ち消す。
@@ -19170,6 +19179,8 @@
       }
 
       // カタログ再取得ダイアログを開く。図面の部品と部品カタログの差分を一覧し、選んだ項目だけ更新する。
+      // カタログ差分更新の「項目」欄に出す表示名(内部キーを見せない)。
+      const CATALOG_REFRESH_LABELS = { manufacturer: "メーカー", description: "説明", rating: "定格", maxNO: "a接点上限", maxNC: "b接点上限" };
       function showCatalogRefresh() {
         const differences = [];
         state.pages.forEach(page => page.elements.forEach(item => {
@@ -19180,7 +19191,7 @@
             if (catalog[key] !== undefined && String(item[key] || "") !== String(catalog[key] || "")) differences.push({ page, item, key, value: catalog[key] });
           });
         }));
-        openDialog("カタログ差分更新", differences.length ? `<p>${differences.length}項目に差分があります。</p><table class="report-table"><thead><tr><th>頁</th><th>タグ</th><th>項目</th><th>新しい値</th></tr></thead><tbody>${differences.slice(0, 150).map(diff => `<tr><td>${escapeHtml(diff.page.name)}</td><td>${escapeHtml(componentTag(diff.item))}</td><td>${escapeHtml(diff.key)}</td><td>${escapeHtml(diff.value)}</td></tr>`).join("")}</tbody></table>
+        openDialog("カタログ差分更新", differences.length ? `<p>${differences.length}項目に差分があります。</p><table class="report-table"><thead><tr><th>頁</th><th>タグ</th><th>項目</th><th>新しい値</th></tr></thead><tbody>${differences.slice(0, 150).map(diff => `<tr><td>${escapeHtml(diff.page.name)}</td><td>${escapeHtml(componentTag(diff.item))}</td><td>${escapeHtml(CATALOG_REFRESH_LABELS[diff.key] || diff.key)}</td><td>${escapeHtml(diff.value)}</td></tr>`).join("")}</tbody></table>
           <div class="inline" style="justify-content:flex-end"><button id="catalogRefreshApply" class="primary">すべて更新</button></div>` : '<p class="muted">カタログとの差分はありません。</p>');
         qs("#catalogRefreshApply")?.addEventListener("click", () => { differences.forEach(diff => { diff.item[diff.key] = diff.value; }); closeDialog(); commitHistory(differences.length + "件のカタログ属性を更新しました。"); render(); });
       }
@@ -21235,6 +21246,8 @@
           return;
         }
         selectSingle(underlay.id);
+        // 直前に「ページ設定」タブを選んでいても、選んだ下絵の設定(選択部品タブ)を見せる。
+        inspectorTabChoice = null;
         setStatus("下絵を選択しました。位置調整する場合はロック解除してください。");
         render();
       }
