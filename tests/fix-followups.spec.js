@@ -109,3 +109,24 @@ test("帳票表挿入は最大行数で切った行数をステータスで知�
   const table = await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.type === "table"));
   expect(table.rows).toBe(4);
 });
+
+test("パネル見出しは部品名の英字を大文字にせず、配線接続点のない要素のミニツールバーに「配線」を出さない", async ({ page }) => {
+  await page.evaluate(data => window.__edsTest.installProjectData(data), {
+    schemaVersion: 4,
+    activePageId: "p1",
+    pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: [
+      { id: "c1", type: "contactNO", x: 40, y: 60, w: 10, h: 4.4, label: "CR1", layer: "symbols" },
+      { id: "tbl", type: "table", x: 40, y: 120, w: 60, h: 30, rows: 2, cols: 2, cellText: "A,B\nC,D", layer: "notes" }
+    ] }]
+  });
+  await page.evaluate(() => window.__edsTest.selectElement("c1"));
+  const title = page.locator("#selectionPanel .panel-title").first();
+  await expect(title).toContainText("a接点");
+  const transform = await title.evaluate(element => getComputedStyle(element).textTransform);
+  expect(transform).toBe("none");
+  await expect(page.locator("#miniToolbar button", { hasText: "配線" })).toHaveCount(1);
+
+  await page.evaluate(() => window.__edsTest.selectElement("tbl"));
+  await expect(page.locator("#miniToolbar button", { hasText: "回転" })).toHaveCount(1);
+  await expect(page.locator("#miniToolbar button", { hasText: "配線" })).toHaveCount(0);
+});

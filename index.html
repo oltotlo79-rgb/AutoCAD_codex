@@ -272,7 +272,6 @@
       font-size: 12px;
       font-weight: 700;
       color: #334150;
-      text-transform: uppercase;
       letter-spacing: .05em;
       margin: 6px 0 10px;
     }
@@ -18687,7 +18686,11 @@
           ? [["線番", () => startInlineEdit(element)], ["曲がり角＋", addSelectedWirePoint], ["分割", splitSelectedWire], ["削除", deleteSelected]]
           : element.type === "text"
             ? [["編集", () => startInlineEdit(element)], ["左回転", () => rotateSelected(-90)], ["複製", duplicateSelected], ["削除", deleteSelected]]
-            : [["配線", () => startWireFromSelected()], ["回転", () => rotateSelected(90)], ["複製", duplicateSelected], ["編集", showQuickProperties]];
+            : [
+              // 表・枠・雲マークなど配線接続点のない要素には「配線」を出さない(押してもエラー表示になるだけのため)。
+              ...(componentConnectionAnchors(element)?.length ? [["配線", () => startWireFromSelected()]] : []),
+              ["回転", () => rotateSelected(90)], ["複製", duplicateSelected], ["編集", showQuickProperties]
+            ];
         host.innerHTML = "";
         actions.forEach(([label, run]) => {
           const button = document.createElement("button");
