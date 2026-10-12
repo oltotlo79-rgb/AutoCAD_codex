@@ -1927,15 +1927,14 @@
       // SVG名前空間URI(createElementNS用)。
       const svgNS = "http://www.w3.org/2000/svg";
       // ローカル日付をYYYY-MM-DDで返す。UTC変換による日付ずれを避ける。
+      // 新規ページ・改訂などの日付の既定値は起動時に固定せず、使う都度これを呼ぶ
+      // (日付をまたいで開いたままでも、作成した日の日付が入るようにするため)。
       function formatLocalDate(date = new Date()) {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, "0");
         const day = String(date.getDate()).padStart(2, "0");
         return `${year}-${month}-${day}`;
       }
-
-      // 今日の日付(YYYY-MM-DD)。新規ページ・改訂の既定値に使用。
-      const today = formatLocalDate();
 
       // アプリ全体の状態(単一の真実)。JSON保存/読込・Undo履歴・自動バックアップは全てこのオブジェクトの
       // JSON.stringifyスナップショットで行う。pages[].elements[]が図面要素の本体。
@@ -2965,7 +2964,7 @@
           drawingNo: "",
           revision: "",
           designer: "",
-          date: today,
+          date: formatLocalDate(),
           facility: "",
           titleMap: { ...DEFAULT_TITLE_MAP }
         },
@@ -3253,6 +3252,8 @@
         candidate.footprintDb = migrated.footprintDb || [];
         candidate.project = {
           ...base.project,
+          // 起動時既定値の日付は起動日なので、読込時点の日付で補う。
+          date: formatLocalDate(),
           ...(migrated.project || {}),
           titleMap: { ...base.project.titleMap, ...(migrated.project?.titleMap || {}) }
         };
@@ -3268,7 +3269,7 @@
             title: candidate.project.title || "電気図面",
             revision: candidate.project.revision || "",
             designer: candidate.project.designer || "",
-            date: candidate.project.date || today,
+            date: candidate.project.date || formatLocalDate(),
             facility: candidate.project.facility || "",
             installation: "",
             location: "",
@@ -3314,7 +3315,7 @@
             title: options.title || "電気図面",
             revision: options.revision || "",
             designer: options.designer || "",
-            date: options.date || today,
+            date: options.date || formatLocalDate(),
             facility: options.facility || "",
             installation: options.installation || "",
             location: options.location || "",
@@ -3345,7 +3346,7 @@
           drawingNo: "",
           revision: "",
           designer: "",
-          date: today,
+          date: formatLocalDate(),
           facility: "",
           ...(state.project || {})
         };
@@ -3362,8 +3363,24 @@
         return state.project;
       }
 
-      // アプリ初期化: 既定1ページを作って履歴をリセットし初回描画。
+      // 図面固有のデータ(プロジェクト情報・改訂履歴・ケーブル表)を起動時既定値へ戻す。
+      // 新規作成で前の図面の図名や改訂履歴が新しいJSONへ紛れ込まないようにするため。
+      // ユーザー部品・ユーザー回路・カタログ・PLCモジュールDB・配線種別・レイヤ・採番書式等の設定・
+      // 標準パック・表題欄レイアウト・フットプリントDB、表題欄マッピングは図面をまたいで使う資産なので残す。
+      function resetDrawingSpecificData() {
+        const titleMap = isPlainObject(state.project?.titleMap) ? state.project.titleMap : {};
+        state.project = {
+          ...JSON.parse(INITIAL_STATE_JSON).project,
+          date: formatLocalDate(),
+          titleMap: { ...DEFAULT_TITLE_MAP, ...titleMap },
+          revisions: []
+        };
+        state.cables = [];
+      }
+
+      // アプリ初期化・新規作成: 図面固有データを消し、既定1ページを作って履歴をリセットし初回描画。
       function initProject() {
+        resetDrawingSpecificData();
         ensureProjectDefaults();
         // 新規図面は現行版(将来版データを開いた後の版数を引き継がない)。
         state.schemaVersion = SCHEMA_VERSION;
@@ -3420,7 +3437,11 @@
         historyImageAssets.clear();
         historyImageRefByData.clear();
         historyIndex = -1;
-        commitHistory("初期化");
+        // 起動・新規・読込直後の状態は自動バックアップへ書かない。書くと前回終了時や新規前の
+        // 図面(最新バックアップ)を白紙や読込内容で上書きしてしまう。最初の実編集の保存時に、
+        // 前の図面を世代1へ退避してから書き込む(persistAutomaticBackup)。
+        backupSessionPending = true;
+        commitHistory("初期化", { skipBackup: true });
       }
 
       // Undo履歴の保持上限。全量スナップショット方式のため、下絵入り大規模図面での
@@ -3449,6 +3470,9 @@
       const BACKUP_GEN_COUNT = 3;
       // 世代を繰り下げる最短間隔(ms)。連続操作のたびに世代を消費しないための間引き。
       const BACKUP_GEN_INTERVAL_MS = 5 * 60 * 1000;
+      // 起動・新規・読込のあと、この図面としてまだ自動バックアップを書いていないか。
+      // trueの間の最新(BACKUP_KEY)は前の図面のものなので、上書き前に間隔に関係なく世代1へ退避する。
+      let backupSessionPending = true;
 
       // 世代メタ(各世代の保存日時の配列。[0]=世代1)を読む。壊れていれば空。
       function readBackupGenMeta() {
@@ -3460,12 +3484,13 @@
         }
       }
 
-      // 前回の世代化から一定時間経っていたら、現在の最新バックアップを世代1へ繰り下げる。
+      // 前回の世代化から一定時間経っていたら(force時は経過時間に関係なく)、
+      // 現在の最新バックアップを世代1へ繰り下げる。
       // 失敗しても最新バックアップの保存(呼び出し元)には影響させない。
-      function rotateBackupGenerations() {
+      function rotateBackupGenerations(force = false) {
         try {
           const meta = readBackupGenMeta();
-          if (meta[0] && Date.now() - new Date(meta[0].at).getTime() < BACKUP_GEN_INTERVAL_MS) return;
+          if (!force && meta[0] && Date.now() - new Date(meta[0].at).getTime() < BACKUP_GEN_INTERVAL_MS) return;
           const current = localStorage.getItem(BACKUP_KEY);
           if (!current) return;
           for (let i = Math.min(meta.length, BACKUP_GEN_COUNT - 1); i >= 1; i--) {
@@ -3547,8 +3572,11 @@
       }
 
       // 最新の完全スナップショットを自動バックアップへ保存する。
+      // 起動・新規・読込後の最初の保存では、前の図面の最新を先に世代1へ退避する(5分間隔の対象外)。
       function persistAutomaticBackup(snapshot) {
-        rotateBackupGenerations();
+        rotateBackupGenerations(backupSessionPending);
+        // 退避済みなので、最新の書き込みが失敗しても次回に同じ図面を重ねて退避しない。
+        backupSessionPending = false;
         localStorage.setItem(BACKUP_KEY, snapshot);
       }
 
@@ -3617,15 +3645,18 @@
         historyIndex = history.length - 1;
         projectDirty = reason !== "初期化";
         pruneHistoryImageAssets();
-        try {
-          persistAutomaticBackup(JSON.stringify(state));
-          backupFailureWarned = false;
-        } catch (_) {
-          // 容量超過やプライベートモードで失敗し得る。無言で止めず一度だけ警告する。
-          if (!backupFailureWarned) {
-            backupFailureWarned = true;
-            reason = (reason ? reason + " " : "") +
-              "※自動バックアップを保存できません（容量超過の可能性）。上部「保存」でJSON保存してください。";
+        // options.skipBackupは起動・新規・読込直後の初期スナップショット用(resetHistory参照)。
+        if (!options.skipBackup) {
+          try {
+            persistAutomaticBackup(JSON.stringify(state));
+            backupFailureWarned = false;
+          } catch (_) {
+            // 容量超過やプライベートモードで失敗し得る。無言で止めず一度だけ警告する。
+            if (!backupFailureWarned) {
+              backupFailureWarned = true;
+              reason = (reason ? reason + " " : "") +
+                "※自動バックアップを保存できません（容量超過の可能性）。上部「保存」でJSON保存してください。";
+            }
           }
         }
         setStatus(reason || "変更を記録しました。");
@@ -14413,16 +14444,22 @@
       }
 
       // 現在ページを複製(要素IDは振り直し)。
-      // 末尾のアドレス/番号にオフセットを加算する。X060+10hex→X070、CR1+1→CR2 のように
-      // 接頭辞と桁数を保ったまま加算する。16進判定: 数字部にA-Fを含む、または接頭辞がX/Y/B/W系。
+      // 末尾のアドレス/番号にオフセットを加算する。X060+16→X070、CR1+16→CR17 のように
+      // 接頭辞と桁数を保ったまま加算する。16進で加算するのはPLCアドレスと判定できる末尾語だけ:
+      // ・X/Y/RX/RY(入出力・リモート入出力)+数字を1つ以上含む16進 … 常に16進
+      // ・B/W/SB/SW(リンク系)+A-Fを含む16進 … 自動生成の線番W01等と区別するため、A-Fを含むときだけ16進
+      // 接頭辞は語頭(英数字の直後でない位置)から始まる必要がある。PB1/MC1/ELB1等の部品タグや
+      // 「電源 DC」のような文字はA-Fを含んでも16進とみなさず、末尾の10進数字だけを加算する(無ければ変えない)。
       function offsetAddressToken(text, offset) {
-        const match = String(text || "").match(/^(.*?)([0-9A-Fa-f]+)$/);
-        if (!match || !offset) return text;
+        const source = String(text || "");
+        if (!offset) return text;
+        const plc = source.match(/^(.*?(?:^|[^0-9A-Za-z]))(X|Y|RX|RY|B|W|SB|SW)([0-9A-Fa-f]+)$/i);
+        const isHex = Boolean(plc) && /[0-9]/.test(plc[3])
+          && (/^(X|Y|RX|RY)$/i.test(plc[2]) || /[A-Fa-f]/.test(plc[3]));
+        const match = isHex ? [source, plc[1] + plc[2], plc[3]] : source.match(/^(.*?)([0-9]+)$/);
+        if (!match) return text;
         const prefix = match[1];
         const digits = match[2];
-        const hexPrefix = /^(X|Y|B|W|SB|SW|RX|RY)$/i.test(prefix.trim());
-        const isHex = hexPrefix || /[A-Fa-f]/.test(digits);
-        if (!isHex && !/^\d+$/.test(digits)) return text;
         const value = parseInt(digits, isHex ? 16 : 10) + offset;
         if (!Number.isFinite(value) || value < 0) return text;
         const raw = value.toString(isHex ? 16 : 10).toUpperCase();
@@ -18048,7 +18085,8 @@
         const key = side === "left" ? "leftPanelCollapsed" : "rightPanelCollapsed";
         state.settings[key] = force === undefined ? !state.settings[key] : !!force;
         updateProductivityUi();
-        persistAutomaticBackup(JSON.stringify(state));
+        // 起動・新規直後の未編集の図面では書かない(パネル開閉だけで前の図面の最新を白紙で置き換えない)。
+        if (!backupSessionPending) persistAutomaticBackup(JSON.stringify(state));
       }
 
       // 集中表示(左右パネルを同時に閉じる)の切替。両方閉じているときは両方開く。Tabキー割当。
@@ -20212,9 +20250,9 @@
         return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addUnderlayImageElement(file.name, dataUrl, imageWidth, imageHeight));
       }
 
-      // A3二面スキャン画像→A4縦2ページの下絵ページ生成の入口。
-      function importTwoUpUnderlayImageFile(file) {
-        return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addTwoUpUnderlayPages(file.name, dataUrl, imageWidth, imageHeight));
+      // A3二面スキャン画像→A4縦2ページの下絵ページ生成の入口。pageNoは頁名の基準番号(省略時は末尾の次)。
+      function importTwoUpUnderlayImageFile(file, pageNo) {
+        return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addTwoUpUnderlayPages(file.name, dataUrl, imageWidth, imageHeight, pageNo));
       }
 
       // 画像ファイルをdataURL化し寸法を得てコールバックへ渡す共通処理。
@@ -20274,15 +20312,16 @@
         render();
       }
 
-      // 1枚の画像を上下2分割し、半分ごとに下絵ページを追加する(A3スキャン→A4半页×2の運用向け)。
-      async function addTwoUpUnderlayPages(name, dataUrl, imageWidth, imageHeight) {
+      // 1枚の画像を90度回転してから左右2分割し、半分ごとに下絵ページを追加する(A3スキャン→A4×2の運用向け)。
+      // 頁名は元画像1枚につき1つの基準番号で「P4-1」「P4-2」とする(pageNo省略時は末尾ページの次の番号)。
+      async function addTwoUpUnderlayPages(name, dataUrl, imageWidth, imageHeight, pageNo) {
         const base = currentPage();
         const baseTitle = base?.title || {};
-        const baseIndex = state.pages.length + 1;
+        const baseNo = Number.isInteger(pageNo) && pageNo > 0 ? pageNo : state.pages.length + 1;
         const splitImages = await rotatedA3TwoUpImages(dataUrl);
-        const pages = splitImages.map((item, index) => {
+        const pages = splitImages.map(item => {
           const page = createPageInheritingTitle({
-            name: "P" + (baseIndex + index) + "-" + item.suffix,
+            name: "P" + baseNo + "-" + item.suffix,
             size: "A4",
             orientation: "portrait",
             frameVariant: base?.frameVariant || "detailed",
@@ -20290,7 +20329,7 @@
             drawingNo: baseTitle.drawingNo || "",
             revision: baseTitle.revision || "",
             designer: baseTitle.designer || "",
-            date: baseTitle.date || today,
+            date: baseTitle.date || formatLocalDate(),
             facility: baseTitle.facility || "",
             installation: baseTitle.installation || "",
             location: baseTitle.location || ""
@@ -22080,7 +22119,7 @@
         });
         qs("#addRevisionBtn").addEventListener("click", () => {
           const revisions = collect(true);
-          revisions.push({ rev: "", date: state.project.date || today, note: "" });
+          revisions.push({ rev: "", date: state.project.date || formatLocalDate(), note: "" });
           showRevisionHistory(revisions);
         });
         qs("#applyRevisionBtn").addEventListener("click", () => {
@@ -22780,7 +22819,7 @@
           </div>
           <div class="row">
             <div><label>作成</label><input id="batchDesigner" value="${escapeAttr(p.designer || "")}"></div>
-            <div><label>日付</label><input id="batchDate" value="${escapeAttr(p.date || today)}"></div>
+            <div><label>日付</label><input id="batchDate" value="${escapeAttr(p.date || formatLocalDate())}"></div>
           </div>
           <label style="margin-top:10px">表題欄マッピング</label>
           <table class="report-table">
@@ -24631,13 +24670,17 @@
       // null=毎回たずねる / "page"=このページだけ / "all"=全ページへ反映
       let titlePropagationChoice = null;
 
+      // 変更元以外で、表題欄の項目がvalueと異なるページ(未設定は空欄扱い)。
+      function pagesWithDifferentTitleField(field, sourcePage, value) {
+        return state.pages.filter(page => page.id !== sourcePage.id
+          && String((isPlainObject(page.title) ? page.title[field.key] : "") ?? "") !== value);
+      }
+
       // 表題欄の1項目を、変更元以外の全ページへ書き込む。値が同じページは数えない。
       function applyTitleFieldToOtherPages(field, sourcePage, value) {
         let changed = 0;
-        state.pages.forEach(page => {
-          if (page.id === sourcePage.id) return;
+        pagesWithDifferentTitleField(field, sourcePage, value).forEach(page => {
           if (!isPlainObject(page.title)) page.title = {};
-          if (page.title[field.key] === value) return;
           page.title[field.key] = value;
           changed += 1;
         });
@@ -24651,8 +24694,10 @@
 
       // 表題欄を1ページで変更したとき、同じ値を他のページへも入れるか確認する。
       // 変更したページ自身への反映は確認前に確定済みなので、ここで閉じても編集が失われることはない。
+      // 値が異なるページだけを数え、無ければたずねない(入力直後の「ページ追加」で新ページが
+      // 値を引き継いだ場合など、反映先が実質無いのに確認が出るのを防ぐ)。
       function askTitlePropagation(field, sourcePage, value) {
-        const others = state.pages.filter(page => page.id !== sourcePage.id);
+        const others = pagesWithDifferentTitleField(field, sourcePage, value);
         if (!others.length) return;
         if (titlePropagationChoice === "page") return;
         if (titlePropagationChoice === "all") {
@@ -24740,8 +24785,10 @@
           event.target.value = "";
         });
         qs("#underlayTwoUpInput").addEventListener("change", async event => {
+          // 複数画像は1枚ごとに基準番号を1つ進める(P4-1,P4-2,P5-1,P5-2…)。読めなかった画像は番号を消費しない。
+          let pageNo = state.pages.length + 1;
           for (const file of Array.from(event.target.files || [])) {
-            await importTwoUpUnderlayImageFile(file);
+            if (await importTwoUpUnderlayImageFile(file, pageNo)) pageNo += 1;
           }
           event.target.value = "";
         });
