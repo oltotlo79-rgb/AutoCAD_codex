@@ -14789,6 +14789,13 @@
         return { ...textElement(anchorX - offset, y, text, fontSize, 0, w), align };
       }
 
+      // 部品ピン〜母線・端子の短い引出し線(全長10mm未満)は線番を書く余地がなく、線番採番で代表に
+      // 選ばれると文字が母線や部品・ラベルへはみ出す。生成時に線番非表示(右パネルで隠したのと同じ扱い)
+      // にしておくと、線番採番はその線番を出さず、ネットは同じネットの長い配線・母線名・送り矢印で読める。
+      function shortLeadWireNoProps(length) {
+        return Math.abs(Number(length) || 0) < 10 ? { hideWireNo: true } : {};
+      }
+
       // アクティブツール切替(select/wire/種別名/custom:id)。パレットの強調表示も更新。
       function setActiveTool(tool) {
         const selected = selectedElement();
@@ -16386,9 +16393,12 @@
         const margin = Math.min(10, Math.max(2.5, Math.floor(span / 5 / 2.5) * 2.5));
         const exL = round(x0 + margin);
         const exR = round(x0 + span - margin);
+        // 導体の中央は撚り交差線と楕円束の下になるため、線番採番の線番はシェブロンと左の楕円束の間
+        // (余白margin-2mm)へ左寄せする。余白が足りない短いスパンでは線番を出さない。
+        const conductorWireNo = margin >= 10 ? { wireNoAlign: "start" } : { hideWireNo: true };
         for (let i = 0; i < count; i++) {
           const y = round(y0 + pitch * i);
-          created.push({ ...defaultElement("wire", x0, y), points: [[x0, y], [round(x0 + span), y]] });
+          created.push({ ...defaultElement("wire", x0, y), points: [[x0, y], [round(x0 + span), y]], ...conductorWireNo });
           created.push({ ...defaultElement("arrow", x0 - 5, y), points: [[x0 - 5, y], [x0, y]], label: "", arrowStyle: "chevron" });
           // 信号名はシェブロンの左に右寄せで置く(左側の縦レール等と重ならないように)。
           if (labels[i]) created.push(textElement(round(x0 - 6.2 - String(labels[i]).length * 1.15), y - 1.2, labels[i], 2.2, 0, 12));
@@ -16602,7 +16612,8 @@
               created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), y], [round(cx), y]] });
             }
             // 局の右側に境界端子(○・中心cx+15=グリッド点)+線番。配線は円中心まで届かせる。
-            created.push({ ...defaultElement("wire", cx + 10, y), points: [[round(cx + 10), y], [round(cx + 15), y]] });
+            // PB→端子の5mmは局枠の中で線番が枠線へ掛かるため線番を出さない(局間線・送り矢印のラベルで読む)。
+            created.push({ ...defaultElement("wire", cx + 10, y), points: [[round(cx + 10), y], [round(cx + 15), y]], ...shortLeadWireNoProps(5) });
             terminals.push({ ...defaultElement("terminal", 0, 0), x: round(cx + 14.1), y: round(y - 0.9), label: "" });
             sx = cx + 15;
             if (i < stations - 1) {
@@ -16643,9 +16654,12 @@
               label: "",
               tag: prefix + (i + 1)
             });
+            // ループの横線(yMid)はPB行の1mm下を通る。線番採番で付く線番は横線の上だとPBの端子へ
+            // 掛かるので、横線の下(ランプのラベルより右)へ下げる。
             created.push({
               ...defaultElement("wire", cx + 10, yT),
-              points: [[round(cx + 10), yT], [round(cx + 12.5), yT], [round(cx + 12.5), yMid], [round(cx - 2.5), yMid], [round(cx - 2.5), yL]]
+              points: [[round(cx + 10), yT], [round(cx + 12.5), yT], [round(cx + 12.5), yMid], [round(cx - 2.5), yMid], [round(cx - 2.5), yL]],
+              wireNoDy: -3.6
             });
             created.push({ ...defaultElement("lamp", round(cx - 2.5), round(yL - 2.2)), label: prefix + (i + 1), tag: prefix + (i + 1), lampColor: "R" });
             created.push({ ...defaultElement("wire", cx + 7.5, yL), points: [[round(cx + 7.5), yL], [railR, yL]] });
@@ -16720,7 +16734,8 @@
         // アンカー=80。
         created.push({ ...defaultElement("positionMark", 78, round(yA - 3)), label: "入", markStyle: "box" });
         created.push({ ...defaultElement("coil", 135, round(yA - 2.2)), label: cr1, tag: cr1 });
-        created.push({ ...defaultElement("wire", 145, yA), points: [[145, yA], [railR, yA]] });
+        // コイル→右母線は2.5mmしかなく、線番が母線とコイルのラベルへ掛かるため線番を出さない。
+        created.push({ ...defaultElement("wire", 145, yA), points: [[145, yA], [railR, yA]], ...shortLeadWireNoProps(railR - 145) });
         created.push(defaultElement("junction", railR, yA));
         // 行B: 準備PB + 自己保持接点(並列) + コイル。
         created.push(defaultElement("junction", railL, yB));
@@ -16732,7 +16747,7 @@
         created.push(defaultElement("junction", 70, yB));
         created.push({ ...defaultElement("wire", 70, yB), points: [[70, yB], [135, yB]] });
         created.push({ ...defaultElement("coil", 135, round(yB - 2.2)), label: cr2, tag: cr2 });
-        created.push({ ...defaultElement("wire", 145, yB), points: [[145, yB], [railR, yB]] });
+        created.push({ ...defaultElement("wire", 145, yB), points: [[145, yB], [railR, yB]], ...shortLeadWireNoProps(railR - 145) });
         created.push(defaultElement("junction", railR, yB));
         // 自己保持分岐(下段に a接点 cr2)。
         created.push({ ...defaultElement("wire", 47.5, yB), points: [[47.5, yB], [47.5, yB2]] });
@@ -16792,7 +16807,7 @@
           });
           created.push({ ...defaultElement("wire", 117.5, y), points: [[117.5, y], [135, y]] });
           created.push({ ...defaultElement("coil", 135, round(y - 2.2)), label: coilPrefix + (i + 1), tag: coilPrefix + (i + 1) });
-          created.push({ ...defaultElement("wire", 145, y), points: [[145, y], [railR, y]] });
+          created.push({ ...defaultElement("wire", 145, y), points: [[145, y], [railR, y]], ...shortLeadWireNoProps(railR - 145) });
           created.push(defaultElement("junction", railR, y));
         }
         return created;
@@ -17067,9 +17082,11 @@
           const yC = round(yA - 5);
           const n = b + 1;
           // 送り縦線(相1→接点上段、相3→接点下段)。最初のブレーキで縦線本体を引く。
+          // 縦線は相ネットで最長のため線番採番の代表になり、線番が隣の縦線を横切る。相の線番は
+          // インバータ入力線(R1/T1)で見せるので縦線の線番は出さない。
           if (b === 0) {
-            els.push({ ...defaultElement("wire", xJA, yA), points: [[xJA, yA], [xJA, yP[0]]] });
-            els.push({ ...defaultElement("wire", xJB, yB), points: [[xJB, yB], [xJB, yP[2]]] });
+            els.push({ ...defaultElement("wire", xJA, yA), points: [[xJA, yA], [xJA, yP[0]]], hideWireNo: true });
+            els.push({ ...defaultElement("wire", xJB, yB), points: [[xJB, yB], [xJB, yP[2]]], hideWireNo: true });
           } else {
             els.push(defaultElement("junction", xJA, yA));
             els.push(defaultElement("junction", xJB, yB));
@@ -17085,12 +17102,15 @@
           els.push({ ...defaultElement("wire", 85, yB), points: [[85, yB], [92.5, yB]], wireNo: "B" + n + "1", wireNoAlign: "start" });
           // 整流器箱(ピン2/1=左、4=右上)。
           els.push({ ...defaultElement("rect", 92.5, round(yA - 2.5)), w: 22.5, h: round(yB - yA + 5), label: "" });
-          els.push(textElement(94, yA - 1.4, "2", 2.2, 0, 6));
-          els.push(textElement(94, yB - 1.4, "1", 2.2, 0, 6));
-          els.push(textElement(111.2, yA - 1.4, "4", 2.2, 0, 6));
+          // 端子番号は箱の上辺(yA-2.5)に字の頭が接しないよう、行より0.9mm上に置く。
+          els.push(textElement(94, yA - 0.9, "2", 2.2, 0, 6));
+          els.push(textElement(94, yB - 0.9, "1", 2.2, 0, 6));
+          els.push(textElement(111.2, yA - 0.9, "4", 2.2, 0, 6));
           els.push(textElement(99, round((yA + yB) / 2 - 1.4), "整流器", 2.4, 0, 16));
           // ピン4→コイル右、上段線の分岐→コイル左(見本のループ配線)。
-          els.push({ ...defaultElement("wire", 85, yA), points: [[85, yA], [85, yC], [135, yC]] });
+          // ループ線は線番B0nのネットで最長だが、線番は接点直後(B0n)で見せる。ループ上に出すと
+          // 2回路目では1回路目の整流器箱の下辺へ掛かるため線番を出さない。
+          els.push({ ...defaultElement("wire", 85, yA), points: [[85, yA], [85, yC], [135, yC]], hideWireNo: true });
           els.push({ ...defaultElement("coil", 135, round(yC - 2.2)), label: "B" + n, tag: "B" + n });
           els.push({ ...defaultElement("wire", 115, yA), points: [[115, yA], [147.5, yA], [147.5, yC], [145, yC]], wireNo: "B" + n });
         }
@@ -17105,14 +17125,16 @@
         els.push(anchoredTextElement(round(xInvR - 1), round(yBoxTop + 2.5), "CC-LINK", 1.8, 10, "end"));
         // L1/L2/L3ピン箱(外箱の左辺に接する)。
         els.push({ ...defaultElement("rect", xInvL, round(yP[0] - 2.5)), w: 7.5, h: round(yP[2] - yP[0] + 5), label: "" });
-        ["L1", "L2", "L3"].forEach((t, i) => els.push(textElement(87.2, yP[i] - 1.4, t, 2.2, 0, 6)));
-        els.push(textElement(93.8, yP[0] - 1.4, invTag, 2.2, 0, 12));
+        // 端子名はピン箱の上辺(yP[0]-2.5)に字の頭が接しないよう、相ラインより0.9mm上に置く。
+        ["L1", "L2", "L3"].forEach((t, i) => els.push(textElement(87.2, yP[i] - 0.9, t, 2.2, 0, 6)));
+        els.push(textElement(93.8, yP[0] - 0.9, invTag, 2.2, 0, 12));
         // U/V/Wピン箱(外箱の右辺に接する)。
         els.push({ ...defaultElement("rect", round(xInvR - 7.5), round(yP[0] - 2.5)), w: 7.5, h: round(yP[2] - yP[0] + 5), label: "" });
-        ["U", "V", "W"].forEach((t, i) => els.push(textElement(113.2, yP[i] - 1.4, t, 2.2, 0, 6)));
+        ["U", "V", "W"].forEach((t, i) => els.push(textElement(113.2, yP[i] - 0.9, t, 2.2, 0, 6)));
         // 接地(箱の下辺中央101.25付近のグリッド点から)。
         const gx = 100;
-        els.push({ ...defaultElement("wire", gx, yBoxBottom), points: [[gx, yBoxBottom], [gx, round(yBoxBottom + 5)]] });
+        // 5mmの縦線の線番は中点の上へ出ると箱の下辺に掛かるため、1.25mm下げる。
+        els.push({ ...defaultElement("wire", gx, yBoxBottom), points: [[gx, yBoxBottom], [gx, round(yBoxBottom + 5)]], wireNoDy: -1.25 });
         els.push({ ...defaultElement("ground", round(gx - 2), round(yBoxBottom + 5)), label: "" });
         // --- 通信ツイストペア(チェブロン+信号名+撚り交差+端子で箱の左辺へ) ---
         if (withTwisted) {
@@ -17136,7 +17158,7 @@
         const phaseNo = ["U", "V", "W"].map(p => p + String(motorTag).replace(/^[A-Za-z]+/, ""));
         const thermals = [];
         yP.forEach((y, i) => {
-          els.push({ ...defaultElement("wire", xInvR, y), points: [[xInvR, y], [xMC, y]] });
+          els.push({ ...defaultElement("wire", xInvR, y), points: [[xInvR, y], [xMC, y]], ...shortLeadWireNoProps(xMC - xInvR) });
           els.push({ ...defaultElement("contactNO", xMC, round(y - 2.2)), label: i === 0 ? contactTag : "", tag: contactTag });
           // 端子は中心xTerm=グリッド点。配線は円中心まで届かせ、後から積む端子円が隠す。
           if (i === 1) {
@@ -17211,8 +17233,10 @@
           els.push({ ...defaultElement("rect", 22.5, yElbTop), w: 10, h: 12.5, label: "", dash: "1.4 1.2" });
           els.push({ ...defaultElement("terminal", 0, 0), x: 29.1, y: round(55 - 0.9), label: "" });
           els.push({ ...defaultElement("terminal", 0, 0), x: 29.1, y: round(60 - 0.9), label: "" });
-          els.push({ ...defaultElement("line", 32.5, 67.5), points: [[32.5, 67.5], [37.5, 72.5]], label: "" });
-          els.push(textElement(38.5, 71.4, "メインアースブロック", 1.8, 0, 32));
+          // 名称は点線枠の直下・G母線(x=30)の左へ2行で右寄せする。R/S/T相レールの右へ引き出すと
+          // 引出線と文字が相レールを横切るため、レールの無い枠の左下へ置き、引出線も使わない。
+          els.push(anchoredTextElement(28.5, 67, "メインアース", 1.8, 14, "end"));
+          els.push(anchoredTextElement(28.5, 69.4, "ブロック", 1.8, 14, "end"));
         }
         // --- 入力相レール(ELB通過部で上下に分割)+縦向きELB極 ---
         const elbPoles = [];
@@ -17260,7 +17284,8 @@
           const [yA, yB] = pair(6);
           pushCp2("CP0", "1A", yA, yB);
           // 配線を先に描き、白抜き端子円・SS0・ポジション記号を上へ重ねる。
-          els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [75, yA]] });
+          // 線番採番で付く線番はCP0寄りへ左寄せし、SS0左の線番円「201」の文字と重ねない。
+          els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [75, yA]], wireNoAlign: "start", wireNoDx: -1 });
           els.push({ ...defaultElement("wire", 85, yA), points: [[85, yA], [120, yA], [120, yB], [115, yB]] });
           els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]] });
           els.push({ ...defaultElement("selectorSwitch", 75, round(yA - 3.2)), label: "SS0", tag: "SS0" });
@@ -17279,7 +17304,9 @@
           const [yA, yB] = pair(9);
           pushCp2("CP01", "2A", yA, yB);
           els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "203", wireNoAlign: "start" });
-          els.push({ ...defaultElement("fan", 105, round(yA - 7.5)), label: "FAN1", tag: "FAN1" });
+          // ファンの既定ラベル位置は外形(15mm角)の上で、円(半径5)から5mm以上離れ、上段のFL1との
+          // 中間に浮いて見える。円の真上へ4mm下げ、どちらの記号の名前か一目で分かるようにする。
+          els.push({ ...defaultElement("fan", 105, round(yA - 7.5)), label: "FAN1", tag: "FAN1", labelDy: -4 });
           els.push({ ...defaultElement("wire", 120, yA), points: [[120, yA], [120, yB]] });
           els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [120, yB]], wireNo: "204", wireNoAlign: "start" });
         }
@@ -17340,7 +17367,8 @@
           els.push(cp11A, cp11B, breakerLinkElement(cp11A, cp11B));
           els.push({ ...defaultElement("wire", 117.5, yA), points: [[117.5, yA], [122.5, yA]], wireNo: "107", wireNoAlign: "start" });
           // 線番108は2.5mm先で上へ折れるため、折れ点(x=120)の縦線に掛からないようCP11寄りへ戻す。
-          els.push({ ...defaultElement("wire", 117.5, yB), points: [[117.5, yB], [120, yB], [120, round(yA + 5)], [122.5, round(yA + 5)]], wireNo: "108", wireNoAlign: "start", wireNoDx: -3 });
+          // 線番採番で4文字(2-21等)になっても縦線に届かない位置にする。
+          els.push({ ...defaultElement("wire", 117.5, yB), points: [[117.5, yB], [120, yB], [120, round(yA + 5)], [122.5, round(yA + 5)]], wireNo: "108", wireNoAlign: "start", wireNoDx: -3.75 });
           els.push({ ...defaultElement("outlet", 122.5, round(yA - 1.25)), w: 10, h: 7.5, symbolVariant: "socketPin", label: "SC2", tag: "SC2" });
           els.push(textElement(135, round(yA + 1.4), "操作盤", 1.8, 0, 12));
           els.push(textElement(135, round(yA + 4.4), "コンセント", 1.8, 0, 12));
@@ -17456,7 +17484,8 @@
         els.push({ ...defaultElement("arrow", 30, 127.5), points: [[30, 127.5], [37.5, 127.5]], label: "N1", arrowStyle: "chevron", signalRole: "destination", labelDx: -1.25 });
         els.push({ ...defaultElement("wire", 37.5, 127.5), points: [[37.5, 127.5], [75, 127.5]] });
         els.push({ ...defaultElement("coil", 75, round(127.5 - 2.2)), label: brTag + "1", tag: brTag + "1", description: "LY2N DC24V" });
-        els.push({ ...defaultElement("wire", 85, 127.5), points: [[85, 127.5], [boxL, 127.5]] });
+        // 線番採番で付く線番は箱寄りへ右寄せし、CRMBR2の説明文(LY2N DC24V)と重ねない。
+        els.push({ ...defaultElement("wire", 85, 127.5), points: [[85, 127.5], [boxL, 127.5]], wireNoAlign: "end" });
         if (axes > 1) {
           els.push(defaultElement("junction", 70, 127.5));
           els.push({ ...defaultElement("wire", 70, 127.5), points: [[70, 127.5], [70, 132.5], [87.5, 132.5]] });
@@ -17466,12 +17495,14 @@
         // --- 位置決めユニット→CN1A ---
         els.push(textElement(50, 138.2, posUnit, 2, 0, 20));
         els.push({ ...defaultElement("arrow", 67.5, 137.5), points: [[67.5, 137.5], [75, 137.5]], label: "", arrowStyle: "chevron" });
-        els.push({ ...defaultElement("wire", 75, 137.5), points: [[75, 137.5], [boxL, 137.5]] });
+        // 線番は矢印寄りへ左寄せし、真上のCRMBR2コイルと右端のCN1A角へ掛けない。
+        els.push({ ...defaultElement("wire", 75, 137.5), points: [[75, 137.5], [boxL, 137.5]], wireNoAlign: "start" });
         // CNコネクタは見本どおり2.5mm角を配線中心へ置く。辺は±1.25mmとなる意図的な描画例外。
         els.push({ ...defaultElement("rect", boxL - 2.5, 136.25), w: 2.5, h: 2.5, label: "", gridEdgeException: true });
         els.push(textElement(boxL + 1.5, 138.2, "CN1A", 1.7, 0, 10));
         // --- 箱の接地 ---
-        els.push({ ...defaultElement("wire", 122.5, 142.5), points: [[122.5, 142.5], [122.5, 147.5]] });
+        // 5mmの縦線の線番は中点の上へ出ると箱の下辺に掛かるため、1.25mm下げる。
+        els.push({ ...defaultElement("wire", 122.5, 142.5), points: [[122.5, 142.5], [122.5, 147.5]], wireNoDy: -1.25 });
         els.push({ ...defaultElement("ground", 120.5, 147.5), label: "" });
         // --- モータ軸(U/V/W/PE→端子→モータ、エンコーダ送り、ブレーキ回路) ---
         const axisRows = [[55, 70, 75, 150], [85, 100, 105, 175]];
@@ -17586,7 +17617,8 @@
         els.push(textElement(108, 62.5, "出力 DC24V 6.25A", 1.6, 0, 20));
         // 接地線の左側へ右寄せし、型式文字を縦線が貫通しないようにする。
         els.push(anchoredTextElement(112.5, 76.4, recTag + (recModel ? " " + recModel : ""), 1.8, 45, "end"));
-        els.push({ ...defaultElement("wire", 117.5, 72.5), points: [[117.5, 72.5], [117.5, 77.5]] });
+        // 5mmの縦線の線番は中点の上へ出ると箱の下辺に掛かるため、1.25mm下げる。
+        els.push({ ...defaultElement("wire", 117.5, 72.5), points: [[117.5, 72.5], [117.5, 77.5]], wireNoDy: -1.25 });
         els.push({ ...defaultElement("ground", 115.5, 77.5), label: "" });
         // 出力: -V→N1(行2)、+V→P0(行4)。
         els.push(textElement(126, round(yA + 0.7), "-V", 1.7, 0, 6));
@@ -17601,9 +17633,11 @@
         // ブレーキ電源分岐 CP8(P0/N1→P24/N24)。
         if (withBrake) {
           const yC = 85, yD = 95;
-          els.push({ ...defaultElement("wire", 140, yP0), points: [[140, yP0], [140, yC], [145, yC]] });
+          // P0/N1からCP8への分岐線はネットで最長のため線番採番の代表になり、線番がもう一方の縦線へ
+          // 掛かる。線番は出力線(130〜150)で見せ、分岐線には出さない。
+          els.push({ ...defaultElement("wire", 140, yP0), points: [[140, yP0], [140, yC], [145, yC]], hideWireNo: true });
           els.push(defaultElement("junction", 135, yA));
-          els.push({ ...defaultElement("wire", 135, yA), points: [[135, yA], [135, yD], [145, yD]] });
+          els.push({ ...defaultElement("wire", 135, yA), points: [[135, yA], [135, yD], [145, yD]], hideWireNo: true });
           const cp8A = { ...defaultElement("breaker", 145, round(yC - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP8", refNo: "1A" };
           const cp8B = { ...defaultElement("breaker", 145, round(yD - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" };
           markSubPoles(cp8A, [cp8B]);
@@ -17804,8 +17838,9 @@
           els.push({ ...defaultElement("contactNO", 92.5, round(y - 2.2)), label: "" });
           els.push({ ...defaultElement("wire", boxL, y), points: [[boxL, y], [92.5, y]] });
           els.push({ ...defaultElement("wire", 102.5, y), points: [[102.5, y], [boxR, y]] });
-          els.push(textElement(boxL + 1.5, round(y + 0.7), pinL, 1.7, 0, 6));
-          els.push(textElement(boxR - 5, round(y + 0.7), pinR, 1.7, 0, 6));
+          // 接点番号は箱内の配線の下に置く。字の頭が配線に触れないよう行より1.3mm下げる。
+          els.push(textElement(boxL + 1.5, round(y + 1.3), pinL, 1.7, 0, 6));
+          els.push(textElement(boxR - 5, round(y + 1.3), pinR, 1.7, 0, 6));
           if (inNo) {
             els.push({ ...defaultElement("arrow", 62.5, y), points: [[62.5, y], [70, y]], label: inNo, arrowStyle: "chevron", signalRole: "destination" });
             els.push({ ...defaultElement("wire", 70, y), points: [[70, y], [boxL, y]] });
@@ -17824,8 +17859,8 @@
         els.push({ ...defaultElement("contactNC", 92.5, round(yMon - 2.2)), label: "" });
         els.push({ ...defaultElement("wire", boxL, yMon), points: [[boxL, yMon], [92.5, yMon]] });
         els.push({ ...defaultElement("wire", 102.5, yMon), points: [[102.5, yMon], [boxR, yMon]] });
-        els.push(textElement(boxL + 1.5, round(yMon + 0.7), "41", 1.7, 0, 6));
-        els.push(textElement(boxR - 5, round(yMon + 0.7), "42", 1.7, 0, 6));
+        els.push(textElement(boxL + 1.5, round(yMon + 1.3), "41", 1.7, 0, 6));
+        els.push(textElement(boxR - 5, round(yMon + 1.3), "42", 1.7, 0, 6));
         els.push({ ...defaultElement("wire", boxR, yMon), points: [[boxR, yMon], [125, yMon]], wireNo: "1N41", wireNoAlign: "start" });
         els.push({ ...defaultElement("coil", 125, round(yMon - 2.2)), label: monTag, tag: monTag, description: "非常停止モニタ" });
         els.push({ ...defaultElement("wire", 135, yMon), points: [[135, yMon], [147.5, yMon]] });
@@ -17890,7 +17925,7 @@
           const endX = 135;
           created.push({ ...defaultElement(endType, endX, round(y - 2.2)), label: "" });
           created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), y], [endX, y]] });
-          created.push({ ...defaultElement("wire", endX + 10, y), points: [[endX + 10, y], [rightX, y]] });
+          created.push({ ...defaultElement("wire", endX + 10, y), points: [[endX + 10, y], [rightX, y]], ...shortLeadWireNoProps(rightX - endX - 10) });
           created.push(defaultElement("junction", rightX, y));
         }
         page.elements.push(...created);
@@ -18624,6 +18659,8 @@
             // 取付穴は別の円要素なので、レールと同じグループにして一緒に選択・移動されるようにする。
             const group = uid("grp");
             created[0].group = group;
+            // 名称は中央に置くと、長さによっては10mmピッチの取付穴と重なるため、レールの上へ出す。
+            created[0].labelDy = 5.5;
             for (let at = 5; at < length; at += 10) created.push({ ...defaultElement("circle", x + at - 1, y + 2.75), w: 2, h: 2, label: "", layer: "layout", group });
           }
           page.elements.push(...created); setSelection(created.map(item => item.id)); closeDialog(); commitHistory((kind === "rail" ? "DINレール" : "配線ダクト") + "を生成しました。"); render();
