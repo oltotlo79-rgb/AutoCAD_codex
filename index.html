@@ -419,9 +419,10 @@
       fill: #101820;
     }
 
-    .frame-line { stroke: #141a20; stroke-width: .25; fill: none; vector-effect: non-scaling-stroke; }
-    .frame-thick { stroke: #141a20; stroke-width: .45; fill: none; vector-effect: non-scaling-stroke; }
-    .frame-light { stroke: #5e6872; stroke-width: .18; fill: none; vector-effect: non-scaling-stroke; }
+    /* --frame-stroke はレイヤ管理で「図枠」の線色を変えたときだけ図枠グループへ付く(未設定なら従来色)。 */
+    .frame-line { stroke: var(--frame-stroke, #141a20); stroke-width: .25; fill: none; vector-effect: non-scaling-stroke; }
+    .frame-thick { stroke: var(--frame-stroke, #141a20); stroke-width: .45; fill: none; vector-effect: non-scaling-stroke; }
+    .frame-light { stroke: var(--frame-stroke, #5e6872); stroke-width: .18; fill: none; vector-effect: non-scaling-stroke; }
     .wire-line { stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .38); fill: none; vector-effect: non-scaling-stroke; stroke-linecap: square; }
     .dash-line { stroke-dasharray: 3 2; }
     .symbol-fill { fill: #fff; stroke: var(--element-stroke, #111820); stroke-width: var(--element-width, .32); vector-effect: non-scaling-stroke; }
@@ -3125,7 +3126,7 @@
           { id: "wires", label: "配線", visible: true, locked: false, color: "#111820" },
           { id: "symbols", label: "記号", visible: true, locked: false, color: "#111820" },
           { id: "notes", label: "注記", visible: true, locked: false, color: "#111820" },
-          { id: "layout", label: "配置", visible: true, locked: false, color: "#5b626b" }
+          { id: "layout", label: "配置", visible: true, locked: false, color: "#111820" }
         ],
         wireTypes: [
           { id: "control", label: "制御線", color: "#111820", width: .38, dash: "", noNumber: false },
@@ -3418,7 +3419,7 @@
         const candidate = { ...base, ...migrated };
         candidate.schemaVersion = SCHEMA_VERSION;
         candidate.settings = { ...base.settings, ...(migrated.settings || {}) };
-        candidate.layers = migrated.layers === undefined ? base.layers : migrated.layers;
+        candidate.layers = normalizeLegacyLayerColors(migrated.layers === undefined ? base.layers : migrated.layers);
         candidate.wireTypes = migrated.wireTypes === undefined ? base.wireTypes : migrated.wireTypes;
         candidate.customSymbols = migrated.customSymbols || [];
         candidate.catalog = migrated.catalog || [];
@@ -4664,6 +4665,43 @@
         return (state.layers || []).find(layer => layer.id === id) || null;
       }
 
+      // レイヤの線色の既定値。図枠は図枠線の色(#141a20)、ほかは要素の標準線色(settings.stroke)。
+      // レイヤの線色がこの既定値のままなら何も変えず、従来どおりの見た目で描く。
+      const LAYER_DEFAULT_COLORS = { frame: "#141a20" };
+      function layerDefaultColor(id) {
+        return LAYER_DEFAULT_COLORS[id] || state.settings.stroke || "#111820";
+      }
+
+      // 色文字列の比較(#RRGGBBの大文字小文字の違いは同じ色)。
+      function sameColor(a, b) {
+        return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+      }
+
+      // 旧版の「配置」レイヤは色の既定値が灰(#5b626b)だったが、色は描画に使っていなかった。
+      // レイヤの線色を描画へ使うようにしたため、旧既定値は今の既定値(標準の黒)へ読み替え、見た目を変えない。
+      function normalizeLegacyLayerColors(layers) {
+        if (!Array.isArray(layers)) return layers;
+        return layers.map(layer => (isPlainObject(layer) && layer.id === "layout" && sameColor(layer.color, "#5b626b"))
+          ? { ...layer, color: layerDefaultColor("layout") }
+          : layer);
+      }
+
+      // レイヤの線色(既定値から変えたときだけ返す。既定値のままなら空文字)。
+      function layerLineColor(id) {
+        const layer = layerFor(id);
+        const color = String(layer?.color || "").trim();
+        if (!/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(color)) return "";
+        return sameColor(color, layerDefaultColor(id)) ? "" : color;
+      }
+
+      // 要素を描く線色。要素の線色が標準の黒(未設定を含む)なら、所属レイヤの線色(変えてある場合)で描く。
+      // 緑・赤など要素ごとに選んだ色はレイヤより優先する。baseは要素自身の解決済みの色(配線は配線種別も考慮)。
+      function layeredLineColor(element, base) {
+        const own = base || element.stroke || state.settings.stroke;
+        if (!sameColor(own, state.settings.stroke)) return own;
+        return layerLineColor(element.layer || inferredLayerFor(element.type)) || own;
+      }
+
       // レイヤ表示フラグ(未定義レイヤはtrue)。
       function isLayerVisible(id) {
         const layer = layerFor(id || "symbols");
@@ -4727,6 +4765,9 @@
       function drawFrame(svg, page, size) {
         const margin = frameMargin(size);
         const frame = svgEl("g", { class: "frame" });
+        // レイヤ管理で「図枠」の線色を変えたときだけ、図枠の罫線をその色で描く。
+        const frameColor = layerLineColor("frame");
+        if (frameColor) frame.style.setProperty("--frame-stroke", frameColor);
         if (page.frameVariant === "ladder") {
           drawLadderFrame(frame, page, size);
           svg.appendChild(frame);
@@ -5109,7 +5150,7 @@
           const scale = element.points ? 1 : elementScale(element);
           g.setAttribute("transform", "translate(" + (element.x || 0) + " " + (element.y || 0) + ") rotate(" + (element.rotation || 0) + ")" + (scale !== 1 ? " scale(" + scale + ")" : ""));
         }
-        const stroke = element.type === "wire" ? wireStyle(element).color : (element.stroke || state.settings.stroke);
+        const stroke = element.type === "wire" ? wireStyle(element).color : layeredLineColor(element);
         g.style.setProperty("--element-stroke", stroke);
         if (["wire", "line", "mechanicalLink"].includes(element.type)) {
           g.style.setProperty("--element-width", String(element.strokeWidth ?? wireStyle(element).width ?? .32));
@@ -5393,7 +5434,7 @@
             const w = line.length * size * 0.62;
             const lineY = y + index * size * 1.25 + size * 0.72;
             const x0 = align === "middle" ? x - w / 2 : (align === "end" ? x - w : x);
-            g.appendChild(svgEl("line", { x1: x0, y1: lineY, x2: x0 + w, y2: lineY, class: "symbol-line", stroke: element.stroke || state.settings.stroke }));
+            g.appendChild(svgEl("line", { x1: x0, y1: lineY, x2: x0 + w, y2: lineY, class: "symbol-line", stroke: layeredLineColor(element) }));
           });
         }
       }
@@ -5523,7 +5564,30 @@
           fill: element.fill || "none",
           "stroke-dasharray": element.dash || null
         }));
+        // 盤フットプリントの盤図形名はタグの下へ小さめの2行目として出す(外形の幅に収まるよう文字を縮める)。
+        const shapeName = String(element.footprintName || "").trim();
+        if (shapeName) {
+          const nameSize = rectSecondLineFontSize(shapeName, w);
+          if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2 - 1.6, { fontSize: 2.6, anchor: "middle" }));
+          g.appendChild(svgEl("text", {
+            x: w / 2, y: h / 2 + (element.label ? 1.9 : 0), class: "svg-text", "font-size": nameSize,
+            "text-anchor": "middle", "dominant-baseline": "middle", "data-footprint-name": "true"
+          }, [document.createTextNode(shapeName)]));
+          return;
+        }
         if (element.label) g.appendChild(textEl(element.label, w / 2, h / 2, { fontSize: 2.6, anchor: "middle" }));
+      }
+
+      // 矩形の2行目(盤図形名)の文字サイズ。既定2.0mm、幅に収まらない長い名前は1.2mmまで縮める。
+      // 全角は文字サイズ相当、半角(ASCII・ラテン1・半角カナ)は約0.6倍の幅として見積もる。
+      function rectSecondLineFontSize(text, width) {
+        const isHalfWidth = ch => {
+          const code = ch.codePointAt(0);
+          return code <= 0xff || (code >= 0xff61 && code <= 0xff9f);
+        };
+        const units = Array.from(String(text)).reduce((sum, ch) => sum + (isHalfWidth(ch) ? 0.6 : 1), 0);
+        const fit = units > 0 ? (Number(width || 0) - 1.5) / units : 2;
+        return round(Math.max(1.2, Math.min(2, fit)));
       }
 
       // 雲マーク(改訂範囲)の縁飾り: 各辺を約6mmピッチの外向き半円弧に分割する。
@@ -5744,11 +5808,24 @@
         g.appendChild(textEl(prefix + ": " + label, 2, 4.8, { fontSize: 2.5 }));
       }
 
-      // 配線の見た目(色/太さ/破線)をwireTypes定義から解決。
+      // 要素自身の線色(レイヤの線色を当てる前)。配線は要素の色→配線種別の色の順。
+      function elementOwnLineColor(element) {
+        if (element.type !== "wire") return element.stroke || state.settings.stroke;
+        const type = (state.wireTypes || []).find(item => item.id === element.wireType) || (state.wireTypes || [])[0];
+        return element.stroke || type?.color || state.settings.stroke;
+      }
+
+      // 所属レイヤの線色で描かれている要素か(右パネルの線色欄の注記に使う)。
+      function elementUsesLayerColor(element) {
+        const own = elementOwnLineColor(element);
+        return !sameColor(layeredLineColor(element, own), own);
+      }
+
+      // 配線の見た目(色/太さ/破線)をwireTypes定義から解決。色が標準の黒ならレイヤの線色を使う(layeredLineColor)。
       function wireStyle(element) {
         const type = (state.wireTypes || []).find(item => item.id === element.wireType) || (state.wireTypes || [])[0];
         return {
-          color: element.stroke || type?.color || state.settings.stroke,
+          color: layeredLineColor(element, elementOwnLineColor(element)),
           width: Number(element.strokeWidth ?? type?.width ?? .38),
           dash: type?.dash || "",
           label: type?.label || "",
@@ -12329,6 +12406,7 @@
             <div class="swatches" id="swatches">
               ${["#111820", "#0f6f63", "#b42318", "#1f5fbf", "#6f42c1", "#5b626b"].map(color => `<button type="button" class="swatch${(element.stroke || state.settings.stroke) === color ? " active" : ""}" data-color="${color}" style="background:${color}" title="${color}"></button>`).join("")}
             </div>
+            ${elementUsesLayerColor(element) ? `<p class="muted" data-layer-color-note>標準の黒の線は、レイヤ「${escapeHtml(layerFor(element.layer || inferredLayerFor(element.type))?.label || "")}」の線色で描きます（レイヤ管理）。</p>` : ""}
           </details>
           <button type="button" id="selectSameTypeBtn" style="width:100%;margin-top:12px" title="このページにある同じ種類の部品をまとめて選択します（一括デザイン変更・一括線色・一括ロックと組み合わせて使えます）">同種をページ内全選択</button>
           <button type="button" id="registerSymbolBtn" style="width:100%;margin-top:8px">ユーザー部品に登録</button>
@@ -13351,8 +13429,10 @@
             <input data-bind="dash" type="text" value="${escapeAttr(element.dash || "")}" placeholder="実線のまま=空欄">
             ${element.panelRef ? `<details class="attr-panel" open><summary>盤フットプリント</summary>
               <label>回路図タグ参照</label><input data-bind="panelRef" value="${escapeAttr(element.panelRef)}">
+              <label>盤図形名（タグの下に表示）</label><input data-bind="footprintName" value="${escapeAttr(element.footprintName || "")}">
               <div class="row"><div><label>メーカー</label><input data-bind="manufacturer" value="${escapeAttr(element.manufacturer || "")}"></div><div><label>品番</label><input data-bind="catalog" value="${escapeAttr(element.catalog || "")}"></div></div>
               <label>説明</label><input data-bind="description" value="${escapeAttr(element.description || "")}">
+              <div class="row"><div><label>設備</label><input data-bind="installation" type="text" value="${escapeAttr(element.installation || "")}"></div><div><label>場所</label><input data-bind="location" type="text" value="${escapeAttr(element.location || "")}"></div></div>
             </details>` : ""}` : ""}
           `;
         }
@@ -18362,6 +18442,9 @@
             rotation: 0, stroke: state.settings.stroke, layer: "layout"
           };
           PANEL_SYNC_KEYS.forEach(key => { if (row[key]) footprint[key] = row[key]; });
+          // フットプリント検索DBの一致行の「盤図形名」は、外形のタグの下(2行目)に出す。
+          const shapeName = String(footprintDbRowFor(row)?.label || "").trim();
+          if (shapeName) footprint.footprintName = shapeName;
           return footprint;
         });
         page.elements.push(...created);
@@ -19228,9 +19311,32 @@
         qs("#catalogRefreshApply")?.addEventListener("click", () => { differences.forEach(diff => { diff.item[diff.key] = diff.value; }); closeDialog(); commitHistory(differences.length + "件のカタログ属性を更新しました。"); render(); });
       }
 
+      // フットプリント検索DBの「回路図種別」に出す部品(パレットの電気部品。値は内部の種別名)。
+      function footprintTypeChoices() {
+        return PALETTE.filter(item => supportsElectricalAttributes({ type: item.type }) && PALETTE_GROUP_BY_TYPE[item.type] !== "basic");
+      }
+
+      // 保存済みの回路図種別を内部の種別名へ読み替える。旧版で表示名(「コイル」等)を手入力した行も引けるようにする。
+      function footprintTypeValue(value) {
+        const text = String(value || "").trim();
+        if (!text) return "";
+        const choices = footprintTypeChoices();
+        if (choices.some(item => item.type === text)) return text;
+        return choices.find(item => item.label === text)?.type || text;
+      }
+
+      // 回路図種別の選択肢HTML。先頭は「(すべて)」(空欄=どの種別にも一致)。一覧にない保存値はそのまま残す。
+      function footprintTypeOptions(current) {
+        const value = footprintTypeValue(current);
+        const choices = footprintTypeChoices();
+        const extra = value && !choices.some(item => item.type === value) ? `<option value="${escapeAttr(value)}" selected>${escapeHtml(value)}</option>` : "";
+        return `<option value=""${value ? "" : " selected"}>(すべて)</option>${extra}`
+          + choices.map(item => `<option value="${escapeAttr(item.type)}"${item.type === value ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("");
+      }
+
       // フットプリント検索DBダイアログを開く。メーカー・品番・種別ごとの盤図外形寸法を編集する。
       function showFootprintDb() {
-        const rowHtml = (item = {}) => `<tr data-footprint-row><td><input data-fp="manufacturer" value="${escapeAttr(item.manufacturer || "")}"></td><td><input data-fp="catalog" value="${escapeAttr(item.catalog || "")}"></td><td><input data-fp="type" value="${escapeAttr(item.type || "")}"></td><td><input data-fp="label" value="${escapeAttr(item.label || "")}"></td><td><input data-fp="w" type="number" step="0.5" value="${Number(item.w || 20)}"></td><td><input data-fp="h" type="number" step="0.5" value="${Number(item.h || 14)}"></td><td><button data-fp-delete>削除</button></td></tr>`;
+        const rowHtml = (item = {}) => `<tr data-footprint-row><td><input data-fp="manufacturer" value="${escapeAttr(item.manufacturer || "")}"></td><td><input data-fp="catalog" value="${escapeAttr(item.catalog || "")}"></td><td><select data-fp="type">${footprintTypeOptions(item.type)}</select></td><td><input data-fp="label" value="${escapeAttr(item.label || "")}" placeholder="外形の2行目に表示"></td><td><input data-fp="w" type="number" step="0.5" value="${Number(item.w || 20)}"></td><td><input data-fp="h" type="number" step="0.5" value="${Number(item.h || 14)}"></td><td><button data-fp-delete>削除</button></td></tr>`;
         openDialog("フットプリント検索DB", `<table class="report-table"><thead><tr><th>メーカー</th><th>品番</th><th>回路図種別</th><th>盤図形名</th><th>幅</th><th>高さ</th><th></th></tr></thead><tbody id="footprintRows">${(state.footprintDb || []).map(rowHtml).join("")}</tbody></table>
           <div class="inline" style="justify-content:flex-end"><button id="footprintAdd">追加</button><button id="footprintApply" class="primary">適用</button></div>`);
         const bind = () => qsa("[data-fp-delete]", qs("#dialogBody")).forEach(button => button.onclick = () => button.closest("tr").remove());
@@ -19244,10 +19350,17 @@
         };
       }
 
+      // 部品(帳票行)に一致するフットプリントDBの最初の行。空欄の項目はどの値にも一致する。
+      function footprintDbRowFor(row) {
+        return (state.footprintDb || []).find(item => (!item.manufacturer || item.manufacturer === row.manufacturer)
+          && (!item.catalog || item.catalog === row.catalog)
+          && (!item.type || footprintTypeValue(item.type) === row.type)) || null;
+      }
+
       // 盤面図に置く外形の寸法[幅, 高さ]を決める。フットプリントDBの一致行を優先し、
       // 無ければ種別ごとの既定値(FOOTPRINT_SIZES)、それも無ければ18×14mmを使う。
       function footprintSizeFor(row) {
-        const found = (state.footprintDb || []).find(item => (!item.manufacturer || item.manufacturer === row.manufacturer) && (!item.catalog || item.catalog === row.catalog) && (!item.type || item.type === row.type));
+        const found = footprintDbRowFor(row);
         return found ? [Number(found.w || 20), Number(found.h || 14)] : (FOOTPRINT_SIZES[row.type] || [18, 14]);
       }
 
@@ -19446,7 +19559,7 @@
         if (pack.componentTagFormat) state.settings.componentTagFormat = pack.componentTagFormat;
         if (pack.componentTagPrefixes) state.settings.componentTagPrefixes = deepClone(pack.componentTagPrefixes);
         if (Array.isArray(pack.wireTypes) && pack.wireTypes.length) state.wireTypes = deepClone(pack.wireTypes);
-        if (Array.isArray(pack.layers) && pack.layers.length) state.layers = deepClone(pack.layers);
+        if (Array.isArray(pack.layers) && pack.layers.length) state.layers = normalizeLegacyLayerColors(deepClone(pack.layers));
         if (pack.auditRules && typeof pack.auditRules === "object") state.settings.auditRules = deepClone(pack.auditRules);
         if (pack.reportColumns && typeof pack.reportColumns === "object") state.settings.reportColumns = deepClone(pack.reportColumns);
         if (Array.isArray(pack.plcModules)) {
@@ -20887,12 +21000,30 @@
         return axis === "x" ? box.x + box.w / 2 : box.y + box.h / 2;
       }
 
+      // 図面の線・文字の見た目を決めるCSSクラス。SVG保存・PNG変換ではページのCSSが効かないため、
+      // これらの規則をSVG内の<style>へ写す(写さないと線が描かれず、枠が黒塗りになる)。
+      const OUTPUT_SVG_STYLE_CLASSES = ["svg-text", "frame-line", "frame-thick", "frame-light", "wire-line", "dash-line", "symbol-fill", "symbol-mask", "symbol-line", "symbol-solid", "terminal-dot"];
+      function outputSvgStyleText() {
+        const wanted = new Set(OUTPUT_SVG_STYLE_CLASSES.map(name => "." + name));
+        const rules = [];
+        Array.from(document.styleSheets).forEach(sheet => {
+          let list = [];
+          try { list = Array.from(sheet.cssRules || []); } catch (_) { return; }
+          list.forEach(rule => {
+            const selectors = String(rule.selectorText || "").split(",").map(item => item.trim());
+            if (selectors.length && selectors.every(selector => wanted.has(selector))) rules.push(rule.cssText);
+          });
+        });
+        return rules.join("\n");
+      }
+
       // 現在ページを出力用SVG文字列へシリアライズ(SVG保存・PNG変換の元)。
       function serializeActiveSvg() {
         const page = currentPage();
         const size = pageSize(page);
         const svg = svgEl("svg", { xmlns: svgNS, viewBox: "0 0 " + size.w + " " + size.h, width: size.w + "mm", height: size.h + "mm" });
         drawPageSvg(svg, page, { selection: false, scaled: false, grid: false, output: true });
+        svg.insertBefore(svgEl("style", {}, [document.createTextNode(outputSvgStyleText())]), svg.firstChild);
         svg.style.width = null;
         svg.style.height = null;
         svg.setAttribute("width", size.w + "mm");
@@ -21136,9 +21267,40 @@
         return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addUnderlayImageElement(file.name, dataUrl, imageWidth, imageHeight));
       }
 
-      // A3二面スキャン画像→A4縦2ページの下絵ページ生成の入口。pageNoは頁名の基準番号(省略時は末尾の次)。
-      function importTwoUpUnderlayImageFile(file, pageNo) {
-        return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addTwoUpUnderlayPages(file.name, dataUrl, imageWidth, imageHeight, pageNo));
+      // 2面下絵の分割のしかた。auto=画像の縦横比で判断(横長→左右、縦長→上下)。
+      // leftRight=A3横に左右に並んだA4縦2枚、topBottom=A3縦に上下に並んだA4横2枚(どちらもA3面付の印刷の向き)、
+      // rotateLeftRight=左へ90度倒れた向きのスキャンを右へ90度回してから左右に分割(従来の動作)。
+      const TWO_UP_LAYOUTS = [
+        { id: "auto", label: "自動（横長の画像は左右、縦長の画像は上下に分割）" },
+        { id: "leftRight", label: "横長のスキャンを左右に分割（A4縦×2）" },
+        { id: "topBottom", label: "縦長のスキャンを上下に分割（A4横×2）" },
+        { id: "rotateLeftRight", label: "90°右に回して左右に分割（従来の向き）" }
+      ];
+      // 直前に選んだ分割のしかた(このタブを開いている間は次回の既定にする)。
+      let twoUpUnderlayLayout = "auto";
+
+      // 「2面下絵ページを作成」: 分割のしかたを選んでから画像ファイルを選ぶダイアログ。
+      function showTwoUpUnderlayDialog() {
+        openDialog("2面下絵ページを作成", `
+          <p class="muted">A4図面を2ページ並べたA3用紙のスキャン画像1枚から、A4の下絵ページを2枚作ります。分割のしかたを選んでから「画像を選択」を押してください（複数の画像を選べます）。</p>
+          <div>
+            ${TWO_UP_LAYOUTS.map(item => `<label><input name="twoUpLayout" type="radio" value="${item.id}" ${twoUpUnderlayLayout === item.id ? "checked" : ""} style="width:auto;min-height:auto"> ${escapeHtml(item.label)}</label>`).join("")}
+          </div>
+          <div class="inline" style="justify-content:flex-end;margin-top:12px">
+            <button type="button" id="twoUpChooseBtn" class="primary">画像を選択</button>
+          </div>`);
+        qs("#twoUpChooseBtn").addEventListener("click", () => {
+          const checked = qs('[name="twoUpLayout"]:checked', qs("#dialogBody"));
+          twoUpUnderlayLayout = TWO_UP_LAYOUTS.some(item => item.id === checked?.value) ? checked.value : "auto";
+          closeDialog();
+          qs("#underlayTwoUpInput").click();
+        });
+      }
+
+      // A3二面スキャン画像→A4下絵2ページの生成の入口。pageNoは頁名の基準番号(省略時は末尾の次)。
+      // layoutは分割のしかた(TWO_UP_LAYOUTSのid。省略時はダイアログで直前に選んだもの)。
+      function importTwoUpUnderlayImageFile(file, pageNo, layout = twoUpUnderlayLayout) {
+        return readUnderlayImageFile(file, (dataUrl, imageWidth, imageHeight) => addTwoUpUnderlayPages(file.name, dataUrl, imageWidth, imageHeight, pageNo, layout));
       }
 
       // 画像ファイルをdataURL化し寸法を得てコールバックへ渡す共通処理。
@@ -21198,18 +21360,19 @@
         render();
       }
 
-      // 1枚の画像を90度回転してから左右2分割し、半分ごとに下絵ページを追加する(A3スキャン→A4×2の運用向け)。
+      // 1枚の画像を2分割し、半分ごとに下絵ページを追加する(A3スキャン→A4×2の運用向け)。
+      // 分割のしかたはlayout(TWO_UP_LAYOUTS)。各ページの用紙の向きは、分割後の画像の縦横に合わせる。
       // 頁名は元画像1枚につき1つの基準番号で「P4-1」「P4-2」とする(pageNo省略時は末尾ページの次の番号)。
-      async function addTwoUpUnderlayPages(name, dataUrl, imageWidth, imageHeight, pageNo) {
+      async function addTwoUpUnderlayPages(name, dataUrl, imageWidth, imageHeight, pageNo, layout = twoUpUnderlayLayout) {
         const base = currentPage();
         const baseTitle = base?.title || {};
         const baseNo = Number.isInteger(pageNo) && pageNo > 0 ? pageNo : state.pages.length + 1;
-        const splitImages = await rotatedA3TwoUpImages(dataUrl);
+        const splitImages = await splitTwoUpImages(dataUrl, layout);
         const pages = splitImages.map(item => {
           const page = createPageInheritingTitle({
             name: "P" + baseNo + "-" + item.suffix,
             size: "A4",
-            orientation: "portrait",
+            orientation: item.width > item.height ? "landscape" : "portrait",
             frameVariant: base?.frameVariant || "detailed",
             title: baseTitle.title || "電気図面",
             drawingNo: baseTitle.drawingNo || "",
@@ -21230,43 +21393,63 @@
         render();
       }
 
-      // A3横スキャンを90度回転→左右半分の2枚のdataURLへ分割(canvas使用)。
-      function rotatedA3TwoUpImages(dataUrl) {
+      // 分割のしかたを画像に当てはめる。autoは横長(幅≧高さ)なら左右、縦長なら上下に分割する。
+      function resolveTwoUpLayout(layout, width, height) {
+        if (["leftRight", "topBottom", "rotateLeftRight"].includes(layout)) return layout;
+        return width >= height ? "leftRight" : "topBottom";
+      }
+
+      // スキャン画像を2枚のdataURLへ分割する(canvas使用)。1枚目=左または上、2枚目=右または下。
+      // rotateLeftRightは右へ90度回してから左右に分割する(左へ倒れた向きのA3横スキャン用)。
+      function splitTwoUpImages(dataUrl, layout) {
         return new Promise((resolve, reject) => {
           const image = new Image();
           image.onload = () => {
             try {
               const sourceW = image.naturalWidth || image.width || 1;
               const sourceH = image.naturalHeight || image.height || 1;
-              const rotated = document.createElement("canvas");
-              rotated.width = sourceH;
-              rotated.height = sourceW;
-              const ctx = rotated.getContext("2d");
-              ctx.translate(rotated.width, 0);
-              ctx.rotate(Math.PI / 2);
-              ctx.drawImage(image, 0, 0);
-              const halfW = Math.floor(rotated.width / 2);
-              const items = [
-                { suffix: "1", sx: 0, sw: halfW },
-                { suffix: "2", sx: halfW, sw: rotated.width - halfW }
-              ].map(item => {
+              const mode = resolveTwoUpLayout(layout, sourceW, sourceH);
+              let source = image;
+              let width = sourceW;
+              let height = sourceH;
+              if (mode === "rotateLeftRight") {
+                const rotated = document.createElement("canvas");
+                rotated.width = sourceH;
+                rotated.height = sourceW;
+                const ctx = rotated.getContext("2d");
+                ctx.translate(rotated.width, 0);
+                ctx.rotate(Math.PI / 2);
+                ctx.drawImage(image, 0, 0);
+                source = rotated;
+                width = rotated.width;
+                height = rotated.height;
+              }
+              const parts = mode === "topBottom"
+                ? (half => [
+                  { suffix: "1", sx: 0, sy: 0, sw: width, sh: half },
+                  { suffix: "2", sx: 0, sy: half, sw: width, sh: Math.max(1, height - half) }
+                ])(Math.max(1, Math.floor(height / 2)))
+                : (half => [
+                  { suffix: "1", sx: 0, sy: 0, sw: half, sh: height },
+                  { suffix: "2", sx: half, sy: 0, sw: Math.max(1, width - half), sh: height }
+                ])(Math.max(1, Math.floor(width / 2)));
+              resolve(parts.map(part => {
                 const canvas = document.createElement("canvas");
-                canvas.width = item.sw;
-                canvas.height = rotated.height;
-                canvas.getContext("2d").drawImage(rotated, item.sx, 0, item.sw, rotated.height, 0, 0, item.sw, rotated.height);
+                canvas.width = part.sw;
+                canvas.height = part.sh;
+                canvas.getContext("2d").drawImage(source, part.sx, part.sy, part.sw, part.sh, 0, 0, part.sw, part.sh);
                 return {
-                  suffix: item.suffix,
+                  suffix: part.suffix,
                   dataUrl: canvas.toDataURL("image/png"),
-                  width: item.sw,
-                  height: rotated.height
+                  width: part.sw,
+                  height: part.sh
                 };
-              });
-              resolve(items);
+              }));
             } catch (error) {
               reject(error);
             }
           };
-          image.onerror = () => reject(new Error("画像を回転分割できません。"));
+          image.onerror = () => reject(new Error("画像を分割できません。"));
           image.src = dataUrl;
         });
       }
@@ -23769,18 +23952,19 @@
         render();
       }
 
-      // レイヤ管理ダイアログを開く(表示/ロック/色)。
+      // レイヤ管理ダイアログを開く(表示/ロック/線色)。
       function showLayerManager() {
         const html = `
+          <p class="muted">線色: 線色が標準の黒のままの要素を、そのレイヤの色で描きます（画面・印刷・PDF・SVG・PNG）。要素ごとに別の色を選んだ要素はその色のままです。「図枠」の線色は図枠の罫線の色です。</p>
           <table class="report-table">
-            <thead><tr><th>表示</th><th>ロック</th><th>レイヤ名</th><th>色</th></tr></thead>
+            <thead><tr><th>表示</th><th>ロック</th><th>レイヤ名</th><th>線色</th></tr></thead>
             <tbody>
               ${(state.layers || []).map(layer => `
                 <tr data-layer-row="${escapeAttr(layer.id)}">
                   <td><input data-layer-field="visible" type="checkbox" ${layer.visible !== false ? "checked" : ""} style="width:auto;min-height:auto"></td>
                   <td><input data-layer-field="locked" type="checkbox" ${layer.locked ? "checked" : ""} style="width:auto;min-height:auto"></td>
                   <td><input data-layer-field="label" value="${escapeAttr(layer.label)}"></td>
-                  <td><input data-layer-field="color" type="color" value="${escapeAttr(layer.color || "#111820")}"></td>
+                  <td><input data-layer-field="color" type="color" value="${escapeAttr(layer.color || layerDefaultColor(layer.id))}" title="${escapeAttr(layer.label)}の線色"></td>
                 </tr>
               `).join("")}
             </tbody>
@@ -24724,6 +24908,9 @@
           const h = Number(element.h || 22);
           dxfRectLocal(out, page, "GEOMETRY", element, 0, 0, w, h, dashLtypeName(element.dash));
           if (element.label) dxfTextLocal(out, page, "TEXT", element, w / 2, h / 2, labelTextSize(element), element.label);
+          // 盤フットプリントの盤図形名(画面と同じくタグの下の2行目)。
+          const shapeName = String(element.footprintName || "").trim();
+          if (shapeName) dxfTextLocal(out, page, "TEXT", element, w / 2, h / 2 + 2.6, rectSecondLineFontSize(shapeName, w), shapeName);
           dxfVisibleAttributes(out, page, element);
           return;
         }
@@ -25997,7 +26184,7 @@
         });
         const UNDERLAY_ACTIONS = {
           insert: () => qs("#underlayInput").click(),
-          twoUp: () => qs("#underlayTwoUpInput").click(),
+          twoUp: showTwoUpUnderlayDialog,
           select: selectCurrentUnderlay
         };
         qs("#underlayMenu").addEventListener("change", event => {
