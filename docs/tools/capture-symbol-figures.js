@@ -70,7 +70,7 @@ const SHEETS = [
   },
   {
     file: "72-jis-added-symbols.png",
-    title: "JIS C 0617の追加・是正デザイン",
+    title: "JIS C 0617番号つきの主なデザイン",
     columns: 6, scale: 20,
     sections: [
       { type: "limitSwitch", chip: "リミットスイッチ", variants: ["jisNo", "jisNc"] },

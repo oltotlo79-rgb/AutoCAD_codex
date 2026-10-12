@@ -417,8 +417,12 @@ job(["39-palette-estop-placement.png"], async browser => {
   await labelInput.fill("PBE1");
   await labelInput.dispatchEvent("change");
   await page.locator('#selectionPanel [data-bind="symbolVariant"]').selectOption("standard");
-  await page.locator("#zoomRange").fill("5");
+  // 連続配置モードを抜け(選択は保持)、置いた記号が読める倍率で画面中央へ寄せる。
+  await page.click('.tool-actions [data-tool="select"]');
+  await page.locator("#zoomRange").fill("10");
   await page.locator("#zoomRange").dispatchEvent("input");
+  await settle(page, 200);
+  await page.locator('#canvas g[data-type="pushButton"]').first().evaluate(element => element.scrollIntoView({ block: "center", inline: "center" }));
   await page.locator('#selectionPanel [data-bind="symbolVariant"]').scrollIntoViewIfNeeded();
   await page.addStyleTag({ content: ".selection-box,.selection-handle,.point-handle{display:none!important}" });
   await settle(page, 300);
