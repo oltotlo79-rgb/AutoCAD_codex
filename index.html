@@ -22495,7 +22495,8 @@
           installation: qs("#insertReportInstallation").value.trim(),
           location: qs("#insertReportLocation").value.trim()
         };
-        const rows = filterReportRows(kind, filters).slice(0, maxRows);
+        const allRows = filterReportRows(kind, filters);
+        const rows = allRows.slice(0, maxRows);
         if (!rows.length) {
           setStatus("挿入できる帳票行がありません。");
           return;
@@ -22504,7 +22505,11 @@
         page.elements.push(table);
         selectSingle(table.id);
         closeDialog();
-        commitHistory("帳票表を挿入しました。");
+        // 最大行数で切った行を黙って捨てると表が完全に見えるため、入らなかった行数を必ず知らせる。
+        const omitted = allRows.length - rows.length;
+        commitHistory(omitted > 0
+          ? `帳票表を挿入しました（対象${allRows.length}行のうち先頭${rows.length}行。残り${omitted}行は「最大行数」を増やすか、設備・場所で絞り込んで別の表にしてください）。`
+          : "帳票表を挿入しました。");
         render();
       }
 

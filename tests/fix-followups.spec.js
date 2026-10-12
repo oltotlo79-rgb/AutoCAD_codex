@@ -90,3 +90,22 @@ test("端子・PLC CSV取込ページの各行は左端の端子小円で受け�
     await page.locator("#dialogClose").click();
   }
 });
+
+test("帳票表挿入は最大行数で切った行数をステータスで知らせる", async ({ page }) => {
+  const coils = Array.from({ length: 5 }, (_, index) => ({
+    id: "c" + index, type: "coil", x: 40, y: 40 + index * 15, w: 10, h: 4.4, tag: "CR" + (index + 1), label: "CR" + (index + 1), layer: "symbols"
+  }));
+  await page.evaluate(data => window.__edsTest.installProjectData(data), {
+    schemaVersion: 4,
+    activePageId: "p1",
+    pages: [{ id: "p1", name: "P1", size: "A4", orientation: "portrait", frameVariant: "blank", title: {}, elements: coils }]
+  });
+  await page.locator("#actionMenu").selectOption("insertReport");
+  await page.locator("#insertReportKind").selectOption("component");
+  await page.locator("#insertReportRows").fill("3");
+  await page.locator("#runInsertReportBtn").click();
+  await expect(page.locator("#status")).toContainText("対象5行のうち先頭3行");
+  await expect(page.locator("#status")).toContainText("残り2行");
+  const table = await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.type === "table"));
+  expect(table.rows).toBe(4);
+});
