@@ -112,6 +112,8 @@ test("検索で見つかる文字欄はすべて一括置換でも対象にな�
 });
 
 test("一括置換は検索語の前後空白を除き大文字小文字を区別せず、一致部分だけを置き換える", async ({ page }) => {
+  // 操作手順が長く、並行実行などで負荷が高いと既定の15秒を超えるため余裕を持たせる。
+  test.slow();
   await page.evaluate(data => window.__edsTest.installProjectData(data), onePage([
     { id: "tb1", type: "terminalStrip", x: 20, y: 50, w: 30, h: 12, count: 3, terminalLabels: "XT77\nxt78\nY1", layer: "symbols" },
     { id: "box1", type: "deviceBox", x: 80, y: 50, w: 30, h: 25, label: "機器", pins: 2, pinText: "1\n2", rightPinText: "UQ9\nuq10", layer: "symbols" },
@@ -154,6 +156,8 @@ test("一括置換は検索語の前後空白を除き大文字小文字を区�
 });
 
 test("CSV/TSV出力はすべてBOM付きUTF-8で書き出す", async ({ page }) => {
+  // 操作手順が長く、並行実行などで負荷が高いと既定の15秒を超えるため余裕を持たせる。
+  test.slow();
   await page.evaluate(data => window.__edsTest.installProjectData(data), onePage([
     { id: "c1", type: "coil", x: 40, y: 60, tag: "KM1", manufacturer: "汎用", catalog: "RY-1", description: "補助リレー", layer: "symbols" },
     { id: "tb1", type: "terminalStrip", x: 120, y: 50, w: 30, h: 12, count: 2, terminalLabels: "端子1\n端子2", label: "端子台A", layer: "symbols" },
@@ -182,6 +186,8 @@ test("CSV/TSV出力はすべてBOM付きUTF-8で書き出す", async ({ page }) 
 });
 
 test("BOM付きCSVを端子CSV・PLC CSV・カタログCSV取込と表計算往復で読める", async ({ page }) => {
+  // 操作手順が長く、並行実行などで負荷が高いと既定の15秒を超えるため余裕を持たせる。
+  test.slow();
   await page.evaluate(data => window.__edsTest.installProjectData(data), onePage([
     { id: "c1", type: "coil", x: 40, y: 60, tag: "KM1", description: "旧説明", layer: "symbols" }
   ]));
