@@ -1718,6 +1718,7 @@
         cableMarker: "C",
         cableBundle: "CBL",
         terminalBox: "TB",
+        // 信号矢印は採番対象外(autoTagPrefix参照)。パレット検索で「REF」から引けるよう残している。
         arrow: "REF"
       };
 
@@ -14996,11 +14997,25 @@
       }
 
       // 現在のラダーページへラング(横1行)を追加。
+      // 母線が既にあるページ(設備ラダーのP1/N1等)では、ラングの両端と縦の範囲を実際の母線に合わせる。
+      // 汎用ラダーの既定位置(ladderConfig)のままだと、P1の手前で止まりN1を突き抜ける。
       function addRungToCurrentPage() {
         const page = currentPage();
         if (!page) return;
-        const cfg = ladderConfig(page);
-        ensureLadderRails(page, cfg);
+        const base = ladderConfig(page);
+        ensureLadderRails(page, base);
+        const rails = page.elements.filter(el => el.type === "wire" && el.ladderRail && el.points?.length >= 2 && Math.abs(el.points[0][0] - el.points[el.points.length - 1][0]) < 0.01);
+        // 左右の母線が揃っていれば生成回路と同じく実測の両端(ladderRailSpanX)。片側しか無い場合は
+        // 無い側だけ既定位置を使う(長さ0のラングを作らない)。
+        const railXs = Array.from(new Set(rails.map(el => round(el.points[0][0]))));
+        const span = ladderRailSpanX(page);
+        const middle = pageSize(page).w / 2;
+        const single = railXs.length === 1 ? railXs[0] : null;
+        const leftRail = single === null ? span.left : (single < middle ? single : base.leftRail);
+        const rightRail = single === null ? span.right : (single < middle ? base.rightRail : single);
+        // 母線の下端より5mm上まで(汎用ラダーの母線は endY+5 まで引いてあるので従来と同じ上限になる)。
+        const railBottom = rails.length ? Math.min(...rails.map(el => Math.max(...el.points.map(p => p[1])))) : base.endY + 5;
+        const cfg = { ...base, leftRail, rightRail, endY: Math.min(base.endY, railBottom - 5) };
         const rungYs = collectLadderRungYs(page);
         const nextIndex = rungYs.length + 1;
         const y = rungYs.length ? Math.max(...rungYs) + cfg.pitch : cfg.startY;
@@ -15008,7 +15023,10 @@
           setStatus("このページにはラングを追加する余白がありません。");
           return;
         }
-        addLadderRungElements(page, cfg, y, nextIndex);
+        // ラング番号の文字は汎用ラダー(左右母線 left/right)だけに付ける。設備ラダーは図枠の行番号で
+        // 位置を示し、P1(x=32.5)の18mm左は図枠線に掛かるため置かない。
+        const generic = rails.some(el => el.ladderRail === "left" || el.ladderRail === "right");
+        addLadderRungElements(page, cfg, y, nextIndex, { withNumber: generic });
         commitHistory("ラングを追加しました。");
         render();
       }
@@ -15040,7 +15058,8 @@
         });
       }
 
-      // 行シフト本体。direction=1で挿入(下へ)、-1で削除(上へ)。削除は帯内に要素があると中止する。
+      // 行シフト本体。direction=1で挿入(下へ)、-1で削除(上へ)。削除は帯内に部品や帯の外へ続く配線が
+      // あると中止し、帯の中だけの配線・接続点は行と一緒に消す。
       function shiftLadderRows(fromRow, count, direction) {
         const page = currentPage();
         if (!page) return;
@@ -15052,15 +15071,55 @@
           const anchors = componentConnectionAnchors(el);
           return anchors && anchors.length ? anchors[0].y : Number(el.y || 0);
         };
+        let removedWires = 0;
+        let removedJunctions = 0;
         if (direction < 0) {
-          // 削除帯[fromRow, fromRow+count)に載っている部品があれば中止(配線は跨ぎ可)。
+          // 削除帯[fromRow, fromRow+count)の中身の扱い:
+          //   部品(信号矢印等の点列要素も含む)… 削除しないで中止(属性を失わないよう利用者に移動/削除させる)
+          //   帯の中だけで完結する配線と帯内の接続点 … 行と一緒に削除(残すと下の行が重なって短絡する)
+          //   帯の中で途切れて帯の外へ続く配線 … 中止(詰めると下の行の配線へ誤って触れる)
+          //   帯を跨ぐだけの配線・母線 … 従来どおり伸縮
           const bandTop = boundaryY;
           const bandBottom = boundaryY + count * pitch;
-          const blocking = page.elements.filter(el => !el.points && !isFrameLikeType(el.type) && refYOf(el) >= bandTop && refYOf(el) < bandBottom);
-          if (blocking.length) {
-            setStatus("削除対象の行に部品が " + blocking.length + " 個あります。先に移動または削除してください。");
+          const inBand = y => y >= bandTop - .01 && y < bandBottom - .01;
+          const blockingParts = [];
+          const blockingWires = [];
+          const lockedItems = [];
+          const removable = new Set();
+          page.elements.forEach(el => {
+            if (isFrameLikeType(el.type) || el.ladderRail) return;
+            if (el.type === "wire") {
+              const inside = (el.points || []).filter(p => inBand(p[1])).length;
+              if (!inside) return;
+              if (inside < el.points.length) blockingWires.push(el);
+              else if (isElementLocked(el)) lockedItems.push(el);
+              else removable.add(el.id);
+              return;
+            }
+            if (el.type === "junction") {
+              if (!inBand(refYOf(el))) return;
+              if (isElementLocked(el)) lockedItems.push(el);
+              else removable.add(el.id);
+              return;
+            }
+            const inside = el.points ? el.points.length > 0 && el.points.every(p => inBand(p[1])) : inBand(refYOf(el));
+            if (inside) blockingParts.push(el);
+          });
+          const reasons = [];
+          if (blockingParts.length) reasons.push("部品が " + blockingParts.length + " 個");
+          if (blockingWires.length) reasons.push("行の外へ続く配線が " + blockingWires.length + " 本");
+          if (lockedItems.length) reasons.push("ロック中の配線・接続点が " + lockedItems.length + " 個");
+          if (reasons.length) {
+            setStatus("削除対象の行に" + reasons.join("・") + "あります。先に移動または削除してください。");
             return;
           }
+          page.elements = page.elements.filter(el => {
+            if (!removable.has(el.id)) return true;
+            if (el.type === "junction") removedJunctions += 1;
+            else removedWires += 1;
+            return false;
+          });
+          if (removable.size) setSelection(selectedIds.filter(id => !removable.has(id)));
         }
         let movedCount = 0;
         page.elements.forEach(el => {
@@ -15082,9 +15141,10 @@
           }
         });
         closeDialog();
+        const removedText = [removedWires ? "配線" + removedWires + "本" : "", removedJunctions ? "接続点" + removedJunctions + "個" : ""].filter(Boolean).join("・");
         commitHistory(direction > 0
           ? "行" + String(fromRow).padStart(2, "0") + "へ" + count + "行挿入しました(" + movedCount + "要素を移動)。"
-          : "行" + String(fromRow).padStart(2, "0") + "から" + count + "行削除しました(" + movedCount + "要素を移動)。");
+          : "行" + String(fromRow).padStart(2, "0") + "から" + count + "行削除しました(" + (removedText ? removedText + "を削除、" : "") + movedCount + "要素を移動)。");
         render();
       }
 
@@ -15263,9 +15323,9 @@
       }
 
       // ラング1行分(横配線+線番)を生成。
-      function addLadderRungElements(page, cfg, y, index) {
+      function addLadderRungElements(page, cfg, y, index, { withNumber = true } = {}) {
         const rungNo = String(index).padStart(3, "0");
-        page.elements.push(ladderText(rungNo, cfg.leftRail - 18, y, 2.6, "end"));
+        if (withNumber) page.elements.push(ladderText(rungNo, cfg.leftRail - 18, y, 2.6, "end"));
         page.elements.push(ladderWire([[cfg.leftRail, y], [cfg.rightRail, y]], "R" + rungNo, { ladderRung: true, rungNo }));
       }
 
@@ -16120,7 +16180,7 @@
         created.push(defaultElement("junction", railL, yA));
         created.push({ ...defaultElement("wire", railL, yA), points: [[railL, yA], [52.5, yA]] });
         created.push({ ...defaultElement("wire", 62.5, yA), points: [[62.5, yA], [135, yA]] });
-        created.push({ ...defaultElement("selectorSwitch", 52.5, round(yA - 3.2)), label: ksTag });
+        created.push({ ...defaultElement("selectorSwitch", 52.5, round(yA - 3.2)), label: ksTag, tag: ksTag });
         // 見本順: SS→切(線)→入(箱)。中心は2.5mmグリッド上、相互間隔10mm。
         // アンカー=70。
         created.push({ ...defaultElement("positionMark", 68, round(yA - 3)), label: "切", markStyle: "line" });
@@ -20875,7 +20935,7 @@
         render();
       }
 
-      // T分岐へ接続点を自動生成(全ページ/現在ページを確認で選択)。既存接続点の近傍はスキップ。
+      // T分岐と3本以上の端点集合へ接続点を自動生成(全ページ/現在ページを確認で選択)。既存接続点の近傍はスキップ。
       function autoJunctions() {
         const allPages = confirm("全ページで接続点を生成しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
         const pages = allPages ? state.pages : [currentPage()];
@@ -20902,36 +20962,52 @@
         render();
       }
 
-      // 接続点を置くべきT分岐点(端点が他配線の線分中間に接触)を検出。
+      // 接続点を置くべき分岐点を検出する。対象は
+      //   (1) T分岐: 配線の端点が他の配線の途中(端点以外。折れ点は途中に含む)に載る点
+      //   (2) 3本以上の配線端点が1点に集まる点
+      // の2つだけ。端点を持たない単なる交差(十字)と、2本の端点同士のつなぎ(直線の継ぎ足し・L字の角・
+      // 部品ピンへの2本接続)は接続点を付けない(JISでは交差は非接続を表し、黒丸は分岐にだけ付ける)。
+      // 判定の許容差は配線接触判定(wiresTouch)と同じ0.6mm。
       function detectJunctionPoints(page) {
-        const wires = page.elements.filter(element => element.type === "wire");
-        const segments = [];
+        const wires = page.elements.filter(element => element.type === "wire" && (element.points || []).length >= 2);
+        const near = (a, b) => Math.abs(a[0] - b[0]) < .6 && Math.abs(a[1] - b[1]) < .6;
+        const isVertical = segment => Math.abs(segment[0] - segment[2]) < .001;
+        const isHorizontal = segment => Math.abs(segment[1] - segment[3]) < .001;
+        const ends = [];
         wires.forEach(wire => {
-          wireSegments(wire).forEach(segment => segments.push({ wire, segment }));
+          const pts = wire.points;
+          const segments = wireSegments(wire);
+          ends.push({ wire, point: pts[0], segment: segments[0] });
+          ends.push({ wire, point: pts[pts.length - 1], segment: segments[segments.length - 1] });
         });
         const hits = new Map();
-        const endpoints = new Map();
-        wires.forEach(wire => {
-          const pts = wire.points || [];
-          [pts[0], pts[pts.length - 1]].filter(Boolean).forEach(point => {
-            const key = pointKey(point[0], point[1]);
-            endpoints.set(key, (endpoints.get(key) || 0) + 1);
+        const addHit = (x, y) => {
+          const key = pointKey(x, y);
+          if (!hits.has(key)) hits.set(key, { x: round(x), y: round(y) });
+        };
+        ends.forEach(end => {
+          if (ends.filter(other => near(other.point, end.point)).length >= 3) addHit(end.point[0], end.point[1]);
+        });
+        ends.forEach(end => {
+          const [x, y] = end.point;
+          wires.forEach(other => {
+            if (other.id === end.wire.id) return;
+            // 相手の端点に載る場合は端点同士のつなぎ。本数は上の集計で扱う。
+            if (wireEndpointsOf(other).some(point => near(point, end.point))) return;
+            const host = wireSegments(other).find(segment => {
+              if (!pointOnSegment(x, y, segment)) return false;
+              // 同じ向きで重なっているだけの配線(一直線上の重ね描き)は分岐ではない。
+              const sameAxis = (isVertical(segment) && isVertical(end.segment)) || (isHorizontal(segment) && isHorizontal(end.segment));
+              return !sameAxis;
+            });
+            if (!host) return;
+            // 相手の線上へ載せる(端点が許容差内でずれていても黒丸は線の上に置く)。
+            if (isVertical(host)) addHit(host[0], y);
+            else if (isHorizontal(host)) addHit(x, host[1]);
+            else addHit(x, y);
           });
         });
-        endpoints.forEach((count, key) => {
-          if (count > 1) hits.set(key, true);
-        });
-        for (let i = 0; i < segments.length; i++) {
-          for (let j = i + 1; j < segments.length; j++) {
-            if (segments[i].wire.id === segments[j].wire.id) continue;
-            const point = segmentIntersection(segments[i].segment, segments[j].segment);
-            if (point) hits.set(pointKey(point.x, point.y), true);
-          }
-        }
-        return Array.from(hits.keys()).map(key => {
-          const [x, y] = key.split(",").map(Number);
-          return { x, y };
-        });
+        return Array.from(hits.values());
       }
 
       // 表示どおりの折れ点列を返す(2点L字はorthoFlip考慮で角を実点化)。結合・整形・分割用。
@@ -21098,7 +21174,17 @@
         return null;
       }
 
+      // 部品タグの採番・監査の対象になる要素の接頭辞。電気属性を持たない種別(信号矢印・極性マーク等)と
+      // 母線(ladderRail)の部品は対象外で空文字を返す。信号矢印のlabelはページ間参照名なので書き換えない。
+      function autoTagPrefix(element) {
+        if (!element || element.ladderRail || !supportsElectricalAttributes(element)) return "";
+        return tagPrefix(element.type);
+      }
+
       // 部品タグ自動採番(種別接頭辞+書式、タグ固定は尊重)。
+      // 接点(contactChildTypes)はコイルのタグを参照する側なので新しい番号は振らない。上書き時は
+      // コイルの改番に合わせて同じタグの接点も追従させ、コイルと接点の対応を保つ。
+      // 番号は既に他の部品が使っているタグを飛ばして振る(重複タグを作らない)。
       function autoTagComponents() {
         const format = state.settings.componentTagFormat || "%F%N";
         const allPages = confirm("全ページの部品タグを付与しますか？\nOK: 全ページ / キャンセル: 現在ページのみ");
@@ -21108,22 +21194,54 @@
         const parsedStart = Number(startInput || 1);
         const startNumber = Number.isFinite(parsedStart) && parsedStart > 0 ? Math.floor(parsedStart) : 1;
         const pages = allPages ? state.pages : [currentPage()];
-        const counters = {};
-        let count = 0;
+        const contactTypes = contactChildTypes();
+        // 改番前のコイル→接点対応(全ページ)。接点の追従先を決めるのに使う。
+        const xref = overwrite ? buildCrossRefCache() : null;
+        const targets = [];
         pages.forEach(page => {
           page.elements.forEach(element => {
-            const prefix = tagPrefix(element.type);
-            if (!prefix) return;
-            if (element.fixedTag) return;
-            if (!overwrite && (element.tag || element.label)) return;
-            counters[prefix] = (counters[prefix] || (startNumber - 1)) + 1;
-            const tag = formatComponentTag(format, page, element, prefix, counters[prefix]);
-            element.tag = tag;
-            element.label = tag;
-            count += 1;
+            const prefix = autoTagPrefix(element);
+            if (!prefix || element.fixedTag || contactTypes.has(element.type)) return;
+            if (!overwrite && componentTag(element)) return;
+            targets.push({ page, element, prefix });
           });
         });
-        commitHistory(count + "個の部品タグを付与しました。");
+        const targetIds = new Set(targets.map(item => item.element.id));
+        // 採番しない部品(固定・他ページ・入力済み)が使っているタグは欠番扱いで飛ばす。
+        // 接点のタグはコイルへの参照なので予約しない(未作成コイル宛ての接点と対になれるように)。
+        const used = new Set();
+        state.pages.forEach(page => page.elements.forEach(element => {
+          if (targetIds.has(element.id) || contactTypes.has(element.type) || !autoTagPrefix(element)) return;
+          const tag = componentTag(element);
+          if (tag) used.add(tag);
+        }));
+        const counters = {};
+        let count = 0;
+        let followed = 0;
+        targets.forEach(({ page, element, prefix }) => {
+          const oldTag = componentTag(element);
+          let number = counters[prefix] ?? (startNumber - 1);
+          let tag = "";
+          do {
+            number += 1;
+            tag = formatComponentTag(format, page, element, prefix, number);
+          } while (used.has(tag));
+          counters[prefix] = number;
+          used.add(tag);
+          element.tag = tag;
+          element.label = tag;
+          count += 1;
+          // クロス参照の親として使われていたコイルなら、その接点も新タグへ付け替える(タグ固定の接点は据え置き)。
+          if (!xref || !oldTag || oldTag === tag || !coilTypes().has(element.type)) return;
+          if (xref.coils.get(oldTag)?.element !== element) return;
+          (xref.contacts.get(oldTag) || []).forEach(item => {
+            if (item.element.fixedTag) return;
+            item.element.tag = tag;
+            item.element.label = tag;
+            followed += 1;
+          });
+        });
+        commitHistory(count + "個の部品タグを付与しました。" + (followed ? "(接点" + followed + "個をコイルのタグに追従)" : ""));
         render();
       }
 
@@ -21153,7 +21271,10 @@
       // 部品タグ規則(種別ごとの接頭辞)編集ダイアログを開く。
       function showComponentTagRulesDialog() {
         const custom = state.settings.componentTagPrefixes || {};
-        const rows = Object.keys(DEFAULT_TAG_PREFIXES).map(type => {
+        // パレットに無い旧種別(読込時に置換される)と、採番対象外の信号矢印は表に出さない。
+        const editableTypes = Object.keys(DEFAULT_TAG_PREFIXES)
+          .filter(type => PALETTE.some(item => item.type === type) && supportsElectricalAttributes({ type }));
+        const rows = editableTypes.map(type => {
           const hasCustom = Object.prototype.hasOwnProperty.call(custom, type);
           const value = hasCustom ? custom[type] : DEFAULT_TAG_PREFIXES[type];
           return `
@@ -21182,8 +21303,11 @@
 
       // タグ規則ダイアログの入力をsettingsへ反映。
       function applyComponentTagRules() {
-        const prefixes = {};
-        qsa("[data-tag-prefix-type]", qs("#dialogBody")).forEach(input => {
+        const inputs = qsa("[data-tag-prefix-type]", qs("#dialogBody"));
+        const shown = new Set(inputs.map(input => input.dataset.tagPrefixType));
+        // 表に出していない種別の既存設定はそのまま残す。
+        const prefixes = Object.fromEntries(Object.entries(state.settings.componentTagPrefixes || {}).filter(([type]) => !shown.has(type)));
+        inputs.forEach(input => {
           const type = input.dataset.tagPrefixType;
           const value = String(input.value || "").trim();
           if (value !== DEFAULT_TAG_PREFIXES[type]) prefixes[type] = value;
@@ -22026,14 +22150,13 @@
         const results = [];
         state.pages.forEach(page => {
           page.elements.forEach(element => {
-            const text = elementSearchText(element);
-            if (text.toLowerCase().includes(query)) {
+            if (elementSearchText(element).toLowerCase().includes(query)) {
               results.push({
                 pageId: page.id,
                 pageName: page.name,
                 id: element.id,
                 type: paletteLabel(element.type),
-                text
+                text: elementContentText(element)
               });
             }
           });
@@ -22766,14 +22889,22 @@
         render();
       }
 
-      // 要素の検索対象文字列(種別名+信号種別+一括置換と共通の文字フィールドを連結)。
-      // 種別は内部名ではなく画面と同じ表示名にする(結果の「内容」欄にそのまま出るため)。
+      // 要素の検索対象文字列(種別の表示名+信号種別+一括置換と共通の文字フィールドを連結)。
+      // 種別は画面と同じ表示名で引けるようにする(内部名は利用者に見えないため検索対象にしない)。
       function elementSearchText(element) {
         return [
           paletteLabel(element.type),
           element.type === "arrow" ? signalRoleLabel(element.signalRole) : "",
           ...REPLACE_FIELDS.map(field => searchableFieldText(element[field]))
         ].filter(Boolean).join(" ");
+      }
+
+      // 検索一覧の「内容」欄に出す文字列。種別は「種別」欄に出すので含めず、タグとラベルが同じ等の重複値は1回だけ出す。
+      function elementContentText(element) {
+        return Array.from(new Set([
+          element.type === "arrow" ? signalRoleLabel(element.signalRole) : "",
+          ...REPLACE_FIELDS.map(field => searchableFieldText(element[field]))
+        ].filter(Boolean))).join(" ");
       }
 
       // クロスリファレンスダイアログを開く(線番/信号/タグの使用箇所+コイル→接点一覧)。
@@ -22938,7 +23069,10 @@
         if (element.type === "wire" && element.wireNo) entries.push({ kind: "線番", key: element.wireNo });
         if (element.type === "arrow" && element.label) entries.push({ kind: "信号", key: element.label });
         const tag = componentTag(element);
-        if (!["wire", "arrow", "text", "table", "rect", "circle", "line", "underlayImage", "installationBox", "locationBox", "junction"].includes(element.type) && tag) {
+        // 「部品」は電気属性を持つ機器だけ。極性マーク(P1/N1)・ポジション表示(切/入)・作図図形・注記の
+        // ラベルは機器タグではないので載せない。母線の付属要素も対象外。
+        const annotationTypes = ["ellipse", "arc", "ellipseArc", "polygon", "cloud", "revisionMark", "qualifierMark", "operatorMark"];
+        if (tag && supportsElectricalAttributes(element) && !annotationTypes.includes(element.type) && !element.ladderRail) {
           entries.push({ kind: "部品", key: tag });
         }
         return entries;
@@ -23047,12 +23181,25 @@
         return `<button type="button" data-select-page="${escapeAttr(issue.pageId || "")}" data-select-id="${escapeAttr(issue.elementId)}">選択</button>`;
       }
 
+      // 一覧に出す座標文字列。右パネルの座標欄と同じく X は左端から、Y は下端から(上が＋)の mm。
+      function displayPointText(page, point) {
+        return "X" + round(point[0]) + ", Y" + round(pageSize(page).h - point[1]);
+      }
+
+      // 監査一覧の「対象」欄の表示名。内部IDや種別キーは出さず、タグ/文字/線番→種別の表示名の順で使う。
+      // 名前の無い配線・矢印は種別名に始点座標を添えて場所が分かるようにする。
+      function auditTargetName(page, element) {
+        const name = componentTag(element) || element.text || element.wireNo || "";
+        if (name) return name;
+        if (element.points?.length) return paletteLabel(element.type) + "（始点 " + displayPointText(page, element.points[0]) + "）";
+        return paletteLabel(element.type);
+      }
+
       // 図面監査の本体。ルール別に全ページを走査し指摘を収集する:
       // wireNo=未採番配線 / net=同一ネット内の線番不整合 / emptyLabel=空ラベル / offPage=用紙外 /
       // floating=未接続端点 / relay=コイルと接点の対応+接点数上限 / panel=盤配置(タグ部品とフットプリントの対応)。
       function auditProject() {
         const issues = [];
-        const arrows = new Map();
         const terminalNames = new Map();
         const componentTags = new Map();
         state.pages.forEach(page => {
@@ -23064,50 +23211,46 @@
             const label = componentTag(element) || element.text || element.wireNo || "";
             if (element.type === "wire") {
               if (auditRuleOn("wireNo") && !element.wireNo && !element.ladderRail && !wireStyle(element).noNumber) {
-                issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "線番が未入力です。", target: element.id });
+                issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "線番が未入力です。", target: auditTargetName(page, element) });
               }
             }
             if (auditRuleOn("emptyLabel") && ["contactNO", "contactNC", "contactor", "pushButton", "coil", "fuse", "breaker", "lamp", "buzzer", "powerSupply", "transformer", "ground", "motor", "fan", "resistor", "diode", "deviceBox", "plcBlock", "cableMarker"].includes(element.type) && !label) {
-              issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "ラベルが未入力です。", target: element.type });
+              issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "ラベルが未入力です。", target: paletteLabel(element.type) });
             }
-            // 信号矢印はlabelがページ間参照名であり、部品タグの採番対象ではない。
-            const prefix = element.type === "arrow" ? "" : tagPrefix(element.type);
+            // 採番対象の判定とタグの有無は部品タグ採番と同じ基準(autoTagPrefix / タグ→ラベルの順)で見る。
+            // 基準がずれると「未採番」が採番を実行しても消えない。
+            const prefix = autoTagPrefix(element);
             if (prefix) {
-              if (!element.tag) {
-                issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "部品タグが未採番です。", target: element.label || paletteLabel(element.type) });
-              } else {
-                // 同一リレーの複数接点は同じタグを共有するのが正常。親部品だけ重複監査へ載せる。
-                if (!contactChildTypes().has(element.type)) {
-                  const key = element.type + "::" + element.tag;
-                  const list = componentTags.get(key) || [];
-                  list.push({ page: page.name, pageId: page.id, elementId: element.id, type: paletteLabel(element.type), tag: element.tag });
-                  componentTags.set(key, list);
+              if (!componentTag(element)) {
+                // 接点はコイル等のタグを参照する側で、部品タグ採番では番号を振らない。
+                const message = contactChildTypes().has(element.type)
+                  ? "接点のタグが未入力です（対応するコイル等と同じタグを入力してください）。"
+                  : "部品タグが未採番です。";
+                issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message, target: paletteLabel(element.type) });
+                if (element.fixedTag) {
+                  issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "部品タグ固定ですがタグが空です。", target: paletteLabel(element.type) });
                 }
-              }
-              if (element.fixedTag && !element.tag) {
-                issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "部品タグ固定ですがタグが空です。", target: element.label || paletteLabel(element.type) });
+              } else if (element.tag && !contactChildTypes().has(element.type)) {
+                // 同一リレーの複数接点は同じタグを共有するのが正常。親部品だけ重複監査へ載せる。
+                const key = element.type + "::" + element.tag;
+                const list = componentTags.get(key) || [];
+                list.push({ page: page.name, pageId: page.id, elementId: element.id, type: paletteLabel(element.type), tag: element.tag });
+                componentTags.set(key, list);
               }
             }
             if (["terminalStrip", "connector"].includes(element.type) && Number(element.count || 0) <= 0) {
-              issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "端子数が不正です。", target: element.label || element.id });
+              issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "端子数が不正です。", target: auditTargetName(page, element) });
             }
             if (["terminalStrip", "connector"].includes(element.type) && element.label) {
               const key = page.name + "::" + element.label;
               terminalNames.set(key, (terminalNames.get(key) || 0) + 1);
             }
-            if (element.type === "arrow") {
-              if (!element.label) {
-                if (!element.ladderRail) issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "信号矢印の参照名が未入力です。", target: element.id });
-              } else {
-                const role = element.signalRole || "reference";
-                const group = arrows.get(element.label) || { source: [], destination: [], reference: [] };
-                (group[role] || group.reference).push(page.name);
-                arrows.set(element.label, group);
-              }
+            if (element.type === "arrow" && !element.label && !element.ladderRail) {
+              issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "信号矢印の参照名が未入力です。", target: auditTargetName(page, element) });
             }
             const box = elementBounds(element);
             if (auditRuleOn("offPage") && box && (box.x < 0 || box.y < 0 || box.x + box.w > size.w || box.y + box.h > size.h)) {
-              issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "用紙外にはみ出しています。", target: label || element.type });
+              issues.push({ level: "注意", page: page.name, pageId: page.id, elementId: element.id, message: "用紙外にはみ出しています。", target: auditTargetName(page, element) });
             }
           });
           const pageNets = !auditRuleOn("net") ? [] : buildWireNets(page)
@@ -23131,17 +23274,6 @@
             }
           });
           if (auditRuleOn("floating")) auditFloatingWireEnds(page).forEach(item => issues.push(item));
-        });
-        arrows.forEach((group, label) => {
-          if (group.source.length && !group.destination.length) {
-            issues.push({ level: "注意", page: group.source[0], message: "受信先の信号矢印がありません。", target: label });
-          }
-          if (group.destination.length && !group.source.length) {
-            issues.push({ level: "注意", page: group.destination[0], message: "発信元の信号矢印がありません。", target: label });
-          }
-          if (!group.source.length && !group.destination.length && group.reference.length === 1) {
-            issues.push({ level: "注意", page: group.reference[0], message: "対応する信号矢印がありません。", target: label });
-          }
         });
         terminalNames.forEach((count, key) => {
           if (count > 1) {
@@ -23223,7 +23355,7 @@
           });
         });
         jumperTargets.forEach(item => {
-          issues.push({ level: "警告", page: item.page.name, pageId: item.page.id, elementId: item.element.id, message: "ジャンパの端子番号が範囲外です。", target: (item.element.label || item.element.id) + " " + item.pair });
+          issues.push({ level: "警告", page: item.page.name, pageId: item.page.id, elementId: item.element.id, message: "ジャンパの端子番号が範囲外です。", target: auditTargetName(item.page, item.element) + " " + item.pair });
         });
         const hasFootprints = state.pages.some(page => page.elements.some(element => element.panelRef));
         if (auditRuleOn("panel") && hasFootprints) {
@@ -23263,7 +23395,7 @@
               pageId: page.id,
               elementId: wire.id,
               message: "配線端点が未接続の可能性があります。",
-              target: (wire.wireNo || wire.id) + " @ " + key
+              target: (wire.wireNo || paletteLabel("wire")) + "（端点 " + displayPointText(page, point) + "）"
             });
           });
         });
