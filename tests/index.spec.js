@@ -2846,11 +2846,12 @@ test("端子箱は箱数と引き出し線を箱ごとに設定でき、接続�
     return { anchors, stubLines };
   });
   // h=16・rows=4 → 各箱の中央は2/6/10/14(丸めなしで区画中央に一致)
+  // 新規端子箱の引き出し線は5mm(左右の線先端がグリッドの倍数で並ぶ)
   expect(result.anchors).toEqual([
-    [-6, 2], [0, 2], [28.5, 2], [22.5, 2],
-    [0, 6], [28.5, 6], [22.5, 6],
-    [-6, 10], [0, 10], [22.5, 10],
-    [-6, 14], [0, 14], [28.5, 14], [22.5, 14]
+    [-5, 2], [0, 2], [27.5, 2], [22.5, 2],
+    [0, 6], [27.5, 6], [22.5, 6],
+    [-5, 10], [0, 10], [22.5, 10],
+    [-5, 14], [0, 14], [27.5, 14], [22.5, 14]
   ]);
   expect(result.stubLines).toBe(6);
 });
@@ -3950,8 +3951,8 @@ test("基本図形の円と楕円は45度刻み8方向の配線接続点を持�
   expect(result.ellipseType).toBe("circle");
   // 20x20の円: 0/45/90/135/180/225/270/315度(角度0=右・時計回り)
   expect(result.circle).toEqual([[20, 10], [17.07, 17.07], [10, 20], [2.93, 17.07], [0, 10], [2.93, 2.93], [10, 0], [17.07, 2.93]]);
-  // 24x14の楕円: 同じ8方向を各半径へ掛けた外周上の点
-  expect(result.ellipse).toEqual([[24, 7], [20.49, 11.95], [12, 14], [3.51, 11.95], [0, 7], [3.51, 2.05], [12, 0], [20.49, 2.05]]);
+  // 25x15の楕円(新規既定。上下左右の点がグリッドに乗る): 同じ8方向を各半径へ掛けた外周上の点
+  expect(result.ellipse).toEqual([[25, 7.5], [21.34, 12.8], [12.5, 15], [3.66, 12.8], [0, 7.5], [3.66, 2.2], [12.5, 0], [21.34, 2.2]]);
   // 回転90度でも8点が図形と一緒に回る(描画のtransformと同じ規約)
   expect(result.rotated).toEqual([[-10, 20], [-17.07, 17.07], [-20, 10], [-17.07, 2.93], [-10, 0], [-2.93, 2.93], [0, 10], [-2.93, 17.07]]);
   // 配線スナップ候補としても8点そのまま拾える
@@ -4898,6 +4899,8 @@ test("rotating a symbol keeps its visible center inside the selection bounds", a
       activePageId: "p",
       pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [breaker] }]
     });
+    // 回転そのものの外接矩形を検証するため、回転後のグリッド合わせ(スナップON時)を切る。
+    api.state.settings.snap = false;
     api.setSelectionForTest(["cb"]);
     const before = api.elementBounds(api.state.pages[0].elements[0]);
     api.rotateSelected(90);
@@ -4935,6 +4938,8 @@ test("家庭用接地2Pコンセントは90度ずつ回転しても選択枠中�
       activePageId: "p",
       pages: [{ id: "p", name: "P1", size: "A4", orientation: "portrait", title: {}, elements: [outlet] }]
     });
+    // 回転そのものの外接矩形を検証するため、回転後のグリッド合わせ(スナップON時)を切る。
+    api.state.settings.snap = false;
     api.setSelectionForTest(["socket"]);
     const snapshots = [];
     for (let turn = 0; turn < 4; turn += 1) {

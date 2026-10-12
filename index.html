@@ -1507,6 +1507,8 @@
       // 複製した部品の接続ピンがグリッドから外れ、以後の移動(グリッド倍数の平行移動)では
       // 他シンボルの接続点の高さ・列へ二度と一致しなくなる。
       const DUPLICATE_OFFSET_MM = 5;
+      // 形の決まった記号(geoシンボル)の幅/高さ欄に出す説明(読み取り専用の理由と代わりの手段)。
+      const FIXED_SHAPE_SIZE_HINT = "形の決まった記号は大きさを変えられません（ページ設定のシンボル拡大を使用）";
       // 接続点の黒丸半径。接続点シンボル(junction)・配線/直線/連動破線の端点接続点で共通。
       const CONNECTION_DOT_R = 0.5;
       // 太グリッド(メジャーグリッド)の間隔(mm)。
@@ -1783,7 +1785,8 @@
         matSwitch: "感圧マット 安全マット",
         reedSwitch: "リード 磁気スイッチ シリンダスイッチ オートスイッチ",
         lightCurtain: "セーフティライトカーテン 多光軸 安全光線 エリアセンサ 投光器 受光器 OSSD 3線式 4線式 24V テスト入力 接点表現",
-        powerSupply: "電源装置 スイッチング電源 直流電源 コンバータ インバータ",
+        // 整流器(旧rectifierBox)は電源のAC/DC変換器へ移行したため、整流の呼び方でも引けるようにする。
+        powerSupply: "電源装置 スイッチング電源 直流電源 コンバータ インバータ 整流器 整流 AC/DC",
         transformer: "トランス 変圧器",
         ground: "アース 接地 接地極 グランド",
         motor: "モーター 電動機 誘導電動機",
@@ -1801,7 +1804,7 @@
         outlet: "コンセント レセプタクル ソケット プラグ 差込口 盤内コンセント 接点",
         resistor: "抵抗器 レジスタ ポテンショメータ",
         capacitor: "コンデンサ キャパシタ",
-        diode: "ダイオード サイリスタ トライアック ツェナー LED",
+        diode: "ダイオード サイリスタ トライアック ツェナー LED 整流器 整流 ブリッジ ブリッジダイオード",
         thermalRelay: "サーマル 過負荷 熱動継電器 オーバーロード",
         thermalElement: "熱動素子 サーマル素子 過負荷",
         pressureSwitch: "圧力 プレッシャ",
@@ -4034,6 +4037,16 @@
         return parts.join(" ").toLowerCase();
       }
 
+      // パレット部品を置いたときの既定デザインの表示名(SYMBOL_VARIANT_OPTIONS)。検索の並び順に使う。
+      function paletteDefaultDesignText(type) {
+        if (!PALETTE.some(item => item.type === type)) return "";
+        const table = SYMBOL_VARIANT_OPTIONS[type];
+        if (!table || !table.length) return "";
+        const variant = defaultElement(type).symbolVariant;
+        const entry = table.find(([value]) => value === variant) || table[0];
+        return String(entry[1] || "");
+      }
+
       // 左パネルの部品パレットを再構築。検索文字列があればフラット表示、無ければカテゴリ別アコーディオン。
       // ユーザー部品(customSymbols)は type=custom:<id> の項目として合流する。
       function renderPalette() {
@@ -4065,13 +4078,20 @@
           }))
         ];
         const matchedTypes = new Set();
-        const matches = allItems.filter(item => {
+        const filtered = allItems.filter(item => {
           if (!filter) return true;
           const matched = paletteSearchText(item).includes(filter);
           if (!matched || matchedTypes.has(item.type)) return false;
           matchedTypes.add(item.type);
           return true;
         });
+        // JIS番号(例 07-13-02)で引いたときは、その番号が既定デザインの部品(電磁接触器)を先頭へ出す。
+        // 別デザインとして同じ番号を持つだけの部品(a接点)が先に並ぶと、Enterで違う部品が置かれるため。
+        const jisOwnerFirst = /^\d{2}-\d{2}-\d{2}$/.test(filter);
+        const matches = jisOwnerFirst
+          ? filtered.filter(item => paletteDefaultDesignText(item.type).includes(filter))
+            .concat(filtered.filter(item => !paletteDefaultDesignText(item.type).includes(filter)))
+          : filtered;
         if (!matches.length) {
           grid.innerHTML = '<div class="muted">該当する部品がありません。</div>';
           return;
@@ -12273,8 +12293,7 @@
         qsa("[data-nudge]", panel).forEach(button => {
           button.addEventListener("click", () => {
             const [dx, dy] = button.dataset.nudge.split(",").map(Number);
-            moveSelected(dx, dy);
-            commitHistory("要素を移動しました。");
+            if (moveSelected(dx, dy)) commitHistory("要素を移動しました。");
             render();
           });
         });
@@ -12298,14 +12317,18 @@
       // 位置・寸法など全要素共通の編集フィールド定義。
       function normalFields(element) {
         const anchor = primaryConnectionPoint(element) || { x: Number(element.x || 0), y: Number(element.y || 0) };
+        // 形の決まった記号(geoシンボル)は枠の幅/高さを変えても記号は大きくならず、枠の中央へ寄せ直されて
+        // 接続ピンだけがずれる(配線が外れる)。角ハンドルと同じく数値入力も読み取り専用にする。
+        const fixedShape = !!geoFor(element);
+        const sizeLock = fixedShape ? ` disabled title="${FIXED_SHAPE_SIZE_HINT}"` : "";
         return `
           <div class="row">
             <div><label>接続点 X mm</label><input data-bind="x" data-anchor-coordinate="true" data-kind="number" type="number" step="0.5" value="${round(anchor.x)}"></div>
             <div><label>接続点 Y mm（上が＋）</label><input data-bind="y" data-anchor-coordinate="true" data-coordinate-y="true" data-kind="number" type="number" step="0.5" value="${round(pageSize(currentPage()).h - anchor.y)}"></div>
           </div>
-          <div class="row">
-            <div><label>幅 mm</label><input data-bind="w" data-kind="number" type="number" step="0.5" value="${round(element.w || defaultElement(element.type).w || 20)}"></div>
-            <div><label>高さ mm</label><input data-bind="h" data-kind="number" type="number" step="0.5" value="${round(element.h || defaultElement(element.type).h || 10)}"></div>
+          <div class="row"${fixedShape ? ` title="${FIXED_SHAPE_SIZE_HINT}"` : ""}>
+            <div><label>幅 mm</label><input data-bind="w" data-kind="number" type="number" step="0.5" value="${round(element.w || defaultElement(element.type).w || 20)}"${sizeLock}></div>
+            <div><label>高さ mm</label><input data-bind="h" data-kind="number" type="number" step="0.5" value="${round(element.h || defaultElement(element.type).h || 10)}"${sizeLock}></div>
           </div>
           <label>回転 deg</label>
           <input data-bind="rotation" data-kind="number" type="number" step="90" value="${round(element.rotation || 0)}">
@@ -12468,10 +12491,11 @@
       // 単一要素の切替はupdateSelectedFromInputのGEOMETRY_KEYS経路が同じ規則で処理する。
       function applySymbolVariantTo(element, value) {
         const pinBefore = elementFirstPin(element);
+        const connectorPitch = connectorPitchHint(element);
         element.symbolVariant = value;
         if (!resizeGeoElementForOrientation(element)) {
           if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
-          if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
+          if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element, connectorPitch);
           if (element.type === "lamp") { element.w = 10; element.h = 10; }
           if (element.type === "buzzer") { element.w = 12.5; element.h = 6; }
           if (element.type === "powerSupply") { element.w = 35; element.h = 25; }
@@ -13281,9 +13305,10 @@
       }
 
       // 電気属性を持てる種別か(帳票・カタログ・タグ採番の対象判定)。
+      // 図形(円弧・多角形)や注記・限定図記号(改訂三角・雲マーク・電流種別・操作機構)は部品ではないので除く。
       function supportsElectricalAttributes(element) {
         if (!element) return false;
-        return !["text", "wire", "line", "rect", "circle", "underlayImage", "installationBox", "locationBox", "table", "arrow", "junction", "positionMark", "polarityMark", "mechanicalLink", "dimension"].includes(element.type);
+        return !["text", "wire", "line", "rect", "circle", "arc", "polygon", "cloud", "revisionMark", "qualifierMark", "operatorMark", "underlayImage", "installationBox", "locationBox", "table", "arrow", "junction", "positionMark", "polarityMark", "mechanicalLink", "dimension"].includes(element.type);
       }
 
       // 右パネル入力→選択要素への反映(data-bindのキーで分岐)。save=trueで履歴記録。
@@ -13295,6 +13320,12 @@
         if (!element) return;
         const key = input.dataset.bind;
         let value = input.type === "checkbox" ? input.checked : (input.dataset.kind === "number" ? Number(input.value) : input.value);
+        // 形の決まった記号の幅/高さは読み取り専用(欄はdisabled)。念のため反映経路でも拒む。
+        if ((key === "w" || key === "h") && !element.points && geoFor(element)) {
+          setStatus(FIXED_SHAPE_SIZE_HINT);
+          render();
+          return;
+        }
         if (key.startsWith("deviceTerminalVisibility.")) {
           const terminalKey = key.slice("deviceTerminalVisibility.".length);
           element.deviceTerminalVisibility = { ...(element.deviceTerminalVisibility || {}), [terminalKey]: Boolean(value) };
@@ -13338,8 +13369,16 @@
         } else if (pointMatch && element.points?.[Number(pointMatch[1])]) {
           element.points[Number(pointMatch[1])][pointMatch[2] === "x" ? 0 : 1] = value;
         } else {
+          const connectorPitch = connectorPitchHint(element);
+          const deviceLayoutBefore = element.type === "deviceBox" ? deviceBoxPinLayout(element) : null;
           element[key] = value;
           if (key === "deviceTerminalMode") element.deviceTerminalVisibility = {};
+          // 等分配置の機器箱へ上下マージンだけを入れたときは、端子ピッチを5mm(グリッドの倍数)で明示する。
+          // 未入力ピッチの読み替え(6mm)は既存図面の互換用なので、新たに明示配置へ切り替える箱には使わない。
+          if (key === "pinMargin" && deviceLayoutBefore && !deviceLayoutBefore.explicit
+            && (element.pinPitch === undefined || element.pinPitch === "")) {
+            element.pinPitch = 5;
+          }
           // 機器箱の端子ピッチ/上下マージン/ピン数の変更時は外形高さを端子レイアウトへ同期。
           if (element.type === "deviceBox" && ["pins", "pinPitch", "pinMargin"].includes(key)) {
             const layout = deviceBoxPinLayout(element);
@@ -13355,14 +13394,14 @@
               item.id !== element.id && item.type === element.type && componentTag(item) === value));
             if (dup) setStatus("注意: 同種部品でタグ「" + value + "」が重複しています。");
           }
-          if (["orientation", "count", "stripStyle", "levels", "comTerminal", "cardMode", "zeroVTerminal"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element);
+          if (["orientation", "count", "stripStyle", "levels", "comTerminal", "cardMode", "zeroVTerminal"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element, connectorPitch);
           if (key === "orientation" && element.type === "terminal" && !resizeGeoElementForOrientation(element)) resizeSingleTerminalForOrientation(element);
           if (key === "orientation" && ["contactNO", "contactNC", "contactor", "pushButton", "selectorSwitch", "limitSwitch", "proximitySwitch", "pressureSwitch", "thermalRelay", "thermalElement", "contactBlock"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeContactElementForOrientation(element);
           if (key === "orientation" && ["fuse", "breaker", "resistor"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
           if (["pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "buzzerVariant", "terminalShape", "connStyle", "blockContact", "symbolVariant", "contactGap"].includes(key)) {
             if (!resizeGeoElementForOrientation(element)) {
               if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
-              if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element);
+              if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element, connectorPitch);
               if (element.type === "lamp") { element.w = 10; element.h = 10; }
               if (element.type === "buzzer") { element.w = 12.5; element.h = 6; }
               if (element.type === "powerSupply") { element.w = 35; element.h = 25; }
@@ -13420,8 +13459,17 @@
         }
       }
 
-      // 端子台の向き変更時の寸法調整。
-      function resizeTerminalElementForOrientation(element) {
+      // コネクタ(並び形)の現在の端子ピッチ。端子数・向きの変更前に読み、変更後も同じピッチで並べ直す
+      // (既存図面の7mmピッチを勝手に変えて2個目以降の端子から配線が外れないように)。
+      function connectorPitchHint(element) {
+        if (!element || element.type !== "connector" || element.connStyle === "pair") return null;
+        const pitch = round(terminalStripGeometry(element).pitch);
+        return Number.isFinite(pitch) && pitch > 0 ? pitch : null;
+      }
+
+      // 端子台の向き変更時の寸法調整。コネクタはpitchHint(変更前のピッチ)があればそれを保ち、
+      // 無ければ新規既定の7.5mm(端子がグリッドに乗るピッチ)で並べる。
+      function resizeTerminalElementForOrientation(element, pitchHint = null) {
         const count = Math.max(1, Number(element.count || 8));
         if (element.type === "terminalStrip" && element.stripStyle === "unit" && element.orientation === "vertical") {
           const rowPitch = Math.max(2.5, Number(element.pitch || 9.5));
@@ -13433,7 +13481,7 @@
           element.h = (count + comRows + zeroRows) * rowPitch;
           return;
         }
-        const pitch = element.type === "connector" ? 7 : 8;
+        const pitch = element.type === "connector" ? (pitchHint > 0 ? pitchHint : 7.5) : 8;
         if (element.orientation === "vertical") {
           element.w = element.type === "connector" ? 10 : 12;
           element.h = count * pitch;
@@ -13478,6 +13526,15 @@
         });
       }
 
+      // 改訂三角の既定記号。改訂履歴の最新(記号が空の行は飛ばす)→表示中ページの表題欄「改訂」→"1"の順。
+      function latestRevisionSymbol() {
+        const revisions = (state.project?.revisions || []).filter(entry => String(entry?.rev ?? "").trim());
+        const latest = revisions.length ? String(revisions[revisions.length - 1].rev).trim() : "";
+        if (latest) return latest;
+        const page = Array.isArray(state.pages) ? currentPage() : null;
+        return String(page?.title?.revision ?? "").trim() || "1";
+      }
+
       // 種別ごとの新規要素の既定値(寸法・ラベル・レイヤ)。新種別はここへ追加する。
       function defaultElement(type, x = 30, y = 30) {
         // 別名: パレットの「非常停止ボタン」は押しボタンの非常停止スタイルとして生成する。
@@ -13487,8 +13544,9 @@
           return { ...defaultElement("pushButton", x, y), pbStyle: "emergency", label: "PBE", h: 7 };
         }
         // 別名: 楕円=幅高さ違いの円、楕円弧=幅高さ違いの円弧として生成する(機能は同一)。
+        // 楕円の既定25x15は、上下左右の接続点(半径12.5/7.5)がグリッド上に乗る寸法。
         if (type === "ellipse") {
-          return { ...defaultElement("circle", x, y), w: 24, h: 14 };
+          return { ...defaultElement("circle", x, y), w: 25, h: 15 };
         }
         if (type === "ellipseArc") {
           return { ...defaultElement("arc", x, y), w: 24, h: 12 };
@@ -13498,12 +13556,13 @@
           text: { ...base, w: 40, h: 8, text: "文字", fontSize: 3.5 },
           line: { id: uid("el"), type: "line", points: [[x, y], [x + 30, y]], label: "", strokeWidth: .32, dash: "", stroke: state.settings.stroke, layer: defaultLayerFor("line") },
           mechanicalLink: { id: uid("el"), type: "mechanicalLink", points: [[x, y], [x, y + 30]], label: "", strokeWidth: .26, dash: "1.2 1.4", stroke: state.settings.stroke, layer: "symbols" },
-          rect: { ...base, w: 34, h: 22, label: "" },
-          circle: { ...base, w: 22, h: 22, label: "" },
+          // 新規の矩形・円は辺中央/上下左右の接続点がグリッドに乗る寸法(半幅・半高が2.5mmの倍数)。
+          rect: { ...base, w: 35, h: 20, label: "" },
+          circle: { ...base, w: 20, h: 20, label: "" },
           arc: { ...base, w: 16, h: 16, a0: 180, a1: 270, label: "" },
           polygon: { id: uid("el"), type: "polygon", points: regularPolygonPoints(x, y, 8, 6), sides: 6, radius: 8, label: "", strokeWidth: .32, stroke: state.settings.stroke, layer: defaultLayerFor("polygon") },
           cloud: { ...base, w: 40, h: 20, label: "" },
-          revisionMark: { ...base, w: 6, h: 5.4, label: String((state.project?.revisions || []).slice(-1)[0]?.rev || "1"), layer: "notes" },
+          revisionMark: { ...base, w: 6, h: 5.4, label: latestRevisionSymbol(), layer: "notes" },
           underlayImage: { ...base, w: 160, h: 110, label: "下絵", imageData: "", opacity: .35, cropPreset: "full", locked: true, layer: "layout" },
           installationBox: { ...base, w: 120, h: 80, label: "INST1", dash: "4 2", layer: "layout" },
           locationBox: { ...base, w: 120, h: 80, label: "LOC1", dash: "4 2", layer: "layout" },
@@ -13521,6 +13580,7 @@
           fuse: { ...base, w: 10, h: 4.4, label: "F", orientation: "horizontal" },
           breaker: { ...base, w: 12.5, h: 5, label: "CB", orientation: "horizontal", symbolVariant: "iec", refNo: "" },
           lamp: { ...base, w: 10, h: 4.4, label: "PL", lampVariant: "pilot", lampColor: "W" },
+          // ホーン形ブザーは左右の端子間=幅。12.5mmでグリッド整合(描画は枠への比率なので形は同じ)。
           buzzer: { ...base, w: 12.5, h: 6, label: "BZ", buzzerVariant: "horn" },
           solenoidValve: { ...base, w: 25, h: 16, label: "SOL" },
           sensor: { ...base, w: 25, h: 14, label: "SEN" },
@@ -13565,10 +13625,13 @@
           generator: { ...base, w: 10, h: 10, label: "G" },
           deviceBox: { ...base, w: 30, h: 25, label: "機器", pins: 4, pinText: "1\n2\n3\n4", rightPinText: "" },
           plcBlock: { ...base, w: 50, h: 60, label: "PLC", rows: 8, pinText: "I00\nI01\nI02\nI03\nO00\nO01\nO02\nO03" },
-          connector: { ...base, w: 70, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
-          cableMarker: { ...base, w: 28, h: 12, label: "C" },
-          cableBundle: { ...base, w: 32, h: 18, label: "CBL" },
-          terminalBox: { ...base, w: 22.5, h: 15, label: "TB", rows: 3 },
+          // コネクタは端子ピッチ=幅/端子数。7.5mmピッチ(10端子で75mm)で全端子がグリッドに乗る。
+          connector: { ...base, w: 75, h: 10, count: 10, start: 1, prefix: "", orientation: "horizontal", terminalShape: "circle", label: "CN" },
+          // ケーブル/ケーブル束の左右接続点の間隔=幅。2.5mmの倍数にしてグリッドへ揃える。
+          cableMarker: { ...base, w: 27.5, h: 12, label: "C" },
+          cableBundle: { ...base, w: 32.5, h: 18, label: "CBL" },
+          // 新規の端子箱は引き出し線5mm(左右の線先端の間隔がグリッドの倍数)。未指定の既存図面は従来の6mm。
+          terminalBox: { ...base, w: 22.5, h: 15, label: "TB", rows: 3, boxStubLength: 5 },
           table: { ...base, w: 86, h: 48, rows: 6, cols: 4, label: "表", colWidths: "", rowHeights: "", tableFontSize: 2.2, cellText: "No.\t項目\t内容\t備考" },
           junction: { ...base, w: 2, h: 2, r: 0.5, label: "" },
           arrow: { id: uid("el"), type: "arrow", points: [[x, y], [x + 30, y]], label: "REF", signalRole: "reference", arrowStyle: "open", arrowAtStart: false, stroke: state.settings.stroke, layer: defaultLayerFor("arrow") },
@@ -14045,6 +14108,10 @@
           "logicGate",
           "photocoupler",
           "photoelectricSwitch",
+          "proximitySwitch",
+          // 熱電対は2本の脚が同じ側(左)から出る測温センサ。配線上に置いても分割しない
+          // (wireBreakingTypesには入れない)が、第1脚はグリッドへ合わせる。
+          "thermocouple",
           "matSwitch",
           "reedSwitch",
           "lightCurtain",
@@ -14329,6 +14396,7 @@
           }
           return element;
         });
+        remapCopiedGroups(placed);
         page.elements.push(...placed);
         setSelection(placed.map(element => element.id));
         commitHistory(doneMessage);
@@ -14354,6 +14422,7 @@
           }
           return element;
         });
+        remapCopiedGroups(placed);
         page.elements.push(...placed);
         setSelection(placed.map(element => element.id));
         commitHistory(placed.length > 1 ? "ユーザー回路を配置しました。" : "ユーザー部品を配置しました。");
@@ -18227,6 +18296,7 @@
           const x = Number(qs("#userCircuitX").value || 0), y = Number(qs("#userCircuitY").value || 0);
           const idMap = new Map(), created = deepClone(source.elements);
           created.forEach(item => { const old = item.id; item.id = uid("el"); idMap.set(old, item.id); translateElement(item, x, y); });
+          remapCopiedGroups(created);
           page.elements.push(...created); setSelection(created.map(item => item.id)); closeDialog(); commitHistory("ユーザー回路「" + source.name + "」を挿入しました。"); render();
         };
       }
@@ -18946,7 +19016,8 @@
             created.push({ ...defaultElement("wire"), points: [[x1, cy], [bundleLeft, cy], [bundleRight, cy], [x2, cy]], wireNo: "", cableTag: tag, coreNo: core, layer: "wires" });
             cableRows.push({ tag, core, color: "", gauge: "", status: "used", from: "", to: "", shielded: qs("#fanShield").checked });
           }
-          created.push({ ...defaultElement("cableMarker", (bundleLeft + bundleRight) / 2 - 14, y + (count - 1) * pitch / 2 - 6), cableTag: tag, label: tag, coreNo: "1-" + count, coreSummary: true, shielded: qs("#fanShield").checked });
+          const marker = defaultElement("cableMarker", 0, 0);
+          created.push({ ...marker, x: round((bundleLeft + bundleRight) / 2 - marker.w / 2), y: round(y + (count - 1) * pitch / 2 - marker.h / 2), cableTag: tag, label: tag, coreNo: "1-" + count, coreSummary: true, shielded: qs("#fanShield").checked });
           if (qs("#fanShield").checked) created.push({ ...defaultElement("wire"), points: [[bundleLeft, y - pitch], [bundleRight, y - pitch]], wireNo: "DRAIN", cableTag: tag, coreNo: "D", layer: "wires" });
           state.cables = [...(state.cables || []).filter(row => row.tag !== tag), ...cableRows];
           page.elements.push(...created); setSelection(created.map(item => item.id)); closeDialog(); commitHistory(tag + "を" + count + "芯で展開しました。"); render();
@@ -19506,15 +19577,16 @@
           const dy = Number(qs("#arrDy").value || 0);
           const created = [];
           for (let n = 1; n <= count; n++) {
-            selected.forEach(element => {
+            // n個目の複製は識別名をn個進める(CR1→CR2, CR3, CR4)。グループは複製の組ごとに新しいIDにする。
+            const batch = selected.map(element => {
               const copy = deepClone(element);
               copy.id = uid("el");
               copy.locked = false;
-              delete copy.group;
-              incrementDuplicateAttributes(copy);
+              incrementDuplicateAttributes(copy, n);
               translateElement(copy, dx * n, dy * n);
-              created.push(copy);
+              return copy;
             });
+            created.push(...remapCopiedGroups(batch));
           }
           page.elements.push(...created);
           setSelection(created.map(el => el.id));
@@ -19695,23 +19767,55 @@
         showToast(selected.length + "件を削除しました。", "元に戻す", () => restoreHistory(historyIndex - 1));
       }
 
-      // 選択要素を少しずらして複製。
-      function incrementTrailingCode(value) {
-        return String(value || "").replace(/([0-9A-F]+)$/i, digits => {
-          const radix = /[A-F]/i.test(digits) ? 16 : 10;
-          return (parseInt(digits, radix) + 1).toString(radix).toUpperCase().padStart(digits.length, "0");
-        });
+      // 識別名の末尾番号をstep個進める(Ctrl+D・等間隔複製)。ページ複製のアドレスオフセットと同じ規則:
+      //   1. 末尾がPLCの入出力アドレス(X/Y/RX/RY+16進。数字を1つ以上含み、先頭か英数字以外の直後)なら16進
+      //      例 X06F→X070、入力X060→入力X061
+      //   2. リンクデバイスB/W/SB/SWは数字部にA〜Fを含むときだけ16進(W0A→W0B)。W09→W10は10進のまま
+      //   3. それ以外は末尾の10進数字だけを、接頭辞と0埋め桁数を保って進める(PB9→PB10、CR01→CR02、1-9→1-10)
+      //   4. 末尾に数字が無い文字(MC、OFF、DC、COM)は変えない
+      // 旧実装は末尾のA〜Fまで16進と見なし、MC9→MCA・OFF→O100のように壊していた。
+      function incrementTrailingCode(value, step = 1) {
+        const text = String(value ?? "");
+        const amount = Math.trunc(Number(step) || 0);
+        if (!text || !amount) return text;
+        const bump = (prefix, digits, radix) => {
+          const next = parseInt(digits, radix) + amount;
+          if (!Number.isFinite(next) || next < 0) return text;
+          return prefix + next.toString(radix).toUpperCase().padStart(digits.length, "0");
+        };
+        const plcIo = text.match(/^(.*?(?:^|[^0-9A-Za-z]))((?:RX|RY|X|Y)([0-9A-Fa-f]+))$/i);
+        if (plcIo && /[0-9]/.test(plcIo[3])) return bump(text.slice(0, text.length - plcIo[3].length), plcIo[3], 16);
+        const link = text.match(/^(.*?(?:^|[^0-9A-Za-z]))((?:SB|SW|B|W)([0-9A-Fa-f]+))$/i);
+        if (link && /[0-9]/.test(link[3]) && /[A-Fa-f]/.test(link[3])) return bump(text.slice(0, text.length - link[3].length), link[3], 16);
+        const decimal = text.match(/^(.*?)(\d+)$/);
+        return decimal ? bump(decimal[1], decimal[2], 10) : text;
       }
 
-      // 複製した要素の識別名(タグ・ラベル・線番等)の末尾番号を1つ進める。
-      // fixedTag等のフラグが立っている項目は採番済みとみなして据え置く。
-      function incrementDuplicateAttributes(copy) {
+      // 複製した要素の識別名(タグ・ラベル・線番等)の末尾番号をtimes個進める(等間隔複製のn個目はn)。
+      // fixedTag等のフラグが立っている項目は採番済みとみなして据え置く。部品タグ固定(fixedTag)は
+      // 一括採番と同じくタグと表示ラベルの両方を固定扱いにする(ラベルはタグの表示を兼ねるため)。
+      function incrementDuplicateAttributes(copy, times = 1) {
         ["tag", "label", "wireNo", "cableTag", "coreNo"].forEach(key => {
-          if (copy[key] && !copy["fixed" + key[0].toUpperCase() + key.slice(1)]) copy[key] = incrementTrailingCode(copy[key]);
+          if (!copy[key] || copy["fixed" + key[0].toUpperCase() + key.slice(1)]) return;
+          if (key === "label" && copy.fixedTag) return;
+          copy[key] = incrementTrailingCode(copy[key], times);
         });
         if (copy.type === "plcBlock" && copy.pinText) {
-          copy.pinText = String(copy.pinText).split(/\r?\n/).map(incrementTrailingCode).join("\n");
+          copy.pinText = String(copy.pinText).split(/\r?\n/).map(line => incrementTrailingCode(line, times)).join("\n");
         }
+      }
+
+      // 複製・貼り付け・回路挿入で作った要素のグループIDを、操作ごとに新しいIDへ振り替える。
+      // 元のIDのままだと、複製をクリックしたときに元の要素まで一緒に選択・移動されてしまう。
+      // 同じ元グループに属していた複製同士は、新しい同じグループとしてまとまりを保つ。
+      function remapCopiedGroups(copies) {
+        const groupMap = new Map();
+        copies.forEach(copy => {
+          if (!copy || !copy.group) return;
+          if (!groupMap.has(copy.group)) groupMap.set(copy.group, uid("grp"));
+          copy.group = groupMap.get(copy.group);
+        });
+        return copies;
       }
 
       // 接続判定用の端点は端子中心に保ち、表示線だけを丸端子の外周まで短くする。
@@ -19737,6 +19841,7 @@
           }
           return copy;
         });
+        remapCopiedGroups(copies);
         page.elements.push(...copies);
         setSelection(copies.map(copy => copy.id));
         commitHistory(selected.length + "件の要素を複製しました。");
@@ -19772,6 +19877,7 @@
           }
           return copy;
         });
+        remapCopiedGroups(copies);
         page.elements.push(...copies);
         setSelection(copies.map(copy => copy.id));
         clipboardElement = copies.map(copy => deepClone(copy));
@@ -19812,6 +19918,9 @@
       }
 
       // 選択全体の境界中心を回転中心として剛体回転する(複数選択対応)。
+      // 境界中心はグリッド点とは限らないため、そのまま回すと押しボタン等の接続ピンがグリッドから外れる。
+      // スナップON時は90度単位の回転後に基準ピンをグリッド(ラダー枠では行)へ戻す平行移動を加える。
+      // 90度回転はグリッド間隔の倍数の差を保つので、グリッド上にあった他のピン・配線端点もグリッドに残る。
       function rotateSelected(degrees, center) {
         const selected = selectedElements();
         if (!selected.length) return;
@@ -19829,6 +19938,8 @@
           round(cx + (point[0] - cx) * Math.cos(angle) - (point[1] - cy) * Math.sin(angle)),
           round(cy + (point[0] - cx) * Math.sin(angle) + (point[1] - cy) * Math.cos(angle))
         ];
+        const quarter = ((Math.round(degrees) % 360) + 360) % 360;
+        const reference = state.settings.snap && quarter % 90 === 0 && quarter !== 0 ? rotationReference(selected) : null;
         selected.forEach(element => {
           if (element.points) {
             element.points = element.points.map(rot);
@@ -19839,8 +19950,87 @@
             element.rotation = ((Number(element.rotation || 0) + degrees) % 360 + 360) % 360;
           }
         });
+        if (reference) {
+          const moved = reference.locate();
+          const shift = moved ? rotationGridCorrection(moved, quarter, reference.frame) : null;
+          if (shift && (shift.x || shift.y)) selected.forEach(element => translateElement(element, shift.x, shift.y));
+        }
         commitHistory("要素を回転しました。");
         render();
+      }
+
+      // 回転後のグリッド合わせに使う基準点。グリッド(ラダー枠では行)上にある第1接続ピンを優先し、
+      // 無ければ主選択の第1接続ピン、部品が無ければ線ものの始点を使う。
+      // locate()は回転後に同じ点を要素から読み直す(丸め誤差を持ち込まないため)。
+      // frameは同点の要素の回転前の角度。グリッドの中間で迷うときの選び方を要素の向きに追従させ、
+      // 右回転→左回転や4回の90度回転で元の位置へ戻るようにする。
+      function rotationReference(elements) {
+        const pinOf = element => (element && !element.points ? elementFirstPin(element) : null);
+        const symbols = elements.filter(element => pinOf(element));
+        const owner = symbols.find(element => isGridAlignedPoint(pinOf(element))) || symbols[0];
+        if (owner) {
+          return { frame: Number(owner.rotation || 0), locate: () => pinOf(owner) };
+        }
+        const line = elements.find(element => Array.isArray(element.points) && element.points.length);
+        if (!line) return null;
+        return { frame: 0, locate: () => (line.points[0] ? { x: Number(line.points[0][0]), y: Number(line.points[0][1]) } : null) };
+      }
+
+      // 点がグリッド上(ラダー枠のYは行上も可)にあるか。
+      function isGridAlignedPoint(point) {
+        if (!point) return false;
+        const grid = Number(state.settings.grid || 2.5);
+        const onGrid = value => Math.abs(value - Math.round(value / grid) * grid) < .01;
+        if (!onGrid(point.x)) return false;
+        if (onGrid(point.y)) return true;
+        const page = currentPage();
+        if (!page || page.frameVariant !== "ladder") return false;
+        const row = LADDER_GRID.top + LADDER_GRID.pitch * Math.round((point.y - LADDER_GRID.top) / LADDER_GRID.pitch);
+        return Math.abs(row - point.y) < .01;
+      }
+
+      // 回転後の基準点をグリッドへ戻す平行移動量{x,y}。Xはグリッド、Yはラダー枠で行の近く(2.5mm以内、
+      // ドラッグ移動と同じ)なら行、それ以外はグリッドへ合わせる。グリッドのちょうど中間(ずれ=間隔の半分)
+      // では2候補になるため、回転中心(=回転+平行移動を1つの回転とみなした中心)の、要素から見た向きが
+      // 常に同じ側になる候補を選ぶ。これで逆回転や一周回転のたびに半グリッドずつ流れていかない。
+      function rotationGridCorrection(point, quarter, frame) {
+        const grid = Number(state.settings.grid || 2.5);
+        const axisOptions = (value, rowValue) => {
+          if (rowValue !== null) return [round(rowValue - value)];
+          const nearest = Math.round(value / grid) * grid;
+          const delta = nearest - value;
+          if (Math.abs(Math.abs(delta) - grid / 2) > .001) return [round(delta)];
+          return [round(delta), round(delta - Math.sign(delta) * grid)];
+        };
+        let rowY = null;
+        const page = currentPage();
+        if (page && page.frameVariant === "ladder") {
+          const row = LADDER_GRID.top + LADDER_GRID.pitch * Math.round((point.y - LADDER_GRID.top) / LADDER_GRID.pitch);
+          if (Math.abs(row - point.y) <= 2.5) rowY = row;
+        }
+        const xs = axisOptions(point.x, null);
+        const ys = axisOptions(point.y, rowY);
+        const candidates = [];
+        xs.forEach(x => ys.forEach(y => candidates.push({ x, y })));
+        if (candidates.length === 1) return candidates[0];
+        // 平行移動t=(I-R)e から回転中心のずれeを求め、要素の向き(frame)で戻した局所座標で比べる。
+        const pivotOffset = t => {
+          if (quarter === 90) return { x: (t.x - t.y) / 2, y: (t.x + t.y) / 2 };
+          if (quarter === 270) return { x: (t.x + t.y) / 2, y: (t.y - t.x) / 2 };
+          return { x: t.x / 2, y: t.y / 2 };
+        };
+        const rad = Number(frame || 0) * Math.PI / 180;
+        const local = t => {
+          const e = pivotOffset(t);
+          return { x: e.x * Math.cos(rad) + e.y * Math.sin(rad), y: -e.x * Math.sin(rad) + e.y * Math.cos(rad) };
+        };
+        return candidates.reduce((best, candidate) => {
+          const a = local(candidate);
+          const b = local(best);
+          if (a.x > b.x + 1e-6) return candidate;
+          if (Math.abs(a.x - b.x) <= 1e-6 && a.y > b.y + 1e-6) return candidate;
+          return best;
+        });
       }
 
       // 指定回転ダイアログを開く(角度90/180/270+回転中心=選択枠中心/座標指定)。
@@ -19854,6 +20044,9 @@
         const target = unionBounds(boxes);
         const cx = round(target.x + target.w / 2);
         const cy = round(target.y + target.h / 2);
+        // 右パネルの座標表示と同じく、中心Yは用紙下端からの「上が＋」で表示・入力し、内部座標へ戻して使う。
+        const pageHeight = pageSize(currentPage()).h;
+        const displayCy = round(pageHeight - cy);
         openDialog("指定回転", `
           <p class="muted">選択中の${selected.length}要素を、指定した中心のまわりに回転します。</p>
           <div class="row">
@@ -19869,7 +20062,7 @@
           </div>
           <div class="row" id="rotPointRow" style="display:none">
             <div><label>中心X mm</label><input id="rotCx" type="number" step="0.5" value="${cx}"></div>
-            <div><label>中心Y mm</label><input id="rotCy" type="number" step="0.5" value="${cy}"></div>
+            <div><label>中心Y mm（上が＋）</label><input id="rotCy" type="number" step="0.5" value="${displayCy}"></div>
           </div>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="rotApplyBtn" class="primary">回転</button>
@@ -19880,7 +20073,12 @@
         qs("#rotApplyBtn").addEventListener("click", () => {
           const degrees = Number(qs("#rotAngle").value || 90);
           const usePoint = qs("#rotCenter").value === "point";
-          const center = usePoint ? [Number(qs("#rotCx").value || cx), Number(qs("#rotCy").value || cy)] : null;
+          const readNumber = (id, fallback) => {
+            const raw = qs(id).value;
+            const value = Number(raw);
+            return raw === "" || !Number.isFinite(value) ? fallback : value;
+          };
+          const center = usePoint ? [readNumber("#rotCx", cx), round(pageHeight - readNumber("#rotCy", displayCy))] : null;
           closeDialog();
           rotateSelected(degrees, center);
         });
@@ -20303,15 +20501,24 @@
         return template;
       }
 
-      // 選択要素を指定量だけ平行移動(矢印キー移動)。
+      // 選択要素を指定量だけ平行移動(矢印キー・右パネルの←↑→↓)。
+      // ドラッグ移動と同じく、部品の接続点に刺さっている未選択配線の端点も一緒に動かす(配線を切らない)。
       function moveSelected(dx, dy) {
         const selected = selectedElements();
-        if (!selected.length) return;
+        const page = currentPage();
+        if (!selected.length || !page) return false;
         if (selected.some(isElementLocked)) {
           setStatus("ロックされた要素は移動できません。");
-          return;
+          return false;
         }
+        const selectedSet = currentSelectionIdSet();
+        const originals = selected.map(element => deepClone(element));
+        const attachedWires = page.elements
+          .filter(item => item.type === "wire" && !selectedSet.has(item.id))
+          .map(item => deepClone(item));
         selected.forEach(element => translateElement(element, dx, dy));
+        syncAttachedWireEndpoints(page, originals, attachedWires, dx, dy);
+        return true;
       }
 
       // 要素1個の平行移動(points系/x,y系の両対応)。
@@ -21464,12 +21671,13 @@
           if (!element) return;
           const beforeCount = Number(element.count || 1);
           const beforeOrientation = element.orientation || "horizontal";
+          const connectorPitch = connectorPitchHint(element);
           qsa("[data-terminal-field]", row).forEach(input => {
             const key = input.dataset.terminalField;
             element[key] = key === "terminalLabels" ? input.value.split(",").map(value => value.trim()).join("\n") : (input.type === "number" ? Number(input.value || 0) : input.value);
           });
           if (Number(element.count || 1) !== beforeCount || (element.orientation || "horizontal") !== beforeOrientation) {
-            resizeTerminalElementForOrientation(element);
+            resizeTerminalElementForOrientation(element, connectorPitch);
           }
         });
         if (close) closeDialog();
@@ -26868,8 +27076,7 @@
         const arrows = { ArrowLeft: [-nudge, 0], ArrowRight: [nudge, 0], ArrowUp: [0, -nudge], ArrowDown: [0, nudge] };
         if (arrows[event.key] && selectedElement()) {
           event.preventDefault();
-          moveSelected(arrows[event.key][0], arrows[event.key][1]);
-          commitHistory("要素を移動しました。");
+          if (moveSelected(arrows[event.key][0], arrows[event.key][1])) commitHistory("要素を移動しました。");
           render();
         }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
