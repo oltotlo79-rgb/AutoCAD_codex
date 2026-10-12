@@ -228,6 +228,8 @@ async function deleteFirstPage(page) {
 // 自動処理の説明に使う共通サンプル（電源投入回路＋ランプ行）。
 async function createSampleCircuit(page) {
   await addLadderPage(page);
+  // 空のP1を先に消し、線番が1頁目の番号(1-01…)で振られるようにする。
+  await deleteFirstPage(page);
   await openAction(page, "powerOn");
   await page.fill("#poRow", "1");
   await page.fill("#poKs", "SS1");
@@ -475,7 +477,6 @@ job(["06-component-selection.png", "07-wire-editing.png", "09-drawing-audit.png"
   "17-wire-type-manager.png", "18-symbol-builder.png", "19-history-timeline.png", "20-context-menu.png", "25-underlay.png"], async browser => {
   const { context, page } = await freshPage(browser);
   await createSampleCircuit(page);
-  await deleteFirstPage(page);
   await clickEmpty(page, 195, 280);
   const underlaySource = path.join(OUT, ".underlay-source.png");
   await hideCanvasHint(page);
