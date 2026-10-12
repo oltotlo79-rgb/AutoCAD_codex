@@ -204,8 +204,9 @@
     }
 
     .status {
-      /* 案内文の長さに関係なく、ボタンの残り幅だけを使う。 */
-      flex: 1 1 0;
+      /* 案内文の長さに関係なくボタン配置を変えない(基準幅は固定値)。ボタンの残り幅が
+         読める幅(360px)に満たないときは省略表示せず、ツールバーの次の行へ回して全幅を使う。 */
+      flex: 1 1 360px;
       min-width: 0;
       font-size: 12px;
       color: var(--muted);
@@ -245,6 +246,12 @@
       display: grid;
       grid-template-columns: 260px minmax(0, 1fr) 304px;
     }
+
+    /* キャンバスヒントを作業領域と同じセルへ重ねるため、各カラムの位置を明示する
+       (自動配置だとヒントがセルを占有して後続カラムがずれる)。 */
+    .shell > .palette { grid-column: 1; grid-row: 1; }
+    .shell > .workspace { grid-column: 2; grid-row: 1; }
+    .shell > .inspector { grid-column: 3; grid-row: 1; }
 
     /* ===== 左パネル(部品パレット)・右パネル共通のスクロール領域 ===== */
     .palette,
@@ -339,14 +346,19 @@
     }
 
     /* ===== 中央キャンバス ===== */
-    /* キャンバス上部の操作ヒント(現在のツールで何ができるかを常時案内) */
+    /* キャンバス上部の操作ヒント(現在のツールで何ができるかを常時案内)。
+       スクロールする.workspaceの外(同じグリッドセルへ重ねた層)に置き、縦横どちらへ
+       スクロール・拡大しても表示領域の上端中央に留める。左右はパネル開閉ボタン分を空ける。 */
     .canvas-hint {
-      position: sticky;
-      top: 8px;
+      grid-column: 2;
+      grid-row: 1;
+      align-self: start;
+      justify-self: center;
+      position: relative;
       z-index: 5;
       width: max-content;
-      max-width: 92%;
-      margin: 0 auto -28px;
+      max-width: calc(100% - 96px);
+      margin: 8px 0 0;
       padding: 4px 14px;
       border: 1px solid var(--line);
       border-radius: 999px;
@@ -475,6 +487,12 @@
       gap: 8px;
     }
 
+    /* 右パネルの2列入力で片方の見出しが長く2行に折り返しても、入力欄の高さをそろえる
+       (見出し+入力欄だけのセルを下端合わせにする。チェックボックス行やボタン行は対象外)。 */
+    .inspector .row > div:has(> label:first-child + :is(input, select, textarea):last-child) {
+      align-self: end;
+    }
+
     .row-3 {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
@@ -502,7 +520,9 @@
       display: grid;
       place-items: center;
       background: rgba(20, 31, 44, .42);
-      z-index: 10;
+      /* 画面に浮かぶ操作UI(パネル開閉35・下部HUD30・ミニツールバー42・寸法入力46・
+         その場編集60・右クリックメニュー70)より前面に置き、モーダル中は触れないようにする。 */
+      z-index: 80;
     }
 
     .dialog-backdrop.hidden { display: none; }
@@ -605,7 +625,10 @@
         background: #fff;
       }
 
-      .app { display: none; }
+      /* body直下の画面UI(パネル開閉ボタン・下部HUD・トースト・ミニツールバー・寸法入力・
+         右クリックメニュー・ダイアログ・その場編集等)も.appの外にあるため、印刷シート以外を一括で隠す。 */
+      .app,
+      body > :not(.print-sheets) { display: none !important; }
       .print-sheets { display: block; }
 
       .print-sheet {
@@ -703,7 +726,13 @@
     .palette-item:hover .palette-icon { transform: scale(1.09); }
 
     /* --- 右パネル: ページ設定/選択部品のタブ切替 --- */
-    .inspector-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+    /* 部品選択時の自動スクロールや長い編集欄のスクロールでも、タブ帯は右パネル上端に留める。
+       上側の余白(パネルのpadding)ごと覆い、下を流れる入力欄が透けないよう背景を敷く。 */
+    .inspector-tabs {
+      display: flex; gap: 4px; margin: -12px -12px 10px; padding: 12px 12px 8px;
+      position: sticky; top: -12px; z-index: 3; background: #fbfcfe;
+      box-shadow: 0 1px 0 #e3e9ef;
+    }
     .inspector-tabs button {
       flex: 1; padding: 6px 4px; font-size: 12px; cursor: pointer;
       border: 1px solid #c8d0d8; border-radius: 6px; background: #f2f5f8; color: #46505a;
@@ -1007,12 +1036,13 @@
     }
     .context-menu button:hover { background: #eef4f2; color: var(--accent); box-shadow: none; transform: none; }
     .context-menu button:disabled { opacity: .45; }
+    /* パネル開閉ボタン。パネルの見出しや入力欄へ重ならないよう、作業領域の上端左右
+       (パネルとの境目)へ置く。位置はupdateProductivityUi()が作業領域の実寸から決める。 */
     .panel-collapse {
-      position: fixed; z-index: 35; top: 104px; width: 28px; height: 38px;
+      position: fixed; z-index: 35; top: 104px; left: 0; width: 28px; height: 38px;
       padding: 0; border-radius: 0 8px 8px 0; box-shadow: var(--shadow);
     }
-    #toggleLeftPanel { left: 0; }
-    #toggleRightPanel { right: 0; border-radius: 8px 0 0 8px; }
+    #toggleRightPanel { border-radius: 8px 0 0 8px; }
     .app.left-collapsed .shell { grid-template-columns: 0 minmax(0, 1fr) 304px; }
     .app.right-collapsed .shell { grid-template-columns: 260px minmax(0, 1fr) 0; }
     .app.left-collapsed.right-collapsed .shell { grid-template-columns: 0 minmax(0, 1fr) 0; }
@@ -1045,7 +1075,8 @@
     }
     /* 数値入力の確定・取消後は表示を消す(hiddenクラスだけでは消えず、入力欄が画面に残り続けていた) */
     .draw-input.hidden { display: none; }
-    .toast-stack { position: fixed; right: 14px; bottom: 48px; z-index: 70; display: grid; gap: 7px; }
+    /* 通知はダイアログ(80)の上にも読めるように最前面へ置く。 */
+    .toast-stack { position: fixed; right: 14px; bottom: 48px; z-index: 90; display: grid; gap: 7px; }
     .toast {
       max-width: 360px; padding: 9px 12px; color: #fff; background: #173440;
       border-radius: 7px; box-shadow: var(--shadow); animation: toast-in .18s ease-out;
@@ -1056,6 +1087,19 @@
     .page-nav-card { padding:8px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; }
     .page-nav-card.active { outline:2px solid var(--accent); }
     .page-nav-card svg { width:100%; height:105px; background:#f4f6f7; }
+    /* 端子台エディタ(13列の一覧)。入力欄は幅100%のため表の自動レイアウトでは潰れて
+       セレクトが矢印だけになる。列ごとに最小幅を与え、見出し・ページ名は1行に保つ。
+       収まらない分はダイアログ内の横スクロールで見せる。 */
+    #dialogBody table:has([data-terminal-row]) th,
+    #dialogBody [data-terminal-row] > td { white-space: nowrap; }
+    #dialogBody [data-terminal-field] { min-width: 60px; }
+    #dialogBody select[data-terminal-field] { min-width: 64px; }
+    #dialogBody [data-terminal-field="count"],
+    #dialogBody [data-terminal-field="start"] { min-width: 52px; }
+    #dialogBody [data-terminal-field="label"],
+    #dialogBody [data-terminal-field="terminalLabels"],
+    #dialogBody [data-terminal-field="jumpers"],
+    #dialogBody [data-terminal-field="accessories"] { min-width: 88px; }
     .context-sep { height: 1px; background: #e6ebf1; margin: 4px 6px; }
 
     /* --- モーション低減設定の尊重(全アニメ・遷移を実質停止) --- */
@@ -1272,9 +1316,10 @@
         </div>
       </aside>
 
-      <!-- 中央: 図面キャンバス。drawPageSvg()がSVGを再構築し、pointerイベントで作図/選択する -->
+      <!-- 中央: 図面キャンバス。drawPageSvg()がSVGを再構築し、pointerイベントで作図/選択する。
+           操作ヒントはスクロールで流れないよう作業領域の外に置き、同じセルへ重ねて表示する -->
+      <div id="canvasHint" class="canvas-hint" aria-live="polite"></div>
       <section class="workspace" id="workspace">
-        <div id="canvasHint" class="canvas-hint" aria-live="polite"></div>
         <div class="stage">
           <svg id="canvas" class="drawing-page" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="図面キャンバス"></svg>
         </div>
@@ -3626,9 +3671,12 @@
 
       // 下絵画像だけをアセット参照へ置き換えたUndo用スナップショットを作る。
       // JSON保存・localStorageバックアップにはこの省略形式を使わず、完全なstateを書き込む。
+      // ズーム倍率は見え方だけの設定なので履歴に含めない(ズームだけの差で履歴が増えたり、
+      // Undoで表示倍率が戻ったりしないようにする。restoreHistoryは現在の倍率を保つ)。
       function serializeHistorySnapshot() {
         const refs = new Set();
         const snapshot = JSON.stringify(state, function(key, value) {
+          if (key === "zoom" && this === state.settings) return undefined;
           if (key !== "imageData" || this?.type !== "underlayImage" || typeof value !== "string" || !value) return value;
           let ref = typeof this.imageAssetId === "string" ? this.imageAssetId : "";
           const sharedRef = historyImageRefByData.get(value);
@@ -3827,10 +3875,13 @@
           selectedId,
           selectedIds: selectedIds.slice()
         };
+        // 履歴はズーム倍率を持たないため、Undo/Redoしても今の表示倍率のままにする。
+        const viewZoom = state.settings?.zoom;
         try {
           const restored = parseHistorySnapshot(history[index]);
           replaceStateContents(restored);
           ensureProjectDefaults();
+          if (viewZoom !== undefined) state.settings.zoom = viewZoom;
           if (!state.pages.some(page => page.id === state.activePageId)) state.activePageId = state.pages[0]?.id || "";
           pageCounter = state.pages.length + 1;
           historyIndex = index;
@@ -5330,7 +5381,16 @@
         }
       }
 
-      // 下絵画像の描画(透明度・クロップ表示・ロック時は淡色枠)。
+      // 下絵の不透明度(大きいほど濃い)を0.05〜1へ正規化する。1を超える値は百分率の入力
+      // (例: 30 → 0.3)とみなす。未設定・数値でない値は既定の0.35。
+      function underlayOpacity(value) {
+        let opacity = Number(value ?? .35);
+        if (!Number.isFinite(opacity)) opacity = .35;
+        if (opacity > 1) opacity /= 100;
+        return round(Math.max(.05, Math.min(1, opacity)));
+      }
+
+      // 下絵画像の描画(不透明度・クロップ表示・ロック時は淡色枠)。
       function drawUnderlayImage(g, element) {
         const w = Number(element.w || 100);
         const h = Number(element.h || 70);
@@ -5342,7 +5402,7 @@
             y: crop.y ? -crop.y * h / crop.h : 0,
             width: w / crop.w,
             height: h / crop.h,
-            opacity: Number(element.opacity ?? .35),
+            opacity: underlayOpacity(element.opacity),
             preserveAspectRatio: "none"
           };
           if (crop.w < 1 || crop.h < 1) {
@@ -11950,12 +12010,31 @@
         return Math.max(min, Math.min(max, Number.isFinite(zoom) ? zoom : 3.2));
       }
 
-      // ズーム設定+再描画(save=trueで履歴にも記録)。
-      function setZoom(value, save = false) {
+      // ズーム設定+再描画。ズームは見え方だけの変更なので、どの経路(ボタン・スライダー・
+      // +/-キー・Ctrl+ホイール・ピンチ・全体表示)でも履歴を積まず「未保存」にもしない。
+      // 値はstate.settingsにあるので次の保存・自動バックアップにはそのまま含まれる。
+      function setZoom(value) {
         state.settings.zoom = clampZoom(value);
         setValue("zoomRange", state.settings.zoom);
-        if (save) commitHistory("ズームを変更しました。");
         render();
+      }
+
+      // ズームしても指定した画面座標(clientX/Y)の下にある図面上の点が動かないよう、
+      // 再描画後に作業領域のスクロールを補正する(Ctrl+ホイールのカーソル位置ズーム)。
+      // svgは拡大縮小前後で同じ要素(単一表示の#canvas/並べて表示のページSVG)を渡す。
+      function zoomAtClientPoint(value, svg, clientX, clientY) {
+        const workspace = qs(".workspace");
+        const before = svg?.getBoundingClientRect();
+        if (!workspace || !before || !before.width || !before.height) {
+          setZoom(value);
+          return;
+        }
+        const fx = (clientX - before.left) / before.width;
+        const fy = (clientY - before.top) / before.height;
+        setZoom(value);
+        const after = svg.getBoundingClientRect();
+        workspace.scrollLeft += after.left + fx * after.width - clientX;
+        workspace.scrollTop += after.top + fy * after.height - clientY;
       }
 
       // 標準セレクタの選択肢を構築(組込+取込済み標準パック)。
@@ -12004,12 +12083,16 @@
         if (selectedId && selectedId !== lastScrolledSelectionId) {
           lastScrolledSelectionId = selectedId;
           // rAFはタブ非表示時に停止するためsetTimeoutで確実に実行する。
+          // 基準は上端に留まるタブ帯の下端。パネル上端をタブ帯の直下へ合わせ、
+          // 「ページ設定」「選択部品」タブを隠さない(前の要素で下へスクロールしていた場合は戻す)。
           setTimeout(() => {
             const inspector = qs(".inspector");
             const panelNow = qs("#selectionPanel");
-            if (!inspector || !panelNow) return;
-            const delta = panelNow.getBoundingClientRect().top - inspector.getBoundingClientRect().top;
-            if (delta > 40) inspector.scrollTop += delta - 6;
+            if (!inspector || !panelNow || panelNow.classList.contains("hidden")) return;
+            const tabs = qs("#inspectorTabs");
+            const top = tabs ? tabs.getBoundingClientRect().bottom : inspector.getBoundingClientRect().top;
+            const delta = panelNow.getBoundingClientRect().top - top;
+            if (delta > 40 || delta < 0) inspector.scrollTop += delta - 6;
           }, 0);
         } else if (!selectedId) {
           lastScrolledSelectionId = null;
@@ -12326,15 +12409,18 @@
 
       // 位置・寸法など全要素共通の編集フィールド定義。
       function normalFields(element) {
-        const anchor = primaryConnectionPoint(element) || { x: Number(element.x || 0), y: Number(element.y || 0) };
+        const pin = primaryConnectionPoint(element);
+        const anchor = pin || { x: Number(element.x || 0), y: Number(element.y || 0) };
+        // 接続点を持たない要素(下絵・文字・表・枠など)の座標は外形左上なので「位置」と表示する。
+        const coordinateLabel = pin ? "接続点" : "位置";
         // 形の決まった記号(geoシンボル)は枠の幅/高さを変えても記号は大きくならず、枠の中央へ寄せ直されて
         // 接続ピンだけがずれる(配線が外れる)。角ハンドルと同じく数値入力も読み取り専用にする。
         const fixedShape = !!geoFor(element);
         const sizeLock = fixedShape ? ` disabled title="${FIXED_SHAPE_SIZE_HINT}"` : "";
         return `
           <div class="row">
-            <div><label>接続点 X mm</label><input data-bind="x" data-anchor-coordinate="true" data-kind="number" type="number" step="0.5" value="${round(anchor.x)}"></div>
-            <div><label>接続点 Y mm（上が＋）</label><input data-bind="y" data-anchor-coordinate="true" data-coordinate-y="true" data-kind="number" type="number" step="0.5" value="${round(pageSize(currentPage()).h - anchor.y)}"></div>
+            <div><label>${coordinateLabel} X mm</label><input data-bind="x" data-anchor-coordinate="true" data-kind="number" type="number" step="0.5" value="${round(anchor.x)}"></div>
+            <div><label>${coordinateLabel} Y mm（上が＋）</label><input data-bind="y" data-anchor-coordinate="true" data-coordinate-y="true" data-kind="number" type="number" step="0.5" value="${round(pageSize(currentPage()).h - anchor.y)}"></div>
           </div>
           <div class="row"${fixedShape ? ` title="${FIXED_SHAPE_SIZE_HINT}"` : ""}>
             <div><label>幅 mm</label><input data-bind="w" data-kind="number" type="number" step="0.5" value="${round(element.w || defaultElement(element.type).w || 20)}"${sizeLock}></div>
@@ -12782,8 +12868,8 @@
         if (element.type === "underlayImage") {
           const crop = element.cropPreset || "full";
           return `
-            <label>透明度</label>
-            <input data-bind="opacity" data-kind="number" type="number" min="0.05" max="1" step="0.05" value="${round(element.opacity ?? .35)}">
+            <label title="1より大きい値は百分率として扱います（例: 30 → 0.3）">不透明度（0.05〜1・小さいほど薄い）</label>
+            <input data-bind="opacity" data-kind="number" type="number" min="0.05" max="1" step="0.05" value="${underlayOpacity(element.opacity)}" title="1より大きい値は百分率として扱います（例: 30 → 0.3）">
             <label>表示範囲</label>
             <select data-bind="cropPreset">
               <option value="full"${crop === "full" ? " selected" : ""}>全体</option>
@@ -13358,6 +13444,11 @@
           return;
         }
         if (input.dataset.coordinateY === "true") value = pageSize(currentPage()).h - value;
+        // 下絵の不透明度は0.05〜1へ丸める(30等は百分率扱い)。入力途中の欄は書き換えず、確定時だけ表示を直す。
+        if (key === "opacity" && element.type === "underlayImage") {
+          value = underlayOpacity(value);
+          if (save) input.value = String(value);
+        }
         const pointMatch = key.match(/^p(\d+)(x|y)$/);
         // 形状・向き・デザイン等の切替で要素寸法が変わる可能性のあるキー。
         // 切替の前後で第1接続ピンの絶対位置を保存し、寸法変更によるピンのズレを常に打ち消す。
@@ -14620,9 +14711,9 @@
         const workspace = qs("#workspace");
         const w = Math.max(240, workspace.clientWidth - 90);
         const h = Math.max(240, workspace.clientHeight - 90);
-        state.settings.zoom = clampZoom(Math.min(w / size.w, h / size.h));
-        commitHistory("用紙全体を表示しました。");
-        render();
+        // 表示倍率だけの変更なので履歴は積まない(setZoom参照)。
+        setZoom(Math.min(w / size.w, h / size.h));
+        setStatus("用紙全体を表示しました。");
       }
 
       // 空ページを追加してアクティブ化。
@@ -15671,7 +15762,7 @@
       // 設備ラダーページ追加ダイアログを開く(レール名/注記)。
       function showFacilityLadderDialog() {
         openDialog("設備ラダーページ", `
-          <label>左レール名（カンマ区切り・右から順に配置）</label>
+          <label>左レール名（カンマ区切り・1つ目を左端に右へ順に配置）</label>
           <input id="ladRails" value="P1" placeholder="P1,P2,P3">
           <div class="row">
             <div><label>右レール名</label><input id="ladRight" value="N1"></div>
@@ -15695,7 +15786,8 @@
           frameVariant: "compact",
           title: "リレー回路"
         });
-        (rails.length ? rails : ["P1"]).forEach((name, i) => {
+        const leftRails = rails.length ? rails : ["P1"];
+        leftRails.forEach((name, i) => {
           // 複数レールは右方向へ展開する(左へ広げると図枠の行番号帯(x≈25.5)を貫通するため)。
           // ピッチ5mm=2.5mmグリッド整合(タップ配線がグリッドに乗る)。
           const x = round(32.5 + 5 * i);
@@ -15706,7 +15798,9 @@
         });
         page.elements.push(...facilityRailElements(rightName, 147.5, "-", 22.4));
         page.elements.push(textElement(round(147.5 - rightName.length * 0.62), 222.4, rightName, 2.2, 0, 12));
-        if (note) page.elements.push(textElement(40, 24.5, note, 1.9, 0, 20));
+        // 電源注記は最後の左レールの7.5mm右(2.5mmグリッド上)。レール1本なら従来どおりx=40で、
+        // 3本以上でも右端レールの⊕へ重ならない。
+        if (note) page.elements.push(textElement(round(32.5 + 5 * (leftRails.length - 1) + 7.5), 24.5, note, 1.9, 0, 20));
         state.pages.push(page);
         state.activePageId = page.id;
         setSelection([]);
@@ -18437,9 +18531,18 @@
         app.classList.toggle("right-collapsed", !!state.settings.rightPanelCollapsed);
         qs("#toggleLeftPanel").textContent = state.settings.leftPanelCollapsed ? "›" : "‹";
         qs("#toggleRightPanel").textContent = state.settings.rightPanelCollapsed ? "‹" : "›";
-        const panelTop = qs(".shell").getBoundingClientRect().top + 8 + "px";
-        qs("#toggleLeftPanel").style.top = panelTop;
-        qs("#toggleRightPanel").style.top = panelTop;
+        // 開閉ボタンは作業領域の上端左右(パネルとの境目)へ置く。パネル側に置くと
+        // 「部品パレット」見出しや「選択部品」タブ・スクロール中の入力欄へ重なるため。
+        // 右側は縦スクロールバーの内側に置き、スクロールつまみを隠さない。
+        const workspace = qs(".workspace");
+        const workspaceBox = workspace.getBoundingClientRect();
+        const leftToggle = qs("#toggleLeftPanel");
+        const rightToggle = qs("#toggleRightPanel");
+        const panelTop = workspaceBox.top + 8 + "px";
+        leftToggle.style.top = panelTop;
+        rightToggle.style.top = panelTop;
+        leftToggle.style.left = workspaceBox.left + "px";
+        rightToggle.style.left = workspaceBox.left + workspace.clientLeft + workspace.clientWidth - rightToggle.offsetWidth + "px";
         qsa("#quickRibbon [data-tool]").forEach(button => button.classList.toggle("active", button.dataset.tool === activeTool));
         updateShortcutLabels();
         qs("#ribbonAudit")?.classList.toggle("active", !!state.settings.auditOverlay);
@@ -18453,18 +18556,23 @@
       }
 
       // 選択要素の近くへ出すミニツールバー(配線・回転・複製・編集)を描画する。
-      // 選択が無い/ドラッグ中/文字編集中は隠す(操作の邪魔をしないため)。
+      // 選択が無い/ドラッグ中/文字編集中/ダイアログ表示中は隠す(操作の邪魔をしないため)。
       function renderMiniToolbar() {
         const host = qs("#miniToolbar");
         const element = selectedElement();
-        if (!host || !element || dragState || inlineEdit) {
+        if (!host || !element || dragState || inlineEdit || isDialogOpen()) {
           host?.classList.add("hidden");
           return;
         }
-        const svg = qs("#canvas");
-        const node = svg?.querySelector(`[data-id="${CSS.escape(element.id)}"]`);
-        if (!node) { host.classList.add("hidden"); return; }
+        const node = qs("#canvas")?.querySelector(`[data-id="${CSS.escape(element.id)}"]`);
+        const workspace = qs(".workspace");
+        if (!node || !workspace) { host.classList.add("hidden"); return; }
         const box = node.getBoundingClientRect();
+        const area = workspace.getBoundingClientRect();
+        // 作業領域のスクロールで要素が見えなくなったら隠す(離れた位置に残ると対象が分からないため)。
+        const visible = box.right >= area.left && box.left <= area.left + workspace.clientWidth
+          && box.bottom >= area.top && box.top <= area.top + workspace.clientHeight;
+        if (!visible) { host.classList.add("hidden"); return; }
         const actions = element.type === "wire"
           ? [["線番", () => startInlineEdit(element)], ["曲がり角＋", addSelectedWirePoint], ["分割", splitSelectedWire], ["削除", deleteSelected]]
           : element.type === "text"
@@ -18473,14 +18581,17 @@
         host.innerHTML = "";
         actions.forEach(([label, run]) => {
           const button = document.createElement("button");
-          button.type = "button"; button.textContent = label; button.onclick = run; host.appendChild(button);
+          button.type = "button"; button.textContent = label;
+          // モーダル表示中は図面を変更させない(重なり順に加えた二重の安全策)。
+          button.onclick = () => { if (!isDialogOpen()) run(); };
+          host.appendChild(button);
         });
         host.classList.remove("hidden");
         // 選択ハンドルや接続点の操作を邪魔しないよう、要素からしっかり離す。
         // キャンバス領域の上に収まらないときは要素の下側へ出す。
         host.style.left = Math.max(8, Math.min(window.innerWidth - 280, box.left)) + "px";
         const above = box.top - 64;
-        const workspaceTop = qs(".workspace").getBoundingClientRect().top + 8;
+        const workspaceTop = area.top + 8;
         host.style.top = Math.max(workspaceTop, above >= workspaceTop ? above : Math.min(window.innerHeight - 48, box.bottom + 28)) + "px";
       }
 
@@ -18572,6 +18683,10 @@
           card.draggable = true; card.dataset.pageId = page.id;
           const svg = svgEl("svg", { viewBox: `0 0 ${pageSize(page).w} ${pageSize(page).h}` });
           drawPageSvg(svg, page, { selection: false, grid: false, scaled: false, output: true });
+          // drawPageSvgが付けるインライン寸法(100%)を外し、.page-nav-card svgの固定高さで
+          // 縮小表示する(残すと用紙比率で縦に伸び、下のページ名が隠れる)。
+          svg.style.width = "";
+          svg.style.height = "";
           card.append(svg);
           const label = document.createElement("div"); label.textContent = `${index + 1}. ${page.name || ""}`; card.append(label);
           card.onclick = () => { state.activePageId = page.id; setSelection([]); closeDialog(); render(); };
@@ -21692,7 +21807,7 @@
             <button type="button" id="applyTerminalEditorBtn" class="primary">適用</button>
           </div>
         `;
-        openDialog("端子台エディタ", html);
+        openDialog("端子台エディタ", html, { wide: true });
         qs("#applyTerminalEditorBtn").addEventListener("click", applyTerminalEditor);
         // 各行の「詳細」でその端子台の端子単位詳細を開く(一覧の編集は先に反映する)。
         qsa("[data-terminal-detail-open]", qs("#dialogBody")).forEach(button => {
@@ -24029,16 +24144,49 @@
       }
 
       // 共通ダイアログを開く(タイトル+HTML本文を差し込み)。
+      // モーダル中に図面を触れないよう、右クリックメニューとミニツールバーは閉じる。
       function openDialog(title, html, opts = {}) {
         qs("#dialogTitle").textContent = title;
         qs("#dialogBody").innerHTML = html;
         qs("#dialogBackdrop .dialog")?.classList.toggle("wide", opts.wide === true);
         qs("#dialogBackdrop").classList.remove("hidden");
+        hideContextMenu();
+        renderMiniToolbar();
       }
 
-      // 共通ダイアログを閉じる。
+      // 共通ダイアログを閉じる(隠していたミニツールバーを選択要素の近くへ戻す)。
       function closeDialog() {
         qs("#dialogBackdrop").classList.add("hidden");
+        renderMiniToolbar();
+      }
+
+      // 共通ダイアログ(モーダル)を表示中か。表示中は作図ショートカットやミニツールバーを止める。
+      function isDialogOpen() {
+        const backdrop = qs("#dialogBackdrop");
+        return !!backdrop && !backdrop.classList.contains("hidden");
+      }
+
+      // ダイアログ表示中のTab/Shift+Tabでフォーカスをダイアログ内に循環させる。
+      // 端から先へ進むと裏のツールバー等へ移り、Enterで裏のボタンを押せてしまうため。
+      function keepFocusInDialog(event) {
+        const dialog = qs("#dialogBackdrop .dialog");
+        if (!dialog) return;
+        const focusable = qsa("button, input, select, textarea, summary, a[href], [tabindex]:not([tabindex='-1'])", dialog)
+          .filter(node => !node.disabled && node.getClientRects().length > 0);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (!dialog.contains(active)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        } else if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first.focus();
+        } else if (event.shiftKey && active === first) {
+          event.preventDefault();
+          last.focus();
+        }
       }
 
       // 現在ページをDXFファイルへ出力。
@@ -25715,12 +25863,12 @@
         qsa("[data-tool]").forEach(button => {
           button.addEventListener("click", () => setActiveTool(button.dataset.tool));
         });
-        qs("#zoomRange").addEventListener("input", event => setZoom(event.target.value, false));
-        qs("#zoomRange").addEventListener("change", () => commitHistory("ズームを変更しました。"));
+        // ズームは表示だけの変更なので履歴を積まない(setZoom参照)。
+        qs("#zoomRange").addEventListener("input", event => setZoom(event.target.value));
         // 高倍率域では1クリックの変化量を大きくする(比例ステップ)。
-        qs("#zoomOutBtn").addEventListener("click", () => setZoom(state.settings.zoom / 1.25, true));
-        qs("#zoomInBtn").addEventListener("click", () => setZoom(state.settings.zoom * 1.25, true));
-        qs("#actualSizeBtn").addEventListener("click", () => setZoom(3.78, true));
+        qs("#zoomOutBtn").addEventListener("click", () => setZoom(state.settings.zoom / 1.25));
+        qs("#zoomInBtn").addEventListener("click", () => setZoom(state.settings.zoom * 1.25));
+        qs("#actualSizeBtn").addEventListener("click", () => setZoom(3.78));
         qs("#fitPageBtn").addEventListener("click", fitPageToWorkspace);
         qs("#pageViewMode").addEventListener("change", event => {
           const value = event.target.value;
@@ -25804,7 +25952,11 @@
         document.addEventListener("pointerdown", event => {
           if (!event.target.closest("#contextMenu")) hideContextMenu();
         });
-        qs(".workspace")?.addEventListener("scroll", hideContextMenu, { passive: true });
+        // 作業領域のスクロールで要素が動くので、ミニツールバーも要素の近くへ置き直す。
+        qs(".workspace")?.addEventListener("scroll", () => {
+          hideContextMenu();
+          renderMiniToolbar();
+        }, { passive: true });
         window.addEventListener("resize", () => {
           hideContextMenu();
           updateProductivityUi();
@@ -25906,13 +26058,13 @@
         return !!pinchState;
       }
 
-      // Ctrl+ホイールでズーム(カーソル位置基準)。
+      // Ctrl+ホイールでズーム(カーソル位置基準: カーソル下の図面上の点を動かさない)。
       function onCanvasWheel(event) {
         if (!event.ctrlKey && !event.metaKey) return;
         event.preventDefault();
         // 高倍率でも一定の体感になるよう比例ステップでズームする。
         const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-        setZoom(state.settings.zoom * factor, false);
+        zoomAtClientPoint(state.settings.zoom * factor, event.currentTarget, event.clientX, event.clientY);
       }
 
       // キャンバス押下の入口。優先順: 点編集ハンドル → リサイズハンドル → 作図ツール(配線/直線等の開始) →
@@ -27048,12 +27200,26 @@
           saveProject();
           return;
         }
+        // モーダルダイアログ表示中は作図ショートカットを一切効かせない。Tab=フォーカス移動、
+        // Enter/Space=ボタン実行、Delete/文字=入力などをダイアログ内の操作へ委ね、裏の図面
+        // (ツール切替・削除・Undo・集中表示等)を変えない。Escは閉じる。Ctrl+Sは図面を
+        // 変えない保存だけなので上で先に受け付ける(ブラウザの「ページを保存」も防ぐ)。
+        if (isDialogOpen()) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closeDialog();
+          } else if (event.key === "Tab") {
+            keepFocusInDialog(event);
+          }
+          return;
+        }
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
           event.preventDefault();
           showCommandPalette();
           return;
         }
-        // Esc: メニュー → ダイアログ → (入力欄は既定動作) → ドラッグ取消 → 配置終了 → 選択解除。
+        // Esc: (ダイアログは上で処理済み) 属性スポイト → メニュー → (入力欄は既定動作) →
+        // ドラッグ取消 → 配置終了 → 選択解除。
         if (event.key === "Escape") {
           if (attributeBrush) {
             attributeBrush = null;
@@ -27063,11 +27229,6 @@
           const menu = qs("#contextMenu");
           if (menu && !menu.classList.contains("hidden")) {
             hideContextMenu();
-            return;
-          }
-          const backdrop = qs("#dialogBackdrop");
-          if (backdrop && !backdrop.classList.contains("hidden")) {
-            closeDialog();
             return;
           }
           if (editing) return;
@@ -27179,15 +27340,15 @@
             setActiveTool(tool);
             return;
           }
-          // ズーム: + / - / 0(全体表示)。
+          // ズーム: + / - / 0(全体表示)。表示倍率の変更なので履歴・未保存状態は変えない。
           if (event.key === "+" || event.key === "=") {
             event.preventDefault();
-            setZoom(state.settings.zoom * 1.25, true);
+            setZoom(state.settings.zoom * 1.25);
             return;
           }
           if (event.key === "-") {
             event.preventDefault();
-            setZoom(state.settings.zoom / 1.25, true);
+            setZoom(state.settings.zoom / 1.25);
             return;
           }
           if (event.key === "0") {
