@@ -12743,11 +12743,11 @@
       // 単一要素の切替はupdateSelectedFromInputのGEOMETRY_KEYS経路が同じ規則で処理する。
       function applySymbolVariantTo(element, value) {
         const pinBefore = elementFirstPin(element);
-        const connectorPitch = connectorPitchHint(element);
+        const terminalHint = terminalPitchHint(element);
         element.symbolVariant = value;
         if (!resizeGeoElementForOrientation(element)) {
           if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
-          if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element, connectorPitch);
+          if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element, terminalHint);
           if (element.type === "lamp") { element.w = 10; element.h = 10; }
           if (element.type === "buzzer") { element.w = 12.5; element.h = 6; }
           if (element.type === "powerSupply") { element.w = 35; element.h = 25; }
@@ -13614,6 +13614,13 @@
           const to = underlayCropRect(value);
           element.w = round(Number(element.w || 1) * (from.h / from.w) * (to.w / to.h));
         }
+        // 回転欄: 90度の倍数は左90°/右90°ボタンと同じ回し方(applyRotationFieldValue参照)。
+        if (key === "rotation" && !element.points) {
+          applyRotationFieldValue(element, value);
+          if (save) commitHistory("要素を回転しました。", { mergeKey: "field:" + element.id + ":" + key });
+          render(save ? {} : { light: true });
+          return;
+        }
         const pointMatch = key.match(/^p(\d+)(x|y)$/);
         // 形状・向き・デザイン等の切替で要素寸法が変わる可能性のあるキー。
         // 切替の前後で第1接続ピンの絶対位置を保存し、寸法変更によるピンのズレを常に打ち消す。
@@ -13635,7 +13642,7 @@
         } else if (pointMatch && element.points?.[Number(pointMatch[1])]) {
           element.points[Number(pointMatch[1])][pointMatch[2] === "x" ? 0 : 1] = value;
         } else {
-          const connectorPitch = connectorPitchHint(element);
+          const terminalHint = terminalPitchHint(element);
           const deviceLayoutBefore = element.type === "deviceBox" ? deviceBoxPinLayout(element) : null;
           element[key] = value;
           // 右パネルで線番の表示/非表示を選んだら利用者の指定として扱い、線番採番で上書きしない。
@@ -13662,14 +13669,14 @@
               item.id !== element.id && item.type === element.type && componentTag(item) === value));
             if (dup) setStatus("注意: 同種部品でタグ「" + value + "」が重複しています。");
           }
-          if (["orientation", "count", "stripStyle", "levels", "comTerminal", "cardMode", "zeroVTerminal"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element, connectorPitch);
+          if (["orientation", "count", "stripStyle", "levels", "comTerminal", "cardMode", "zeroVTerminal"].includes(key) && ["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element, terminalHint);
           if (key === "orientation" && element.type === "terminal" && !resizeGeoElementForOrientation(element)) resizeSingleTerminalForOrientation(element);
           if (key === "orientation" && ["contactNO", "contactNC", "contactor", "pushButton", "selectorSwitch", "limitSwitch", "proximitySwitch", "pressureSwitch", "thermalRelay", "thermalElement", "contactBlock"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeContactElementForOrientation(element);
           if (key === "orientation" && ["fuse", "breaker", "resistor"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
           if (["pbStyle", "resistorStyle", "markStyle", "sign", "lampVariant", "buzzerVariant", "terminalShape", "connStyle", "blockContact", "symbolVariant", "contactGap"].includes(key)) {
             if (!resizeGeoElementForOrientation(element)) {
               if (element.type === "terminal") resizeSingleTerminalForOrientation(element);
-              if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element, connectorPitch);
+              if (["terminalStrip", "connector"].includes(element.type)) resizeTerminalElementForOrientation(element, terminalHint);
               if (element.type === "lamp") { element.w = 10; element.h = 10; }
               if (element.type === "buzzer") { element.w = 12.5; element.h = 6; }
               if (element.type === "powerSupply") { element.w = 35; element.h = 25; }
@@ -13703,6 +13710,38 @@
         render(save ? {} : { light: true });
       }
 
+      // 右パネル(とクイックプロパティ)の回転欄の値を要素へ反映する。
+      // ・90度の倍数への変更で、今の角度からの差も90度の倍数: 差を右90°/左90°ボタンの操作に置き換えて回す
+      //   (差180°=右90°×2、差270°=左90°)。外形の中心まわりに回り、スナップON時は接続ピンをグリッド(ラダー枠の行)へ
+      //   戻すので、0→90→180→0のように入力しても、ボタンと同じく元の位置へ正確に戻る。
+      // ・任意角度(30°等)を入れたとき: 従来どおり要素の原点(外形の左上)まわりに角度だけを書き換える
+      //   (文字・図形の斜め配置用。0°へ戻せば元の位置へ戻る)。
+      // ・任意角度から90度の倍数へ戻すとき: 原点まわりに戻したうえで、スナップON時は第1接続ピンをグリッドへ合わせる。
+      function applyRotationFieldValue(element, value) {
+        const target = Number(value);
+        if (!Number.isFinite(target)) return;
+        const isQuarter = angle => Math.abs(angle / 90 - Math.round(angle / 90)) < 1e-9;
+        const delta = target - Number(element.rotation || 0);
+        if (isQuarter(target) && isQuarter(delta)) {
+          const turns = ((Math.round(delta / 90) % 4) + 4) % 4;
+          if (turns) rotateElementsBy([element], turns * 90);
+          // 360°の倍数だけ違う値(450等)は形が同じなので、角度の表記だけ0〜359へそろえる。
+          else element.rotation = ((Math.round(target) % 360) + 360) % 360;
+          return;
+        }
+        element.rotation = target;
+        if (!isQuarter(target) || !state.settings.snap) return;
+        const pin = elementFirstPin(element);
+        if (!pin) return;
+        let dy = snapToGrid(pin.y) - pin.y;
+        const page = currentPage();
+        if (page?.frameVariant === "ladder" && elementTakesRowWires(element)) {
+          const row = LADDER_GRID.top + LADDER_GRID.pitch * Math.round((pin.y - LADDER_GRID.top) / LADDER_GRID.pitch);
+          if (Math.abs(row - pin.y) <= 2.5) dy = row - pin.y;
+        }
+        translateElement(element, round(snapToGrid(pin.x) - pin.x), round(dy));
+      }
+
       // 接点の向き変更時にw/hを入れ替える(旧経路互換)。
       function resizeContactElementForOrientation(element) {
         if (element.orientation === "vertical") {
@@ -13727,17 +13766,23 @@
         }
       }
 
-      // コネクタ(並び形)の現在の端子ピッチ。端子数・向きの変更前に読み、変更後も同じピッチで並べ直す
-      // (既存図面の7mmピッチを勝手に変えて2個目以降の端子から配線が外れないように)。
-      function connectorPitchHint(element) {
-        if (!element || element.type !== "connector" || element.connStyle === "pair") return null;
-        const pitch = round(terminalStripGeometry(element).pitch);
-        return Number.isFinite(pitch) && pitch > 0 ? pitch : null;
+      // コネクタ(並び形)・ピル形端子台の現在の並べ方{pitch=端子ピッチ, depth=端子列と直交する寸法}。
+      // 端子数・向きの変更前に読み、変更後も同じピッチで並べ直す(既存図面のコネクタ7mm・ピル形8mmピッチを
+      // 勝手に変えて2個目以降の端子から配線が外れないように)。ユニット列の端子台はnull(ピル形へ切り替えると新規既定で並べる)。
+      function terminalPitchHint(element) {
+        if (!element || !["connector", "terminalStrip"].includes(element.type) || element.connStyle === "pair") return null;
+        const geo = terminalStripGeometry(element);
+        if (geo.unit) return null;
+        // ピッチは丸めずに持つ(端子数が同じなら並べ直しても外形・端子位置が変わらないように)。
+        const pitch = Number(geo.pitch);
+        const depth = round(geo.vertical ? geo.w : geo.h);
+        return Number.isFinite(pitch) && pitch > 0 ? { pitch, depth: Number.isFinite(depth) && depth > 0 ? depth : null } : null;
       }
 
-      // 端子台の向き変更時の寸法調整。コネクタはpitchHint(変更前のピッチ)があればそれを保ち、
-      // 無ければ新規既定の7.5mm(端子がグリッドに乗るピッチ)で並べる。
-      function resizeTerminalElementForOrientation(element, pitchHint = null) {
+      // 端子台・コネクタの向き/端子数変更時の寸法調整。hint(変更前の並べ方)があればそのピッチを保ち、
+      // 無ければ新規既定の7.5mm(端子がグリッドに乗るピッチ)で並べる。ピル形端子台の奥行きも既定10mmにし、
+      // 端子記号(本体の辺上の小円=接続点)が端子中心から5mmの位置=グリッド上へ来るようにする。
+      function resizeTerminalElementForOrientation(element, hint = null) {
         const count = Math.max(1, Number(element.count || 8));
         if (element.type === "terminalStrip" && element.stripStyle === "unit" && element.orientation === "vertical") {
           const rowPitch = Math.max(2.5, Number(element.pitch || 9.5));
@@ -13749,13 +13794,14 @@
           element.h = (count + comRows + zeroRows) * rowPitch;
           return;
         }
-        const pitch = element.type === "connector" ? (pitchHint > 0 ? pitchHint : 7.5) : 8;
+        const pitch = hint?.pitch > 0 ? hint.pitch : 7.5;
+        const depth = element.type === "terminalStrip" && hint?.depth > 0 ? hint.depth : 10;
         if (element.orientation === "vertical") {
-          element.w = element.type === "connector" ? 10 : 12;
-          element.h = count * pitch;
+          element.w = depth;
+          element.h = round(count * pitch);
         } else {
-          element.w = count * pitch;
-          element.h = element.type === "connector" ? 10 : 12;
+          element.w = round(count * pitch);
+          element.h = depth;
         }
       }
 
@@ -14385,6 +14431,10 @@
           "lightCurtain",
           "positionMark",
           "polarityMark",
+          // 電流種別・操作機構の限定図記号は接続点が下端中央の1点だけ。左上をクリック点へ置くと
+          // 接続点が4mmずれてグリッドから外れるため、他の部品と同じく接続点をクリック点へ合わせる。
+          "qualifierMark",
+          "operatorMark",
           "pushButton",
           "selectorSwitch",
           "limitSwitch",
@@ -19092,8 +19142,9 @@
       // updateSelectedFromInputと同じ規則で寸法を直す(値だけ書き換えると形と接続点が崩れるため)。
       function applyOrientationTo(element, value) {
         const pinBefore = elementFirstPin(element);
+        const terminalHint = terminalPitchHint(element);
         element.orientation = value;
-        if (["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element);
+        if (["terminalStrip", "connector"].includes(element.type) && element.connStyle !== "pair") resizeTerminalElementForOrientation(element, terminalHint);
         if (element.type === "terminal" && !resizeGeoElementForOrientation(element)) resizeSingleTerminalForOrientation(element);
         if (["contactNO", "contactNC", "contactor", "pushButton", "selectorSwitch", "limitSwitch", "proximitySwitch", "pressureSwitch", "thermalRelay", "thermalElement", "contactBlock"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeContactElementForOrientation(element);
         if (["fuse", "breaker", "resistor"].includes(element.type) && !resizeGeoElementForOrientation(element)) resizeProtectiveElementForOrientation(element);
@@ -19178,7 +19229,10 @@
         qs("#quickApply").onclick = () => {
           const identity = qs("#quickIdentity").value;
           if (item.type === "wire") item.wireNo = identity; else { if (supportsElectricalAttributes(item)) item.tag = identity; item.label = identity; }
-          item.rotation = Number(qs("#quickRotation").value || 0); item.layer = qs("#quickLayer").value; item.description = qs("#quickDescription").value;
+          // 回転は右パネルの回転欄と同じ規則(90度の倍数は左90°/右90°ボタンと同じ回し方)。
+          const quickRotation = Number(qs("#quickRotation").value || 0);
+          if (item.points) item.rotation = quickRotation; else applyRotationFieldValue(item, quickRotation);
+          item.layer = qs("#quickLayer").value; item.description = qs("#quickDescription").value;
           const variantSelect = qs("#quickVariant");
           if (variantSelect && variantSelect.value !== currentVariant) applySymbolVariantTo(item, variantSelect.value);
           closeDialog(); commitHistory("クイックプロパティを更新しました。"); render();
@@ -20395,19 +20449,43 @@
           setStatus("ロックされた要素は回転できません。");
           return;
         }
-        const boxes = selected.map(elementBounds).filter(Boolean);
-        if (!boxes.length) return;
-        const target = unionBounds(boxes);
-        const cx = center ? Number(center[0]) : target.x + target.w / 2;
-        const cy = center ? Number(center[1]) : target.y + target.h / 2;
+        if (!rotateElementsBy(selected, degrees, center)) return;
+        commitHistory("要素を回転しました。");
+        render();
+      }
+
+      // 要素群の回転の本体(履歴・再描画は呼び出し側)。左90°/右90°ボタン・指定回転・右パネルの回転欄が共用する。
+      // スナップON時の90度単位の回転は、右90°/左90°の1回分(rotateQuarterTurn)の繰り返しに置き換える
+      // (180°=右90°×2、270°=左90°)。1回ごとに接続ピンをグリッド(ラダー枠では行)へ合わせるので、
+      // どの操作で同じ向きにしても同じ位置になり、右90°×4回や右→左回転で元の位置へ正確に戻る。
+      function rotateElementsBy(elements, degrees, center) {
+        if (!elements.length || !elements.map(elementBounds).some(Boolean)) return false;
+        const whole = Math.abs(degrees - Math.round(degrees)) < 1e-9;
+        const quarter = ((Math.round(degrees) % 360) + 360) % 360;
+        if (!state.settings.snap || !whole || quarter % 90 !== 0 || quarter === 0) {
+          rotateElementsRigid(elements, degrees, center);
+          return true;
+        }
+        (quarter === 270 ? [-90] : quarter === 180 ? [90, 90] : [90]).forEach(step => rotateQuarterTurn(elements, step, center));
+        return true;
+      }
+
+      // 回転中心。指定が無ければ選択全体の外形の中心。
+      function rotationPivot(elements, center) {
+        if (center) return [Number(center[0]), Number(center[1])];
+        const box = unionBounds(elements.map(elementBounds).filter(Boolean));
+        return [box.x + box.w / 2, box.y + box.h / 2];
+      }
+
+      // 位置補正なしの剛体回転(線ものは点列、部品は原点と角度)。
+      function rotateElementsRigid(elements, degrees, center) {
+        const [cx, cy] = rotationPivot(elements, center);
         const angle = degrees * Math.PI / 180;
         const rot = point => [
           round(cx + (point[0] - cx) * Math.cos(angle) - (point[1] - cy) * Math.sin(angle)),
           round(cy + (point[0] - cx) * Math.sin(angle) + (point[1] - cy) * Math.cos(angle))
         ];
-        const quarter = ((Math.round(degrees) % 360) + 360) % 360;
-        const reference = state.settings.snap && quarter % 90 === 0 && quarter !== 0 ? rotationReference(selected) : null;
-        selected.forEach(element => {
+        elements.forEach(element => {
           if (element.points) {
             element.points = element.points.map(rot);
           } else {
@@ -20417,30 +20495,134 @@
             element.rotation = ((Number(element.rotation || 0) + degrees) % 360 + 360) % 360;
           }
         });
-        if (reference) {
-          const moved = reference.locate();
-          const shift = moved ? rotationGridCorrection(moved, quarter, reference.frame) : null;
-          if (shift && (shift.x || shift.y)) selected.forEach(element => translateElement(element, shift.x, shift.y));
+      }
+
+      // グリッドだけを基準にした右90°(step=90)/左90°(step=-90)の1回分。剛体回転し、基準ピンをグリッドへ戻す。
+      // referenceは回転前に作る(frame=回転前の角度をグリッド中間での選び方に使うため)。
+      function rotateQuarterOnGrid(elements, step, center, reference) {
+        rotateElementsRigid(elements, step, center);
+        const moved = reference.locate();
+        const shift = moved ? rotationGridCorrection(moved, ((step % 360) + 360) % 360, reference.frame) : null;
+        if (shift && (shift.x || shift.y)) elements.forEach(element => translateElement(element, shift.x, shift.y));
+      }
+
+      // スナップON時の右90°(step=90)/左90°(step=-90)の1回分。
+      // ラダー枠では行(27+9.5k)がグリッド線から外れているため、行に載った基準ピンは回転前に行に対応するグリッド線
+      // (ladderRowGridLine)へ仮に移してグリッドだけで回し、回転後に行へ載せる向きでそのグリッド線に来たときだけ
+      // 行へ戻す。行とグリッド線を1対1に対応させて行合わせのずれを積み重ねないので、ピンが中心線上にない
+      // リアクトル・フットスイッチ等も右90°×4回・左90°×4回・右→左回転で元の行へ正確に戻る。
+      // 縦向きの途中段階では行へ寄せず、接続ピンをグリッドに置く。
+      function rotateQuarterTurn(elements, step, center) {
+        const reference = rotationReference(elements);
+        if (!reference) {
+          rotateElementsRigid(elements, step, center);
+          return;
         }
-        commitHistory("要素を回転しました。");
-        render();
+        const [cx, cy] = rotationPivot(elements, center);
+        const pin = reference.locate();
+        // 基準ピンが回転中心にある(端子など中心に接続点がある部品、ピンを中心にした指定回転)なら回してもピンは動かず、
+        // グリッド・行に載ったまま残るので、行⇔グリッド線の置き換えも位置補正もしない。
+        if (pin && isGridAlignedPoint(pin) && Math.hypot(pin.x - cx, pin.y - cy) < .01) {
+          rotateElementsRigid(elements, step, center);
+          return;
+        }
+        const rowShift = ladderRowToGridShift(elements, reference);
+        if (rowShift) elements.forEach(element => translateElement(element, 0, rowShift));
+        rotateQuarterOnGrid(elements, step, center ? [cx, cy + rowShift] : null, reference);
+        const backToRow = reference.rowwise() ? ladderGridToRowShift(elements, reference) : 0;
+        if (backToRow) elements.forEach(element => translateElement(element, 0, backToRow));
       }
 
       // 回転後のグリッド合わせに使う基準点。グリッド(ラダー枠では行)上にある第1接続ピンを優先し、
       // 無ければ主選択の第1接続ピン、部品が無ければ線ものの始点を使う。
-      // locate()は回転後に同じ点を要素から読み直す(丸め誤差を持ち込まないため)。
-      // frameは同点の要素の回転前の角度。グリッドの中間で迷うときの選び方を要素の向きに追従させ、
-      // 右回転→左回転や4回の90度回転で元の位置へ戻るようにする。
       function rotationReference(elements) {
-        const pinOf = element => (element && !element.points ? elementFirstPin(element) : null);
-        const symbols = elements.filter(element => pinOf(element));
-        const owner = symbols.find(element => isGridAlignedPoint(pinOf(element))) || symbols[0];
-        if (owner) {
-          return { frame: Number(owner.rotation || 0), locate: () => pinOf(owner) };
+        const symbols = elements.filter(element => !element.points && elementFirstPin(element));
+        const owner = symbols.find(element => isGridAlignedPoint(elementFirstPin(element))) || symbols[0]
+          || elements.find(element => Array.isArray(element.points) && element.points.length);
+        return owner ? rotationReferenceFor(owner) : null;
+      }
+
+      // ownerを基準にした回転の基準点。locate()は回転後に同じ点を要素から読み直す(丸め誤差を持ち込まないため)。
+      // 部品は第1接続ピン、線ものは始点。frameは同点の要素の回転前の角度。グリッドの中間で迷うときの選び方を
+      // 要素の向きに追従させ、右回転→左回転や4回の90度回転で元の位置へ戻るようにする。
+      // rowwise()は今の向きが横配線の向き(ラダーの行へ載せる向き)か。線ものは向きを問わない。
+      function rotationReferenceFor(owner) {
+        if (!owner.points) {
+          return { owner, frame: Number(owner.rotation || 0), locate: () => elementFirstPin(owner), rowwise: () => elementTakesRowWires(owner) };
         }
-        const line = elements.find(element => Array.isArray(element.points) && element.points.length);
-        if (!line) return null;
-        return { frame: 0, locate: () => (line.points[0] ? { x: Number(line.points[0][0]), y: Number(line.points[0][1]) } : null) };
+        return {
+          owner,
+          frame: 0,
+          locate: () => (owner.points[0] ? { x: Number(owner.points[0][0]), y: Number(owner.points[0][1]) } : null),
+          rowwise: () => true
+        };
+      }
+
+      // 部品が今の回転で「ラダー枠の行へ第1ピンを載せる向き」にあるか。配置(defaultElementAtPlacement)と同じ規則で、
+      // 回転0°/180°の形が基準。ただし縦向き(記号ごと90度回した形)の接点・保護素子・端子等は第1ピンをグリッドへ置くので、
+      // 90°/270°のときが行の向き。端子台・コネクタの「縦/横」は端子の並べ方で、どちらも先頭端子を配置点(行)へ置く。
+      function elementTakesRowWires(element) {
+        const rotation = Number(element?.rotation || 0);
+        if (!Number.isFinite(rotation) || Math.abs(rotation / 90 - Math.round(rotation / 90)) > 1e-6) return false;
+        const turned = Math.abs(Math.round(rotation / 90)) % 2 === 1;
+        const verticalSymbol = element.orientation === "vertical" && !["terminalStrip", "connector"].includes(element.type);
+        return turned === verticalSymbol;
+      }
+
+      // 選択の写しを基準点が最寄りのグリッド点に来るよう平行移動し、グリッドだけで右90°×2回まわしたときの
+      // 基準点のY移動量(グリッド間隔の倍数)。180°回すと接続ピンが上下どちらへ何グリッド移るかを表す。
+      function gridHalfTurnDrop(elements, reference) {
+        const pin = reference.locate();
+        const index = elements.indexOf(reference.owner);
+        if (!pin || index < 0) return 0;
+        const copies = elements.map(element => deepClone(element));
+        copies.forEach(copy => translateElement(copy, round(snapToGrid(pin.x) - pin.x), round(snapToGrid(pin.y) - pin.y)));
+        const start = rotationReferenceFor(copies[index]).locate();
+        for (let i = 0; i < 2; i++) rotateQuarterOnGrid(copies, 90, null, rotationReferenceFor(copies[index]));
+        const end = rotationReferenceFor(copies[index]).locate();
+        const grid = Number(state.settings.grid || 2.5);
+        return start && end ? round(Math.round((end.y - start.y) / grid) * grid) : 0;
+      }
+
+      // ラダー枠の行Yに対応するグリッド線(回転の間だけ基準ピンを置く仮の位置)。drop=gridHalfTurnDrop()。
+      // 180°回すと基準ピンが1グリッド下がる部品は行の上側、1グリッド上がる部品は行の下側、それ以外は最寄りの
+      // グリッド線を使う。180°回した後の仮の位置も同じ行に対応する線になるので、接続ピンが中心線から少し外れた
+      // 押しボタン・遮断器等も180°回すと元の行へ戻る。
+      function ladderRowGridLine(rowY, drop) {
+        const grid = Number(state.settings.grid || 2.5);
+        const steps = Math.round(drop / grid);
+        if (steps === 1) return round(Math.floor(rowY / grid + 1e-9) * grid);
+        if (steps === -1) return round(Math.ceil(rowY / grid - 1e-9) * grid);
+        return round(Math.round(rowY / grid) * grid);
+      }
+
+      // 点に最も近いラダー枠の行Y。
+      function nearestLadderRow(y) {
+        return LADDER_GRID.top + LADDER_GRID.pitch * Math.round((y - LADDER_GRID.top) / LADDER_GRID.pitch);
+      }
+
+      // 基準点がラダー枠の行上(グリッド線上ではない)なら、その行に対応するグリッド線へ移すY移動量。それ以外は0。
+      function ladderRowToGridShift(elements, reference) {
+        const point = reference.locate();
+        const page = currentPage();
+        if (!point || !page || page.frameVariant !== "ladder") return 0;
+        const grid = Number(state.settings.grid || 2.5);
+        if (Math.abs(point.y - Math.round(point.y / grid) * grid) < .01) return 0;
+        const row = nearestLadderRow(point.y);
+        if (Math.abs(row - point.y) >= .01) return 0;
+        return round(ladderRowGridLine(row, gridHalfTurnDrop(elements, reference)) - point.y);
+      }
+
+      // ladderRowToGridShift()の逆。基準点が行に対応するグリッド線上なら、その行へ戻すY移動量。それ以外は0。
+      function ladderGridToRowShift(elements, reference) {
+        const point = reference.locate();
+        const page = currentPage();
+        if (!point || !page || page.frameVariant !== "ladder") return 0;
+        const grid = Number(state.settings.grid || 2.5);
+        const row = nearestLadderRow(point.y);
+        if (Math.abs(row - point.y) < .01 || Math.abs(row - point.y) >= grid) return 0;
+        if (Math.abs(ladderRowGridLine(row, gridHalfTurnDrop(elements, reference)) - point.y) >= .01) return 0;
+        return round(row - point.y);
       }
 
       // 点がグリッド上(ラダー枠のYは行上も可)にあるか。
@@ -20456,27 +20638,20 @@
         return Math.abs(row - point.y) < .01;
       }
 
-      // 回転後の基準点をグリッドへ戻す平行移動量{x,y}。Xはグリッド、Yはラダー枠で行の近く(2.5mm以内、
-      // ドラッグ移動と同じ)なら行、それ以外はグリッドへ合わせる。グリッドのちょうど中間(ずれ=間隔の半分)
+      // 回転後の基準点をグリッドへ戻す平行移動量{x,y}。X・Yともグリッドへ合わせる(ラダー枠の行は
+      // rotateElementsBy()が回転の前後で行⇔グリッド線を置き換えて扱う)。グリッドのちょうど中間(ずれ=間隔の半分)
       // では2候補になるため、回転中心(=回転+平行移動を1つの回転とみなした中心)の、要素から見た向きが
       // 常に同じ側になる候補を選ぶ。これで逆回転や一周回転のたびに半グリッドずつ流れていかない。
       function rotationGridCorrection(point, quarter, frame) {
         const grid = Number(state.settings.grid || 2.5);
-        const axisOptions = (value, rowValue) => {
-          if (rowValue !== null) return [round(rowValue - value)];
+        const axisOptions = value => {
           const nearest = Math.round(value / grid) * grid;
           const delta = nearest - value;
           if (Math.abs(Math.abs(delta) - grid / 2) > .001) return [round(delta)];
           return [round(delta), round(delta - Math.sign(delta) * grid)];
         };
-        let rowY = null;
-        const page = currentPage();
-        if (page && page.frameVariant === "ladder") {
-          const row = LADDER_GRID.top + LADDER_GRID.pitch * Math.round((point.y - LADDER_GRID.top) / LADDER_GRID.pitch);
-          if (Math.abs(row - point.y) <= 2.5) rowY = row;
-        }
-        const xs = axisOptions(point.x, null);
-        const ys = axisOptions(point.y, rowY);
+        const xs = axisOptions(point.x);
+        const ys = axisOptions(point.y);
         const candidates = [];
         xs.forEach(x => ys.forEach(y => candidates.push({ x, y })));
         if (candidates.length === 1) return candidates[0];
@@ -22256,13 +22431,13 @@
           if (!element) return;
           const beforeCount = Number(element.count || 1);
           const beforeOrientation = element.orientation || "horizontal";
-          const connectorPitch = connectorPitchHint(element);
+          const terminalHint = terminalPitchHint(element);
           qsa("[data-terminal-field]", row).forEach(input => {
             const key = input.dataset.terminalField;
             element[key] = key === "terminalLabels" ? input.value.split(",").map(value => value.trim()).join("\n") : (input.type === "number" ? Number(input.value || 0) : input.value);
           });
           if (Number(element.count || 1) !== beforeCount || (element.orientation || "horizontal") !== beforeOrientation) {
-            resizeTerminalElementForOrientation(element, connectorPitch);
+            resizeTerminalElementForOrientation(element, terminalHint);
           }
         });
         if (close) closeDialog();
@@ -22931,7 +23106,7 @@
               <li><b>シンボル拡大</b>: 右パネル「ページ設定」の<b>シンボル拡大（新規配置の倍率）</b>で1.5／2／2.5／3倍を選ぶと、<b>そのページで</b>以後置く部品がその倍率になります（ページごとの設定。既存の部品は変わりません）。接点・コイルなど<b>形の決まった記号は幅・高さ欄を変更できない</b>ので、大きくしたいときはこの設定を使います</li>
               <li><b>基本図形</b>: 矩形（35×20mm）・円（直径20mm）・楕円（25×15mm）・円弧・楕円弧・<b>多角形</b>（辺数変更/頂点編集/直線へ分解）・寸法。<b>雲マーク</b>と<b>改訂三角</b>（△＋改訂履歴の最新の改訂記号）は「注釈・マーク」にあります</li>
               <li><b>端子箱</b>: 右パネルで箱の数・1箱の高さ・箱の幅・<b>引き出し線の長さ</b>（新規は5mm、0で線なし）・箱内文字（1行=1箱）・箱ごとの引き出し線（左右別々）を設定。配線は引き出し線の先端（線のない箱は横辺の中央）へ吸着します</li>
-              <li><b>端子台</b>: パレットからは<b>ユニット列（縦）・16端子・左の端子記号ON・最下段にCOMポート</b>で配置。端子記号（辺上の白抜き小円）を表示した行は<b>その小円だけが接続点</b>、消した行は端子円の中心が接続点です（右パネルで左右一括・端子ごとに切替）。方向を「横」にするとピル形になり、カード種別・COM/0Vポート・段数は「縦」のときだけ設定できます</li>
+              <li><b>端子台</b>: パレットからは<b>ユニット列（縦）・16端子・左の端子記号ON・最下段にCOMポート</b>で配置。端子記号（辺上の白抜き小円）を表示した行は<b>その小円だけが接続点</b>、消した行は端子円の中心が接続点です（右パネルで左右一括・端子ごとに切替）。方向を「横」にするとピル形になり、カード種別・COM/0Vポート・段数は「縦」のときだけ設定できます。ピル形は端子を<b>7.5mmピッチ</b>（奥行き10mm）で並べるので、端子と端子記号の接続点がグリッドに乗ります</li>
               <li><b>ユニット列のカード種別・COM/0V</b>: 「カード種別」で<b>入力カード（円＋デバイス名）／出力カード（a接点＋デバイス名、0Vポート付き）</b>を切替。「COM/0Vポートの表示名」で COM / 0V ⇔ COM＋ / COM− を切替。PLC入出力回路テンプレートは、入力=COM右→N1、出力=COM左→P1・0V右→N1 へ自動配線します</li>
               <li><b>PLC/I-O</b>: パレットから置くと「PLC表示形式」が<b>格子ボックス</b>（8行）。「<b>ユニット列（端子円・長方形）</b>」へ切り替えると、カード種別・COM端子・0Vポート・端子記号を設定できます</li>
               <li><b>機器箱</b>: 端子文字サイズは専用欄、ラベルは「文字スタイル」の文字サイズで別々に変更。「ラベル位置X/Y」で動くのはラベルだけです。<b>端子ピッチ</b>と<b>上下マージン</b>を指定すると箱の高さが端子配置に追従します（マージンだけならピッチ5mm、両方空欄なら等分）</li>
@@ -22945,7 +23120,7 @@
               <li>ドラッグ中: <b>Shift</b>=押している間だけ折れ向きを反転 ／ <b>スペース・Tab</b>=表示中の形から <b>L字（縦→横）→L字（横→縦）→コの字（横→縦→横）→コの字（縦→横→縦）</b>の順に次へ ／ <b>J</b>=終点に接続点（黒丸）を置いて確定（配線ツールのまま） ／ <b>Esc</b>=取消</li>
               <li><b>数値で確定</b>（ドラッグ中に入力してEnter）: <b>25</b>=今の向きで25mm ／ <b>30,90</b>=長さ30mm・角度90°（0°=右、90°=上の反時計回り） ／ <b>100@150</b>=X=100・Y=150の点（右パネルと同じ左下原点・上が＋）。<b>N</b>で「長さ・角度で確定」画面</li>
               <li><b>部品の端子から引く</b>: 部品を選択→ミニツールバーの「配線」（またはW）。その部品の接続点が<b>緑の小円</b>になるので、小円からドラッグ。部品本体を押しても始まらず、部品の外側からは通常どおり引けます</li>
-              <li>部品を動かすと<b>接続済み配線が追従</b>。コの字や手で足した曲がり角は形を保ち、動いた端の線分だけが伸び縮みします。移動中はピン一致で<b>マゼンタの整列ガイド</b></li>
+              <li>部品を動かすと<b>接続済み配線が追従</b>。コの字や手で足した曲がり角は形を保ち、動いた端の線分だけが伸び縮みします（配線の確定時に端点が4mm以内の接続点へ吸着したときも同じで、線分は水平・垂直のまま）。移動中はピン一致で<b>マゼンタの整列ガイド</b></li>
               <li><b>接続点（黒丸）</b>: 機能メニュー「<b>接続点生成</b>」で、T分岐（配線の端が他の配線の途中に接する点）と3本以上の端が集まる点へ一括追加。単純な交差・端同士のつなぎ・L字の角には付きません</li>
               <li><b>交差してもつながない表現</b>: 配線を選択して「<b>中央ギャップ追加</b>」または「<b>交差ギャップ追加</b>」。選択した配線だけが交点で途切れ、相手の配線はそのまま（印刷・DXFも同じ）</li>
               <li><b>矩形・多角形の頂点と各辺中央</b>、<b>円・楕円の外周8点</b>へも配線が吸着します（囲み枠・機器外形への引き込み線に）</li>
@@ -22957,7 +23132,7 @@
             <ul style="margin:4px 0;padding-left:18px;line-height:1.8">
               <li><b>同じ要素を素早く2回押すとその場編集</b>（ダブルクリック）: 配線=線番、部品=ラベル、文字=本文。Enter確定・Esc取消・<b>Tabで次の要素へ</b>（Shift+Tabで前へ）。2回目の押下からドラッグすると移動になります。ロック中の要素は編集できません</li>
               <li><b>右パネルの座標</b>: 接続点のある部品は「<b>接続点 X/Y</b>」（第1接続点）、文字・表・枠・矩形など接続点のない要素は「<b>位置 X/Y</b>」（外形の左上）。どちらも<b>Yは上が＋</b>（用紙の左下が原点）</li>
-              <li><b>回転</b>: 右パネルの<b>左90°/右90°</b>（ミニツールバー・リボンの「回転」と右クリックは右90°）。スナップONなら回転後に<b>接続ピンがグリッドへ自動で揃います</b>（ラダー図枠では行にも）。中心を決めて回すときは機能メニュー「<b>指定回転（中心指定）</b>」</li>
+              <li><b>回転</b>: 右パネルの<b>左90°/右90°</b>（ミニツールバー・リボンの「回転」と右クリックは右90°）。スナップONなら回転後に<b>接続ピンがグリッドへ自動で揃います</b>（ラダー図枠では行にも。右90°を4回・右→左で元の位置へ戻ります）。右パネルの<b>「回転 deg」欄</b>へ90の倍数を入れたときも同じ回し方で、それ以外の角度は要素の左上を中心に回ります。中心を決めて回すときは機能メニュー「<b>指定回転（中心指定）</b>」</li>
               <li><b>左右ミラー</b>（右パネル/右クリック、または「シンボルデザイン」「抵抗形状」「ランプ形状」「ブザー形状」欄の下の<b>左右反転</b>チェック）: 記号と接続点が左右に反転し（DXFも同じ）、文字は正立のままなので、180度回転と違って端子文字やラベルが逆さになりません。もう一度実行すると戻ります。左右対称な図形や反転に対応していない部品（ホーン・スピーカー形ブザー、筒形表示灯、直流電源、汎用センサ、箱物など）は、その旨を表示して何もしません</li>
               <li><b>右クリックメニュー</b>: その場編集/コピー/複製/削除/右90°回転/左右ミラー/ロック/同種をページ内全選択。同じタグの相手があれば、接点に「親コイルへ移動」、コイルに「接点へ移動」</li>
               <li><b>同種をページ内全選択</b>（右パネル/右クリック）→ 右パネルの「シンボルデザイン一括変更（同種部品）」「線色一括変更」「一括ロック」で様式替えが数クリック</li>
@@ -23016,7 +23191,7 @@
                 <li><b>ランプ</b> 4種（★丸形パイロット（見本形）／JIS 08-10-01／筒形／蛍光灯）、<b>ブザー</b> 7種（★ホーン（実務形）／JIS 08-10-06／08-10-10／サイレン 08-10-09／スピーカー／発音強調／電子ブザー）、<b>計器</b> 6種（★指示計 JIS 08-01-01／電圧計 08-02-01／電流計 08-02-02／角形／積算計／針付き）</li>
                 <li><b>モータ</b> 2種（★3相＋接地／2相＋接地）、<b>電源</b> 5種（★直流電源／AC/DC・DC/DC・DC/AC変換器／交流電源）、<b>接地</b> 5種（★JIS 02-15-01ほか）、<b>センサ</b> 8種、<b>ソレノイド弁</b> 2種、<b>端子</b> 3種</li>
                 <li><b>コンセント／プラグ</b> 20種: ★一般家庭用2P（単線用）／壁付／天井／JIS 11-13-01・11-13-04／家庭用2P・接地2Pのプラグとコンセント（L/N・L/N/PE別接続）／おす形・めす形接点の1・2・3極／プラグ及びソケット 03-03-05／多極・単線表示 03-03-08／接続リンク 03-03-17／盤内コンセント箱形2口（＋接地端子）</li>
-                <li><b>限定図記号</b>: 電流種別4種、操作機構14種（接点などの主記号に重ねる注記用）</li>
+                <li><b>限定図記号</b>: 電流種別4種、操作機構14種（接点などの主記号に重ねる注記用。下端の接続点がクリック点に合うように置かれます）</li>
               </ul>
               <p style="margin:4px 0">発電機・熱電対・ファン・フォトカプラなどはデザインの切り替えがありません。全デザインの図と寸法は取扱説明書21.4節にあります。</p>
             </details>
@@ -27305,12 +27480,40 @@
         const excludeIds = new Set([element.id]);
         const lastIndex = element.points.length - 1;
         const targetIndices = element.type === "wire" ? [0, lastIndex] : element.points.map((_, index) => index);
+        const before = element.points.map(point => [point[0], point[1]]);
         targetIndices.forEach(index => {
           const point = element.points[index];
           if (!point) return;
           const snapped = snapConnectionPoint(page, point[0], point[1], excludeIds);
           element.points[index] = [round(snapped.x), round(snapped.y)];
         });
+        if (element.type === "wire") keepSnappedWireOrthogonal(element, before);
+      }
+
+      // 確定時の端点吸着(4mm以内のピンへ寄せる)で、コの字・手で足した曲がり角を持つ配線の端の線分が
+      // 斜めにならないようにする。部品移動の追従と同じく、端の隣の折れ点を吸着先へ合わせて動かす
+      // (端の線分が水平なら折れ点のY、垂直ならXを合わせる)。元から斜めの線分を含む配線はそのまま。
+      function keepSnappedWireOrthogonal(wire, before) {
+        if (!Array.isArray(before) || before.length < 3 || wire.points.length !== before.length) return;
+        const first = wire.points[0];
+        const last = wire.points[wire.points.length - 1];
+        const oldFirst = before[0];
+        const oldLast = before[before.length - 1];
+        const movedStart = Math.hypot(first[0] - oldFirst[0], first[1] - oldFirst[1]) > .001;
+        const movedEnd = Math.hypot(last[0] - oldLast[0], last[1] - oldLast[1]) > .001;
+        if (!movedStart && !movedEnd) return;
+        const kept = followMovedWireEnds(before, first, last, movedStart, movedEnd);
+        if (kept) {
+          wire.points = kept;
+          return;
+        }
+        // 両端の調整がぶつかる等で折れ点を保てないときは、元の経路が直交だった場合に限りL字へ組み直す。
+        const orthogonal = list => list.every((point, index) => !index
+          || Math.abs(point[0] - list[index - 1][0]) < .01 || Math.abs(point[1] - list[index - 1][1]) < .01);
+        if (!orthogonal(before) || orthogonal(wire.points)) return;
+        const horizontalFirst = Math.abs(before[1][1] - oldFirst[1]) < .01;
+        wire.points = [first, last];
+        wire.orthoFlip = horizontalFirst;
       }
 
       // 接続点候補への吸着(半径内で最近点)。
