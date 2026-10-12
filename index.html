@@ -15203,6 +15203,12 @@
       // 各行は別々の信号線なので、母線に触れると全行が1ネットになり線番採番で同じ番号になる。
       const CSV_ROW_WIRE_START_X = 37.5;
 
+      // CSV取込ページの各行の左端(現場側)を受ける端子小円。端子接続図テンプレートと同じく、
+      // 線端を開放のままにせず「ここから現場へ出る」ことを示す(監査の未接続注意も出なくなる)。
+      function csvRowLeadTerminal(y) {
+        return { ...defaultElement("terminal", 0, 0), x: round(CSV_ROW_WIRE_START_X - 0.9), y: round(y - 0.9), label: "" };
+      }
+
       // 端子台配線図の型: レール(図枠として表示のみ) + 横配線(線番は終点寄せ) + ユニット列端子台。
       // 端子名はCSVの値を terminalLabels として端子円内に表示する。
       function populateTerminalCsvPage(page, rows, stripName, fileName, offset) {
@@ -15227,6 +15233,7 @@
           terminalMarkLeft: false,
           comTerminal: ""
         };
+        const leadTerminals = [];
         rows.forEach((row, index) => {
           const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * index);
           page.elements.push({
@@ -15238,11 +15245,12 @@
             wireNoDx: -5,
             note: row.note || ""
           });
+          leadTerminals.push(csvRowLeadTerminal(y));
           const desc = [row.signal, row.dest].filter(Boolean).join(" ");
           if (desc) page.elements.push(textElement(149.5, y - 1.2, desc, 2.3, 0, 42));
         });
         // 端子円を配線より前に積むと導体が番号を貫通するため、最後に重ねる。
-        page.elements.push(strip);
+        page.elements.push(...leadTerminals, strip);
       }
 
       // PLC CSV行を17点/頁で分割し、PLC接続図ページ群を生成。
@@ -15286,6 +15294,7 @@
           pinText: rows.map(row => row.address).join("\n"),
           note: "取込元: " + fileName
         };
+        const leadTerminals = [];
         rows.forEach((row, index) => {
           const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * index);
           const plcName = (unit.label || "PLC") + ":" + row.address;
@@ -15303,9 +15312,10 @@
             note: row.note || ""
           });
           page.elements.push(textElement(149.5, y - 1.2, [input ? "入力" : "出力", row.signal, deviceName].filter(Boolean).join(" "), 2.3, 0, 42));
+          leadTerminals.push(csvRowLeadTerminal(y));
         });
         // PLC端子円を配線の上へ重ね、円内のアドレスを導体から保護する。
-        page.elements.push(unit);
+        page.elements.push(...leadTerminals, unit);
       }
 
       // 目次ページ(空の目次表つき)をテンプレートとして追加。
@@ -21415,6 +21425,10 @@
       function renderPrintSheets() {
         syncPrintSheets();
       }
+
+      // ブラウザ自身の印刷(Ctrl+Pやメニュー)でも最新の図面を印刷する。上部の「PDF印刷」「A3面付」は
+      // 印刷方式(printMode)を設定してから印刷するので、ここではその方式のままシートを作り直すだけでよい。
+      window.addEventListener("beforeprint", renderPrintSheets);
 
       // ===== 画面内印刷プレビュー =====
       // 印刷と同条件(output=true: グリッド・選択枠・ガイド・下絵設定を反映)で全ページを
