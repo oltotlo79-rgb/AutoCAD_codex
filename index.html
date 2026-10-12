@@ -5782,28 +5782,8 @@
         const pushMark = (cx, cy) => { points.push([cx, cy]); };
         if (element.type === "terminalStrip") {
           const geo = terminalStripGeometry(element);
-          if (geo.unit) {
-            for (let i = 0; i < geo.nodes; i++) {
-              const node = terminalStripNodeLocal(element, i);
-              if (stripTerminalMarkVisible(element, "left", i)) pushMark(0, node.y);
-              if (stripTerminalMarkVisible(element, "right", i)) pushMark(geo.w, node.y);
-            }
-            return points;
-          }
-          if (geo.vertical) {
-            const bodyW = Math.max(geo.w, 8);
-            for (let i = 0; i < geo.count; i++) {
-              const node = terminalStripNodeLocal(element, i);
-              if (stripTerminalMarkVisible(element, "left", i)) pushMark((geo.w - bodyW) / 2, node.y);
-              if (stripTerminalMarkVisible(element, "right", i)) pushMark((geo.w - bodyW) / 2 + bodyW, node.y);
-            }
-            return points;
-          }
-          for (let i = 0; i < geo.count; i++) {
-            const node = terminalStripNodeLocal(element, i);
-            if (stripTerminalMarkVisible(element, "left", i)) pushMark(node.x, 0);
-            if (stripTerminalMarkVisible(element, "right", i)) pushMark(node.x, geo.h);
-          }
+          const total = geo.unit ? geo.nodes : geo.count;
+          for (let i = 0; i < total; i++) points.push(...stripTerminalMarkNodeAnchors(element, i));
           return points;
         }
         if (element.type === "plcBlock" && (element.plcStyle || "grid") === "unit") {
@@ -5814,6 +5794,29 @@
             if (stripTerminalMarkVisible(element, "right", i)) pushMark(geo.w, cy);
           }
           return points;
+        }
+        return points;
+      }
+
+      // 端子台のindex番端子に付く、表示中の端子記号の接続点(ローカル座標)。
+      // 端子台プラン表も吸着と同じ位置で配線を拾えるよう、端子ごとに返す。
+      function stripTerminalMarkNodeAnchors(element, index) {
+        const points = [];
+        if (element.type !== "terminalStrip") return points;
+        const geo = terminalStripGeometry(element);
+        const node = terminalStripNodeLocal(element, index);
+        const left = stripTerminalMarkVisible(element, "left", index);
+        const right = stripTerminalMarkVisible(element, "right", index);
+        if (geo.unit) {
+          if (left) points.push([0, node.y]);
+          if (right) points.push([geo.w, node.y]);
+        } else if (geo.vertical) {
+          const bodyW = Math.max(geo.w, 8);
+          if (left) points.push([(geo.w - bodyW) / 2, node.y]);
+          if (right) points.push([(geo.w - bodyW) / 2 + bodyW, node.y]);
+        } else {
+          if (left) points.push([node.x, 0]);
+          if (right) points.push([node.x, geo.h]);
         }
         return points;
       }
@@ -12874,6 +12877,8 @@
               <option value="horizontal"${orientation === "horizontal" ? " selected" : ""}>横</option>
               <option value="vertical"${orientation === "vertical" ? " selected" : ""}>縦</option>
             </select>
+            ${element.type === "terminalStrip" && stripStyle === "unit" && orientation !== "vertical" ? `
+            <p class="muted" data-strip-horizontal-note>ユニット列は縦向きのみ対応のため、横向きではピル形で表示されます。カード種別・COM/0Vポート・段数は方向を「縦」にすると設定できます。</p>` : ""}
             <label>端子形状</label>
             <select data-bind="terminalShape">
               <option value="circle"${shape === "circle" ? " selected" : ""}>丸</option>
@@ -12883,7 +12888,7 @@
             <input data-bind="prefix" type="text" value="${escapeAttr(element.prefix || "")}">
             <label>ジャンパ(例: 1-2;3-5)</label>
             <input data-bind="jumpers" type="text" value="${escapeAttr(element.jumpers || "")}" placeholder="1-2;3-5">
-            ${element.type === "terminalStrip" && stripStyle === "unit" ? `
+            ${element.type === "terminalStrip" && stripStyle === "unit" && orientation === "vertical" ? `
             <label>カード種別（各デバイスの表現）</label>
             <select data-bind="cardMode">
               <option value="input"${element.cardMode !== "output" ? " selected" : ""}>入力カード（円＋デバイス名）</option>
@@ -12909,7 +12914,7 @@
               <option value=""${element.comLabelStyle !== "plusMinus" ? " selected" : ""}>COM / 0V</option>
               <option value="plusMinus"${element.comLabelStyle === "plusMinus" ? " selected" : ""}>COM＋ / COM−</option>
             </select>` : ""}
-            ${element.type === "terminalStrip" ? `
+            ${element.type === "terminalStrip" && orientation === "vertical" ? `
             <label>段数（ユニット列のみ）</label>
             <select data-bind="levels" data-kind="number">
               <option value="1"${Number(element.levels) !== 2 ? " selected" : ""}>1段</option>
@@ -12948,7 +12953,7 @@
             <label>PLC表示形式</label>
             <select data-bind="plcStyle">
               <option value="grid"${plcStyle === "grid" ? " selected" : ""}>格子ボックス</option>
-              <option value="unit"${plcStyle === "unit" ? " selected" : ""}>ユニット列(端子円+破断線)</option>
+              <option value="unit"${plcStyle === "unit" ? " selected" : ""}>ユニット列（端子円・長方形）</option>
             </select>
             <label>I/O行数</label>
             <input data-bind="rows" data-kind="number" type="number" min="1"${plcStyle === "unit" && Number(element.pitch || 9.5) >= TEMPLATE_CIRCUIT_PITCH ? ` max="${TEMPLATE_UNIT_MAX_ROWS}"` : ""} step="1" value="${Number(element.rows || 8)}">
@@ -14294,7 +14299,8 @@
             points: [[round(x), cy], [ringX, cy]],
             wireNo,
             wireNoAlign: "end",
-            wireNoDx: -2.5
+            // 終点寄せ線番が端子台の外形(ringX-5)へ掛からないよう5mm戻す。
+            wireNoDx: -5
           });
           if (options.signalPrefix) {
             // 右母線(x=147.5)を避け、説明は母線の右側へ置く。
@@ -14728,18 +14734,26 @@
         const indexes = Object.fromEntries(Object.keys(aliases).map(key => [key, findHeaderIndex(first, aliases[key])]));
         const hasHeader = Object.values(indexes).some(index => index >= 0);
         const body = hasHeader ? rows.slice(1) : rows;
-        return body.map((cells, index) => {
+        // 見出しありは見出しで対応付けた列だけを読む。空セルを固定位置の列で補うと
+        // 端子番号が線番に、線番が説明に化けるため、列位置は見出しなしの時だけ使う。
+        const positions = { terminal: 0, wireNo: 1, signal: 2, dest: 3, note: 4 };
+        let lastStrip = "X1";
+        return body.map(cells => {
           const value = key => {
-            const col = indexes[key];
+            const col = hasHeader ? indexes[key] : (positions[key] ?? -1);
             return col >= 0 ? (cells[col] || "").trim() : "";
           };
+          // 端子台名の空欄は直前の行と同じ端子台(表計算の「同上」)とみなす。
+          const strip = value("strip") || lastStrip;
+          lastStrip = strip;
           return {
-            strip: value("strip") || "X1",
-            terminal: value("terminal") || cells[0] || String(index + 1),
-            wireNo: value("wireNo") || cells[1] || "",
-            signal: value("signal") || cells[2] || "",
-            dest: value("dest") || cells[3] || "",
-            note: value("note") || cells[4] || ""
+            strip,
+            // 端子名が空なら端子台の開始番号からの自動番号で表示する。
+            terminal: value("terminal"),
+            wireNo: value("wireNo"),
+            signal: value("signal"),
+            dest: value("dest"),
+            note: value("note")
           };
         }).filter(row => row.terminal || row.wireNo || row.signal || row.dest || row.note);
       }
@@ -14759,25 +14773,28 @@
         const indexes = Object.fromEntries(Object.keys(aliases).map(key => [key, findHeaderIndex(first, aliases[key])]));
         const hasHeader = Object.values(indexes).some(index => index >= 0);
         const body = hasHeader ? rows.slice(1) : rows;
+        // 端子CSVと同じく、見出しありは見出しの列だけを読み、空セルを他の列で補わない。
+        const positions = { address: 0, signal: 1, wireNo: 2, device: 3, note: 4 };
         return body.map((cells, index) => {
           const value = key => {
-            const col = indexes[key];
+            const col = hasHeader ? indexes[key] : (positions[key] ?? -1);
             return col >= 0 ? (cells[col] || "").trim() : "";
           };
-          const address = value("address") || cells[0] || "";
-          const signal = value("signal") || cells[1] || "";
-          const wireNo = value("wireNo") || cells[2] || "";
-          const device = value("device") || cells[3] || "";
-          const note = value("note") || cells[4] || "";
+          const address = value("address");
+          const signal = value("signal");
+          const wireNo = value("wireNo");
+          const device = value("device");
+          const note = value("note");
           const direction = normalizeIoDirection(value("direction") || address);
           return { address: address || (direction === "output" ? "O" : "I") + String(index).padStart(2, "0"), direction, signal, wireNo, device, note };
         }).filter(row => row.address || row.signal || row.wireNo || row.device || row.note);
       }
 
-      // 入出力表記(in/out/入力/出力)をinput/outputへ正規化。
+      // 入出力表記(in/out/入力/出力)またはアドレスをinput/outputへ正規化。
+      // アドレスの頭文字 O/Y(三菱等)/Q(IEC・%Q)は出力、それ以外は入力とみなす。
       function normalizeIoDirection(text) {
-        const value = normalizeHeader(text);
-        if (value.startsWith("o") || value.includes("out") || value.includes("出力")) return "output";
+        const value = normalizeHeader(text).replace(/^%/, "");
+        if (/^[oyq]/.test(value) || value.includes("out") || value.includes("出力")) return "output";
         return "input";
       }
 
@@ -14792,35 +14809,50 @@
         return headers.findIndex(header => normalizedAliases.includes(header));
       }
 
-      // 端子CSV行を17行/頁で分割し、端子接続図ページ群を生成。
+      // 端子CSV行を端子台名ごとにまとめ、各端子台を17行/頁で分割して端子接続図ページ群を生成。
       function addTerminalCsvPages(rows, fileName) {
         const perPage = 17;
         const created = [];
-        for (let offset = 0; offset < rows.length; offset += perPage) {
-          const chunk = rows.slice(offset, offset + perPage);
-          const pageNo = Math.floor(offset / perPage) + 1;
-          const totalPages = Math.ceil(rows.length / perPage);
-          const page = createPageInheritingTitle({
-            name: "端子接続図",
-            size: "A4",
-            orientation: "portrait",
-            frameVariant: "compact",
-            title: "端子接続図 " + pageNo + "/" + totalPages
-          });
-          populateTerminalCsvPage(page, chunk, pageNo, totalPages, fileName, offset);
-          state.pages.push(page);
-          created.push(page);
-        }
+        // 端子台名の初出順に分ける。複数の端子台を1本の端子台へ混ぜると端子番号が重複するため。
+        const groups = new Map();
+        rows.forEach(row => {
+          const list = groups.get(row.strip) || [];
+          list.push(row);
+          groups.set(row.strip, list);
+        });
+        const multiple = groups.size > 1;
+        groups.forEach((stripRows, stripName) => {
+          const totalPages = Math.ceil(stripRows.length / perPage);
+          for (let offset = 0; offset < stripRows.length; offset += perPage) {
+            const chunk = stripRows.slice(offset, offset + perPage);
+            const pageNo = Math.floor(offset / perPage) + 1;
+            // 端子台が複数ならページ名・図名へ端子台名を入れ、ページ一覧で区別できるようにする。
+            const baseName = multiple ? "端子接続図 " + stripName : "端子接続図";
+            const page = createPageInheritingTitle({
+              name: baseName,
+              size: "A4",
+              orientation: "portrait",
+              frameVariant: "compact",
+              title: baseName + " " + pageNo + "/" + totalPages
+            });
+            populateTerminalCsvPage(page, chunk, stripName, fileName, offset);
+            state.pages.push(page);
+            created.push(page);
+          }
+        });
         state.activePageId = created[0].id;
         setSelection([]);
-        commitHistory("端子CSVから" + created.length + "ページを追加しました。");
+        commitHistory("端子CSVから" + created.length + "ページを追加しました。" + (multiple ? "(端子台" + groups.size + "台)" : ""));
         render();
       }
 
-      // 端子台配線図の型: レール + 横配線(線番は終点寄せ) + ユニット列端子台。
+      // CSV取込の行配線の始点X。左レール(x=32.5)から5mm離して母線へは接続しない。
+      // 各行は別々の信号線なので、母線に触れると全行が1ネットになり線番採番で同じ番号になる。
+      const CSV_ROW_WIRE_START_X = 37.5;
+
+      // 端子台配線図の型: レール(図枠として表示のみ) + 横配線(線番は終点寄せ) + ユニット列端子台。
       // 端子名はCSVの値を terminalLabels として端子円内に表示する。
-      function populateTerminalCsvPage(page, rows, pageNo, totalPages, fileName, offset) {
-        const stripName = mostCommon(rows.map(row => row.strip).filter(Boolean)) || "TB1";
+      function populateTerminalCsvPage(page, rows, stripName, fileName, offset) {
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
         const strip = {
@@ -14844,13 +14876,13 @@
         };
         rows.forEach((row, index) => {
           const y = round(37.5 + TEMPLATE_CIRCUIT_PITCH * index);
-          page.elements.push(defaultElement("junction", 32.5, y));
           page.elements.push({
-            ...defaultElement("wire", 32.5, y),
-            points: [[32.5, y], [130, y]],
+            ...defaultElement("wire", CSV_ROW_WIRE_START_X, y),
+            points: [[CSV_ROW_WIRE_START_X, y], [130, y]],
             wireNo: row.wireNo || "",
             wireNoAlign: "end",
-            wireNoDx: -2.5,
+            // 終点寄せ線番が端子台の外形(x=125)へ掛からないよう、PLC取込と同じ5mm戻す。
+            wireNoDx: -5,
             note: row.note || ""
           });
           const desc = [row.signal, row.dest].filter(Boolean).join(" ");
@@ -14906,10 +14938,10 @@
           const plcName = (unit.label || "PLC") + ":" + row.address;
           const deviceName = row.device || row.signal || "";
           const input = row.direction !== "output";
-          page.elements.push(defaultElement("junction", 32.5, y));
+          // 端子CSVと同じく、各I/O行は母線へ接続しない独立した配線にする。
           page.elements.push({
-            ...defaultElement("wire", 32.5, y),
-            points: [[32.5, y], [130, y]],
+            ...defaultElement("wire", CSV_ROW_WIRE_START_X, y),
+            points: [[CSV_ROW_WIRE_START_X, y], [130, y]],
             wireNo: row.wireNo || "",
             wireNoAlign: "end",
             wireNoDx: -5,
@@ -14921,13 +14953,6 @@
         });
         // PLC端子円を配線の上へ重ね、円内のアドレスを導体から保護する。
         page.elements.push(unit);
-      }
-
-      // 配列の最頻値(CSVのユニット名決定などに使用)。
-      function mostCommon(values) {
-        const counts = new Map();
-        values.forEach(value => counts.set(value, (counts.get(value) || 0) + 1));
-        return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
       }
 
       // 目次ページ(空の目次表つき)をテンプレートとして追加。
@@ -17754,21 +17779,39 @@
           page.elements
             .filter(element => ["terminalStrip", "connector"].includes(element.type))
             .forEach(strip => {
-              const count = Math.max(1, Number(strip.count || 1));
-              const total = strip.stripStyle === "unit" && Number(strip.levels) === 2 ? count * 2 : count;
+              const geo = terminalStripGeometry(strip);
+              const count = geo.count;
+              // 2段は縦ユニット列のときだけ描画されるため、端子数も描画と同じ判定で数える。
+              const total = geo.nodes;
               const start = Number(strip.start || 1);
               const jumperPairs = terminalJumperPairs(strip);
+              // 端子ごとの接続点: 端子中心(端子小円を挟んで配線が届く構成があるため許容2.5mm)と、
+              // 表示中の端子記号(辺上の小円。吸着と同じ半径)。
+              const anchors = [];
               for (let i = 0; i < total; i++) {
-                const node = terminalStripNodeGlobal(strip, i);
-                // 端子小円を挟んで配線が届く構成があるため、許容は2.5mmとする。
-                const wires = page.elements.filter(wire => wire.type === "wire"
-                  && wireEndpointsOf(wire).some(point => Math.hypot(point[0] - node.x, point[1] - node.y) <= 2.5));
+                anchors.push({ index: i, ...terminalStripNodeGlobal(strip, i), radius: 2.5 });
+                stripTerminalMarkNodeAnchors(strip, i).forEach(([x, y]) => {
+                  anchors.push({ index: i, ...localAnchor(strip, x, y), radius: SNAP_RADIUS_MM });
+                });
+              }
+              // 配線端点ごとに最も近い接続点の端子へ割り当てる(隣の端子へ二重計上しない)。
+              const hits = Array.from({ length: total }, () => []);
+              page.elements.filter(wire => wire.type === "wire").forEach(wire => {
+                const ends = wireEndpointsOf(wire);
+                ends.forEach((point, endIndex) => {
+                  let best = null;
+                  anchors.forEach(anchor => {
+                    const d = Math.hypot(point[0] - anchor.x, point[1] - anchor.y);
+                    if (d <= anchor.radius && (!best || d < best.d)) best = { index: anchor.index, d };
+                  });
+                  if (best) hits[best.index].push({ wire, far: ends[endIndex === 0 ? 1 : 0] });
+                });
+              });
+              for (let i = 0; i < total; i++) {
+                const wires = hits[i].map(hit => hit.wire);
                 const wireNos = Array.from(new Set(wires.map(wire => wire.wireNo).filter(Boolean)));
-                const dests = Array.from(new Set(wires.map(wire => {
-                  const ends = wireEndpointsOf(wire);
-                  const far = Math.hypot(ends[0][0] - node.x, ends[0][1] - node.y) <= 2.5 ? ends[1] : ends[0];
-                  return nearestElementName(page, far[0], far[1], wire.id);
-                }).filter(Boolean)));
+                const dests = Array.from(new Set(hits[i].map(({ wire, far }) =>
+                  nearestElementName(page, far[0], far[1], wire.id)).filter(Boolean)));
                 const no = start + i;
                 const jumpers = i < count
                   ? jumperPairs.filter(([a, b]) => a === no || b === no).map(pair => pair.join("-")).join(",")
@@ -21084,8 +21127,12 @@
         }
         const startInput = prompt("端子開始番号", "1");
         if (startInput === null) return;
-        const prefix = prompt("端子接頭辞", target[0].prefix || "") ?? "";
+        // 接頭辞の入力もキャンセルなら中止する(以前はキャンセルで接頭辞が空になっていた)。
+        const prefix = prompt("端子接頭辞", target[0].prefix || "");
+        if (prefix === null) return;
         let next = Number(startInput || 1);
+        // 端子名(terminalLabels)は番号より優先表示されるため、入力済みの端子は見た目が変わらない。
+        const named = [];
         target.forEach(element => {
           if (element.type === "terminal") {
             element.label = prefix + String(next);
@@ -21094,9 +21141,15 @@
             element.prefix = prefix;
             element.start = next;
             next += Number(element.count || 1);
+            if (String(element.terminalLabels || "").split(/\r?\n/).some(line => line.trim())) {
+              named.push(element.label || paletteLabel(element.type));
+            }
           }
         });
         commitHistory("端子番号を更新しました。");
+        if (named.length) {
+          setStatus("端子番号を更新しました。" + named.join("、") + " は端子名が入力済みのため、端子名のある端子は表示が変わりません（番号で表示するには端子名を空欄にしてください）。");
+        }
         render();
       }
 
@@ -21252,7 +21305,7 @@
         }
         const html = `
           <table class="report-table">
-            <thead><tr><th>ページ</th><th>種別</th><th>名称</th><th>端子数</th><th>開始</th><th>方向</th><th>形状</th><th>接頭辞</th><th>端子順</th><th>ジャンパ</th><th>予備</th><th>アクセサリ</th><th>区分</th></tr></thead>
+            <thead><tr><th>ページ</th><th>種別</th><th>名称</th><th>端子数</th><th>開始</th><th>方向</th><th>形状</th><th>接頭辞</th><th>端子順</th><th>ジャンパ</th><th>予備</th><th>アクセサリ</th><th>区分</th><th>端子単位詳細</th></tr></thead>
             <tbody>
               ${rows.map(({ page, element }) => `
                 <tr data-terminal-row="${element.id}">
@@ -21269,21 +21322,24 @@
                   <td><input data-terminal-field="spares" value="${escapeAttr(element.spares || "")}" placeholder="7,8"></td>
                   <td><input data-terminal-field="accessories" value="${escapeAttr(element.accessories || "")}" placeholder="エンド板"></td>
                   <td><select data-terminal-field="connectionSide"><option value="both"${(element.connectionSide || "both") === "both" ? " selected" : ""}>両側</option><option value="internal"${element.connectionSide === "internal" ? " selected" : ""}>盤内</option><option value="external"${element.connectionSide === "external" ? " selected" : ""}>盤外</option></select></td>
+                  <td><button type="button" data-terminal-detail-open="${escapeAttr(element.id)}">詳細</button></td>
                 </tr>
               `).join("")}
             </tbody>
           </table>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
-            <button type="button" id="terminalDetailBtn">端子単位詳細</button>
             <button type="button" id="applyTerminalEditorBtn" class="primary">適用</button>
           </div>
         `;
         openDialog("端子台エディタ", html);
         qs("#applyTerminalEditorBtn").addEventListener("click", applyTerminalEditor);
-        qs("#terminalDetailBtn").addEventListener("click", () => {
-          applyTerminalEditor(false);
-          const first = rows[0]?.element;
-          if (first) showTerminalDetailEditor(first);
+        // 各行の「詳細」でその端子台の端子単位詳細を開く(一覧の編集は先に反映する)。
+        qsa("[data-terminal-detail-open]", qs("#dialogBody")).forEach(button => {
+          button.addEventListener("click", () => {
+            applyTerminalEditor(false);
+            const element = findElementById(button.dataset.terminalDetailOpen);
+            if (element) showTerminalDetailEditor(element);
+          });
         });
       }
 
@@ -21692,7 +21748,8 @@
                 wireNo: wire.wireNo || "",
                 from: wire.fromOverride || endpoints.autoFrom || "",
                 to: wire.toOverride || endpoints.autoTo || "",
-                wireType: wire.wireType || ""
+                // 内部ID(control等)ではなく、配線種別管理の名称(制御線等)を出す。
+                wireType: wireStyle(wire).label || wire.wireType || ""
               });
             });
         });
@@ -22993,9 +23050,28 @@
           return;
         }
         const label = prompt("配線種別名", normalized) || normalized;
+        // 適用前の表の編集はダイアログ再描画で消えるため、控えてから再描画後の入力欄へ戻す。
+        const drafts = new Map(qsa("[data-wire-type-row]", qs("#dialogBody")).map(row => [
+          row.dataset.wireTypeRow,
+          qsa("[data-wire-type-field]", row).map(input => ({
+            key: input.dataset.wireTypeField,
+            value: input.value,
+            checked: input.checked
+          }))
+        ]));
         state.wireTypes.push({ id: normalized, label, color: "#111820", width: .38, dash: "", noNumber: false });
         commitHistory("配線種別を追加しました。");
         showWireTypeManager();
+        qsa("[data-wire-type-row]", qs("#dialogBody")).forEach(row => {
+          const draft = drafts.get(row.dataset.wireTypeRow);
+          if (!draft) return;
+          draft.forEach(item => {
+            const input = qs(`[data-wire-type-field="${item.key}"]`, row);
+            if (!input) return;
+            if (input.type === "checkbox") input.checked = item.checked;
+            else input.value = item.value;
+          });
+        });
         render();
       }
 

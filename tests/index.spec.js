@@ -301,7 +301,7 @@ test("プロジェクト保守・端子詳細・盤・ケーブル拡張を利�
   expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "contact").manufacturer)).toBe("NEW-M");
 
   await page.locator("#actionMenu").selectOption("terminalEditor");
-  await page.locator("#terminalDetailBtn").click();
+  await page.locator('[data-terminal-detail-open="strip"]').click();
   await page.locator('[data-terminal-detail="1:1"] [data-td="catalog"]').fill("UK5N");
   await page.locator('[data-terminal-detail="1:1"] [data-td="internal"]').fill("CR1-A1");
   await page.locator("#terminalDetailApply").click();
