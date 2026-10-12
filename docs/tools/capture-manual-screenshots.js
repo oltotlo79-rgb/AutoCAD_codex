@@ -342,6 +342,18 @@ const templateShots = [
   { template: "plcPower", button: "#plcpBuildBtn", dialog: "47-plc-power-dialog.png", page: "48-plc-power-page.png" },
   { template: "safetyRelay", button: "#sfBuildBtn", dialog: "49-safety-relay-dialog.png", page: "50-safety-relay-page.png" }
 ];
+// 生成ページ全体(A4縦・標準倍率)を写す。画面下の状態表示やヒントが用紙に重ならないよう隠し、
+// 用紙の下端まで入るよう縦長の画面にしてからキャンバスだけを撮る。
+async function shotWholePage(page, name) {
+  await page.setViewportSize({ width: 1600, height: 1300 });
+  await page.evaluate(() => {
+    ["#canvasHint", "#bottomHud"].forEach(selector => { const element = document.querySelector(selector); if (element) element.style.display = "none"; });
+    window.__edsTest?.setSelectionForTest?.([]);
+  });
+  await settle(page, 200);
+  await shotElement(page.locator("#canvas"), name);
+}
+
 templateShots.forEach(spec => job([spec.dialog, spec.page].filter(Boolean), async browser => {
   const { context, page } = await freshPage(browser);
   if (spec.tall) await page.setViewportSize({ width: 1600, height: 1300 });
@@ -356,8 +368,7 @@ templateShots.forEach(spec => job([spec.dialog, spec.page].filter(Boolean), asyn
   await page.click(spec.button);
   await page.locator("#dialogBackdrop").waitFor({ state: "hidden" });
   await settle(page, 400);
-  await hideCanvasHint(page);
-  await shotElement(page.locator("#canvas"), spec.page);
+  await shotWholePage(page, spec.page);
   await context.close();
 }));
 
@@ -370,8 +381,7 @@ job(["35-estop-chain-dialog.png", "36-estop-chain-page.png"], async browser => {
   await page.locator("#dialogBackdrop").waitFor({ state: "hidden" });
   await settle(page, 300);
   await clickEmpty(page, 195, 267.5);
-  await hideCanvasHint(page);
-  await shotElement(page.locator("#canvas"), "36-estop-chain-page.png");
+  await shotWholePage(page, "36-estop-chain-page.png");
   await context.close();
 });
 
@@ -384,6 +394,11 @@ async function templateGallery(browser, name, steps) {
   await page.locator("#zoomRange").dispatchEvent("input");
   await page.selectOption("#pageViewMode", "row");
   await page.waitForSelector(".page-slot");
+  // 並べた用紙だけを見せる(ヒント・状態表示・パネル開閉ボタンは用紙に重なるため隠す)。
+  await page.evaluate(() => ["#canvasHint", "#bottomHud", "#toggleLeftPanel", "#toggleRightPanel"].forEach(selector => {
+    const element = document.querySelector(selector);
+    if (element) element.style.display = "none";
+  }));
   await settle(page, 350);
   const workspace = await boxOf(page, "#workspace");
   await shot(page, name, { clip: { x: workspace.x, y: workspace.y, width: workspace.width, height: 340 } });
