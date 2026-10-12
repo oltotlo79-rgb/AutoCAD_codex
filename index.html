@@ -2521,6 +2521,7 @@
         //  - siren(08-10-09)は横向き三角形から「直角部を上にした直角二等辺三角形+下向き端子線」へ作図し直し。
         //  - 3種とも端子線ピッチを2.5mm(グリッド整合)に揃えたため、旧ピンへ接続していた配線・接続点を新ピンへ移す。
         // 新設の jis0810(08-10-06の半円を上下反転した形)は既存データに存在しないため移行対象外。
+        // 併せて、右寄せ・中央寄せ文字の x を寄せ基準点から要素枠の左端へ換算する(末尾の説明参照)。
         4: data => {
           const near = (a, b) => Math.abs(Number(a) - Number(b)) < .02;
           // 旧バリアントのgeo寸法と接続点(geoローカル座標)。新形は3種とも w10/h6・[3.75,6],[6.25,6]。
@@ -2597,6 +2598,21 @@
               }
             });
           });
+          // v4の期間中(2026-07-17)に drawText() の寄せ基準が「x そのもの」から「要素枠の右端(x+w)/
+          // 中央(x+w/2)」へ変わったが、版数を上げず移行も無かった。v4以前の右寄せ・中央寄せ文字
+          // (ラダーのラング番号・L/N、目次見出し、REC型式などテンプレート生成文字)は x が寄せ基準点なので、
+          // 枠の左端へ換算して保存当時の位置へ戻す。v5以降の保存データは新しい意味なので対象外。
+          elementLists.forEach(elements => elements.forEach(element => {
+            if (!isPlainObject(element) || element.type !== "text") return;
+            if (element.align !== "end" && element.align !== "middle") return;
+            const w = Number(element.w || 40);
+            const scale = Number(element.scale || 1) > 0 ? Number(element.scale || 1) : 1;
+            const offset = (element.align === "end" ? w : w / 2) * scale;
+            // 枠内の寄せ位置は回転後の要素座標系で決まるため、回転方向へ戻す。
+            const angle = Number(element.rotation || 0) * Math.PI / 180;
+            element.x = round(Number(element.x || 0) - offset * Math.cos(angle));
+            element.y = round(Number(element.y || 0) - offset * Math.sin(angle));
+          }));
           return data;
         },
         // 5→6: 回転灯(beacon)・ベル(bell)・電磁接触器主接点3極(contactor3p)を廃止する。
@@ -6920,7 +6936,7 @@
 
       // ===== ラダー行グリッドと行アドレス(頁番号+行番号2桁) =====
       const LADDER_GRID = { top: 27, pitch: 9.5, rows: 20 };
-      // 設備図枠の行番号は9.5mm間隔だが、テンプレートの電気接続点は作図方眼(2.5mm)へ載せる。
+      // ラダー図枠の行番号は9.5mm間隔だが、テンプレートの電気接続点は作図方眼(2.5mm)へ載せる。
       // 旧保存図面の行座標は変更せず、新規生成時だけこの固定方眼へ丸める。
       const TEMPLATE_GRID_STEP = 2.5;
       // テンプレートで1回路が占める上下の間隔(mm)。行ピッチ9.5mmではなく方眼の倍数にする。
@@ -7286,9 +7302,11 @@
           ]
         },
         // 遮断器: 実測形。ピンピッチ12.5mm(2.5mmグリッド整合: 右リードを+0.5mm延長)。
+        // link は多極を結ぶ機械連動破線の接続点(可動部=アーク頂点)。breakerLinkPoint()が使う。
         breaker: {
           w: 12.5, h: 5,
           anchors: [[0, 3], [12.5, 3]],
+          link: [4.75, 0.75],
           prims: [
             { t: "line", p: [0, 3, 1.9, 3] },
             { t: "arc", p: [4.75, 3, 2.25, 180, 360] },
@@ -7305,6 +7323,7 @@
         breakerArc: {
           w: 12.5, h: 5,
           anchors: [[0, 3], [12.5, 3]],
+          link: [4.75, 0.75],
           prims: [
             { t: "line", p: [0, 3, 1.9, 3] },
             { t: "arc", p: [4.75, 3, 2.25, 180, 360] },
@@ -7320,6 +7339,7 @@
         breakerMccb: {
           w: 12.5, h: 5,
           anchors: [[0, 3], [12.5, 3]],
+          link: [5.75, 1.98],
           prims: [
             { t: "line", p: [0, 3, 2, 3] },
             { t: "rect", p: [2, 0.5, 7.5, 4.5], fill: "white" },
@@ -7339,6 +7359,7 @@
         breakerCp: {
           w: 12.5, h: 5,
           anchors: [[0, 3], [12.5, 3]],
+          link: [4.75, 0.65],
           prims: [
             { t: "line", p: [0, 3, 1.8, 3] },
             { t: "arc", p: [4.75, 3, 2.35, 180, 360] },
@@ -9815,9 +9836,11 @@
         // 遮断器(JIS C 0617-7, 07-13-05): メーク接点(07-02-01)の固定接点へ遮断機能の限定図記号
         // (07-01-02 = ×)を重ねる。×の中心は「可動線のちょうつがいと反対側」にある固定接点の先端で、
         // 固定側リードはその中心で終わる(規格図では×の腕が固定リードの先へはみ出す)。
+        // link(機械連動破線の接続点)は可動線の中点。多極を縦に並べた連動線が各極の可動線を貫く。
         breakerIec: {
           w: 12.5, h: 5,
           anchors: [[0, 3], [12.5, 3]],
+          link: [6.15, 4],
           prims: [
             { t: "line", p: [0, 3, 3.9, 3] },
             { t: "line", p: [3.9, 3, 8.4, 5.0] },
@@ -9825,7 +9848,10 @@
             { t: "line", p: [8.05, 2.3, 9.45, 3.7] },
             { t: "line", p: [8.05, 3.7, 9.45, 2.3] },
             { t: "text", p: [6, -1.2], anchor: "middle", field: "label" },
-            { t: "text", p: [6, -3.8], size: 1.8, anchor: "middle", field: "descLine" }
+            { t: "text", p: [6, -3.8], size: 1.8, anchor: "middle", field: "descLine" },
+            // 定格(refNo)は✕(トリップ素子)の直上。✕の左端から右へ書き出し、上のラベル(4文字程度まで)と
+            // 可動線を避ける(縦向きでは✕の右側へ回るので、どちらの向きでも記号と重ならない)。
+            { t: "text", p: [8.05, 1.3], size: 1.7, anchor: "start", field: "refNo" }
           ]
         },
         // トランジスタ(NPN): 円囲み+B/C/E。C/Eアンカーは中心線から±2.5mm(グリッド整合)。
@@ -11540,6 +11566,36 @@
           const p = geoMapPoint(geo, element, a[0], a[1]);
           return localAnchor(element, p[0], p[1]);
         });
+      }
+
+      // 遮断器の機械連動破線を接続する点(絶対座標)。geo定義のlink(可動部上の点)を、要素のデザイン・
+      // 向き・ミラー・回転で写すので、テンプレートの連動線はどのデザインでも先頭極と最終極の可動部を結ぶ。
+      function breakerLinkPoint(element) {
+        const geo = geoFor(element);
+        const local = geo?.link || [Number(element.w || 12.5) / 2, Number(element.h || 5) / 2];
+        const p = geo ? geoMapPoint(geo, element, local[0], local[1]) : local;
+        const point = localAnchor(element, p[0], p[1]);
+        return [round(point.x), round(point.y)];
+      }
+
+      // 多極機器を極ごとの記号で描いたときの2極目以降へ「1極目と同じ部品」の印(subPole)を付ける。
+      // タグは1極目と共有し、ラベルは1極目にだけ出す。部品タグ採番・重複タグ監査・BOMは1極目だけを
+      // 部品として扱うので、2極目以降へ別の番号(CB02等)が振られたり重複扱いになったりしない。
+      function markSubPoles(master, poles) {
+        const tag = componentTag(master);
+        poles.forEach(pole => {
+          if (pole === master) return;
+          pole.subPole = true;
+          pole.label = "";
+          if (tag) pole.tag = tag;
+        });
+      }
+
+      // 多極遮断器(先頭極〜最終極)を結ぶ機械連動破線を生成する。
+      function breakerLinkElement(firstPole, lastPole) {
+        const a = breakerLinkPoint(firstPole);
+        const b = breakerLinkPoint(lastPole);
+        return { ...defaultElement("mechanicalLink", a[0], a[1]), points: [a, b] };
       }
 
       // geoシンボルの向き変更時にw/hを本体寸法へ合わせ直す。
@@ -14572,24 +14628,29 @@
           terminalMarkLeft: false,
           comTerminal: ""
         };
+        // leadTerminalX指定時は各行の左端を端子小円(中心=その座標)で受ける。
+        const leadX = Number.isFinite(Number(options.leadTerminalX)) ? round(Number(options.leadTerminalX)) : null;
+        const leadTerminals = [];
         for (let i = 0; i < count; i++) {
           const cy = round(y + pitch * i + pitch / 2);
           const wireNo = (options.wirePrefix || "W") + String(startNo + i).padStart(2, "0");
+          const rowX = leadX === null ? round(x) : leadX;
           page.elements.push({
-            ...defaultElement("wire", x, cy),
-            points: [[round(x), cy], [ringX, cy]],
+            ...defaultElement("wire", rowX, cy),
+            points: [[rowX, cy], [ringX, cy]],
             wireNo,
             wireNoAlign: "end",
             // 終点寄せ線番が端子台の外形(ringX-5)へ掛からないよう5mm戻す。
             wireNoDx: -5
           });
+          if (leadX !== null) leadTerminals.push({ ...defaultElement("terminal", 0, 0), x: round(leadX - 0.9), y: round(cy - 0.9), label: "" });
           if (options.signalPrefix) {
             // 右母線(x=147.5)を避け、説明は母線の右側へ置く。
             page.elements.push(textElement(149.5, cy - 1.2, options.signalPrefix + String(startNo + i).padStart(2, "0"), 2.3, 0, 42));
           }
         }
         // 白抜き端子円で配線終端を隠すため、配線・注記より後に描画する。
-        page.elements.push(strip);
+        page.elements.push(...leadTerminals, strip);
         if (options.title) {
           page.elements.push(textElement(x, y - 8, options.title, 3.4, 0, 92));
         }
@@ -14610,6 +14671,13 @@
           stroke: state.settings.stroke,
           layer: "notes"
         };
+      }
+
+      // 右寄せ/中央寄せの文字要素を、寄せの基準点(anchorX)から生成する。drawText()は右寄せを
+      // 要素枠の右端(x+w)、中央寄せを枠の中央(x+w/2)へ描くため、xは基準点から枠幅ぶん戻す。
+      function anchoredTextElement(anchorX, y, text, fontSize, w, align) {
+        const offset = align === "end" ? w : (align === "middle" ? w / 2 : 0);
+        return { ...textElement(anchorX - offset, y, text, fontSize, 0, w), align };
       }
 
       // アクティブツール切替(select/wire/種別名/custom:id)。パレットの強調表示も更新。
@@ -14867,16 +14935,17 @@
         page.elements.push(...facilityRailElements("P1", 32.5, "+", 22.4));
         page.elements.push(...facilityRailElements("N1", 147.5, "-", 22.4));
         page.elements.push(textElement(40, 24.5, "(DC24V)", 1.9, 0, 20));
+        // 各行は端子番号・線番・信号名が1対1の別々の信号(端子CSV取込と同じ意味)。P1母線へ接続点で
+        // 結ぶと16行が1ネットになり、線番W01〜W16が「同一ネット内で混在」になって一括採番でも潰れる。
+        // そこで行の左端は母線から離した端子小円(機器側の接続口)で受け、P1とは接続しない。
         addReferenceTerminalWiringSet(page, 32.5, 32.5, {
           label: "TB1",
           terminalPrefix: "",
           wirePrefix: "W",
           signalPrefix: "SIG",
-          count: 16
+          count: 16,
+          leadTerminalX: 37.5
         });
-        for (let i = 0; i < 16; i++) {
-          page.elements.push(defaultElement("junction", 32.5, round(37.5 + TEMPLATE_CIRCUIT_PITCH * i)));
-        }
         state.pages.push(page);
         state.activePageId = page.id;
         setSelection([]);
@@ -15250,7 +15319,8 @@
           frameVariant: "compact",
           title: "図面目次"
         });
-        page.elements.push({ ...textElement(102.5, 31, "図面目次", 4, 0, 40), align: "middle" });
+        // 見出しは目次表(x=27.5〜177.5)の中央へ揃える。
+        page.elements.push(anchoredTextElement(102.5, 31, "図面目次", 4, 40, "middle"));
         page.elements.push({
           id: uid("el"),
           type: "table",
@@ -15628,14 +15698,16 @@
         // 母線名は上端の専用文字だけで表示し、長い縦線の中央へ線番を重複表示しない。
         page.elements.push(ladderWire([[cfg.leftRail, cfg.startY - 10], [cfg.leftRail, cfg.endY + 5]], "", { ladderRail: "left", hideWireNo: true }));
         page.elements.push(ladderWire([[cfg.rightRail, cfg.startY - 10], [cfg.rightRail, cfg.endY + 5]], "", { ladderRail: "right", hideWireNo: true }));
-        page.elements.push(ladderText("L", cfg.leftRail - 2, cfg.startY - 17, 3, "middle"));
-        page.elements.push(ladderText("N", cfg.rightRail + 2, cfg.startY - 17, 3, "middle"));
+        // 枠幅を文字幅程度に絞り、選択枠が母線の反対側まで広がらないようにする。
+        page.elements.push(ladderText("L", cfg.leftRail - 2, cfg.startY - 17, 3, "middle", 6));
+        page.elements.push(ladderText("N", cfg.rightRail + 2, cfg.startY - 17, 3, "middle", 6));
       }
 
       // ラング1行分(横配線+線番)を生成。
       function addLadderRungElements(page, cfg, y, index, { withNumber = true } = {}) {
         const rungNo = String(index).padStart(3, "0");
-        if (withNumber) page.elements.push(ladderText(rungNo, cfg.leftRail - 18, y, 2.6, "end"));
+        // 枠幅を番号幅程度にして、左余白側へ用紙外まではみ出さないようにする。
+        if (withNumber) page.elements.push(ladderText(rungNo, cfg.leftRail - 18, y, 2.6, "end", 8));
         page.elements.push(ladderWire([[cfg.leftRail, y], [cfg.rightRail, y]], "R" + rungNo, { ladderRung: true, rungNo }));
       }
 
@@ -15653,14 +15725,16 @@
         };
       }
 
-      // ラダー用文字要素の生成ヘルパ。
-      function ladderText(text, x, y, fontSize, anchor = "start") {
+      // ラダー用文字要素の生成ヘルパ。xは寄せの基準点(左寄せ=左端、中央寄せ=中央、右寄せ=右端)。
+      // drawText()は寄せを要素枠(x〜x+w)基準で描くため、保存するxは枠の左端へ換算する。
+      function ladderText(text, x, y, fontSize, anchor = "start", w = 24) {
+        const offset = anchor === "end" ? w : (anchor === "middle" ? w / 2 : 0);
         return {
           id: uid("el"),
           type: "text",
-          x,
+          x: round(x - offset),
           y,
-          w: 24,
+          w,
           h: 5,
           text,
           fontSize,
@@ -16009,7 +16083,7 @@
             <div><label>送り信号数（→）</label><input id="ilOutCount" type="number" min="0" max="8" step="1" value="4"></div>
             <div><label>受け信号数（←）</label><input id="ilInCount" type="number" min="0" max="8" step="1" value="4"></div>
           </div>
-          <p class="muted">送り・受けの合計は、設備図枠内に収まる10信号までです。</p>
+          <p class="muted">送り・受けの合計は、図枠内に収まる10信号までです。</p>
           <div class="inline" style="justify-content:flex-end;margin-top:12px">
             <button type="button" id="ilBuildBtn" class="primary">ページ追加</button>
           </div>`);
@@ -16266,18 +16340,20 @@
             created.push(el);
           });
           breakers[0].label = "CB-" + tag;
+          markSubPoles(breakers[0], breakers);
           stations.push([cursor, cursor + 12.5]);
           cursor += 22.5;
         }
+        // 主接点は同じ接触器の接点なので3極ともタグを持たせる(ラベルは1極目だけ)。
         lineYs.forEach((y, i) => {
-          created.push({ ...defaultElement("contactNO", cursor, round(y - 2.2)), label: i === 0 ? contactTag : "" });
+          created.push({ ...defaultElement("contactNO", cursor, round(y - 2.2)), label: i === 0 ? contactTag : "", tag: contactTag });
         });
         stations.push([cursor, cursor + 10]);
         cursor += 17.5;
         if (withThermal) {
-          lineYs.forEach((y, i) => {
-            created.push({ ...defaultElement("thermalElement", cursor, round(y - 3)), label: i === 0 ? thermalTag : "" });
-          });
+          const thermals = lineYs.map(y => ({ ...defaultElement("thermalElement", cursor, round(y - 3)), label: thermalTag }));
+          markSubPoles(thermals[0], thermals);
+          created.push(...thermals);
           stations.push([cursor, cursor + 10]);
           cursor += 17.5;
         }
@@ -16290,12 +16366,8 @@
           created.push({ ...defaultElement("wire", sx, y), points: [[round(sx), round(y)], [round(motorX + 0.9), round(y)]] });
         });
         if (withBreaker && breakers.length === 3) {
-          // 極中心(+4.75)の最寄りグリッド点。
-          const lx = round(breakers[0].x + 5);
-          created.push({
-            ...defaultElement("mechanicalLink", lx, 0),
-            points: [[lx, round(breakers[0].y + 0.5)], [lx, round(breakers[2].y + 0.5)]]
-          });
+          // 連動破線は記号デザインの可動部(JIS形は可動線)を先頭極から最終極まで結ぶ。
+          created.push(breakerLinkElement(breakers[0], breakers[2]));
         }
         if (withGround) {
           const gx = round(motorX + 13.4);
@@ -16435,12 +16507,15 @@
             created.push(defaultElement("junction", railR, yL));
           }
           for (let i = 0; i < stations; i++) {
-            const top = round(LADDER_GRID.top + LADDER_GRID.pitch * 2 - 6.5);
-            const bottom = round(LADDER_GRID.top + LADDER_GRID.pitch * (2 + 2 * chains + 2 * i + 1) + 5);
+            // 局枠の上下辺は2.5mm方眼へ載せる。上辺はPB上のタグ文字(行2の約5.6mm上)を横切らない37.5、
+            // 下辺は表示灯行の5mm下の最寄り方眼。左右辺は4局時の左母線(32.5)と表示灯ループ線(cx-2.5)の
+            // 間に置くため、従来どおり方眼の中間(cx-3.75〜cx+13.75)とする。
+            const top = round(Math.floor((LADDER_GRID.top + LADDER_GRID.pitch * 2 - 8) / 2.5) * 2.5);
+            const bottom = round(Math.round((LADDER_GRID.top + LADDER_GRID.pitch * (2 + 2 * chains + 2 * i + 1) + 5) / 2.5) * 2.5);
             created.push({
               ...defaultElement("rect", round(stationX(i) - 3.75), top),
               w: 17.5,
-              h: bottom - top,
+              h: round(bottom - top),
               label: "",
               dash: "1.4 1.2"
             });
@@ -16686,8 +16761,8 @@
             <div><label>モータ型式・容量</label><input id="acMotorModel" value="0.2kW 三菱電機 HG-KR23BK"></div>
           </div>
           <div class="row">
-            <div><label>モータ1名称</label><input id="acMotor1Name" value="マスチック走行"></div>
-            <div><label>モータ2名称</label><input id="acMotor2Name" value="アドヒ走行"></div>
+            <div><label>モータ1名称（サーボ時）</label><input id="acMotor1Name" value="マスチック走行"></div>
+            <div><label>モータ2名称（サーボ時）</label><input id="acMotor2Name" value="アドヒ走行"></div>
           </div>
           <div class="row">
             <div><label>ブレーキリレー接頭辞（サーボ時）</label><input id="acBrakeRelay" value="CRMBR"></div>
@@ -16698,8 +16773,8 @@
             <div><label>サーマルタグ（インバータ時）</label><input id="acThermalTag" value="OL1"></div>
           </div>
           <div class="row">
-            <div><label>インバータタグ</label><input id="acInvTag" value="INV1"></div>
-            <div><label>インバータ型式</label><input id="acInvModel" value="FR-E720 0.4K"></div>
+            <div><label>インバータタグ（インバータ時）</label><input id="acInvTag" value="INV1"></div>
+            <div><label>インバータ型式（インバータ時）</label><input id="acInvModel" value="FR-E720 0.4K"></div>
           </div>
           <div class="row">
             <div><label>ブレーキ回路数（インバータ時・0で省略）</label><input id="acBrakeCount" type="number" min="0" max="4" step="1" value="2"></div>
@@ -16726,6 +16801,8 @@
           replaceKnownDefault("#acRails", "R1,S1,T1", "R01,S01,T01");
           replaceKnownDefault("#acContactTag", "MS1M", "MC2M1");
           replaceKnownDefault("#acMotorTag", "SM1", "M1");
+          // 既定のモータ型式はサーボモータ(HG-KR)なので、インバータ時は誘導電動機の既定へ切り替える。
+          replaceKnownDefault("#acMotorModel", "0.2kW 三菱電機 HG-KR23BK", "0.4kW 三相誘導電動機");
         };
         qs("#acDrive").addEventListener("change", syncDriveDefaults);
         qs("#acMotorBuildBtn").addEventListener("click", () => {
@@ -16817,11 +16894,9 @@
           breakers.push(cb);
           els.push(cb);
         });
-        els.push({
-          // 機械連動線は標準遮断器のアーチ頂点(r=2.25)へ正確に接続する(電気グリッド検査の対象外)。
-          ...defaultElement("mechanicalLink", round(xCB + 4.75), 0),
-          points: [[round(xCB + 4.75), round(yP[0] - 2.25)], [round(xCB + 4.75), round(yP[2] - 2.25)]]
-        });
+        markSubPoles(breakers[0], breakers);
+        // 機械連動線は遮断器デザインの可動部へ正確に接続する(電気グリッド検査の対象外)。
+        els.push(breakerLinkElement(breakers[0], breakers[2]));
         // --- 遮断器→インバータ(線番R1/S1/T1)。ブレーキ送りのタップ junction 付き ---
         const branchNos = railNames.map(acBranchWireNo);
         if (brakeCount > 0) {
@@ -16880,8 +16955,9 @@
         const yBoxTop = round(yP[0] - 7.5);
         const yBoxBottom = round(Math.max(yP[0] + 47.5, sigCount ? ySig0 + 5 * (sigCount - 1) + 7.5 : 0));
         els.push({ ...defaultElement("rect", xInvL, yBoxTop), w: round(xInvR - xInvL), h: round(yBoxBottom - yBoxTop), label: "" });
-        els.push(textElement(94.5, yBoxTop + 0.8, invModel, 2.2, 0, 24));
-        els.push(textElement(104.5, yBoxTop + 4.2, "CC-LINK", 1.8, 0, 10));
+        // 型式とCC-LINKは外箱上辺とL/U/V/Wピン箱の間(高さ5mm)の中段へ並べ、どちらの辺にも掛けない。
+        els.push(textElement(xInvL + 2, round(yBoxTop + 2.5), invModel, 2.2, 0, 24));
+        els.push(anchoredTextElement(round(xInvR - 1), round(yBoxTop + 2.5), "CC-LINK", 1.8, 10, "end"));
         // L1/L2/L3ピン箱(外箱の左辺に接する)。
         els.push({ ...defaultElement("rect", xInvL, round(yP[0] - 2.5)), w: 7.5, h: round(yP[2] - yP[0] + 5), label: "" });
         ["L1", "L2", "L3"].forEach((t, i) => els.push(textElement(87.2, yP[i] - 1.4, t, 2.2, 0, 6)));
@@ -16913,6 +16989,7 @@
         }
         // --- インバータ出力 → MC接点 → サーマル(相1/相3のみ) → 端子 → モータ ---
         const phaseNo = ["U", "V", "W"].map(p => p + String(motorTag).replace(/^[A-Za-z]+/, ""));
+        const thermals = [];
         yP.forEach((y, i) => {
           els.push({ ...defaultElement("wire", xInvR, y), points: [[xInvR, y], [xMC, y]] });
           els.push({ ...defaultElement("contactNO", xMC, round(y - 2.2)), label: i === 0 ? contactTag : "", tag: contactTag });
@@ -16921,7 +16998,10 @@
             els.push({ ...defaultElement("wire", xMC + 10, y), points: [[round(xMC + 10), y], [xTerm, y]], wireNo: phaseNo[i] });
           } else {
             // MC接点右ピン(xMC+10=130)がサーマル左ピン(xOL)と一致するため中間配線は不要。
-            els.push({ ...defaultElement("thermalElement", xOL, round(y - 3)), label: i === 0 ? thermalTag : "" });
+            const thermal = { ...defaultElement("thermalElement", xOL, round(y - 3)), label: thermalTag };
+            thermals.push(thermal);
+            if (thermals.length > 1) markSubPoles(thermals[0], [thermal]);
+            els.push(thermal);
             els.push({ ...defaultElement("wire", xOL + 10, y), points: [[round(xOL + 10), y], [xTerm, y]], wireNo: phaseNo[i] });
           }
           els.push({ ...defaultElement("wire", xTerm, y), points: [[xTerm, y], [155, y]] });
@@ -16982,13 +17062,15 @@
           els.push({ ...defaultElement("arrow", 30, 212.5), points: [[30, 212.5], [30, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork", ladderRail: groundName });
           els.push(textElement(round(30 - groundName.length * 0.62), 22.6, groundName, 2.2, 0, 12));
           els.push({ ...defaultElement("polarityMark", 28.7, 219.9), label: "", sign: "+" });
-          els.push({ ...defaultElement("rect", 25, yElbTop), w: 10, h: 12.5, label: "", dash: "1.4 1.2" });
+          // 点線枠の右辺はR相レール(x=35)とELB極の可動線(左へ振れてx=33まで)を避け、G〜R相の間(32.5)に置く。
+          els.push({ ...defaultElement("rect", 22.5, yElbTop), w: 10, h: 12.5, label: "", dash: "1.4 1.2" });
           els.push({ ...defaultElement("terminal", 0, 0), x: 29.1, y: round(55 - 0.9), label: "" });
           els.push({ ...defaultElement("terminal", 0, 0), x: 29.1, y: round(60 - 0.9), label: "" });
           els.push({ ...defaultElement("line", 32.5, 67.5), points: [[32.5, 67.5], [37.5, 72.5]], label: "" });
           els.push(textElement(38.5, 71.4, "メインアースブロック", 1.8, 0, 32));
         }
         // --- 入力相レール(ELB通過部で上下に分割)+縦向きELB極 ---
+        const elbPoles = [];
         inNames.forEach((name, i) => {
           const x = phaseXs[i];
           els.push({ ...defaultElement("wire", x, 30), points: [[x, 30], [x, yElbTop]], wireNo: "", hideWireNo: true, wireType: state.settings.currentWireType });
@@ -16997,13 +17079,15 @@
           els.push({ ...defaultElement("arrow", x, 212.5), points: [[x, 212.5], [x, TEMPLATE_RAIL_BOTTOM]], label: "", arrowStyle: "fork" });
           els.push(textElement(round(x - name.length * 0.62), 22.6, name, 2.2, 0, 12));
           els.push(textElement(round(x - outNames[i].length * 0.62), 222.4, outNames[i], 2.2, 0, 12));
-          els.push({ ...defaultElement("breaker", x - 2, yElbTop), w: 5, h: 12.5, symbolVariant: "iec", orientation: "vertical", cpLinked: true, label: i === phaseCount - 1 ? elbTag : "", refNo: "" });
+          const pole = { ...defaultElement("breaker", x - 2, yElbTop), w: 5, h: 12.5, symbolVariant: "iec", orientation: "vertical", cpLinked: true, label: i === phaseCount - 1 ? elbTag : "", refNo: "" };
+          elbPoles.push(pole);
+          els.push(pole);
           els.push(textElement(x + 1, 66.4, outNames[i], 1.8, 0, 10));
         });
-        if (phaseCount > 1) {
-          const linkY = round(yElbTop + 4.75);
-          els.push({ ...defaultElement("mechanicalLink", phaseXs[0] + 2.35, linkY), points: [[round(phaseXs[0] + 2.35), linkY], [round(phaseXs[phaseCount - 1] + 2.35), linkY]] });
-        }
+        // ラベルは最終極(T相)にだけ出し、他の極はそのELBの2極目以降として扱う。
+        markSubPoles(elbPoles[phaseCount - 1], elbPoles);
+        // 連動破線は縦向き極の可動線を先頭極から最終極まで横に結ぶ。
+        if (phaseCount > 1) els.push(breakerLinkElement(elbPoles[0], elbPoles[phaseCount - 1]));
         if (elbModel) els.push(textElement(50, 61.2, elbModel + "（定格遮断容量7.5A）", 1.8, 0, 45));
         els.push(textElement(52.5, 24.5, "AC" + volt + "V 50/60HZ " + (volt === 200 ? "三相" : "単相"), 2.2, 0, 40));
         // --- CP2極分岐の共通ヘルパ(相1・相2からタップ) ---
@@ -17012,10 +17096,10 @@
           els.push({ ...defaultElement("wire", phaseXs[0], yA), points: [[phaseXs[0], yA], [x, yA]] });
           els.push(defaultElement("junction", phaseXs[1], yB));
           els.push({ ...defaultElement("wire", phaseXs[1], yB), points: [[phaseXs[1], yB], [x, yB]] });
-          els.push({ ...defaultElement("breaker", x, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: tag, refNo: rating });
-          els.push({ ...defaultElement("breaker", x, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
-          const linkX = round(x + 4.75);
-          els.push({ ...defaultElement("mechanicalLink", linkX, 0), points: [[linkX, round(yA - 2.35)], [linkX, round(yB - 2.35)]] });
+          const poleA = { ...defaultElement("breaker", x, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: tag, refNo: rating };
+          const poleB = { ...defaultElement("breaker", x, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" };
+          markSubPoles(poleA, [poleB]);
+          els.push(poleA, poleB, breakerLinkElement(poleA, poleB));
         };
         // --- 電源表示灯PL0(行1-2) ---
         if (withPl) {
@@ -17072,7 +17156,11 @@
           if (trVA !== "off") {
             els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "207", wireNoAlign: "start" });
             els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]], wireNo: "208", wireNoAlign: "start" });
-            els.push({ ...defaultElement("transformer", 105, round(yA - 2.5)), w: 10, h: 15, orientation: "vertical", symbolVariant: "coils", label: "Tr1", tag: "Tr1", rating: trVA === "500VA" ? "500VA" : "100VA TRH100-21S" });
+            // 縦向き変圧器の定格は一次巻線の左に中央寄せで描かれるため、長い型式まで入れると巻線を横切る。
+            // 定格欄は容量だけにし、型式は品番欄へ入れて定格の左へ右寄せで添える。
+            const trModel = trVA === "500VA" ? "" : "TRH100-21S";
+            els.push({ ...defaultElement("transformer", 105, round(yA - 2.5)), w: 10, h: 15, orientation: "vertical", symbolVariant: "coils", label: "Tr1", tag: "Tr1", rating: trVA === "500VA" ? "500VA" : "100VA", catalog: trModel });
+            if (trModel) els.push(anchoredTextElement(98.5, round(yA + 5), trModel, 2, 14, "end"));
             els.push(textElement(97.5, round(yA - 1.2), "200V", 1.6, 0, 8));
             els.push(textElement(97.5, round(yB - 1.2), "0V", 1.6, 0, 8));
             els.push(textElement(121.5, round(yA + 3.2), "100V", 1.6, 0, 8));
@@ -17084,10 +17172,10 @@
             }
           }
           if (withSc1) {
-            els.push({ ...defaultElement("breaker", cpX, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP3", refNo: "1A" });
-            els.push({ ...defaultElement("breaker", cpX, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
-            const cpLinkX = round(cpX + 4.75);
-            els.push({ ...defaultElement("mechanicalLink", cpLinkX, 0), points: [[cpLinkX, round(yA - 2.35)], [cpLinkX, round(yB - 2.35)]] });
+            const cp3A = { ...defaultElement("breaker", cpX, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP3", refNo: "1A" };
+            const cp3B = { ...defaultElement("breaker", cpX, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" };
+            markSubPoles(cp3A, [cp3B]);
+            els.push(cp3A, cp3B, breakerLinkElement(cp3A, cp3B));
             els.push({ ...defaultElement("wire", cpX + 12.5, yA), points: [[round(cpX + 12.5), yA], [147.5, yA]], wireNo: "101", wireNoAlign: "start" });
             els.push({ ...defaultElement("wire", cpX + 12.5, yB), points: [[round(cpX + 12.5), yB], [142.5, yB], [142.5, round(yA + 5)], [147.5, round(yA + 5)]], wireNo: "102", wireNoAlign: "start" });
             els.push({ ...defaultElement("outlet", 147.5, round(yA - 1.25)), w: 10, h: 7.5, symbolVariant: "socketPin", label: "SC1", tag: "SC1" });
@@ -17101,11 +17189,13 @@
           pushCp2("CP4", "2A", yA, yB);
           els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "105", wireNoAlign: "start" });
           els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]], wireNo: "106", wireNoAlign: "start" });
-          els.push({ ...defaultElement("breaker", 105, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP11", refNo: "1A" });
-          els.push({ ...defaultElement("breaker", 105, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
-          els.push({ ...defaultElement("mechanicalLink", 109.75, 0), points: [[109.75, round(yA - 2.35)], [109.75, round(yB - 2.35)]] });
+          const cp11A = { ...defaultElement("breaker", 105, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP11", refNo: "1A" };
+          const cp11B = { ...defaultElement("breaker", 105, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" };
+          markSubPoles(cp11A, [cp11B]);
+          els.push(cp11A, cp11B, breakerLinkElement(cp11A, cp11B));
           els.push({ ...defaultElement("wire", 117.5, yA), points: [[117.5, yA], [122.5, yA]], wireNo: "107", wireNoAlign: "start" });
-          els.push({ ...defaultElement("wire", 117.5, yB), points: [[117.5, yB], [120, yB], [120, round(yA + 5)], [122.5, round(yA + 5)]], wireNo: "108", wireNoAlign: "start" });
+          // 線番108は2.5mm先で上へ折れるため、折れ点(x=120)の縦線に掛からないようCP11寄りへ戻す。
+          els.push({ ...defaultElement("wire", 117.5, yB), points: [[117.5, yB], [120, yB], [120, round(yA + 5)], [122.5, round(yA + 5)]], wireNo: "108", wireNoAlign: "start", wireNoDx: -3 });
           els.push({ ...defaultElement("outlet", 122.5, round(yA - 1.25)), w: 10, h: 7.5, symbolVariant: "socketPin", label: "SC2", tag: "SC2" });
           els.push(textElement(135, round(yA + 1.4), "操作盤", 1.8, 0, 12));
           els.push(textElement(135, round(yA + 4.4), "コンセント", 1.8, 0, 12));
@@ -17178,15 +17268,19 @@
         const boxL = 105, boxR = 140;
         // --- CB(3極)→MC接点→アンプL1/L2/L3(相ライン3本・ピッチ5mm) ---
         const yP = [55, 60, 65];
+        const cbPoles = [];
         yP.forEach((y, i) => {
           els.push(defaultElement("junction", railXs[i], y));
           els.push({ ...defaultElement("wire", railXs[i], y), points: [[railXs[i], y], [55, y]] });
-          els.push({ ...defaultElement("breaker", 55, round(y - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: i === 0 ? cbTag : "", refNo: i === 0 ? "10A" : "" });
+          const pole = { ...defaultElement("breaker", 55, round(y - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: i === 0 ? cbTag : "", refNo: i === 0 ? "10A" : "" };
+          cbPoles.push(pole);
+          els.push(pole);
           els.push({ ...defaultElement("wire", 67.5, y), points: [[67.5, y], [85, y]], wireNo: ["R2", "S2", "T2"][i], wireNoAlign: "end" });
           els.push({ ...defaultElement("contactNO", 85, round(y - 2.2)), label: i === 0 ? mcTag : "", tag: mcTag });
           els.push({ ...defaultElement("wire", 95, y), points: [[95, y], [boxL, y]], wireNo: ["R3", "S3", "T3"][i], wireNoAlign: "start" });
         });
-        els.push({ ...defaultElement("mechanicalLink", 59.75, 0), points: [[59.75, round(yP[0] - 2.35)], [59.75, round(yP[2] - 2.35)]] });
+        markSubPoles(cbPoles[0], cbPoles);
+        els.push(breakerLinkElement(cbPoles[0], cbPoles[2]));
         // --- 制御電源タップ(R2/S2→L11/L12) ---
         els.push(defaultElement("junction", 70, yP[0]));
         els.push({ ...defaultElement("wire", 70, yP[0]), points: [[70, yP[0]], [70, 72.5], [boxL, 72.5]], gapPoints: [[70, yP[1]], [70, yP[2]]] });
@@ -17206,14 +17300,15 @@
         els.push({ ...defaultElement("line", 100, 85), points: [[100, 85], [100, 90]], label: "" });
         els.push({ ...defaultElement("line", 100, 90), points: [[100, 90], [boxL, 90]], label: "" });
         // --- 制御信号(N1/P3M受け→DICOM/EM2/DOCOM、MBRリレー) ---
-        els.push({ ...defaultElement("arrow", 30, 112.5), points: [[30, 112.5], [37.5, 112.5]], label: "N1", arrowStyle: "chevron", signalRole: "destination" });
+        // 受け矢印(x=30〜37.5)のラベルはG(30)とR1(35)レールの中間へ寄せ、レールが文字を貫かないようにする。
+        els.push({ ...defaultElement("arrow", 30, 112.5), points: [[30, 112.5], [37.5, 112.5]], label: "N1", arrowStyle: "chevron", signalRole: "destination", labelDx: -1.25 });
         els.push({ ...defaultElement("wire", 37.5, 112.5), points: [[37.5, 112.5], [boxL, 112.5]] });
         els.push(defaultElement("junction", 95, 112.5));
         els.push({ ...defaultElement("wire", 95, 112.5), points: [[95, 112.5], [95, 122.5], [boxL, 122.5]] });
-        els.push({ ...defaultElement("arrow", 30, 120), points: [[30, 120], [37.5, 120]], label: "P3M", arrowStyle: "chevron", signalRole: "destination" });
+        els.push({ ...defaultElement("arrow", 30, 120), points: [[30, 120], [37.5, 120]], label: "P3M", arrowStyle: "chevron", signalRole: "destination", labelDx: -1.25 });
         // N1の縦枝と交差する箇所は非接続ギャップで明示する。
         els.push({ ...defaultElement("wire", 37.5, 120), points: [[37.5, 120], [100, 120], [100, 117.5], [boxL, 117.5]], gapPoints: [[95, 120]] });
-        els.push({ ...defaultElement("arrow", 30, 127.5), points: [[30, 127.5], [37.5, 127.5]], label: "N1", arrowStyle: "chevron", signalRole: "destination" });
+        els.push({ ...defaultElement("arrow", 30, 127.5), points: [[30, 127.5], [37.5, 127.5]], label: "N1", arrowStyle: "chevron", signalRole: "destination", labelDx: -1.25 });
         els.push({ ...defaultElement("wire", 37.5, 127.5), points: [[37.5, 127.5], [75, 127.5]] });
         els.push({ ...defaultElement("coil", 75, round(127.5 - 2.2)), label: brTag + "1", tag: brTag + "1", description: "LY2N DC24V" });
         els.push({ ...defaultElement("wire", 85, 127.5), points: [[85, 127.5], [boxL, 127.5]] });
@@ -17258,7 +17353,7 @@
           els.push({ ...defaultElement("arrow", 150, yEnc), points: [[150, yEnc], [167.5, yEnc]], label: motorTag + "エンコーダ", arrowStyle: "open", signalRole: "source" });
           // ブレーキ回路(P24/N24受け→リレー接点→バリスタ+ブレーキコイル)。
           const yBrkB = round(yBrk + 10);
-          els.push({ ...defaultElement("arrow", 30, yBrk), points: [[30, yBrk], [37.5, yBrk]], label: "P24", arrowStyle: "chevron", signalRole: "destination" });
+          els.push({ ...defaultElement("arrow", 30, yBrk), points: [[30, yBrk], [37.5, yBrk]], label: "P24", arrowStyle: "chevron", signalRole: "destination", labelDx: -1.25 });
           els.push({ ...defaultElement("wire", 37.5, yBrk), points: [[37.5, yBrk], [55, yBrk]] });
           els.push({ ...defaultElement("contactNO", 55, round(yBrk - 2.2)), label: brTag + n, tag: brTag + n });
           els.push({ ...defaultElement("wire", 65, yBrk), points: [[65, yBrk], [100, yBrk]], wireNo: "B" + n + "1", wireNoAlign: "start" });
@@ -17268,7 +17363,7 @@
           els.push({ ...defaultElement("wire", 100, yBrk), points: [[100, yBrk], [100, round(yBrk + 5)], [105, round(yBrk + 5)]] });
           els.push({ ...defaultElement("coil", 105, round(yBrk + 5 - 2.2)), label: "B" + n, tag: "B" + n });
           els.push({ ...defaultElement("wire", 115, round(yBrk + 5)), points: [[115, round(yBrk + 5)], [120, round(yBrk + 5)], [120, yBrkB]] });
-          els.push({ ...defaultElement("arrow", 30, yBrkB), points: [[30, yBrkB], [37.5, yBrkB]], label: "N24", arrowStyle: "chevron", signalRole: "destination" });
+          els.push({ ...defaultElement("arrow", 30, yBrkB), points: [[30, yBrkB], [37.5, yBrkB]], label: "N24", arrowStyle: "chevron", signalRole: "destination", labelDx: -1.25 });
           els.push({ ...defaultElement("wire", 37.5, yBrkB), points: [[37.5, yBrkB], [55, yBrkB]] });
           els.push({ ...defaultElement("contactNO", 55, round(yBrkB - 2.2)), label: "", tag: brTag + n });
           els.push({ ...defaultElement("wire", 65, yBrkB), points: [[65, yBrkB], [120, yBrkB]], wireNo: "B" + n + "2", wireNoAlign: "start" });
@@ -17332,9 +17427,10 @@
         els.push({ ...defaultElement("wire", 35, yA), points: [[35, yA], [55, yA]] });
         els.push(defaultElement("junction", 40, yB));
         els.push({ ...defaultElement("wire", 40, yB), points: [[40, yB], [55, yB]] });
-        els.push({ ...defaultElement("breaker", 55, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP1", refNo: "3A" });
-        els.push({ ...defaultElement("breaker", 55, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
-        els.push({ ...defaultElement("mechanicalLink", 59.75, 0), points: [[59.75, round(yA - 2.35)], [59.75, round(yB - 2.35)]] });
+        const cp1A = { ...defaultElement("breaker", 55, round(yA - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP1", refNo: "3A" };
+        const cp1B = { ...defaultElement("breaker", 55, round(yB - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" };
+        markSubPoles(cp1A, [cp1B]);
+        els.push(cp1A, cp1B, breakerLinkElement(cp1A, cp1B));
         els.push({ ...defaultElement("wire", 67.5, yA), points: [[67.5, yA], [105, yA]], wireNo: "201", wireNoAlign: "start" });
         els.push({ ...defaultElement("wire", 67.5, yB), points: [[67.5, yB], [105, yB]], wireNo: "202", wireNoAlign: "start" });
         // REC箱(L/N入力、-V/+V出力、下辺接地)。
@@ -17344,7 +17440,7 @@
         els.push(textElement(108, 45.7, "入力 AC100-240V", 1.6, 0, 20));
         els.push(textElement(108, 62.5, "出力 DC24V 6.25A", 1.6, 0, 20));
         // 接地線の左側へ右寄せし、型式文字を縦線が貫通しないようにする。
-        els.push({ ...textElement(112.5, 76.4, recTag + (recModel ? " " + recModel : ""), 1.8, 0, 45), align: "end" });
+        els.push(anchoredTextElement(112.5, 76.4, recTag + (recModel ? " " + recModel : ""), 1.8, 45, "end"));
         els.push({ ...defaultElement("wire", 117.5, 72.5), points: [[117.5, 72.5], [117.5, 77.5]] });
         els.push({ ...defaultElement("ground", 115.5, 77.5), label: "" });
         // 出力: -V→N1(行2)、+V→P0(行4)。
@@ -17363,9 +17459,10 @@
           els.push({ ...defaultElement("wire", 140, yP0), points: [[140, yP0], [140, yC], [145, yC]] });
           els.push(defaultElement("junction", 135, yA));
           els.push({ ...defaultElement("wire", 135, yA), points: [[135, yA], [135, yD], [145, yD]] });
-          els.push({ ...defaultElement("breaker", 145, round(yC - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP8", refNo: "1A" });
-          els.push({ ...defaultElement("breaker", 145, round(yD - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" });
-          els.push({ ...defaultElement("mechanicalLink", 149.75, 0), points: [[149.75, round(yC - 2.35)], [149.75, round(yD - 2.35)]] });
+          const cp8A = { ...defaultElement("breaker", 145, round(yC - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "CP8", refNo: "1A" };
+          const cp8B = { ...defaultElement("breaker", 145, round(yD - 3)), w: 12.5, h: 5, symbolVariant: "iec", cpLinked: true, label: "", refNo: "" };
+          markSubPoles(cp8A, [cp8B]);
+          els.push(cp8A, cp8B, breakerLinkElement(cp8A, cp8B));
           els.push({ ...defaultElement("wire", 157.5, yC), points: [[157.5, yC], [160, yC]] });
           els.push({ ...defaultElement("arrow", 160, yC), points: [[160, yC], [172.5, yC]], label: "P24", arrowStyle: "open", signalRole: "source" });
           els.push({ ...defaultElement("wire", 157.5, yD), points: [[157.5, yD], [160, yD]] });
@@ -17747,7 +17844,8 @@
           frameVariant: "compact",
           title: "図面目次"
         });
-        page.elements.push({ ...textElement(103, 31, "図面目次", 4, 0, 40), align: "middle" });
+        // 見出しは目次表(x=28〜178)の中央へ揃える。
+        page.elements.push(anchoredTextElement(103, 31, "図面目次", 4, 40, "middle"));
         page.elements.push({
           ...defaultElement("table", 28, 40),
           rows: rowsData.length + 1,
@@ -17989,6 +18087,8 @@
           page.elements.forEach(element => {
             if (!supportsElectricalAttributes(element)) return;
             if (!tagPrefix(element.type)) return;
+            // 極ごとの記号で描いた多極機器は1極目だけを1台として数える。
+            if (element.subPole) return;
             const key = [element.manufacturer || "", element.catalog || "", element.type].join("::");
             const row = map.get(key) || {
               type: paletteLabel(element.type),
@@ -21422,10 +21522,24 @@
         return false;
       }
 
+      // 汎用ラダーの空きラング(部品を置く前の、左右母線を直結したままのラング仮線)か。
+      // 部品を置くと配線が分割されて母線間の直結ではなくなるので、以後は通常の配線として扱われる。
+      function isEmptyLadderRung(page, wire) {
+        if (!wire.ladderRung || !Array.isArray(wire.points) || wire.points.length !== 2) return false;
+        const rails = page.elements.filter(element => element.type === "wire" && element.ladderRail && element.id !== wire.id);
+        const railAt = point => rails.find(rail => wireSegments(rail).some(segment => pointOnSegment(point[0], point[1], segment)));
+        const left = railAt(wire.points[0]);
+        const right = railAt(wire.points[1]);
+        return Boolean(left && right && left !== right);
+      }
+
       // ページ内の配線を電気的な接続グループ(ネット)に分割する。
       // 端点一致・T分岐(端点が他配線の線上)・接続点上の交差で結合する。
+      // 空きラングは回路未作成の行の仮線なので母線とは結合せず、ラングごとに独立したネットにする
+      // (結合すると左右母線が短絡した1ネットになり、ラング線番R001…が混在扱い・一括採番で潰れる)。
       function buildWireNets(page) {
         const wires = page.elements.filter(element => element.type === "wire");
+        const emptyRungs = new Set(wires.filter(wire => isEmptyLadderRung(page, wire)).map(wire => wire.id));
         const parent = new Map();
         wires.forEach(wire => parent.set(wire.id, wire.id));
         const find = id => {
@@ -21441,14 +21555,16 @@
           if (ra !== rb) parent.set(ra, rb);
         };
         for (let i = 0; i < wires.length; i++) {
+          if (emptyRungs.has(wires[i].id)) continue;
           for (let j = i + 1; j < wires.length; j++) {
+            if (emptyRungs.has(wires[j].id)) continue;
             if (wiresTouch(wires[i], wires[j])) union(wires[i].id, wires[j].id);
           }
         }
         page.elements
           .filter(element => element.type === "junction")
           .forEach(junction => {
-            const touching = wires.filter(wire =>
+            const touching = wires.filter(wire => !emptyRungs.has(wire.id) &&
               wireSegments(wire).some(segment => pointOnSegment(junction.x || 0, junction.y || 0, segment)));
             for (let k = 1; k < touching.length; k++) union(touching[0].id, touching[k].id);
           });
@@ -21882,6 +21998,8 @@
       // 部品タグ自動採番(種別接頭辞+書式、タグ固定は尊重)。
       // 接点(contactChildTypes)はコイルのタグを参照する側なので新しい番号は振らない。上書き時は
       // コイルの改番に合わせて同じタグの接点も追従させ、コイルと接点の対応を保つ。
+      // 多極機器を極ごとの記号で描いたときの2極目以降(subPole)も1極目と同じ部品なので番号を振らず、
+      // 上書き時は同じページ・同じ種別で1極目と同じタグを持つ極を1極目の新タグへ追従させる(ラベルは出さない)。
       // 番号は既に他の部品が使っているタグを飛ばして振る(重複タグを作らない)。
       function autoTagComponents() {
         const format = state.settings.componentTagFormat || "%F%N";
@@ -21899,7 +22017,7 @@
         pages.forEach(page => {
           page.elements.forEach(element => {
             const prefix = autoTagPrefix(element);
-            if (!prefix || element.fixedTag || contactTypes.has(element.type)) return;
+            if (!prefix || element.fixedTag || element.subPole || contactTypes.has(element.type)) return;
             if (!overwrite && componentTag(element)) return;
             targets.push({ page, element, prefix });
           });
@@ -21909,7 +22027,7 @@
         // 接点のタグはコイルへの参照なので予約しない(未作成コイル宛ての接点と対になれるように)。
         const used = new Set();
         state.pages.forEach(page => page.elements.forEach(element => {
-          if (targetIds.has(element.id) || contactTypes.has(element.type) || !autoTagPrefix(element)) return;
+          if (targetIds.has(element.id) || element.subPole || contactTypes.has(element.type) || !autoTagPrefix(element)) return;
           const tag = componentTag(element);
           if (tag) used.add(tag);
         }));
@@ -21929,6 +22047,12 @@
           element.tag = tag;
           element.label = tag;
           count += 1;
+          if (oldTag && oldTag !== tag) {
+            page.elements.forEach(pole => {
+              if (!pole.subPole || pole.fixedTag || pole.type !== element.type || componentTag(pole) !== oldTag) return;
+              pole.tag = tag;
+            });
+          }
           // クロス参照の親として使われていたコイルなら、その接点も新タグへ付け替える(タグ固定の接点は据え置き)。
           if (!xref || !oldTag || oldTag === tag || !coilTypes().has(element.type)) return;
           if (xref.coils.get(oldTag)?.element !== element) return;
@@ -23948,8 +24072,9 @@
                 if (element.fixedTag) {
                   issues.push({ level: "警告", page: page.name, pageId: page.id, elementId: element.id, message: "部品タグ固定ですがタグが空です。", target: paletteLabel(element.type) });
                 }
-              } else if (element.tag && !contactChildTypes().has(element.type)) {
-                // 同一リレーの複数接点は同じタグを共有するのが正常。親部品だけ重複監査へ載せる。
+              } else if (element.tag && !element.subPole && !contactChildTypes().has(element.type)) {
+                // 同一リレーの複数接点と、多極機器の2極目以降(subPole)は同じタグを共有するのが正常。
+                // 親部品(1極目)だけ重複監査へ載せる。
                 const key = element.type + "::" + element.tag;
                 const list = componentTags.get(key) || [];
                 list.push({ page: page.name, pageId: page.id, elementId: element.id, type: paletteLabel(element.type), tag: element.tag });

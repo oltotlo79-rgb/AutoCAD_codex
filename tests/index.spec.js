@@ -1363,7 +1363,8 @@ test("ACモータは駆動方式の既定値を同期し1軸とモータタグ�
   expect(inverter.rails).toEqual(["G", "R01", "S01", "T01"]);
   expect(inverter.motors).toEqual(["M1"]);
   expect(inverter.contactTags).toContain("MC2M1");
-  expect(inverter.mechanicalLink).toEqual([[59.75, 90.25], [59.75, 100.25]]);
+  // 連動破線はJIS形遮断器の可動線の中点(極のx+6.15, 配線y+1)を先頭極から最終極まで結ぶ。
+  expect(inverter.mechanicalLink).toEqual([[61.15, 93.5], [61.15, 103.5]]);
 });
 
 test("全テンプレートの接続点・配線・主要枠は2.5mmグリッド上にありIDも重複しない", async ({ page }) => {
@@ -1662,7 +1663,8 @@ test("端子接続図・PLC入出力・汎用ラダーは端子の重ね順と�
       stripW: strip.w,
       firstAnchor: window.__edsTest.elementConnectionAnchors(strip)[0],
       signalXs: current.elements.filter(element => element.type === "text" && /^SIG/.test(element.text || "")).map(element => element.x),
-      duplicateSmallTerminals: current.elements.filter(element => element.type === "terminal" && !element.label).length
+      // 行の左端(x=37.5)の端子小円は各行の受け口。重複扱いするのはユニット列の端子円(x=130)へ重なるものだけ。
+      duplicateSmallTerminals: current.elements.filter(element => element.type === "terminal" && !element.label && Math.abs(element.x + 0.9 - 130) < 1).length
     };
   });
   expect(result.stripIndex).toBeGreaterThan(result.lastWireIndex);
