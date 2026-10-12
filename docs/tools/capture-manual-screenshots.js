@@ -259,27 +259,48 @@ job(["01-startup.png", "02-palette.png", "03-page-settings.png", "26-screen-layo
   await shot(page, "01-startup.png");
   const palette = await boxOf(page, "aside.palette");
   await shot(page, "02-palette.png", { clip: { x: palette.x, y: palette.y, width: palette.width, height: 760 } });
-  const inspector = await boxOf(page, "aside.inspector");
-  await shot(page, "03-page-settings.png", { clip: { x: inspector.x, y: inspector.y, width: inspector.width, height: 760 } });
+  // 領域名のバッジは、各領域のボタン・見出しを隠さない空き場所へ置く(place: 領域の箱から位置を決める)。
   const regions = [
-    ["header.topbar", "1  上部ツールバー", "#d1495b"],
-    ["#tabbar", "2  ページタブ", "#5367d5"],
-    ["#quickRibbon", "3  クイック作図リボン", "#b45309"],
-    ["aside.palette", "4  左パネル", "#d97706"],
-    ["#workspace", "5  中央キャンバス", "#0f8f7c"],
-    ["aside.inspector", "6  右パネル", "#7c3aed"]
+    ["header.topbar", "1  上部ツールバー", "#d1495b", box => ({ x: box.x + box.width - 210, y: box.y + 10 })],
+    ["#tabbar", "2  ページタブ", "#5367d5", box => ({ x: box.x + box.width / 2, y: box.y + 4 })],
+    ["#quickRibbon", "3  クイック作図リボン", "#b45309", box => ({ x: box.x + box.width - 260, y: box.y + 4 })],
+    ["aside.palette", "4  左パネル", "#d97706", box => ({ x: box.x + 112, y: box.y + 12 })],
+    ["#workspace", "5  中央キャンバス", "#0f8f7c", box => ({ x: box.x + 18, y: box.y + 64 })],
+    ["aside.inspector", "6  右パネル", "#7c3aed", box => ({ x: box.x + 150, y: box.y + 56 })]
   ];
   const badges = [];
-  for (const [selector, text, color] of regions) {
+  for (const [selector, text, color, place] of regions) {
     const box = await boxOf(page, selector);
     const inset = { x: box.x + 2, y: box.y + 2, width: box.width - 4, height: box.height - 4 };
     badges.push({ box: inset, color, fill: `${color}0d` });
-    const wide = box.width > 600;
-    badges.push({ x: wide ? box.x + box.width / 2 : box.x + 14, y: box.y + (box.height > 60 ? 12 : 4), text, color, solid: true, round: true, fontSize: 17, padding: "4px 14px", center: wide });
+    badges.push({ ...place(box), text, color, solid: true, round: true, fontSize: 17, padding: "4px 14px" });
   }
+  // 中央キャンバスの中にある操作要素(パネル開閉ボタン・下部HUD)にも小さな注記を付ける。
+  const leftToggle = await boxOf(page, "#toggleLeftPanel");
+  badges.push({ x: leftToggle.x + leftToggle.width + 8, y: leftToggle.y + 6, text: "‹ › パネルの開閉", color: "#0f8f7c", fontSize: 13, padding: "3px 8px" });
+  const hud = await boxOf(page, "#bottomHud");
+  badges.push({ x: hud.x - 112, y: hud.y + 1, text: "下部HUD →", color: "#0f8f7c", fontSize: 13, padding: "3px 8px" });
   await addBadges(page, "manualScreenRegions", badges);
   await settle(page);
   await shot(page, "26-screen-layout.png");
+  await removeBadges(page, "manualScreenRegions");
+  // 右パネルのページ設定タブ全体を、「表題欄の詳細」を開いた状態で撮る。縦に長すぎて印刷で縮むため、
+  // 「図名」の手前で上下に分け、左右2列に並べ替えた1枚の画像にする。
+  await page.setViewportSize({ width: VIEWPORT.width, height: 1400 });
+  await page.locator("#inspectorPageTab summary", { hasText: "表題欄の詳細" }).click();
+  await settle(page);
+  const tabs = await boxOf(page, "#inspectorTabs");
+  const pageTab = await boxOf(page, "#inspectorPageTab");
+  const inspector = await boxOf(page, "aside.inspector");
+  const split = (await boxOf(page, 'label[for="drawingTitle"]')).y - 4;
+  const top = tabs.y - 8;
+  const bottom = pageTab.y + pageTab.height + 8;
+  const upper = await page.screenshot({ clip: { x: inspector.x, y: top, width: inspector.width, height: split - top }, animations: "disabled", caret: "hide" });
+  const lower = await page.screenshot({ clip: { x: inspector.x, y: split, width: inspector.width, height: bottom - split }, animations: "disabled", caret: "hide" });
+  const sheet = await context.newPage();
+  await sheet.setContent(`<body style="margin:0"><div id="sheet" style="display:inline-flex;gap:14px;align-items:flex-start;padding:6px;background:#e6ebef">
+    <img src="data:image/png;base64,${upper.toString("base64")}"><img src="data:image/png;base64,${lower.toString("base64")}"></div></body>`);
+  await shotElement(sheet.locator("#sheet"), "03-page-settings.png");
   await context.close();
 });
 
@@ -531,6 +552,8 @@ job(["06-component-selection.png", "07-wire-editing.png", "08-cross-reference.pn
   const second = await freshPage(browser);
   await second.page.setInputFiles("#underlayInput", underlaySource);
   await second.page.waitForSelector('#canvas [data-type="underlayImage"]');
+  // 挿入直後の選択を外し、利用者と同じく「下絵を選択（ロック中も可）」で選び直す(右パネルは選択部品タブになる)。
+  await second.page.keyboard.press("Escape");
   await second.page.click("#inspectorTabPage");
   await second.page.selectOption("#underlayMenu", "select");
   await settle(second.page);
