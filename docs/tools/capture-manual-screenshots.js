@@ -467,7 +467,8 @@ job(["39-palette-estop-placement.png"], async browser => {
 });
 
 // 共通サンプル回路を使う主要画面群。
-job(["06-component-selection.png", "07-wire-editing.png", "08-cross-reference.png", "09-drawing-audit.png", "10-search-results.png",
+// 08-cross-reference.png は専用サンプル（a/b接点付き）で manual-shots/E2-xref-productivity.js が撮影する。
+job(["06-component-selection.png", "07-wire-editing.png", "09-drawing-audit.png", "10-search-results.png",
   "11-title-batch.png", "12-bom.png", "13-report-table.png", "14-project-manager.png", "15-print-preview.png", "16-layer-manager.png",
   "17-wire-type-manager.png", "18-symbol-builder.png", "19-history-timeline.png", "20-context-menu.png", "25-underlay.png"], async browser => {
   const { context, page } = await freshPage(browser);
@@ -498,9 +499,6 @@ job(["06-component-selection.png", "07-wire-editing.png", "08-cross-reference.pn
   await page.keyboard.press("Control+z");
   await clickEmpty(page, 195, 280);
 
-  await openAction(page, "crossRef");
-  await shotDialog(page, "08-cross-reference.png");
-  await closeDialog(page);
   await page.click("#auditBtn");
   await shotDialog(page, "09-drawing-audit.png");
   await closeDialog(page);
