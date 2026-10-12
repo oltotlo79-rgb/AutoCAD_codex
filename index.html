@@ -1086,7 +1086,7 @@
         <span class="tool-sep" aria-hidden="true"></span>
         <button type="button" id="printPreviewBtn" title="印刷イメージを画面で確認">プレビュー</button>
         <button type="button" id="printBtn" title="全ページをPDF印刷">PDF印刷</button>
-        <button type="button" id="printTwoUpBtn" title="A3縦に2ページずつ面付けして印刷">A3面付</button>
+        <button type="button" id="printTwoUpBtn" title="A4を2ページずつA3へ等倍で面付けして印刷（A4縦→A3横に左右、A4横→A3縦に上下）">A3面付</button>
         <button type="button" id="exportSvgBtn" title="現在ページをSVG出力">SVG</button>
         <button type="button" id="exportPngBtn" title="現在ページをPNG出力">PNG</button>
       </div>
@@ -14598,6 +14598,16 @@
       // CSVバイト列をUTF-8/Shift_JIS判定つきで文字列化。
       function decodeTextBuffer(buffer) {
         const bytes = buffer instanceof ArrayBuffer ? buffer : new Uint8Array(buffer).buffer;
+        // UTF-8のBOM(EF BB BF)があればUTF-8と確定する(本アプリのCSV出力もBOM付き)。
+        // 推定に任せると、日本語の多いUTF-8をShift_JISと取り違える余地が残るため。
+        const head = new Uint8Array(bytes, 0, Math.min(3, bytes.byteLength));
+        if (head[0] === 0xEF && head[1] === 0xBB && head[2] === 0xBF) {
+          try {
+            return new TextDecoder("utf-8").decode(bytes.slice(3));
+          } catch (_) {
+            // TextDecoderが無い環境は下の推定処理へ任せる。
+          }
+        }
         const candidates = [];
         try {
           candidates.push(new TextDecoder("utf-8").decode(bytes));
@@ -14622,8 +14632,9 @@
       }
 
       // CSV/TSVパーサ(引用符・改行対応、区切りはタブ/カンマ自動判定)。
+      // 先頭のBOMは除く(BOM付きUTF-8のCSVでも1列目の見出しを正しく照合するため)。
       function parseDelimitedRows(text) {
-        const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        const source = String(text || "").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
         const sample = source.split("\n").slice(0, 5).join("\n");
         const delimiter = (sample.match(/\t/g) || []).length > (sample.match(/,/g) || []).length ? "\t" : ",";
         const rows = [];
@@ -17309,7 +17320,7 @@
           const headers = ["name", "signals", "pages", "wireCount"];
           const csv = [headers.join(","), ...buildProjectNetlist().map(net =>
             [csvCell(net.name), csvCell(net.signals), csvCell(net.pages.join(" ")), net.wireCount].join(","))].join("\r\n");
-          download("netlist.csv", csv, "text/csv;charset=utf-8");
+          downloadCsv("netlist.csv", csv);
           setStatus("ネットリストCSVを書き出しました。");
         });
       }
@@ -17440,7 +17451,7 @@
             return /[",\n]/.test(value) ? '"' + value.replace(/"/g, '""') + '"' : value;
           }).join(","));
         });
-        download("catalog.csv", "\uFEFF" + lines.join("\r\n"), "text/csv");
+        downloadCsv("catalog.csv", lines.join("\r\n"));
         setStatus("カタログCSVを書き出しました。");
       }
 
@@ -17594,7 +17605,7 @@
         const rows = collectBomRows();
         const csv = [headers.join(","), ...rows.map(row => headers.map(h =>
           csvCell(h === "tags" ? row.tags.join(" ") : row[h])).join(","))].join("\r\n");
-        download("electrical-bom.csv", csv, "text/csv;charset=utf-8");
+        downloadCsv("electrical-bom.csv", csv);
         setStatus("BOM CSVを書き出しました。");
       }
 
@@ -17693,7 +17704,7 @@
         qs("#terminalPlanCsvBtn")?.addEventListener("click", () => {
           const headers = ["page", "strip", "terminal", "wireNo", "dest", "jumpers"];
           const csv = [headers.join(","), ...collectTerminalPlanRows().map(row => headers.map(h => csvCell(row[h])).join(","))].join("\r\n");
-          download("terminal-plan.csv", csv, "text/csv;charset=utf-8");
+          downloadCsv("terminal-plan.csv", csv);
           setStatus("端子台プラン表CSVを書き出しました。");
         });
         qs("#terminalPlanInsertBtn")?.addEventListener("click", () => {
@@ -18414,7 +18425,7 @@
         openDialog("表計算データ往復編集", `<p class="muted">全選択してExcel等へ貼り付け、編集後に戻してください。ID・page・typeは照合用のため変更しないでください。</p>
           <textarea id="spreadsheetData" style="min-height:48vh;font-family:monospace;white-space:pre">${escapeHtml(text)}</textarea>
           <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="spreadsheetExport">TSV保存</button><button id="spreadsheetPreview" class="primary">変更を確認</button></div>`);
-        qs("#spreadsheetExport").onclick = () => download("electrical-roundtrip.tsv", "\uFEFF" + qs("#spreadsheetData").value, "text/tab-separated-values;charset=utf-8");
+        qs("#spreadsheetExport").onclick = () => downloadCsv("electrical-roundtrip.tsv", qs("#spreadsheetData").value, "text/tab-separated-values;charset=utf-8");
         qs("#spreadsheetPreview").onclick = () => {
           const rows = parseDelimitedRows(qs("#spreadsheetData").value);
           if (rows.length < 2) return;
@@ -19978,6 +19989,12 @@
         URL.revokeObjectURL(url);
       }
 
+      // CSV/TSVはBOM付きUTF-8で保存する(BOMが無いと日本語版Excelで開いたとき文字化けするため)。
+      // 取込側(parseDelimitedRows/decodeTextBuffer)は先頭BOMを読み飛ばすので往復しても支障はない。
+      function downloadCsv(filename, text, type = "text/csv;charset=utf-8") {
+        download(filename, "\uFEFF" + String(text).replace(/^\uFEFF/, ""), type);
+      }
+
       // state全体をJSONファイルとして保存(ファイル名にタイムスタンプ)。
       function saveProject() {
         ensureProjectDefaults();
@@ -20462,23 +20479,50 @@
         });
       }
 
-      // A3二面付けの印刷シートを構築(A4縦2頁を横並び)。
+      // A3面付けの印刷シートを構築。A4はA3のちょうど半分なので常に等倍(100%)で並べる:
+      //   A4縦2頁 → A3横(420×297)に左右 / A4横2頁 → A3縦(297×420)に上下。
+      // 用紙の向きはシートごとに@page名(a3l/a3p)で切り替える(1回の印刷で縦横混在可)。
+      // ページ順を保つため、向きの違うA4が続くときや最後の1頁は相方なしで1枚に置く(左/上に配置)。
+      // A3ページは面付けできないので、縮小せずそのままA3 1枚に出す。
       function syncPrintSheetsTwoUp(container) {
-        for (let i = 0; i < state.pages.length; i += 2) {
-          const sheet = document.createElement("div");
-          sheet.className = "print-sheet page-a3-portrait";
-          sheet.style.width = "297mm";
-          sheet.style.height = "420mm";
-          const svg = svgEl("svg", { xmlns: svgNS, viewBox: "0 0 297 420", width: "297mm", height: "420mm", role: "img", "aria-label": "A3 two-up" });
-          svg.appendChild(svgEl("rect", { x: 0, y: 0, width: 297, height: 420, fill: "#fff" }));
-          addTwoUpPageSvg(svg, state.pages[i], 10, 10, 277, 195);
-          if (state.pages[i + 1]) addTwoUpPageSvg(svg, state.pages[i + 1], 10, 215, 277, 195);
-          sheet.appendChild(svg);
-          container.appendChild(sheet);
+        const pages = state.pages;
+        const isA4 = size => Math.min(size.w, size.h) === 210 && Math.max(size.w, size.h) === 297;
+        for (let i = 0; i < pages.length;) {
+          const size = pageSize(pages[i]);
+          if (!isA4(size)) {
+            appendTwoUpSheet(container, size.w > size.h, [[pages[i], 0, 0]]);
+            i += 1;
+            continue;
+          }
+          const portrait = size.h > size.w;
+          const nextSize = pages[i + 1] ? pageSize(pages[i + 1]) : null;
+          const paired = Boolean(nextSize && isA4(nextSize) && (nextSize.h > nextSize.w) === portrait);
+          const placements = [[pages[i], 0, 0]];
+          if (paired) placements.push(portrait ? [pages[i + 1], 210, 0] : [pages[i + 1], 0, 210]);
+          appendTwoUpSheet(container, portrait, placements);
+          i += paired ? 2 : 1;
         }
       }
 
-      // 二面付けシートへ1ページ分のSVGを配置。
+      // A3面付けシートを1枚追加する。placementsは[ページ, 左上x, 左上y](mm)で、各ページは等倍で置く。
+      function appendTwoUpSheet(container, landscape, placements) {
+        const w = landscape ? 420 : 297;
+        const h = landscape ? 297 : 420;
+        const sheet = document.createElement("div");
+        sheet.className = "print-sheet page-a3-" + (landscape ? "landscape" : "portrait");
+        sheet.style.width = w + "mm";
+        sheet.style.height = h + "mm";
+        const svg = svgEl("svg", { xmlns: svgNS, viewBox: "0 0 " + w + " " + h, width: w + "mm", height: h + "mm", role: "img", "aria-label": "A3 two-up" });
+        svg.appendChild(svgEl("rect", { x: 0, y: 0, width: w, height: h, fill: "#fff" }));
+        placements.forEach(([page, x, y]) => {
+          const size = pageSize(page);
+          addTwoUpPageSvg(svg, page, x, y, size.w, size.h);
+        });
+        sheet.appendChild(svg);
+        container.appendChild(sheet);
+      }
+
+      // 面付けシートへ1ページ分のSVGを配置(枠w×hへ縦横比を保って収める。枠=用紙寸法なら等倍)。
       function addTwoUpPageSvg(parent, page, x, y, w, h) {
         const size = pageSize(page);
         const scale = Math.min(w / size.w, h / size.h);
@@ -20580,7 +20624,7 @@
       function printProjectTwoUp() {
         printMode = "two-up";
         renderPrintSheets();
-        setStatus("A3縦2面付けで印刷します。印刷ダイアログでPDF保存を選択してください。");
+        setStatus("A3面付で印刷します（A4を等倍で2ページずつ: A4縦はA3横に左右、A4横はA3縦に上下）。印刷ダイアログでPDF保存を選択してください。");
         window.print();
         printMode = "single";
       }
@@ -21336,7 +21380,7 @@
         }
         const headers = ["page", "wireNo", "from", "to", "wireType"];
         const csv = [headers.join(","), ...rows.map(row => headers.map(h => csvCell(row[h])).join(","))].join("\r\n");
-        download("wire-from-to.csv", csv, "text/csv;charset=utf-8");
+        downloadCsv("wire-from-to.csv", csv);
         setStatus(`From-To一覧CSVを書き出しました（${rows.length}行）。`);
       }
 
@@ -21364,7 +21408,7 @@
           headers.join(","),
           ...rows.map(row => headers.map(header => csvCell(row[header])).join(","))
         ].join("\r\n");
-        download("electrical-report.csv", csv, "text/csv;charset=utf-8");
+        downloadCsv("electrical-report.csv", csv);
         setStatus("帳票CSVを書き出しました。");
       }
 
@@ -21805,7 +21849,7 @@
         `, { wide: true });
       }
 
-      // 検索・置換ダイアログを開く(線番/タグ/文字/属性メモ対象)。
+      // 検索・置換ダイアログを開く(対象はREPLACE_FIELDSの文字欄。検索のみ種別名にも一致)。
       function showSearchDialog() {
         const html = `
           <label for="searchQuery">検索語</label>
@@ -21818,6 +21862,7 @@
             <input id="replaceValue" placeholder="置換後">
             <button type="button" id="runReplaceBtn">一括置換</button>
           </div>
+          <p class="muted" style="margin:6px 0 0">大文字・小文字は区別しません。一括置換は検索と同じ文字欄が対象です（種別名だけの一致は置換されません）。</p>
           <div id="searchResults" style="margin-top:12px"></div>
         `;
         openDialog("図面検索", html);
@@ -21828,23 +21873,37 @@
         });
       }
 
-      // 検索一致箇所を一括置換(対象フィールドを走査)。
-      // 一括置換の対象(ページ/要素/フィールド/変更前)を全ページから収集する。
-      const REPLACE_FIELDS = ["wireNo", "label", "text", "tag", "note", "cellText", "pinText", "rightPinText", "terminalLabels", "description", "fromOverride", "toOverride"];
+      // 検索と一括置換が共通で対象にする文字フィールド(並び=検索結果「内容」の表示順)。
+      // 検索で見つかった文字は必ず一括置換でも直せるよう、両者でこの一覧を共有する。
+      const REPLACE_FIELDS = ["tag", "label", "description", "installation", "location", "manufacturer", "catalog", "rating", "item", "text", "wireNo", "prefix", "cellText", "pinText", "rightPinText", "terminalLabels", "note", "fromOverride", "toOverride"];
       // 一括置換の対象フィールド→画面表示名。検索結果一覧で「どの欄が当たったか」を出すために使う。
-      const REPLACE_FIELD_LABELS = { wireNo: "線番", label: "ラベル", text: "文字", tag: "タグ", note: "属性メモ", cellText: "表セル", pinText: "ピン文字", rightPinText: "右ピン文字", terminalLabels: "端子名", description: "説明", fromOverride: "FROM", toOverride: "TO" };
+      const REPLACE_FIELD_LABELS = { wireNo: "線番", label: "ラベル", text: "文字", tag: "タグ", note: "属性メモ", cellText: "表セル", pinText: "ピン文字", rightPinText: "右ピン文字", terminalLabels: "端子名", description: "説明", installation: "設備", location: "場所", manufacturer: "メーカー", catalog: "品番", rating: "定格", item: "項目", prefix: "接頭辞", fromOverride: "FROM", toOverride: "TO" };
 
-      // 一括置換の対象(ページ/要素/フィールド/変更前値)を全ページから収集する。
-      // REPLACE_FIELDSにある文字列フィールドのみが対象(数値・配列は対象外)。
-      function collectReplaceMatches(query) {
+      // 検索・置換の対象として扱う値(文字列、またはJSON取込で数値になった線番など)を文字列化する。
+      function searchableFieldText(value) {
+        if (typeof value === "string") return value;
+        return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+      }
+
+      // 大文字・小文字を区別せずに一致した部分だけを置換する(一致しない部分の文字はそのまま残す)。
+      // 置換後の文字列は関数で返し、「$&」などの置換パターンとして解釈させない。
+      function replaceIgnoringCase(value, query, replacement) {
+        const pattern = new RegExp(String(query).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+        return String(value).replace(pattern, () => replacement);
+      }
+
+      // 一括置換の対象(ページ/要素/フィールド/変更前値/変更後値)を全ページから収集する。
+      // 検索と同じく大文字・小文字を区別しない。置換しても値が変わらない行(既に置換後と同じ表記)は除く。
+      function collectReplaceMatches(query, replacement) {
         const matches = [];
+        const needle = query.toLowerCase();
         state.pages.forEach(page => {
           page.elements.forEach(element => {
             REPLACE_FIELDS.forEach(field => {
-              const value = element[field];
-              if (typeof value === "string" && value.includes(query)) {
-                matches.push({ page, element, field, before: value });
-              }
+              const value = searchableFieldText(element[field]);
+              if (!value || !value.toLowerCase().includes(needle)) return;
+              const after = replaceIgnoringCase(value, query, replacement);
+              if (after !== value) matches.push({ page, element, field, before: value, after });
             });
           });
         });
@@ -21852,14 +21911,15 @@
       }
 
       // 一括置換: 即時適用せず、対象一覧をプレビューし行ごとに選択してから1回のUndo単位で適用する。
+      // 検索語は検索と同じく前後の空白を除く(置換後の文字列は空欄=削除を含めそのまま使う)。
       function runReplaceAll() {
-        const query = qs("#searchQuery").value;
+        const query = qs("#searchQuery").value.trim();
         const replacement = qs("#replaceValue").value;
         if (!query) {
           setStatus("置換する検索語を入力してください。");
           return;
         }
-        const matches = collectReplaceMatches(query);
+        const matches = collectReplaceMatches(query, replacement);
         if (!matches.length) {
           setStatus("置換対象が見つかりませんでした。");
           return;
@@ -21883,7 +21943,7 @@
                 <td>${escapeHtml(paletteLabel(m.element.type) || m.element.type)}</td>
                 <td>${escapeHtml(REPLACE_FIELD_LABELS[m.field] || m.field)}</td>
                 <td>${escapeHtml(m.before)}</td>
-                <td>${escapeHtml(m.before.replaceAll(query, replacement))}</td>
+                <td>${escapeHtml(m.after)}</td>
               </tr>`).join("")}</tbody>
             </table>
           </div>
@@ -21903,7 +21963,7 @@
             return;
           }
           selected.forEach(m => {
-            m.element[m.field] = String(m.element[m.field]).replaceAll(query, replacement);
+            m.element[m.field] = replaceIgnoringCase(searchableFieldText(m.element[m.field]), query, replacement);
           });
           commitHistory(selected.length + "箇所を置換しました。");
           closeDialog();
@@ -22667,26 +22727,13 @@
         render();
       }
 
-      // 要素の検索対象文字列(ラベル+線番+属性連結)。
+      // 要素の検索対象文字列(種別名+信号種別+一括置換と共通の文字フィールドを連結)。
+      // 種別は内部名ではなく画面と同じ表示名にする(結果の「内容」欄にそのまま出るため)。
       function elementSearchText(element) {
         return [
-          element.type,
-          element.tag,
-          element.label,
+          paletteLabel(element.type),
           element.type === "arrow" ? signalRoleLabel(element.signalRole) : "",
-          element.description,
-          element.installation,
-          element.location,
-          element.manufacturer,
-          element.catalog,
-          element.rating,
-          element.item,
-          element.text,
-          element.wireNo,
-          element.prefix,
-          element.cellText,
-          element.pinText,
-          element.note
+          ...REPLACE_FIELDS.map(field => searchableFieldText(element[field]))
         ].filter(Boolean).join(" ");
       }
 
