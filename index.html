@@ -18700,7 +18700,12 @@
       // 表計算データ往復編集ダイアログを開く。タブ区切りで書き出し、貼り戻した内容をidで照合して反映する。
       function showSpreadsheetRoundtrip() {
         const headers = ["id", "page", "type", "tag", "description", "manufacturer", "catalog", "installation", "location", "terminals"];
-        const text = [headers.join("\t"), ...spreadsheetRows().map(row => headers.map(key => String(row[key] || "").replace(/\t/g, " ")).join("\t"))].join("\n");
+        // 端子名・I/O名など複数行の値は、Excel等と同じく「"」で囲んで1セルとして書き出す(囲まないと行が割れて貼り戻せない)。
+        const tsvCell = value => {
+          const textValue = String(value || "").replace(/\t/g, " ");
+          return /[\r\n"]/.test(textValue) ? '"' + textValue.replace(/"/g, '""') + '"' : textValue;
+        };
+        const text = [headers.join("\t"), ...spreadsheetRows().map(row => headers.map(key => tsvCell(row[key])).join("\t"))].join("\n");
         openDialog("表計算データ往復編集", `<p class="muted">全選択してExcel等へ貼り付け、編集後に戻してください。ID・page・typeは照合用のため変更しないでください。</p>
           <textarea id="spreadsheetData" style="min-height:48vh;font-family:monospace;white-space:pre">${escapeHtml(text)}</textarea>
           <div class="inline" style="justify-content:flex-end;margin-top:12px"><button id="spreadsheetExport">TSV保存</button><button id="spreadsheetPreview" class="primary">変更を確認</button></div>`);

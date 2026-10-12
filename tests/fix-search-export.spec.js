@@ -229,7 +229,9 @@ test("BOM付きCSVを端子CSV・PLC CSV・カタログCSV取込と表計算往�
   const tsv = await data.inputValue();
   await data.fill(String.fromCharCode(0xFEFF) + tsv.replace("旧説明", "新説明").replace(/^id\t/, "\"id\"\t"));
   await page.locator("#spreadsheetPreview").click();
-  await expect(page.locator("#dialogBody")).toContainText("description → 新説明");
+  // 変更したのは説明だけ。複数行の端子名・I/O名は書き出しと貼り戻しで変わらない。
+  await expect(page.locator("#dialogBody")).toContainText("1項目を更新します。");
+  await expect(page.locator("#dialogBody")).toContainText("説明 旧説明→新説明");
   await page.locator("#spreadsheetApply").click();
   expect(await page.evaluate(() => window.__edsTest.state.pages[0].elements.find(item => item.id === "c1").description)).toBe("新説明");
 });
